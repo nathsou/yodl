@@ -17,18 +17,18 @@ Circuit description (Yodl) -> Visualization (Digital) -> Software simulation (Yo
 ## Syntax
 
 ```yodl
-module RegAsyncReset[W] (
-    clk: clock,
+module RegWithReset<W> (
+    clk: logic,
     rst: logic,
     data: logic[W],
     enable: logic,
 ) -> (
     q: logic[W],
 ) {
-    r := Reg[W](
+    let r = Reg<W>(
         clk: clk,
         data: if rst { '0 } else { data },
-        enable: enable || rst,
+        enable: enable or rst,
     );
 
     q = r.q;
@@ -36,37 +36,74 @@ module RegAsyncReset[W] (
 
 // built-in
 declare module Reg1 (
-    clk: clock,
+    clk: logic,
     d: logic,
     enable: logic,
 ) -> (
     q: logic,
 );
 
-declare module Reg[W] (
-    clk: clock,
+declare module Reg<W> (
+    clk: logic,
     data: logic[W],
     enable: logic,
 ) -> (
     q: logic[W],
 ) {
     for i in 0..<W {
-        r := Reg1(
-            clk: clock,
+        let r = Reg1(
+            clk: clk,
             d: data[i],
             enable: enable,
         );
 
         q[i] = r.q;
     }
+
+    // q = [Reg1(clk, d: data[i], enable).q for i in 0..<W];
 }
 ```
 
-Should synthesize into a Digital circuit similar to:
+Should synthesise into a Digital circuit similar to:
 
-![RegAsyncReset in Digital](res/RegAsyncResetDigital.png)
+![RegWithReset in Digital](res/RegWithReset.png)
 
 ## Checkpoints
 
 - [ ] MVP: Manufacture a simple calculator circuit with a KiCad export
 - [ ] Latch detection
+
+```yodl
+module FullAdder(
+    a: logic,
+    b: logic,
+    carry_in: logic,
+) -> (
+    sum: logic,
+    carry_out: logic,
+) {
+    let xor1 = a xor b;
+    sum = xor1 xor carry_in;
+    carry_out = (carry_in and xor1) or (a and b);
+}
+
+module Adder<W>(
+    a: logic[W],
+    b: logic[W],
+    carry_in: logic,
+) -> (
+    sum: logic[W],
+    carry_out: logic,
+) {
+    let adders = FullAdder[W]; // instantiates a vector of W FullAdder modules
+
+    for i in 0..<W {
+        adders[i].carry_in = if i == 0 { carry_in } else { adders[i - 1].carry_out };
+        adders[i].a = a[i];
+        adders[i].b = b[i];
+    }
+
+    sum = [adder.sum for adder in adders];
+    carry_out = adders[W - 1].carry_out;
+}
+```
