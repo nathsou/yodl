@@ -43,7 +43,7 @@ declare module Reg1 (
     q: logic,
 );
 
-declare module Reg<W> (
+module Reg<W> (
     clk: logic,
     data: logic[W],
     enable: logic,

@@ -1,0 +1,13 @@
+
+module FullAdder(
+    a: logic,
+    b: logic,
+    carry_in: logic,
+) -> (
+    sum: logic,
+    carry_out: logic,
+) {
+    let xor1 = a xor b;
+    sum = xor1 xor carry_in;
+    carry_out = (carry_in and xor1) or (a and b);
+}

@@ -32,7 +32,7 @@ module FullAdder(
 
 Support module instantiation within other modules.
 
-A module stores references to module instantiations.
+A module instance stores references to submodule instantiations.
 
 The list of all primitive components used in the top-level circuit can be collected by performing a DFS on module instances.
 
@@ -46,7 +46,7 @@ declare module Reg1 (
     q: logic,
 );
 
-declare module Reg<W> (
+module Reg<W> (
     clk: logic,
     data: logic[W],
     enable: logic,

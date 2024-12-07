@@ -1,6 +1,7 @@
 {
   "is-main": true,
   "import": [
-    "username/hello/lib"
+    "nathsou/yodl/parse",
+    "moonbitlang/x/fs" 
   ]
 }
