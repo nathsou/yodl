@@ -23,16 +23,32 @@ pub(readonly) enum Expr {
   Identifier(name~: String, span~: Span, ty~: Ref[Type?])
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
+  Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
+  PortAccess(expr~: Expr, port~: String, span~: Span, ty~: Ref[Type?])
+  Instance(name~: String, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
 }
 
 pub(readonly) enum Stmt {
   Let(name~: String, expr~: Expr, span~: Span)
-  Assign(name~: String, expr~: Expr, span~: Span)
+  Assign(lhs~: Expr, rhs~: Expr, span~: Span)
 }
 
-pub(readonly) enum Type {
+pub(all) struct ModuleSignature {
+    name: String
+    inputs: Array[Port]
+    outputs: Array[Port]
+    span: Span
+}
+
+impl Eq for ModuleSignature with op_equal(self, other) {
+  self.name == other.name && self.span.file == other.span.file
+}
+
+pub(all) enum Type {
+  Nat
   Logic
   Vector(ty~: Type, len~: UInt)
+  Instance(ModuleSignature)
 } derive(Eq)
 
 pub(readonly) enum PortDirection {
@@ -64,9 +80,40 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Identifier(ty~, ..) => ty
     Unary(ty~, ..) => ty
     Binary(ty~, ..) => ty
+    Indexing(ty~, ..) => ty
+    PortAccess(ty~, ..) => ty
+    Instance(ty~, ..) => ty
   }
 }
 
 pub fn set_ty(self: Expr, ty: Type) -> Unit {
   self.ty().val = Some(ty)
+}
+
+pub fn is_constant_expr(self: Expr) -> Bool {
+  match self {
+    Natural(..) => true
+    Identifier(..) => false
+    Unary(expr~, ..) => expr.is_constant_expr()
+    Binary(lhs~, rhs~, ..) => lhs.is_constant_expr() && rhs.is_constant_expr()
+    Indexing(_) => false
+    PortAccess(_) => false
+    Instance(_) => false
+  }
+}
+
+pub fn get_port(self: ModuleSignature, name: String) -> Port? {
+  for input in self.inputs {
+    if input.name == name {
+      return Some(input)
+    }
+  }
+
+  for output in self.outputs {
+    if output.name == name {
+      return Some(output)
+    }
+  }
+
+  None
 }

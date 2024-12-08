@@ -78,6 +78,36 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.emit_expr(rhs)
       self.write(")")
     }
+    Indexing(expr~, index~, ..) => {
+      self.emit_expr(expr)
+      self.write("[")
+      self.emit_expr(index)
+      self.write("]")
+    }
+    PortAccess(expr~, port~, ..) => {
+      self.emit_expr(expr)
+      self.write(".")
+      self.write(port)
+    }
+    Instance(name~, ports~, ..) => {
+      self.write(name)
+      self.write("(")
+      self.indent += 1
+
+      for port, expr in ports {
+        self.write("\n")
+        self.write_indent()
+        self.write(port)
+        self.write(": ")
+        self.emit_expr(expr)
+        self.write(",")
+      }
+
+      self.indent -= 1
+      self.write("\n")
+      self.write_indent()
+      self.write(")")
+    }
   }
 }
 
@@ -92,10 +122,10 @@ pub fn emit_stmt(self: Emitter, stmt: Stmt) -> Unit {
       self.emit_expr(expr)
       self.write(";")
     }
-    Assign(name~, expr~, ..) => {
-      self.write(name)
+    Assign(lhs~, rhs~, ..) => {
+      self.emit_expr(lhs)
       self.write(" = ")
-      self.emit_expr(expr)
+      self.emit_expr(rhs)
       self.write(";")
     }
   }

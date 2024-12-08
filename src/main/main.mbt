@@ -8,16 +8,23 @@ fn run(file: String) -> Map[String, @elaborate.ModuleDef]!Error {
   let checker = @elaborate.TypeChecker::new()
 
   for decl in decls {
+    let emitter = @parse.Emitter::new()
+    emitter.emit_decl(decl)
+
+    println(emitter.to_string())
+    println("")
+
     checker.check_decl!(decl)
   }
 
-  let elaborator = @elaborate.Elaborator::new()
+  // let elaborator = @elaborate.Elaborator::new()
 
-  for decl in decls {
-    elaborator.elaborate_decl!(decl)
-  }
+  // for decl in decls {
+  //   elaborator.elaborate_decl!(decl)
+  // }
 
-  elaborator.modules
+  // elaborator.modules
+  {}
 }
 
 fn main {

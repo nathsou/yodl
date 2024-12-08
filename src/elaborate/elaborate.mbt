@@ -205,15 +205,10 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, scope: Scope[Node]) -> Un
 
       node2.connect(node1)
     }
-    Assign(name~, expr~, span~, ..) => {
-      match scope.resolve(name) {
-        Some(node1) => {
-          let node2 = self.elaborate_expr!(expr, scope)
-
-          node2.connect(node1)
-        }
-        None => raise UnknownIdentifier(name~, span~)
-      }
+    Assign(lhs~, rhs~, ..) => {
+      let node1 = self.elaborate_expr!(lhs, scope)
+      let node2 = self.elaborate_expr!(rhs, scope)
+      node2.connect(node1)
     }
   }
 }

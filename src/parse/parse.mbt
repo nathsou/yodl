@@ -10,6 +10,7 @@ pub(readonly) type! ParserError {
   ExpectedInteger(received~: TokenType, span~: Span)
   ExpectedExpr(received~: TokenType, span~: Span)
   ExpectedStmt(received~: TokenType, span~: Span)
+  ExpectedType(received~: TokenType, span~: Span)
 } derive(Show)
 
 pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
@@ -92,7 +93,7 @@ fn span(self: Parser, start_idx: Int) -> Span {
 }
 
 fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr!ParserError {
-  let mut lhs = self.parse_primary_expr!()
+  let mut lhs = self.parse_indexing_expr!()
 
   while self.index < self.tokens.length() {
     match self.peek().to_binop() {
@@ -117,6 +118,26 @@ fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr!ParserError {
   lhs
 }
 
+fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
+  let start_idx = self.index
+  let mut lhs = self.parse_primary_expr!()
+
+  while true {
+    if self.consumes(Lbracket) {
+      let index = self.parse_expr!()
+      self.expect!(Rbracket, start_idx)
+      lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
+    } else if self.consumes(Dot) {
+      let port = self.parse_identifier!()
+      lhs = PortAccess(expr=lhs, port~, span=self.span(start_idx), ty={ val: None })
+    } else {
+      break
+    }
+  }
+
+  lhs
+}
+
 fn parse_primary_expr(self: Parser) -> Expr!ParserError {
   let token = self.peek()
   let start_idx = self.index
@@ -124,7 +145,11 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
   match token {
     Identifier(name) => {
       self.advance()
-      Identifier(name~, span=self.span(start_idx), ty={ val: None })
+      if self.matches(Lparen) {
+        self.parse_instance_expr!(module_name=name)
+      } else {
+        Identifier(name~, span=self.span(start_idx), ty={ val: None })
+      }
     }
     Natural(value~, width~) => {
       self.advance()
@@ -145,8 +170,43 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
   }
 }
 
+fn parse_instance_expr(self: Parser, module_name~: String) -> Expr!ParserError {
+  let start_idx = self.index
+  self.expect!(Lparen, start_idx)
+  let ports = {}
+
+  while not(self.matches(Rparen)) {
+    let start_idx = self.index
+    let name = self.parse_identifier!()
+    self.expect!(Colon, start_idx)
+    let expr = self.parse_expr!()
+    ports[name] = expr
+
+    if not(self.consumes(Comma)) {
+      break
+    }
+  }
+
+  self.expect!(Rparen, start_idx)
+
+  Instance(name=module_name, ports~, span=self.span(start_idx), ty={ val: None })
+}
+
 fn parse_expr(self: Parser) -> Expr!ParserError {
   self.precedence_climbing!(0)
+}
+
+fn parse_assignment_stmt(self: Parser) -> Stmt!ParserError {
+  let start_idx = self.index
+  let lhs = self.parse_indexing_expr!()
+
+  if self.consumes(Equal) {
+    let rhs = self.parse_expr!()
+    self.expect!(Semicolon, self.index)
+    Assign(lhs~, rhs~, span=self.span(start_idx))
+  } else {
+    raise ExpectedStmt(received=self.peek(), span=self.span(start_idx))
+  }
 }
 
 fn parse_stmt(self: Parser) -> Stmt!ParserError {
@@ -162,14 +222,9 @@ fn parse_stmt(self: Parser) -> Stmt!ParserError {
       self.expect!(Semicolon, start_idx)
       Let(name~, expr~, span=self.span(start_idx))
     }
-    Identifier(name) => {
-      self.advance()
-      self.expect!(Equal, start_idx)
-      let expr = self.parse_expr!()
-      self.expect!(Semicolon, start_idx)
-      Assign(name~, expr~, span=self.span(start_idx))
+    _ => {
+      self.parse_assignment_stmt!()
     }
-    _ => raise ExpectedStmt(received=token, span=self.span(start_idx))
   }
 }
 
@@ -177,14 +232,16 @@ fn parse_type(self: Parser) -> Type!ParserError {
   let start_idx = self.index
 
   if self.consumes(Logic) {
-    Logic
-  } else {
-    let ty = self.parse_type!()
-    self.expect!(Lbracket, start_idx)
-    let (len, _) = self.parse_integer!()
-    self.expect!(Rbracket, start_idx)
-    Vector(ty~, len~)
+    if self.consumes(Lbracket) {
+      let (width, _) = self.parse_integer!()
+      self.expect!(Rbracket, start_idx)
+      return Vector(ty=Logic, len=width)
+    } else {
+      return Logic
+    }
   }
+
+  raise ExpectedType(received=self.peek(), span=self.span(start_idx))
 }
 
 fn parse_port(self: Parser, dir~: PortDirection) -> Port!ParserError {

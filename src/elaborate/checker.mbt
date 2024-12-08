@@ -1,20 +1,26 @@
 
 struct TypeChecker {
-    top_env: Scope[@parse.Type]
+    modules: Map[String, @parse.ModuleSignature]
 }
 
 pub fn TypeChecker::new() -> TypeChecker {
     {
-        top_env: Scope::new()
+        modules: {},
     }
 }
 
 type! TypeCheckerError {
-    UnspecifiedIntegerWidth(span~: @parse.Span)
     UnboundVariable(name~: String, span~: @parse.Span)
     IncompatibleTypes(ty1~: @parse.Type, ty2~: @parse.Type, span~: @parse.Span)
     VariableRedeclared(name~: String, span~: @parse.Span)
-}
+    InvalidAssignmentTarget(span~: @parse.Span)
+    IndexMustBeInteger(span~: @parse.Span)
+    IndexMustBeConstantExpr(span~: @parse.Span)
+    IndexedExpressionMustBeVector(span~: @parse.Span)
+    UnknownModule(name~: String, span~: @parse.Span)
+    UnknownModulePort(module_name~: String, port_name~: String, span~: @parse.Span)
+    PortAccessOnNonInstance(span~: @parse.Span)
+} derive(Show)
 
 fn declare_name(env~: Scope[@parse.Type], name~: String, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
     match env.declare?(name, ty) {
@@ -31,9 +37,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
                 None => raise UnboundVariable(name~, span~)
             }
         }
-        Natural(width~, span~, ..) => match width {
+        Natural(width~, ..) => match width {
+            Some(0) => @parse.Logic
             Some(width) => @parse.Vector(ty=@parse.Logic, len=width)
-            None => raise UnspecifiedIntegerWidth(span~)
+            None => Nat
         }
         Unary(expr~, ..) => {
             self.check_expr!(expr, env) 
@@ -48,6 +55,55 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
 
             ty_lhs
         }
+        Indexing(expr~, index~, span~, ..) => {
+            let ty = self.check_expr!(expr, env)
+            let index_ty = self.check_expr!(index, env)
+
+            if index_ty != @parse.Nat {
+                raise IndexMustBeInteger(span~)
+            }
+
+            if not(index.is_constant_expr()) {
+                raise IndexMustBeConstantExpr(span~)
+            }
+
+            match ty {
+                Vector(ty=inner_ty, ..) => inner_ty
+                _ => raise IndexedExpressionMustBeVector(span~)
+            }
+        }
+        PortAccess(expr~, port~, span~, ..) => {
+            match self.check_expr!(expr, env) {
+                Instance(mod) => {
+                    match mod.get_port(port) {
+                        Some(port_def) => port_def.ty
+                        None => raise UnknownModulePort(module_name=mod.name, port_name=port, span~)
+                    }
+                }
+                _ => raise PortAccessOnNonInstance(span~)
+            }
+        }
+        Instance(name~, ports~, span~, ..) => {
+            match self.modules[name] {
+                Some(mod) => {
+                    for port_name, expr in ports {
+                        match mod.get_port(port_name) {
+                            Some(port_def) => {
+                                let expr_ty = self.check_expr!(expr, env)
+
+                                if expr_ty != port_def.ty {
+                                    raise IncompatibleTypes(ty1=expr_ty, ty2=port_def.ty, span~)
+                                }
+                            }
+                            None => raise UnknownModulePort(module_name=name, port_name=port_name, span~)
+                        }
+                    }
+
+                    @parse.Type::Instance(mod)
+                }
+                None => raise UnknownModule(name~, span~)
+            }
+        }
     }
 
     expr.set_ty(ty)
@@ -61,15 +117,21 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
             let ty = self.check_expr!(expr, env)
             declare_name!(env~, name~, ty~, span~)
         }
-        Assign(name~, expr~, span~, ..) => {
-            let ty = self.check_expr!(expr, env)
-            match env.resolve(name) {
-                Some(ty_decl) => {
-                    if ty != ty_decl {
-                        raise IncompatibleTypes(ty1=ty, ty2=ty_decl, span~)
-                    }
-                }
-                None => raise UnboundVariable(name~, span~)
+        Assign(lhs~, rhs~, span~, ..) => {
+            let is_valid_assignment_target = match lhs {
+                Identifier(..) | Indexing(..) | PortAccess(..) => true
+                _ => false
+            };
+
+            if not(is_valid_assignment_target) {
+                raise InvalidAssignmentTarget(span~)
+            }
+
+            let lhs_ty = self.check_expr!(lhs, env)
+            let rhs_ty = self.check_expr!(rhs, env)
+
+            if lhs_ty != rhs_ty {
+                raise IncompatibleTypes(ty1=lhs_ty, ty2=rhs_ty, span~)
             }
         }
     }
@@ -77,17 +139,26 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
 
 pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!TypeCheckerError {
     match decl {
-        Module({ name: _, inputs, outputs, body, span }) => {
+        Module({ name, inputs, outputs, body, span }) => {
+            let env = Scope::new()
+
             for input in inputs {
-                declare_name!(env=self.top_env, name=input.name, ty=input.ty, span~)
+                declare_name!(env~, name=input.name, ty=input.ty, span~)
             }
 
             for output in outputs {
-                declare_name!(env=self.top_env, name=output.name, ty=output.ty, span~)
+                declare_name!(env~, name=output.name, ty=output.ty, span~)
             }
 
             for stmt in body {
-                self.check_stmt!(stmt, self.top_env)
+                self.check_stmt!(stmt, env)
+            }
+
+            self.modules[name] = {
+                name,
+                inputs,
+                outputs,
+                span,
             }
         }
     }
