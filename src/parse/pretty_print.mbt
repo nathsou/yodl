@@ -84,6 +84,14 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.emit_expr(index)
       self.write("]")
     }
+    Slicing(expr~, start~, end~, ..) => {
+      self.emit_expr(expr)
+      self.write("[")
+      self.emit_expr(start)
+      self.write(":")
+      self.emit_expr(end)
+      self.write("]")
+    }
     PortAccess(expr~, port~, ..) => {
       self.emit_expr(expr)
       self.write(".")
@@ -133,6 +141,9 @@ pub fn emit_stmt(self: Emitter, stmt: Stmt) -> Unit {
 
 pub impl Show for Type with output(ty, logger) {
   match ty {
+    Nat => {
+      logger.write_string("nat")
+    }
     Logic => {
       logger.write_string("logic")
     }
@@ -141,6 +152,9 @@ pub impl Show for Type with output(ty, logger) {
       logger.write_char('[')
       logger.write_string(len.to_string())
       logger.write_char(']')
+    }
+    Instance({ name, .. }) => {
+      logger.write_string(name)
     }
   }
 }

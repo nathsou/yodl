@@ -20,12 +20,21 @@ type! TypeCheckerError {
     UnknownModule(name~: String, span~: @parse.Span)
     UnknownModulePort(module_name~: String, port_name~: String, span~: @parse.Span)
     PortAccessOnNonInstance(span~: @parse.Span)
+    InvalidSlicingRange(span~: @parse.Span)
+    ExpectedConstantExpr(span~: @parse.Span)
 } derive(Show)
 
 fn declare_name(env~: Scope[@parse.Type], name~: String, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
     match env.declare?(name, ty) {
         Ok(_) => ()
         Err(_) => raise VariableRedeclared(name~, span~)
+    }
+}
+
+fn eval_const_expr(expr: @parse.Expr) -> UInt!TypeCheckerError {
+    match expr {
+        Natural(value~, ..) => value
+        _ => raise ExpectedConstantExpr(span=expr.span())
     }
 }
 
@@ -69,6 +78,33 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
 
             match ty {
                 Vector(ty=inner_ty, ..) => inner_ty
+                _ => raise IndexedExpressionMustBeVector(span~)
+            }
+        }
+        Slicing(expr~, start~, end~, span~, ..) => {
+            let ty = self.check_expr!(expr, env)
+            let start_ty = self.check_expr!(start, env)
+            let end_ty = self.check_expr!(end, env)
+
+            if start_ty != @parse.Nat || end_ty != @parse.Nat {
+                raise InvalidSlicingRange(span~)
+            }
+
+            let start = eval_const_expr!(start)
+            let end = eval_const_expr!(end)
+
+            match ty {
+                Vector(ty=inner_ty, len~) => {
+                    if end >= len {
+                        raise InvalidSlicingRange(span~)
+                    }
+
+                    if start >= end {
+                        raise InvalidSlicingRange(span~)
+                    }
+
+                    @parse.Type::Vector(ty=inner_ty, len=(end - start) + 1)
+                }
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
@@ -119,7 +155,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
         }
         Assign(lhs~, rhs~, span~, ..) => {
             let is_valid_assignment_target = match lhs {
-                Identifier(..) | Indexing(..) | PortAccess(..) => true
+                Identifier(..) | Indexing(..) | Slicing(..) | PortAccess(..) => true
                 _ => false
             };
 

@@ -24,6 +24,7 @@ pub(readonly) enum Expr {
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
   Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
+  Slicing(expr~: Expr, start~: Expr, end~: Expr, span~: Span, ty~: Ref[Type?])
   PortAccess(expr~: Expr, port~: String, span~: Span, ty~: Ref[Type?])
   Instance(name~: String, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
 }
@@ -81,8 +82,22 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Unary(ty~, ..) => ty
     Binary(ty~, ..) => ty
     Indexing(ty~, ..) => ty
+    Slicing(ty~, ..) => ty
     PortAccess(ty~, ..) => ty
     Instance(ty~, ..) => ty
+  }
+}
+
+pub fn span(self: Expr) -> Span {
+  match self {
+    Natural(span~, ..) => span
+    Identifier(span~, ..) => span
+    Unary(span~, ..) => span
+    Binary(span~, ..) => span
+    Indexing(span~, ..) => span
+    Slicing(span~, ..) => span
+    PortAccess(span~, ..) => span
+    Instance(span~, ..) => span
   }
 }
 
@@ -97,6 +112,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Unary(expr~, ..) => expr.is_constant_expr()
     Binary(lhs~, rhs~, ..) => lhs.is_constant_expr() && rhs.is_constant_expr()
     Indexing(_) => false
+    Slicing(_) => false
     PortAccess(_) => false
     Instance(_) => false
   }

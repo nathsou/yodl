@@ -125,8 +125,15 @@ fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
   while true {
     if self.consumes(Lbracket) {
       let index = self.parse_expr!()
-      self.expect!(Rbracket, start_idx)
-      lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
+
+      if self.consumes(Colon) {
+        let end = self.parse_expr!()
+        self.expect!(Rbracket, start_idx)
+        lhs = Slicing(expr=lhs, start=index, end~, span=self.span(start_idx), ty={ val: None })
+      } else {
+        self.expect!(Rbracket, start_idx)
+        lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
+      }
     } else if self.consumes(Dot) {
       let port = self.parse_identifier!()
       lhs = PortAccess(expr=lhs, port~, span=self.span(start_idx), ty={ val: None })
