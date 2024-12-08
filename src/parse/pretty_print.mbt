@@ -1,5 +1,5 @@
 
-struct Emitter {
+pub(all) struct Emitter {
   mut indent: Int
   builder: StringBuilder
 }
@@ -12,22 +12,21 @@ pub impl Show for Emitter with output(self, logger) {
   logger.write_string(self.builder.to_string())
 }
 
-fn emit(self: Emitter, s: String) -> Unit {
+pub fn emit(self: Emitter, s: String) -> Unit {
   self.builder.write_string("  ".repeat(self.indent) + s + "\n")
 }
 
-fn write_indent(self: Emitter) -> Unit {
+pub fn write_indent(self: Emitter) -> Unit {
   self.builder.write_string("  ".repeat(self.indent))
 }
 
-fn write(self: Emitter, s: String) -> Unit {
+pub fn write(self: Emitter, s: String) -> Unit {
   self.builder.write_string(s)
 }
 
 pub impl Show for UnaryOp with output(op, logger) {
   logger.write_string(match op {
-    LogicalNot => "not"
-    Complement => "~"
+    Not => "not"
   })
 }
 
@@ -48,8 +47,17 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
   }
 
   match expr {
-    Natural(value~, ..) => {
-      self.write(value.to_string())
+    Natural(value~, width~, ..) => {
+      match width {
+        Some(width) => {
+          self.write(width.to_string())
+          self.write("'")
+          self.write(value.to_string())
+        }
+        None => {
+          self.write(value.to_string())
+        }
+      }
     }
     Identifier(name~, ..) => {
       self.write(name)
@@ -130,7 +138,7 @@ fn emit_port_list(self: Emitter, ports: Array[Port]) -> Unit {
 
 pub fn emit_decl(self: Emitter, decl: Decl) -> Unit {
   match decl {
-    Module(name~, inputs~, outputs~, body~, ..) => {
+    Module({ name, inputs, outputs, body, .. }) => {
       self.write("module ")
       self.write(name)
       self.write(" ")

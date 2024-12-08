@@ -2,6 +2,7 @@
   "is-main": true,
   "import": [
     "nathsou/yodl/parse",
+    "nathsou/yodl/elaborate",
     "moonbitlang/x/fs" 
   ]
 }

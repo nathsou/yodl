@@ -2,17 +2,18 @@
 enum TokenType {
   // symbols
   Lparen; Rparen; Lbrace; Rbrace; Comma; Semicolon; Colon
-  Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang
+  Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang; SingleQuote
   Plus; Minus; Star; Slash
   Equal; EqualEqual; BangEqual; RightThinArrow
   // keywords
   Module; Let; Logic; In; For
   And; Or; Not; Xor; Nand; Nor; Xnor
   // literals
-  Identifier(String); Natural(UInt)
+  Identifier(String); Natural(value~: UInt, width~: UInt?)
 } derive(Eq, Show)
 
-struct Span {
+pub(readonly) struct Span {
+  file: String
   start: (Int, Int)
   end: (Int, Int)
 } derive(Show)

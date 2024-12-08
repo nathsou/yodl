@@ -1,6 +1,7 @@
 pub(readonly) struct Parser {
   tokens: Array[Token]
   mut index: Int
+  file: String
 }
 
 pub(readonly) type! ParserError {
@@ -11,8 +12,8 @@ pub(readonly) type! ParserError {
   ExpectedStmt(received~: TokenType, span~: Span)
 } derive(Show)
 
-pub fn Parser::new(tokens: Array[Token]) -> Parser {
-  { tokens, index: 0}
+pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
+  { tokens, index: 0, file }
 }
 
 fn peek(self: Parser) -> TokenType {
@@ -71,14 +72,14 @@ fn parse_identifier(self: Parser) -> String!ParserError {
   }
 }
 
-fn parse_integer(self: Parser) -> UInt!ParserError {
+fn parse_integer(self: Parser) -> (UInt, UInt?)!ParserError {
   let token = self.peek()
   let start_idx = self.index
 
   match token {
-    Natural(value) => {
+    Natural(value~, width~) => {
       self.advance()
-      value
+      (value, width)
     }
     _ => raise ExpectedInteger(received=token, span=self.span(start_idx))
   }
@@ -87,7 +88,7 @@ fn parse_integer(self: Parser) -> UInt!ParserError {
 fn span(self: Parser, start_idx: Int) -> Span {
   let start = self.tokens[start_idx].span.start
   let end = self.tokens[self.index - 1].span.end
-  { start, end }
+  { file: self.file, start, end }
 }
 
 fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr!ParserError {
@@ -104,7 +105,7 @@ fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr!ParserError {
 
           // left-associative
           let rhs = self.precedence_climbing!(precedence + 1)
-          lhs = Binary(op~, lhs~, rhs~, span=self.span(start_idx))
+          lhs = Binary(op~, lhs~, rhs~, span=self.span(start_idx), ty={ val: None })
         } else {
           break
         }
@@ -123,11 +124,16 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
   match token {
     Identifier(name) => {
       self.advance()
-      Identifier(name~, span=self.span(start_idx))
+      Identifier(name~, span=self.span(start_idx), ty={ val: None })
     }
-    Natural(value) => {
+    Natural(value~, width~) => {
       self.advance()
-      Natural(value~, span=self.span(start_idx))
+      Natural(value~, width~, span=self.span(start_idx), ty={ val: None })
+    }
+    Not => {
+      self.advance()
+      let expr = self.parse_expr!()
+      Unary(op=Not, expr~, span=self.span(start_idx), ty={ val: None })
     }
     Lparen => {
       self.advance()
@@ -175,7 +181,7 @@ fn parse_type(self: Parser) -> Type!ParserError {
   } else {
     let ty = self.parse_type!()
     self.expect!(Lbracket, start_idx)
-    let len = self.parse_integer!()
+    let (len, _) = self.parse_integer!()
     self.expect!(Rbracket, start_idx)
     Vector(ty~, len~)
   }
@@ -186,7 +192,7 @@ fn parse_port(self: Parser, dir~: PortDirection) -> Port!ParserError {
   let name = self.parse_identifier!()
   self.expect!(Colon, start_idx)
   let ty = self.parse_type!()
-  { name, ty, dir }
+  { name, ty, dir, span: self.span(start_idx) }
 }
 
 fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]!ParserError {
@@ -207,7 +213,7 @@ fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]!ParserError
   ports
 }
 
-pub fn parse_module_decl(self: Parser) -> Decl!ParserError {
+fn parse_module_decl(self: Parser) -> ModuleDecl!ParserError {
   let start_idx = self.index
   self.expect!(Module, start_idx)
   let name = self.parse_identifier!()
@@ -222,5 +228,21 @@ pub fn parse_module_decl(self: Parser) -> Decl!ParserError {
     body.push(stmt)
   }
 
-  Module(name~, inputs~, outputs~, body~, span=self.span(start_idx))
+  { name, inputs, outputs, body, span: self.span(start_idx) }
+}
+
+
+fn parse_decl(self: Parser) -> Decl!ParserError {
+  Module(self.parse_module_decl!())
+}
+
+pub fn parse(self: Parser) -> Array[Decl]!ParserError {
+  let decls = []
+
+  while self.index < self.tokens.length() {
+    let decl = self.parse_decl!()
+    decls.push(decl)
+  }
+
+  decls
 }

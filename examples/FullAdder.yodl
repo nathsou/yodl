@@ -8,6 +8,6 @@ module FullAdder(
     carry_out: logic,
 ) {
     let xor1 = a xor b;
-    sum = xor1 xor carry_in;
+    sum = carry_in xor xor1;
     carry_out = (carry_in and xor1) or (a and b);
 }

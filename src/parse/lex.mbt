@@ -4,6 +4,7 @@ pub(readonly) struct Lexer {
   mut index: Int
   mut line: Int
   mut column: Int
+  file: String
 }
 
 pub(readonly) type! LexerError {
@@ -32,8 +33,8 @@ fn is_alphanumeric(c: Char) -> Bool {
   is_alpha(c) || is_digit(c)
 }
 
-pub fn Lexer::new(input: String) -> Lexer {
-  { input, index: 0, line: 1, column: 1 }
+pub fn Lexer::new(input: String, file~: String) -> Lexer {
+  { input, index: 0, line: 1, column: 1, file }
 }
 
 fn peek(self: Lexer) -> Char {
@@ -108,8 +109,9 @@ fn parse_uint(s: String) -> UInt {
   n
 }
 
-fn parse_integer(self: Lexer) -> UInt {
+fn parse_integer(self: Lexer) -> (UInt, UInt?) {
   let builder = StringBuilder::new()
+  let mut width = None
 
   for i in self.index..<self.input.length() {
     let char = self.input[i]
@@ -117,12 +119,16 @@ fn parse_integer(self: Lexer) -> UInt {
     if is_digit(char) {
       builder.write_char(char)
       self.advance()
+    } else if char == '\'' {
+      width = Some(parse_uint(builder.to_string()))
+      builder.reset()
+      self.advance()
     } else {
       break
     }
   }
 
-  parse_uint(builder.to_string())
+  (parse_uint(builder.to_string()), width)
 }
 
 fn advance(self: Lexer) -> Unit {
@@ -247,9 +253,14 @@ fn next(self: Lexer) -> LexerResult[Token] {
       self.advance()
       Ok(Dot)
     }
+    '\'' => {
+      self.advance()
+      Ok(SingleQuote)
+    }
     _ => {
       if is_digit(char) {
-        Ok(Natural(self.parse_integer()))
+        let (value, width) = self.parse_integer()
+        Ok(Natural(value~, width~))
       } else if is_alpha(char) || char == '_' {
         let identifier = self.parse_identifier()
 
@@ -277,7 +288,7 @@ fn next(self: Lexer) -> LexerResult[Token] {
   let end = (self.line, self.column)
 
   match val {
-    Ok(token) => Ok({ kind: token, span: { start, end } })
+    Ok(token) => Ok({ kind: token, span: { file: self.file, start, end } })
     Err(error) => Err(error)
     EOF => EOF
   }
