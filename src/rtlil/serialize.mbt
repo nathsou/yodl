@@ -77,7 +77,7 @@ pub impl Show for Signal with output(self, logger) {
       if width == 1 {
         logger.write_string("\{signal} [\{offset}]")
       } else {
-        logger.write_string("\{signal} [\{(offset + width) - 1}:\{offset}]")
+        logger.write_string("\{signal} [\{offset}:\{(offset + 1) - width}]")
       }
     }
     SigConcat(signals) => {

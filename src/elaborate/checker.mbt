@@ -82,29 +82,29 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
-        Slicing(expr~, start~, end~, span~, ..) => {
+        Slicing(expr~, msb~, lsb~, span~, ..) => {
             let ty = self.check_expr!(expr, env)
-            let start_ty = self.check_expr!(start, env)
-            let end_ty = self.check_expr!(end, env)
+            let start_ty = self.check_expr!(msb, env)
+            let end_ty = self.check_expr!(lsb, env)
 
             if start_ty != @parse.Nat || end_ty != @parse.Nat {
                 raise InvalidSlicingRange(span~)
             }
 
-            let start = eval_const_expr!(start)
-            let end = eval_const_expr!(end)
+            let msb = eval_const_expr!(msb)
+            let lsb = eval_const_expr!(lsb)
 
             match ty {
                 Vector(ty=inner_ty, len~) => {
-                    if end >= len {
+                    if msb >= len {
                         raise InvalidSlicingRange(span~)
                     }
 
-                    if start >= end {
+                    if lsb >= msb {
                         raise InvalidSlicingRange(span~)
                     }
 
-                    @parse.Type::Vector(ty=inner_ty, len=(end - start) + 1)
+                    @parse.Type::Vector(ty=inner_ty, len=(msb - lsb) + 1)
                 }
                 _ => raise IndexedExpressionMustBeVector(span~)
             }

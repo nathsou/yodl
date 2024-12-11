@@ -84,12 +84,12 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.emit_expr(index)
       self.write("]")
     }
-    Slicing(expr~, start~, end~, ..) => {
+    Slicing(expr~, msb~, lsb~, ..) => {
       self.emit_expr(expr)
       self.write("[")
-      self.emit_expr(start)
+      self.emit_expr(msb)
       self.write(":")
-      self.emit_expr(end)
+      self.emit_expr(lsb)
       self.write("]")
     }
     PortAccess(expr~, port~, ..) => {

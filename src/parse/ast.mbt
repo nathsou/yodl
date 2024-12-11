@@ -24,7 +24,7 @@ pub(readonly) enum Expr {
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
   Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
-  Slicing(expr~: Expr, start~: Expr, end~: Expr, span~: Span, ty~: Ref[Type?])
+  Slicing(expr~: Expr, msb~: Expr, lsb~: Expr, span~: Span, ty~: Ref[Type?])
   PortAccess(expr~: Expr, port~: String, span~: Span, ty~: Ref[Type?])
   Instance(name~: String, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
 }

@@ -127,9 +127,9 @@ fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
       let index = self.parse_expr!()
 
       if self.consumes(Colon) {
-        let end = self.parse_expr!()
+        let lsb = self.parse_expr!()
         self.expect!(Rbracket, start_idx)
-        lhs = Slicing(expr=lhs, start=index, end~, span=self.span(start_idx), ty={ val: None })
+        lhs = Slicing(expr=lhs, msb=index, lsb~, span=self.span(start_idx), ty={ val: None })
       } else {
         self.expect!(Rbracket, start_idx)
         lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })

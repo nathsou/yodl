@@ -234,12 +234,12 @@ fn elaborate_expr(
 
       Value::Signal(@rtlil.SigChunk(signal=sig, offset=idx, width=1))
     }
-    Slicing(expr~, start~, end~, ..) => {
+    Slicing(expr~, msb~, lsb~, ..) => {
       let sig = self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
-      let start = self.elaborate_expr!(start, mod).expect_integer!(start.span()).reinterpret_as_uint()
-      let end = self.elaborate_expr!(end, mod).expect_integer!(end.span()).reinterpret_as_uint()
+      let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span()).reinterpret_as_uint()
+      let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span()).reinterpret_as_uint()
 
-      Value::Signal(@rtlil.SigChunk(signal=sig, offset=start, width=(end - start) + 1))
+      Value::Signal(@rtlil.SigChunk(signal=sig, offset=msb, width=(msb - lsb) + 1))
     }
   }
 }

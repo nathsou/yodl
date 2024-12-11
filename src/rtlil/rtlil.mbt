@@ -157,15 +157,6 @@ pub fn add_cell(
   cell
 }
 
-fn kind(self: Signal) -> String {
-  match self {
-    SigConst(_) => "const"
-    SigWire(_) => "wire"
-    SigChunk(_) => "chunk"
-    SigConcat(_) => "concat"
-  }
-}
-
 pub fn connect(self: Module, sig1: Signal, sig2: Signal) -> Unit!RTLILError {
   if sig1.size() != sig2.size() {
     raise IncompatibleWidths(width1=sig1.size(), width2=sig2.size())
