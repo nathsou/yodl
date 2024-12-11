@@ -133,3 +133,12 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
 
   None
 }
+
+pub fn width(self: Type) -> UInt? {
+  match self {
+    Nat => None
+    Logic => Some(1)
+    Vector(len~, ..) => Some(len)
+    Instance(_) => None
+  }
+}

@@ -22,6 +22,7 @@ type! TypeCheckerError {
     PortAccessOnNonInstance(span~: @parse.Span)
     InvalidSlicingRange(span~: @parse.Span)
     ExpectedConstantExpr(span~: @parse.Span)
+    InvalidPortType(ty~: @parse.Type, span~: @parse.Span)
 } derive(Show)
 
 fn declare_name(env~: Scope[@parse.Type], name~: String, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
@@ -137,7 +138,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
 
                     @parse.Type::Instance(mod)
                 }
-                None => raise UnknownModule(name~, span~)
+                None => raise TypeCheckerError::UnknownModule(name~, span~)
             }
         }
     }
@@ -173,16 +174,25 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
     }
 }
 
+fn ensure_valid_port_type(ty: @parse.Type, span: @parse.Span) -> Unit!TypeCheckerError {
+    match ty {
+        Logic | Vector(ty=Logic, len=_) => ()
+        _ => raise InvalidPortType(ty=ty, span~)
+    }
+}
+
 pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!TypeCheckerError {
     match decl {
         Module({ name, inputs, outputs, body, span }) => {
             let env = Scope::new()
 
             for input in inputs {
+                ensure_valid_port_type!(input.ty, input.span)
                 declare_name!(env~, name=input.name, ty=input.ty, span~)
             }
 
             for output in outputs {
+                ensure_valid_port_type!(output.ty, output.span)
                 declare_name!(env~, name=output.name, ty=output.ty, span~)
             }
 

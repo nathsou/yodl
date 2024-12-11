@@ -3,8 +3,7 @@
 pub(readonly) type! RTLILError {
   WireAlreadyDeclared(name~: Id)
   CellAlreadyDeclared(name~: Id)
-  IncompatibleWidths(width1~: Int, width2~: Int)
-  NotImplemented(message~: String)
+  IncompatibleWidths(width1~: UInt, width2~: UInt)
 } derive(Show)
 
 pub(all) enum Id {
@@ -19,9 +18,16 @@ pub impl Show for Id with output(self, logger) {
     }
 }
 
+pub fn inner(self: Id) -> String {
+  match self {
+    PubId(id) => id
+    GenId(id) => id
+  }
+}
+
 // A value consists of a width in bits and a bit representation, most significant bit first
 pub(all) struct Value {
-    width: Int
+    width: UInt
     bits: Array[BinaryDigit]
 }
 
@@ -35,11 +41,11 @@ pub(all) enum Constant {
   ConstString(String)
 }
 
-pub fn size(self: Constant) -> Int {
+pub fn size(self: Constant) -> UInt {
   match self {
     ConstValue(v) => v.width
     ConstInteger(_) => 32
-    ConstString(str) => str.length() * 8
+    ConstString(str) => str.length().reinterpret_as_uint() * 8
   }
 }
 
@@ -60,7 +66,7 @@ pub(all) struct PortSpec {
 
 pub(all) struct Wire {
   name: Id
-  width: Int
+  width: UInt
   port: PortSpec?
   attributes: Array[Attribute]
   mod: Module
@@ -70,15 +76,15 @@ pub(all) struct Wire {
 pub(all) enum Signal {
   SigConst(Constant)
   SigWire(Wire)
-  SigChunk(signal~: Signal, offset~: Int, width~: Int)
+  SigChunk(signal~: Signal, offset~: UInt, width~: UInt)
   SigConcat(Array[Signal])
 }
 
-fn sum(iter: Iter[Int]) -> Int {
+fn sum(iter: Iter[UInt]) -> UInt {
   iter.fold(fn(a, b) { a + b }, init=0)
 }
 
-pub fn size(self: Signal) -> Int {
+pub fn size(self: Signal) -> UInt {
   match self {
     SigConst(c) => c.size()
     SigWire(w) => w.width
@@ -108,7 +114,7 @@ pub fn Module::new(name: Id) -> Module {
   { name, wires: {}, cells: {}, attributes: [], parameters: [], connections: [] }
 }
 
-pub fn add_wire(self: Module, name~: Id, width~: Int, port~: PortSpec? = None, attributes~: Array[Attribute] = []) -> Wire!RTLILError {
+pub fn add_wire(self: Module, name~: Id, width~: UInt, port~: PortSpec? = None, attributes~: Array[Attribute] = []) -> Wire!RTLILError {
   if self.wires.contains(name) {
     raise WireAlreadyDeclared(name~)
   }
@@ -151,15 +157,19 @@ pub fn add_cell(
   cell
 }
 
+fn kind(self: Signal) -> String {
+  match self {
+    SigConst(_) => "const"
+    SigWire(_) => "wire"
+    SigChunk(_) => "chunk"
+    SigConcat(_) => "concat"
+  }
+}
+
 pub fn connect(self: Module, sig1: Signal, sig2: Signal) -> Unit!RTLILError {
   if sig1.size() != sig2.size() {
     raise IncompatibleWidths(width1=sig1.size(), width2=sig2.size())
   }
 
-  match (sig1, sig2) {
-    (SigWire(_), SigWire(_)) => {
-      self.connections.push((sig1, sig2))
-    }
-    _ => raise NotImplemented(message="Only wire-to-wire connections are supported")
-  }
+  self.connections.push((sig1, sig2))
 }

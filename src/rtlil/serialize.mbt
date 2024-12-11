@@ -75,9 +75,9 @@ pub impl Show for Signal with output(self, logger) {
     SigWire(w) => logger.write_string(w.name.to_string())
     SigChunk(signal~, offset~, width~) => {
       if width == 1 {
-        logger.write_string("\{signal}[\{offset}]")
+        logger.write_string("\{signal} [\{offset}]")
       } else {
-        logger.write_string("\{signal}[\{offset}:\{offset + width}]")
+        logger.write_string("\{signal} [\{(offset + width) - 1}:\{offset}]")
       }
     }
     SigConcat(signals) => {
