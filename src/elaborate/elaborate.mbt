@@ -1,118 +1,68 @@
 
 pub(readonly) struct Elaborator {
-  mut node_offset: UInt
-  mut instance_offset: UInt
-  modules: Map[String, ModuleDef]
-  mut current_module: ModuleDef?
+  mut autoidx: UInt
+  modules: Map[String, @rtlil.Module]
 }
 
 pub fn Elaborator::new() -> Elaborator {
-  { node_offset: 0, instance_offset: 0, modules: {}, current_module: None }
+  { autoidx: 0, modules: {} }
 }
 
 type! ElaboratorError {
   ModuleAlreadyDeclared(name~: String, span~: @parse.Span)
-  NodeAlreadyDeclared(name~: String, span~: @parse.Span)
-  UntypedExpression(span~: @parse.Span)
   UnknownIdentifier(name~: String, span~: @parse.Span)
   Unsupported(message~: String, span~: @parse.Span)
 } derive(Show)
 
-fn declare_node(self: Elaborator, scope: Scope[Node], node: Node) -> Node!ElaboratorError {
-  self.node_offset += 1
+fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
+  let mod_def = @rtlil.Module::new(PubId(mod.name))
 
-  match scope.declare?(node.name, node) {
-    Ok(_) => ()
-    Err(_) => raise NodeAlreadyDeclared(name=node.name, span=node.span)
-  }
-
-  match self.current_module {
-    Some(mod) => mod.nodes.push(node)
-    None => ()
-  }
-
-  node
-}
-
-fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit!ElaboratorError {
-  let def: ModuleDef = {
-    name: mod.name,
-    submodules: [],
-    nodes: [],
-    span: mod.span,
-  }
-
-  self.current_module = Some(def)
-
-  let scope = Scope::new()
+  let mut port_id: UInt = 1
 
   for input in mod.inputs {
-    let _ = self.declare_node!(scope, {
-      local_id: self.node_offset,
-      ty: input.ty,
-      span: input.span,
-      name: input.name,
-      is_port: true,
-      width: 1,
-      inputs: [],
-      outputs: [],
-    })
+    let _ = mod_def.add_wire!(
+      name=PubId(input.name),
+      width=1,
+      port=Some({ direction: Input, id: port_id }),
+      attributes=[],
+    )
+
+    port_id += 1
   }
 
   for output in mod.outputs {
-    let _ = self.declare_node!(scope, {
-      local_id: self.node_offset,
-      ty: output.ty,
-      span: output.span,
-      name: output.name,
-      is_port: true,
-      width: 1,
-      inputs: [],
-      outputs: [],
-    })
+    let _ = mod_def.add_wire!(
+      name=PubId(output.name),
+      width=1,
+      port=Some({ direction: Output, id: port_id }),
+      attributes=[],
+    )
+
+    port_id += 1
   }
 
   for stmt in mod.body {
-    let _ = self.elaborate_stmt!(stmt, scope)
+    let _ = self.elaborate_stmt!(stmt, mod_def)
   }
 
   if self.modules.contains(mod.name) {
     raise ModuleAlreadyDeclared(name=mod.name, span=mod.span)
   }
 
-  self.modules[mod.name] = def
+  self.modules[mod.name] = mod_def
 }
 
-fn declare_instance(
-  self: Elaborator,
-  mod_name: String,
-  inputs: Map[String, Node],
-  outputs: Map[String, Node],
-  span: @parse.Span,
-) -> Instance {
-  let def: Instance = {
-    module_name: mod_name,
-    local_id: self.instance_offset,
-    inputs,
-    outputs,
-    span,
-  }
-
-  self.instance_offset += 1
-
-  match self.current_module {
-    Some(mod) => mod.submodules.push(def)
-    None => ()
-  }
-
-  def
+fn next_genidx(self: Elaborator) -> UInt {
+  let idx = self.autoidx
+  self.autoidx += 1
+  idx
 }
 
-fn elaborate_expr(self: Elaborator, expr: @parse.Expr, scope: Scope[Node]) -> Node!ElaboratorError {
+fn elaborate_expr(self: Elaborator, expr: @parse.Expr, mod: @rtlil.Module) -> @rtlil.Signal! {
   match expr {
     Identifier(name~, span~, ..) => {
-      match scope.resolve(name) {
-        Some(node) => node
+      match mod.wires[PubId(name)] {
+        Some(wire) => SigWire(wire)
         None => raise UnknownIdentifier(name~, span~)
       }
     }
@@ -122,98 +72,71 @@ fn elaborate_expr(self: Elaborator, expr: @parse.Expr, scope: Scope[Node]) -> No
     Unary(span~, ..) => {
       raise Unsupported(message="Unary operators are not supported yet", span~)
     }
-    Binary(op~, lhs~, rhs~, span~, ty~, ..) => {
+    Binary(op~, lhs~, rhs~, ..) => {
       let mod_name = match op {
-        And => "<and>"
-        Or => "<or>"
-        Xor => "<xor>"
-        Nand => "<nand>"
-        Nor => "<nor>"
-        Xnor => "<xnor>"
+        And => "and"
+        Or => "or"
+        Xor => "xor"
+        Nand => "nand"
+        Nor => "nor"
+        Xnor => "xnor"
       }
 
-      let a = self.declare_node!(scope, {
-        local_id: self.node_offset,
-        ty: ty.val.or_error!(UntypedExpression(span~)),
-        span,
-        name: "\{mod_name}_\{self.node_offset}_a",
-        is_port: false,
-        width: 1,
-        inputs: [],
-        outputs: [],
-      })
+      let output = mod.add_wire!(
+        name=GenId("\{mod_name}_y_\{self.next_genidx()}"),
+        width=1,
+        port=None,
+        attributes=[],
+      )
+      
+      let _ = mod.add_cell!(
+        type_=GenId(mod_name),
+        name=GenId("\{mod_name}_\{self.next_genidx()}"),
+        parameters=[
+          { id: PubId("A_SIGNED"), value: ConstInteger(0) },
+          { id: PubId("A_WIDTH"), value: ConstInteger(1) },
+          { id: PubId("B_SIGNED"), value: ConstInteger(0) },
+          { id: PubId("B_WIDTH"), value: ConstInteger(1) },
+          { id: PubId("Y_WIDTH"), value: ConstInteger(1) },
+        ],
+        connections={
+          let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
+          connections[@rtlil.PubId("A")] = self.elaborate_expr!(lhs, mod)
+          connections[@rtlil.PubId("B")] = self.elaborate_expr!(rhs, mod)
+          connections[@rtlil.PubId("Y")] = SigWire(output)
+          connections
+        },
+      )
 
-      let b = self.declare_node!(scope, {
-        local_id: self.node_offset,
-        ty: ty.val.or_error!(UntypedExpression(span~)),
-        span,
-        name: "\{mod_name}_\{self.node_offset}_b",
-        is_port: false,
-        width: 1,
-        inputs: [],
-        outputs: [],
-      })
-
-      let inputs = {
-        "a": a,
-        "b": b,
-      }
-
-      let q = self.declare_node!(scope, {
-        local_id: self.node_offset,
-        ty: ty.val.or_error!(UntypedExpression(span~)),
-        span,
-        name: "\{mod_name}_\{self.node_offset}_q",
-        is_port: false,
-        width: 1,
-        inputs: [],
-        outputs: [],
-      })
-
-      let outputs = { "q": q }
-
-      self.elaborate_expr!(lhs, scope).connect(a)
-      self.elaborate_expr!(rhs, scope).connect(b)
-
-      let _ = self.declare_instance(mod_name, inputs, outputs, span)
-
-      q
+      SigWire(output)
     }
+    _ => raise Unsupported(message="Unsupported expression", span=expr.span())
   }
 }
 
-fn connect(self: Node, to: Node) -> Unit {
-  self.outputs.push(to)
-  to.inputs.push(self)
-}
-
-fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, scope: Scope[Node]) -> Unit!ElaboratorError {
+fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Unit! {
   match stmt {
-    Let(name~, expr~, span~, ..) => {
-      let node1 = self.declare_node!(scope, {
-        local_id: self.node_offset,
-        ty: expr.ty().val.or_error!(UntypedExpression(span~)),
-        span,
-        name,
-        is_port: false,
-        width: 1,
-        inputs: [],
-        outputs: [],
-      })
+    Let(name~, expr~, ..) => {
+      let wire = mod.add_wire!(
+        name=PubId(name),
+        width=1,
+        port=None,
+        attributes=[],
+      )
 
-      let node2 = self.elaborate_expr!(expr, scope)
+      let sig2 = self.elaborate_expr!(expr, mod)
 
-      node2.connect(node1)
+      mod.connect!(SigWire(wire), sig2)
     }
     Assign(lhs~, rhs~, ..) => {
-      let node1 = self.elaborate_expr!(lhs, scope)
-      let node2 = self.elaborate_expr!(rhs, scope)
-      node2.connect(node1)
+      let sig1 = self.elaborate_expr!(lhs, mod)
+      let sig2 = self.elaborate_expr!(rhs, mod)
+      mod.connect!(sig1, sig2)
     }
   }
 }
 
-pub fn elaborate_decl(self: Elaborator, decl: @parse.Decl) -> Unit!ElaboratorError {
+pub fn elaborate_decl(self: Elaborator, decl: @parse.Decl) -> Unit! {
   match decl {
     Module(mod) => {
       self.elaborate_module!(mod)

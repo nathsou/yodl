@@ -12,40 +12,40 @@ module FullAdder(
     carry_out = (carry_in and xor1) or (a and b);
 }
 
-module Adder4(
-    a: logic[4],
-    b: logic[4],
-    carry_in: logic,
-) -> (
-    sum: logic[4],
-    carry_out: logic,
-) {
-    let adder0 = FullAdder(a: a[0], b: b[0], carry_in: carry_in);
-    let adder1 = FullAdder(a: a[1], b: b[1], carry_in: adder0.carry_out);
-    let adder2 = FullAdder(a: a[2], b: b[2], carry_in: adder1.carry_out);
-    let adder3 = FullAdder(a: a[3], b: b[3], carry_in: adder2.carry_out);
+// module Adder4(
+//     a: logic[4],
+//     b: logic[4],
+//     carry_in: logic,
+// ) -> (
+//     sum: logic[4],
+//     carry_out: logic,
+// ) {
+//     let adder0 = FullAdder(a: a[0], b: b[0], carry_in: carry_in);
+//     let adder1 = FullAdder(a: a[1], b: b[1], carry_in: adder0.carry_out);
+//     let adder2 = FullAdder(a: a[2], b: b[2], carry_in: adder1.carry_out);
+//     let adder3 = FullAdder(a: a[3], b: b[3], carry_in: adder2.carry_out);
 
-    sum[0] = adder0.sum;
-    sum[1] = adder1.sum;
-    sum[2] = adder2.sum;
-    sum[3] = adder3.sum;
+//     sum[0] = adder0.sum;
+//     sum[1] = adder1.sum;
+//     sum[2] = adder2.sum;
+//     sum[3] = adder3.sum;
 
-    carry_out = adder3.carry_out;
-}
+//     carry_out = adder3.carry_out;
+// }
 
-module Adder8(
-    a: logic[8],
-    b: logic[8],
-    carry_in: logic,
-) -> (
-    sum: logic[8],
-    carry_out: logic,
-) {
-    let adder0 = Adder4(a: a[0:3], b: b[0:3], carry_in: carry_in);
-    let adder1 = Adder4(a: a[4:7], b: b[4:7], carry_in: adder0.carry_out);
+// module Adder8(
+//     a: logic[8],
+//     b: logic[8],
+//     carry_in: logic,
+// ) -> (
+//     sum: logic[8],
+//     carry_out: logic,
+// ) {
+//     let adder0 = Adder4(a: a[0:3], b: b[0:3], carry_in: carry_in);
+//     let adder1 = Adder4(a: a[4:7], b: b[4:7], carry_in: adder0.carry_out);
 
-    sum[0:3] = adder0.sum;
-    sum[4:7] = adder1.sum;
+//     sum[0:3] = adder0.sum;
+//     sum[4:7] = adder1.sum;
 
-    carry_out = adder1.carry_out;
-}
+//     carry_out = adder1.carry_out;
+// }

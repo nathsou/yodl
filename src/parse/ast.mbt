@@ -52,9 +52,9 @@ pub(all) enum Type {
   Instance(ModuleSignature)
 } derive(Eq)
 
-pub(readonly) enum PortDirection {
+pub(all) enum PortDirection {
   Input; Output
-}
+} derive(Hash, Eq)
 
 pub(readonly) struct Port {
   name: String

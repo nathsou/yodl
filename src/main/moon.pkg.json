@@ -3,6 +3,7 @@
   "import": [
     "nathsou/yodl/parse",
     "nathsou/yodl/elaborate",
+    "nathsou/yodl/rtlil",
     "moonbitlang/x/fs" 
   ]
 }

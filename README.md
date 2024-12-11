@@ -1,18 +1,17 @@
 # yodl
 
-End-to-end circuit design, simulation, testing
+Yet anOther (hardware) Description Language
 
 ## Goals
-Create a friction-less workflow to manufacture circuits with confidence
+Automate schematic generation from a textual description.
 
 ## Pipeline
 Circuit description (Yodl) -> Visualization (Digital) -> Software simulation (Yodl/Verilog simulator) -> FPGA synthesis (Yosys/Vivado, ...) -> Schematic & PCB (KiCad) -> Manufacturing (gerber)
 
-- [ ] Built-in simulator
-- [ ] Export to [Digital](https://github.com/hneemann/Digital) (with integrated component/wiring positioning editor?)
-- [ ] Export Verilog
-- [ ] Export [BLIF](https://www.cse.iitb.ac.in/~supratik/courses/cs226/spr16/blif.pdf) or [Yosys JSON](https://yosyshq.readthedocs.io/projects/yosys/en/latest/cmd/write_json.html)?
-- [ ] Export [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html)
+- [ ] [Digital](https://github.com/hneemann/Digital) (with integrated component/wiring positioning editor?) export
+- [ ] [RTLIL](https://yosyshq.readthedocs.io/projects/yosys/en/latest/yosys_internals/formats/rtlil_rep.html) Export
+- [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export
+- [ ] Built-in event-driven simulator?
 
 ## Syntax
 
