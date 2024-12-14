@@ -23,6 +23,7 @@ type! TypeCheckerError {
     InvalidSlicingRange(span~: @parse.Span)
     ExpectedConstantExpr(span~: @parse.Span)
     InvalidPortType(ty~: @parse.Type, span~: @parse.Span)
+    LetStmtMustHaveTypeOrValue(span~: @parse.Span)
 } derive(Show)
 
 fn declare_name(env~: Scope[@parse.Type], name~: String, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
@@ -36,6 +37,21 @@ fn eval_const_expr(expr: @parse.Expr) -> UInt!TypeCheckerError {
     match expr {
         Natural(value~, ..) => value
         _ => raise ExpectedConstantExpr(span=expr.span())
+    }
+}
+
+fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.Type!TypeCheckerError {
+    match ty {
+        Logic => Logic
+        Nat => Nat
+        Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty!(inner_ty, span~), len~)
+        Instance(mod) => Instance(mod)
+        Name(name~) => {
+            match self.modules[name] {
+                Some(mod) => Instance(mod)
+                None => raise TypeCheckerError::UnknownModule(name~, span~)
+            }
+        }
     }
 }
 
@@ -150,9 +166,33 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
 
 fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> Unit!TypeCheckerError {
     match stmt {
-        Let(name~, expr~, span~, ..) => {
-            let ty = self.check_expr!(expr, env)
-            declare_name!(env~, name~, ty~, span~)
+        Let(name~, ty~, expr~, span~, ..) => {
+            ty.val = Some(match (ty.val, expr) {
+                (Some(ty), Some(expr)) => {
+                    let ty = self.resolve_ty!(ty, span~)
+                    let expr_ty = self.check_expr!(expr, env)
+
+                    if ty != expr_ty {
+                        raise IncompatibleTypes(ty1=ty, ty2=expr_ty, span~)
+                    }
+
+                    declare_name!(env~, name~, ty~, span~)
+                    ty
+                }
+                (Some(ty), None) => {
+                    let ty = self.resolve_ty!(ty, span~)
+                    declare_name!(env~, name~, ty~, span~)
+                    ty
+                }
+                (None, Some(expr)) => {
+                    let ty = self.check_expr!(expr, env)
+                    declare_name!(env~, name~, ty~, span~)
+                    ty
+                }
+                (None, None) => {
+                    raise LetStmtMustHaveTypeOrValue(span~)
+                }
+            })
         }
         Assign(lhs~, rhs~, span~, ..) => {
             let is_valid_assignment_target = match lhs {

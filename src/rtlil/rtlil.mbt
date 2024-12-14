@@ -25,6 +25,13 @@ pub fn inner(self: Id) -> String {
   }
 }
 
+pub fn join(self: Id, suffix: String) -> Id {
+  match self {
+    PubId(id) => PubId(id + suffix)
+    GenId(id) => GenId(id + suffix)
+  }
+}
+
 // A value consists of a width in bits and a bit representation, most significant bit first
 pub(all) struct Value {
     width: UInt

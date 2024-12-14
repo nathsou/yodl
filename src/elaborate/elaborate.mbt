@@ -16,13 +16,61 @@ type! ElaboratorError {
   NameConflict(name~: String, span~: @parse.Span)
   ExpectedSignal(span~: @parse.Span)
   UnknownModule(name~: String, span~: @parse.Span)
-  MissingPorts(missing_ports~: Array[String], span~: @parse.Span)
+  // MissingPorts(missing_ports~: Array[String], span~: @parse.Span)
   ExtraPorts(extra_ports~: Array[String], span~: @parse.Span)
+  UntypedLet(span~: @parse.Span)
+  UnresolvedType(span~: @parse.Span)
+  IndexOutOfBounds(index~: UInt, len~: UInt, span~: @parse.Span)
 } derive(Show)
 
 enum Value {
   Signal(@rtlil.Signal)
   Instance(@rtlil.Cell)
+  Vector(Array[Value])
+}
+
+fn bits(bits: Array[@rtlil.BinaryDigit]) -> Value {
+  Value::Signal(@rtlil.SigConst(ConstValue({ width: bits.length().reinterpret_as_uint(), bits })))
+}
+
+fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value!Error {
+  match ty {
+    Nat => Value::Signal(@rtlil.SigConst(ConstInteger(0)))
+    Logic => bits([X])
+    Vector(ty~, len~) => match ty {
+      Logic => {
+        let val = Array::new(capacity=len.reinterpret_as_int())
+        
+        for i in 0..<len.reinterpret_as_int() {
+          val.push(@rtlil.BinaryDigit::X)
+        }
+
+        bits(val)
+      }
+      _ => {
+        let val = Array::new(capacity=len.reinterpret_as_int())
+
+        for i in 0..<len.reinterpret_as_int() {
+          val.push(self.default_value!(ty~, mod~, span~, name_binding=name_binding.join("[\{i}]")))
+        }
+
+        Value::Vector(val)
+      }
+    }
+    Instance({ name, span, .. }) => {
+      let inst: @parse.Expr = @parse.Expr::Instance(
+        name~,
+        ports={},
+        span~,
+        ty={ val: Some(ty) },
+      )
+
+      self.elaborate_expr!(inst, mod, name_binding=Some(name_binding))
+    }
+    Name(_) => {
+      raise UnresolvedType(span~)
+    }
+  }
 }
 
 fn expect_signal(self: Value, span: @parse.Span) -> @rtlil.Signal!ElaboratorError {
@@ -155,20 +203,14 @@ fn elaborate_expr(
       let mod_def = self.modules[name].or_error!(ElaboratorError::UnknownModule(name~, span~))
 
       let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
-      let output_wires: Map[@rtlil.Id, @rtlil.Signal] = {}
+      let unconnected_wires: Map[@rtlil.Id, @rtlil.Signal] = {}
 
-      let missing_ports = []
       let extra_ports = []
       let cell_name = name_binding.or(GenId("\{name}_\{self.next_genidx()}"))
 
       for name, wire in mod_def.wires {
         match wire.port {
-          Some({ direction: Input, .. }) => {
-            if not(ports.contains(name.inner())) {
-              missing_ports.push(name.inner())
-            }
-          }
-          Some({ direction: Output, .. }) => {
+          Some(_) => {
             if not(ports.contains(name.inner())) {
               let wire = mod.add_wire!(
                 name=GenId("\{cell_name.inner()}_\{name.inner()}"),
@@ -177,15 +219,11 @@ fn elaborate_expr(
                 attributes=[],
               )
 
-              output_wires[@rtlil.PubId(name.inner())] = SigWire(wire)
+              unconnected_wires[@rtlil.PubId(name.inner())] = SigWire(wire)
             }
           }
           _ => ()
         }
-      }
-
-      if not(missing_ports.is_empty()) {
-        raise MissingPorts(missing_ports~, span~)
       }
 
       for port_name, expr in ports {
@@ -201,7 +239,7 @@ fn elaborate_expr(
         raise ExtraPorts(extra_ports~, span~)
       }
 
-      for id, wire in output_wires {
+      for id, wire in unconnected_wires {
         connections[id] = wire
       }
 
@@ -229,10 +267,27 @@ fn elaborate_expr(
       }
     }
     Indexing(expr~, index~, ..) => {
-      let sig = self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
       let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span()).reinterpret_as_uint()
 
-      Value::Signal(@rtlil.SigChunk(signal=sig, offset=idx, width=1))
+      match self.elaborate_expr!(expr, mod){
+        Signal(sig) => {
+          if idx > sig.size() {
+            raise IndexOutOfBounds(index=idx, len=sig.size(), span=expr.span())
+          }
+
+          Value::Signal(@rtlil.SigChunk(signal=sig, offset=idx, width=1))
+        }
+        Vector(values) => {
+          let len = values.length().reinterpret_as_uint()
+
+          if idx >= len {
+            raise IndexOutOfBounds(index=idx, len~, span=expr.span())
+          }
+          
+          values[idx.reinterpret_as_int()]
+        }
+        _ => raise Unsupported(message="Indexing on non-vector data type", span=expr.span())
+      }
     }
     Slicing(expr~, msb~, lsb~, ..) => {
       let sig = self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
@@ -246,21 +301,33 @@ fn elaborate_expr(
 
 fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Unit! {
   match stmt {
-    Let(name~, expr~, ..) => {
-      match self.elaborate_expr!(expr, mod, name_binding=Some(PubId(name))) {
-        Signal(sig) => {
-          let wire = mod.add_wire!(
-            name=PubId(name),
-            width=sig.size(),
-            port=None,
-            attributes=[],
-          )
+    Let(name~, ty~, expr~, span~) => {
+      match expr {
+        Some(expr) => {
+          match self.elaborate_expr!(expr, mod, name_binding=Some(PubId(name))) {
+            Signal(sig) => {
+              let wire = mod.add_wire!(
+                name=PubId(name),
+                width=sig.size(),
+                port=None,
+                attributes=[],
+              )
 
-          self.declare!(name, Value::Signal(SigWire(wire)), span=expr.span())
-          mod.connect!(SigWire(wire), sig)
+              self.declare!(name, Value::Signal(SigWire(wire)), span=expr.span())
+              mod.connect!(SigWire(wire), sig)
+            }
+            Instance(cell) => {
+              self.declare!(name, Value::Instance(cell), span=expr.span())
+            }
+            Vector(values) => {
+              self.declare!(name, Value::Vector(values), span=expr.span())
+            }
+          }
         }
-        Instance(cell) => {
-          self.declare!(name, Value::Instance(cell), span=expr.span())
+        None => {
+          let ty = ty.val.or_error!(UntypedLet(span~))
+          let val = self.default_value!(ty~, mod~, span~, name_binding=PubId(name))
+          self.declare!(name, val, span~)
         }
       }
     }

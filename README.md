@@ -94,15 +94,19 @@ module Adder<W>(
     sum: logic[W],
     carry_out: logic,
 ) {
-    let adders = FullAdder[W]; // instantiates a vector of W FullAdder modules
+    let carry: logic[W];
+    carry[0] = carry_in;
 
-    for i in 0..<W {
-        adders[i].carry_in = if i == 0 { carry_in } else { adders[i - 1].carry_out };
-        adders[i].a = a[i];
-        adders[i].b = b[i];
+    repeat i in 0..<W {
+        FullAdder(
+            a: a[i],
+            b: b[i],
+            carry_in: carry[i],
+            sum: sum[i],
+            carry_out: carry[i + 1],
+        );
     }
 
-    sum = [adder.sum for adder in adders];
-    carry_out = adders[W - 1].carry_out;
+    carry_out = carry[W];
 }
 ```

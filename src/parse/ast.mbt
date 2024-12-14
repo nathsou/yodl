@@ -18,7 +18,7 @@ fn precedence(self: BinaryOp) -> Int {
   }
 }
 
-pub(readonly) enum Expr {
+pub(all) enum Expr {
   Natural(value~: UInt, width~: UInt?, span~: Span, ty~: Ref[Type?])
   Identifier(name~: String, span~: Span, ty~: Ref[Type?])
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
@@ -30,7 +30,7 @@ pub(readonly) enum Expr {
 }
 
 pub(readonly) enum Stmt {
-  Let(name~: String, expr~: Expr, span~: Span)
+  Let(name~: String, ty~: Ref[Type?], expr~: Expr?, span~: Span)
   Assign(lhs~: Expr, rhs~: Expr, span~: Span)
 }
 
@@ -50,6 +50,7 @@ pub(all) enum Type {
   Logic
   Vector(ty~: Type, len~: UInt)
   Instance(ModuleSignature)
+  Name(name~: String)
 } derive(Eq)
 
 pub(all) enum PortDirection {
@@ -140,5 +141,6 @@ pub fn width(self: Type) -> UInt? {
     Logic => Some(1)
     Vector(len~, ..) => Some(len)
     Instance(_) => None
+    Name(_) => None
   }
 }

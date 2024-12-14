@@ -123,11 +123,26 @@ pub fn emit_stmt(self: Emitter, stmt: Stmt) -> Unit {
   self.write_indent()
 
   match stmt {
-    Let(name~, expr~, ..) => {
+    Let(name~, ty~, expr~, ..) => {
       self.write("let ")
       self.write(name)
-      self.write(" = ")
-      self.emit_expr(expr)
+
+      match ty.val {
+        Some(ty) => {
+          self.write(": ")
+          self.write(ty.to_string())
+        }
+        None => ()
+      }
+
+      match expr {
+        Some(expr) => {
+          self.write(" = ")
+          self.emit_expr(expr)
+        }
+        None => ()
+      }
+
       self.write(";")
     }
     Assign(lhs~, rhs~, ..) => {
@@ -154,6 +169,9 @@ pub impl Show for Type with output(ty, logger) {
       logger.write_char(']')
     }
     Instance({ name, .. }) => {
+      logger.write_string(name)
+    }
+    Name(name~) => {
       logger.write_string(name)
     }
   }

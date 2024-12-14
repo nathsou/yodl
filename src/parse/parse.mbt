@@ -224,10 +224,22 @@ fn parse_stmt(self: Parser) -> Stmt!ParserError {
     Let => {
       self.advance()
       let name = self.parse_identifier!()
-      self.expect!(Equal, start_idx)
-      let expr = self.parse_expr!()
+
+      let ty = if self.consumes(Colon) {
+        Some(self.parse_type!())
+      } else {
+        None
+      }
+
+      let expr = if self.consumes(Equal) {
+        Some(self.parse_expr!())
+      } else {
+        None
+      }
+      
       self.expect!(Semicolon, start_idx)
-      Let(name~, expr~, span=self.span(start_idx))
+
+      Let(name~, ty={ val: ty }, expr~, span=self.span(start_idx))
     }
     _ => {
       self.parse_assignment_stmt!()
@@ -238,14 +250,24 @@ fn parse_stmt(self: Parser) -> Stmt!ParserError {
 fn parse_type(self: Parser) -> Type!ParserError {
   let start_idx = self.index
 
-  if self.consumes(Logic) {
-    if self.consumes(Lbracket) {
-      let (width, _) = self.parse_integer!()
-      self.expect!(Rbracket, start_idx)
-      return Vector(ty=Logic, len=width)
-    } else {
-      return Logic
+  let base_ty = match self.peek() {
+    Logic => {
+      self.advance()
+      Type::Logic
     }
+    Identifier(name) => {
+      self.advance()
+      Type::Name(name~)
+    }
+    _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
+  }
+
+  if self.consumes(Lbracket) {
+    let (width, _) = self.parse_integer!()
+    self.expect!(Rbracket, start_idx)
+    return Vector(ty=base_ty, len=width)
+  } else {
+    return base_ty
   }
 
   raise ExpectedType(received=self.peek(), span=self.span(start_idx))
