@@ -10,10 +10,6 @@ fn run(file: String) -> String!Error {
   for decl in decls {
     let emitter = @parse.Emitter::new()
     emitter.emit_decl(decl)
-
-    // println(emitter.to_string())
-    // println("")
-
     checker.check_decl!(decl)
   }
 
@@ -34,6 +30,10 @@ fn run(file: String) -> String!Error {
 fn main {
   match run?("examples/FullAdder.yodl") {
     Ok(rtlil) => {
+      if not(@fs.path_exists(path="output")) {
+        @fs.create_dir(path="output")
+      }
+
       @fs.write_string_to_file(path="output/FullAdder.rtlil", content=rtlil)
     }
     Err(error) => println(error)

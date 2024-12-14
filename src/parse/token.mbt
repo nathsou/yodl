@@ -16,7 +16,13 @@ pub(readonly) struct Span {
   file: String
   start: (Int, Int)
   end: (Int, Int)
-} derive(Show)
+}
+
+pub impl Show for Span with output(self, logger) {
+  logger.write_string(self.file)
+  logger.write_char(':')
+  logger.write_string("\{self.start.0}.\{self.start.1}-\{self.end.0}.\{self.end.1}")
+}
 
 struct Token {
   kind: TokenType

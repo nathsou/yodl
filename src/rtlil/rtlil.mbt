@@ -56,16 +56,6 @@ pub fn size(self: Constant) -> UInt {
   }
 }
 
-pub(all) struct Attribute {
-  id: Id
-  value: Constant
-}
-
-pub(all) struct Parameter {
-  id: Id
-  value: Constant
-}
-
 pub(all) struct PortSpec {
   id: UInt
   direction: @parse.PortDirection
@@ -75,7 +65,7 @@ pub(all) struct Wire {
   name: Id
   width: UInt
   port: PortSpec?
-  attributes: Array[Attribute]
+  attributes: Map[Id, Constant]
   mod: Module
 }
 
@@ -103,8 +93,8 @@ pub fn size(self: Signal) -> UInt {
 pub(all) struct Cell {
   name: Id
   type_: Id
-  attributes: Array[Attribute]
-  parameters: Array[Parameter]
+  attributes: Map[Id, Constant]
+  parameters: Map[Id, Constant]
   connections: Map[Id, Signal]
 }
 
@@ -112,16 +102,16 @@ pub(all) struct Module {
   name: Id
   wires: Map[Id, Wire]
   cells: Map[Id, Cell]
-  attributes: Array[Attribute]
-  parameters: Array[Parameter]
+  attributes: Map[Id, Constant]
+  parameters: Map[Id, Constant]
   connections: Array[(Signal, Signal)]
 }
 
 pub fn Module::new(name: Id) -> Module {
-  { name, wires: {}, cells: {}, attributes: [], parameters: [], connections: [] }
+  { name, wires: {}, cells: {}, attributes: {}, parameters: {}, connections: [] }
 }
 
-pub fn add_wire(self: Module, name~: Id, width~: UInt, port~: PortSpec? = None, attributes~: Array[Attribute] = []) -> Wire!RTLILError {
+pub fn add_wire(self: Module, name~: Id, width~: UInt, port~: PortSpec? = None, attributes~: Map[Id, Constant] = {}) -> Wire!RTLILError {
   if self.wires.contains(name) {
     raise WireAlreadyDeclared(name~)
   }
@@ -144,8 +134,8 @@ pub fn add_cell(
   name~: Id,
   type_~: Id,
   connections~: Map[Id, Signal] = {},
-  attributes~: Array[Attribute] = [],
-  parameters~: Array[Parameter] = [],
+  attributes~: Map[Id, Constant] = {},
+  parameters~: Map[Id, Constant] = {},
 ) -> Cell!RTLILError {
   if self.cells.contains(name) {
     raise CellAlreadyDeclared(name~)

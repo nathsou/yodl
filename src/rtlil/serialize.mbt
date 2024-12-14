@@ -35,38 +35,42 @@ pub impl Show for Constant with output(self, logger) {
   match self {
     ConstValue(v) => logger.write_string(v.to_string())
     ConstInteger(i) => logger.write_string(i.to_string())
-    ConstString(s) => logger.write_string(s)
+    ConstString(s) => logger.write_string("\"\{s}\"")
   }
 }
 
-pub impl Show for Attribute with output(self, logger) {
-  logger.write_string("attribute \{self.id} \{self.value}")
+fn show_attribute(id: Id, value: Constant) -> String {
+  "attribute \{id} \{value}"
 }
 
-pub impl Show for Parameter with output(self, logger) {
-  logger.write_string("parameter \{self.id} \{self.value}")
+fn show_parameter(id: Id, value: Constant) -> String {
+  "parameter \{id} \{value}"
 }
 
-pub impl Show for Wire with output(self, logger) {
-  logger.write_string("wire")
-
-  if self.width != 1 {
-    logger.write_string(" width \{self.width}")
+fn write_wire(self: Serializer, wire: Wire) -> Unit {
+  for attrib in wire.attributes {
+    self.write(show_attribute(attrib.0, attrib.1) + "\n")
   }
 
-  match self.port {
+  self.write("wire")
+
+  if wire.width != 1 {
+    self.builder.write_string(" width \{wire.width}")
+  }
+
+  match wire.port {
     Some(port) => {
       let dir = match port.direction {
         Input => "input"
         Output => "output"
       }
 
-      logger.write_string(" \{dir} \{port.id}")
+      self.builder.write_string(" \{dir} \{port.id}")
     }
     None => ()
   }
-   
-  logger.write_string(" \{self.name}")
+
+  self.builder.write_string(" \{wire.name}\n")
 }
 
 pub impl Show for Signal with output(self, logger) {
@@ -90,14 +94,14 @@ pub impl Show for Signal with output(self, logger) {
 
 fn emit_cell(self: Serializer, cell: Cell) -> Unit {
   for attrib in cell.attributes {
-    self.write("\{attrib}\n")
+    self.write(show_attribute(attrib.0, attrib.1) + "\n")
   }
 
   self.write("cell \{cell.type_} \{cell.name}\n")
   self.indent += 1
 
   for param in cell.parameters {
-    self.write("\{param}\n")
+    self.write(show_parameter(param.0, param.1) + "\n")
   }
 
   for id, sig in cell.connections {
@@ -111,7 +115,7 @@ fn emit_cell(self: Serializer, cell: Cell) -> Unit {
 
 fn emit_module(self: Serializer, mod: Module) -> Unit {
   for attrib in mod.attributes {
-    self.write("\{attrib}\n")
+    self.write(show_attribute(attrib.0, attrib.1) + "\n")
   }
 
   self.write("module \{mod.name}\n")
@@ -119,11 +123,11 @@ fn emit_module(self: Serializer, mod: Module) -> Unit {
   self.indent += 1
 
   for param in mod.parameters {
-    self.write("\{param}\n")
+    self.write(show_parameter(param.0, param.1) + "\n")
   }
 
   for wire in mod.wires.values() {
-    self.write("\{wire}\n")
+    self.write_wire(wire)
   }
 
   for cell in mod.cells.values() {

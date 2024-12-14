@@ -16,7 +16,6 @@ type! ElaboratorError {
   NameConflict(name~: String, span~: @parse.Span)
   ExpectedSignal(span~: @parse.Span)
   UnknownModule(name~: String, span~: @parse.Span)
-  // MissingPorts(missing_ports~: Array[String], span~: @parse.Span)
   ExtraPorts(extra_ports~: Array[String], span~: @parse.Span)
   UntypedLet(span~: @parse.Span)
   UnresolvedType(span~: @parse.Span)
@@ -87,6 +86,12 @@ fn expect_integer(self: Value, span: @parse.Span) -> Int!ElaboratorError {
   }
 }
 
+fn src_attribute(span: @parse.Span) -> Map[@rtlil.Id, @rtlil.Constant] {
+  let attributes = {}
+  attributes[@rtlil.PubId("src")] = @rtlil.ConstString(span.to_string())
+  attributes
+}
+
 fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let mod_def = @rtlil.Module::new(PubId(mod.name))
 
@@ -97,7 +102,7 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
       name=PubId(input.name),
       width=input.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
       port=Some({ direction: Input, id: port_id }),
-      attributes=[],
+      attributes=src_attribute(input.span),
     )
 
     port_id += 1
@@ -108,7 +113,7 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
       name=PubId(output.name),
       width=output.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
       port=Some({ direction: Output, id: port_id }),
-      attributes=[],
+      attributes=src_attribute(output.span),
     )
 
     port_id += 1
@@ -161,7 +166,7 @@ fn elaborate_expr(
     Unary(span~, ..) => {
       raise Unsupported(message="Unary operators are not supported yet", span~)
     }
-    Binary(op~, lhs~, rhs~, ..) => {
+    Binary(op~, lhs~, rhs~, span~, ..) => {
       let mod_name = match op {
         And => "and"
         Or => "or"
@@ -175,19 +180,21 @@ fn elaborate_expr(
         name=GenId("\{mod_name}_y_\{self.next_genidx()}"),
         width=1,
         port=None,
-        attributes=[],
+        attributes=src_attribute(span),
       )
       
       let _ = mod.add_cell!(
         type_=GenId(mod_name),
         name=GenId("\{mod_name}_\{self.next_genidx()}"),
-        parameters=[
-          { id: PubId("A_SIGNED"), value: ConstInteger(0) },
-          { id: PubId("A_WIDTH"), value: ConstInteger(1) },
-          { id: PubId("B_SIGNED"), value: ConstInteger(0) },
-          { id: PubId("B_WIDTH"), value: ConstInteger(1) },
-          { id: PubId("Y_WIDTH"), value: ConstInteger(1) },
-        ],
+        parameters={
+          let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
+          parameters[@rtlil.PubId("A_SIGNED")] = @rtlil.ConstInteger(0)
+          parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(1)
+          parameters[@rtlil.PubId("B_SIGNED")] = @rtlil.ConstInteger(0)
+          parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(1)
+          parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(1)
+          parameters
+        },
         connections={
           let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
           connections[@rtlil.PubId("A")] = self.elaborate_expr!(lhs, mod).expect_signal!(lhs.span())
@@ -195,6 +202,7 @@ fn elaborate_expr(
           connections[@rtlil.PubId("Y")] = SigWire(output)
           connections
         },
+        attributes=src_attribute(span),
       )
 
       Value::Signal(SigWire(output))
@@ -216,7 +224,7 @@ fn elaborate_expr(
                 name=GenId("\{cell_name.inner()}_\{name.inner()}"),
                 width=wire.width,
                 port=None,
-                attributes=[],
+                attributes=src_attribute(span),
               )
 
               unconnected_wires[@rtlil.PubId(name.inner())] = SigWire(wire)
@@ -246,9 +254,9 @@ fn elaborate_expr(
       let cell = mod.add_cell!(
         name=cell_name,
         type_=PubId(name),
-        attributes=[],
+        attributes=src_attribute(span),
         connections~,
-        parameters=[],
+        parameters={},
       )
 
       Value::Instance(cell)
@@ -310,7 +318,7 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
                 name=PubId(name),
                 width=sig.size(),
                 port=None,
-                attributes=[],
+                attributes=src_attribute(span),
               )
 
               self.declare!(name, Value::Signal(SigWire(wire)), span=expr.span())
