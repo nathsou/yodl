@@ -20,6 +20,7 @@ type! ElaboratorError {
   UntypedLet(span~: @parse.Span)
   UnresolvedType(span~: @parse.Span)
   IndexOutOfBounds(index~: UInt, len~: UInt, span~: @parse.Span)
+  Unreachable(message~: String, span~: @parse.Span)
 } derive(Show)
 
 enum Value {
@@ -35,16 +36,19 @@ fn bits(bits: Array[@rtlil.BinaryDigit]) -> Value {
 fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value!Error {
   match ty {
     Nat => Value::Signal(@rtlil.SigConst(ConstInteger(0)))
-    Logic => bits([X])
+    Logic => {
+      bits([X])
+    }
     Vector(ty~, len~) => match ty {
       Logic => {
-        let val = Array::new(capacity=len.reinterpret_as_int())
-        
-        for i in 0..<len.reinterpret_as_int() {
-          val.push(@rtlil.BinaryDigit::X)
-        }
+        let wire = mod.add_wire!(
+          name=name_binding,
+          width=len,
+          port=None,
+          attributes=src_attribute(span),
+        )
 
-        bits(val)
+        Value::Signal(SigWire(wire))
       }
       _ => {
         let val = Array::new(capacity=len.reinterpret_as_int())
@@ -166,7 +170,13 @@ fn elaborate_expr(
     Unary(span~, ..) => {
       raise Unsupported(message="Unary operators are not supported yet", span~)
     }
-    Binary(op~, lhs~, rhs~, span~, ..) => {
+    Binary(
+      op=And | Or | Xor | Nand | Nor | Xnor as op,
+      lhs~,
+      rhs~,
+      span~,
+      ..
+    ) => {
       let mod_name = match op {
         And => "and"
         Or => "or"
@@ -174,6 +184,7 @@ fn elaborate_expr(
         Nand => "nand"
         Nor => "nor"
         Xnor => "xnor"
+        _ => raise Unreachable(message="Invalid logical binary operator", span~)
       }
 
       let output = mod.add_wire!(
@@ -206,6 +217,19 @@ fn elaborate_expr(
       )
 
       Value::Signal(SigWire(output))
+    }
+    Binary(op=Add | Sub | Mul as op, lhs~, rhs~, span~, ..) => {
+      let lhs_val = self.elaborate_expr!(lhs, mod).expect_integer!(lhs.span())
+      let rhs_val = self.elaborate_expr!(rhs, mod).expect_integer!(rhs.span())
+
+      let result = match op {
+        Add => lhs_val + rhs_val
+        Sub => lhs_val - rhs_val
+        Mul => lhs_val * rhs_val
+        _ => raise Unreachable(message="Invalid arithmetical binary operator", span~)
+      }
+
+      Value::Signal(@rtlil.SigConst(ConstInteger(result)))
     }
     Instance(name~, ports~, span~, ty=_) => {
       let mod_def = self.modules[name].or_error!(ElaboratorError::UnknownModule(name~, span~))
@@ -309,6 +333,9 @@ fn elaborate_expr(
 
 fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Unit! {
   match stmt {
+    Expr(expr~, ..) => {
+      let _ = self.elaborate_expr!(expr, mod)
+    }
     Let(name~, ty~, expr~, span~) => {
       match expr {
         Some(expr) => {
@@ -343,6 +370,14 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
       let sig1 = self.elaborate_expr!(lhs, mod).expect_signal!(lhs.span())
       let sig2 = self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span())
       mod.connect!(sig1, sig2)
+    }
+    For(span~, ..) => {
+      raise Unreachable(message="For loop after simplification", span~)
+    }
+    Scope(body~, ..) => {
+      for stmt in body {
+        self.elaborate_stmt!(stmt, mod)
+      }
     }
   }
 }

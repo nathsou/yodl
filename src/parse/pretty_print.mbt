@@ -32,6 +32,9 @@ pub impl Show for UnaryOp with output(op, logger) {
 
 pub impl Show for BinaryOp with output(op, logger) {
   logger.write_string(match op {
+    Mul => "*"
+    Add => "+"
+    Sub => "-"
     And => "and"
     Or => "or"
     Xor => "xor"
@@ -100,20 +103,38 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
     Instance(name~, ports~, ..) => {
       self.write(name)
       self.write("(")
-      self.indent += 1
+
+      let wrap = ports.size() > 2
+
+      if wrap {
+        self.indent += 1
+      }
+
+      let mut i = 0
 
       for port, expr in ports {
-        self.write("\n")
-        self.write_indent()
+        if wrap {
+          self.write("\n")
+          self.write_indent()
+        }
+
         self.write(port)
         self.write(": ")
         self.emit_expr(expr)
-        self.write(",")
+
+        if wrap || i < ports.size() - 1 {
+          self.write(", ")
+        }
+
+        i += 1
       }
 
-      self.indent -= 1
-      self.write("\n")
-      self.write_indent()
+      if wrap {
+        self.indent -= 1
+        self.write("\n")
+        self.write_indent()
+      }
+
       self.write(")")
     }
   }
@@ -123,6 +144,10 @@ pub fn emit_stmt(self: Emitter, stmt: Stmt) -> Unit {
   self.write_indent()
 
   match stmt {
+    Expr(expr~, ..) => {
+      self.emit_expr(expr)
+      self.write(";")
+    }
     Let(name~, ty~, expr~, ..) => {
       self.write("let ")
       self.write(name)
@@ -150,6 +175,45 @@ pub fn emit_stmt(self: Emitter, stmt: Stmt) -> Unit {
       self.write(" = ")
       self.emit_expr(rhs)
       self.write(";")
+    }
+    For(var~, range~, body~, ..) => {
+      self.write("\n")
+      self.write_indent()
+      self.write("for ")
+      self.write(var)
+      self.write(" in ")
+      self.emit_expr(range.start)
+      self.write(if range.inclusive { "..=" } else { "..<" })
+      self.emit_expr(range.end)
+
+      self.indent += 1
+      self.write(" {\n")
+      
+      for i, stmt in body {
+        if i > 0 {
+          self.write("\n")
+        }
+        
+        self.emit_stmt(stmt)
+      }
+
+      self.write("\n")
+      self.indent -= 1
+      self.write_indent()
+      self.write("}\n")
+    }
+    Scope(body~, ..) => {
+      self.write("{\n")
+      self.indent += 1
+
+      for stmt in body {
+        self.emit_stmt(stmt)
+        self.write("\n")
+      }
+
+      self.indent -= 1
+      self.write_indent()
+      self.write("}")
     }
   }
 }

@@ -5,6 +5,7 @@ enum TokenType {
   Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang; SingleQuote
   Plus; Minus; Star; Slash
   Equal; EqualEqual; BangEqual; RightThinArrow
+  DotDotLeftChevron; DotDotEqual
   // keywords
   Module; Let; Logic; In; For
   And; Or; Not; Xor; Nand; Nor; Xnor
@@ -31,6 +32,9 @@ struct Token {
 
 fn to_binop(self: TokenType) -> BinaryOp? {
   match self {
+    Plus => Some(Add)
+    Minus => Some(Sub)
+    Star => Some(Mul)
     And => Some(And)
     Or => Some(Or)
     Xor => Some(Xor)

@@ -5,10 +5,13 @@ pub(readonly) enum UnaryOp {
 
 pub(readonly) enum BinaryOp {
   And; Or; Xor; Nand; Nor; Xnor
+  Add; Sub; Mul
 }
 
 fn precedence(self: BinaryOp) -> Int {
   match self {
+    Mul => 12
+    Add | Sub => 11
     And => 10
     Or => 9
     Xor => 8
@@ -29,9 +32,18 @@ pub(all) enum Expr {
   Instance(name~: String, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
 }
 
-pub(readonly) enum Stmt {
+pub(all) enum Stmt {
+  Expr(expr~: Expr, span~: Span)
   Let(name~: String, ty~: Ref[Type?], expr~: Expr?, span~: Span)
   Assign(lhs~: Expr, rhs~: Expr, span~: Span)
+  For(var~: String, range~: ForRange, body~: Array[Stmt], span~: Span)
+  Scope(body~: Array[Stmt], span~: Span)
+}
+
+pub(all) struct ForRange {
+  start: Expr
+  end: Expr
+  inclusive: Bool
 }
 
 pub(all) struct ModuleSignature {
@@ -64,7 +76,7 @@ pub(readonly) struct Port {
   span: Span
 }
 
-pub(readonly) struct ModuleDecl {
+pub(all) struct ModuleDecl {
     name: String
     inputs: Array[Port]
     outputs: Array[Port]
@@ -72,7 +84,7 @@ pub(readonly) struct ModuleDecl {
     span: Span
 }
 
-pub(readonly) enum Decl {
+pub(all) enum Decl {
   Module(ModuleDecl)
 }
 
@@ -109,13 +121,20 @@ pub fn set_ty(self: Expr, ty: Type) -> Unit {
 pub fn is_constant_expr(self: Expr) -> Bool {
   match self {
     Natural(..) => true
-    Identifier(..) => false
+    Identifier(..) => true
     Unary(expr~, ..) => expr.is_constant_expr()
     Binary(lhs~, rhs~, ..) => lhs.is_constant_expr() && rhs.is_constant_expr()
     Indexing(_) => false
     Slicing(_) => false
     PortAccess(_) => false
     Instance(_) => false
+  }
+}
+
+pub fn expect_int(self: Expr) -> Int!Error {
+  match self {
+    Natural(value~, ..) => value.reinterpret_as_int()
+    _ => raise Failure("Expected integer expression")
   }
 }
 

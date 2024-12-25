@@ -1,3 +1,4 @@
+// yosys -p "read_rtlil output/FullAdder.rtlil; check -assert; select Adder8; show -pause"
 
 module FullAdder(
     a: logic,
@@ -12,35 +13,26 @@ module FullAdder(
     carry_out = (carry_in and xor1) or (a and b);
 }
 
-module Adder4(
-    a: logic[4],
-    b: logic[4],
+module Adder8(
+    a: logic[8],
+    b: logic[8],
     carry_in: logic,
 ) -> (
-    sum: logic[4],
+    sum: logic[8],
     carry_out: logic,
 ) {
-    let adders: FullAdder[4];
+    let carry_chain: logic[9];
+    carry_chain[0] = carry_in;
 
-    adders[0].a = a[0];
-    adders[0].b = b[0];
-    adders[0].carry_in = carry_in;
+    for i in 0..<8 {
+        FullAdder(
+            a: a[i],
+            b: b[i],
+            carry_in: carry_chain[i],
+            carry_out: carry_chain[i + 1],
+            sum: sum[i],
+        );
+    }
 
-    adders[1].a = a[1];
-    adders[1].b = b[1];
-    adders[1].carry_in = adders[0].carry_out;
-
-    adders[2].a = a[2];
-    adders[2].b = b[2];
-    adders[2].carry_in = adders[1].carry_out;
-
-    adders[3].a = a[3];
-    adders[3].b = b[3];
-    adders[3].carry_in = adders[2].carry_out;
-
-    sum[0] = adders[0].sum;
-    sum[1] = adders[1].sum;
-    sum[2] = adders[2].sum;
-    sum[3] = adders[3].sum;
-    carry_out = adders[3].carry_out;
+    carry_out = carry_chain[8];
 }

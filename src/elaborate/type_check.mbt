@@ -164,8 +164,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
     ty
 }
 
-fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> Unit!TypeCheckerError {
+fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> Unit!Error {
     match stmt {
+        Expr(expr~, ..) => {
+            let _ = self.check_expr!(expr, env)
+        }
         Let(name~, ty~, expr~, span~, ..) => {
             ty.val = Some(match (ty.val, expr) {
                 (Some(ty), Some(expr)) => {
@@ -211,6 +214,28 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
                 raise IncompatibleTypes(ty1=lhs_ty, ty2=rhs_ty, span~)
             }
         }
+        Scope(body~, ..) => {
+            let new_env = env.child()
+
+            for stmt in body {
+                self.check_stmt!(stmt, new_env)
+            }
+        }
+        For(var~, range~, body~, span~, ..) => {
+            let start_ty = self.check_expr!(range.start, env)
+            let end_ty = self.check_expr!(range.end, env)
+
+            if start_ty != @parse.Nat || end_ty != @parse.Nat {
+                raise ExpectedConstantExpr(span~)
+            }
+
+            let body_env = env.child()
+            body_env.declare!(var, @parse.Nat)
+
+            for stmt in body {
+                self.check_stmt!(stmt, body_env)
+            }
+        }
     }
 }
 
@@ -221,7 +246,7 @@ fn ensure_valid_port_type(ty: @parse.Type, span: @parse.Span) -> Unit!TypeChecke
     }
 }
 
-pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!TypeCheckerError {
+pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
     match decl {
         Module({ name, inputs, outputs, body, span }) => {
             let env = Scope::new()

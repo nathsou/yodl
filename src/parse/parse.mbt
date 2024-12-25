@@ -11,6 +11,7 @@ pub(readonly) type! ParserError {
   ExpectedExpr(received~: TokenType, span~: Span)
   ExpectedStmt(received~: TokenType, span~: Span)
   ExpectedType(received~: TokenType, span~: Span)
+  ExpectedRangeOperator(received~: TokenType, span~: Span)
 } derive(Show)
 
 pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
@@ -211,9 +212,24 @@ fn parse_assignment_stmt(self: Parser) -> Stmt!ParserError {
     let rhs = self.parse_expr!()
     self.expect!(Semicolon, self.index)
     Assign(lhs~, rhs~, span=self.span(start_idx))
+  } else if self.consumes(Semicolon) {
+    Expr(expr=lhs, span=self.span(start_idx))
   } else {
     raise ExpectedStmt(received=self.peek(), span=self.span(start_idx))
   }
+}
+
+fn parse_block(self: Parser) -> Array[Stmt]!ParserError {
+  self.expect!(Lbrace, self.index)
+  let stmts = []
+
+  while self.peek() != Rbrace {
+    stmts.push(self.parse_stmt!())
+  }
+
+  self.expect!(Rbrace, self.index)
+
+  stmts
 }
 
 fn parse_stmt(self: Parser) -> Stmt!ParserError {
@@ -240,6 +256,27 @@ fn parse_stmt(self: Parser) -> Stmt!ParserError {
       self.expect!(Semicolon, start_idx)
 
       Let(name~, ty={ val: ty }, expr~, span=self.span(start_idx))
+    }
+    For => {
+      self.advance()
+      let var = self.parse_identifier!()
+      self.expect!(In, start_idx)
+
+      let start = self.parse_expr!()
+
+      let inclusive = if self.consumes(DotDotLeftChevron) {
+        false
+      } else if self.consumes(DotDotEqual) {
+        true
+      } else {
+        raise ExpectedRangeOperator(received=self.peek(), span=self.span(start_idx))
+      }
+
+      let end = self.parse_expr!()
+
+      let body = self.parse_block!()
+
+      For(var~, range={ start, end, inclusive }, body~, span=self.span(start_idx))
     }
     _ => {
       self.parse_assignment_stmt!()

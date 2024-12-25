@@ -47,3 +47,7 @@ pub fn resolve[T](self: Scope[T], name: String) -> T? {
     }
   }
 }
+
+pub fn remove[T](self: Scope[T], name: String) -> Unit {
+  self.members.remove(name)
+}

@@ -251,7 +251,18 @@ fn next(self: Lexer) -> LexerResult[Token] {
     }
     '.' => {
       self.advance()
-      Ok(Dot)
+      
+      if self.consumes('.') {
+        if self.consumes('<') {
+          Ok(DotDotLeftChevron)
+        } else if self.consumes('=') {
+          Ok(DotDotEqual)
+        } else {
+          Err(UnexepectedChar(char))
+        }
+      } else {
+        Ok(Dot)
+      }
     }
     '\'' => {
       self.advance()

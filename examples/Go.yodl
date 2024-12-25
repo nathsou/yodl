@@ -1,0 +1,12 @@
+// moon run src/main
+// yosys -p "read_rtlil output/Go.rtlil; synth_ice40 -top Go -json output/Go.json"
+// nextpnr-ice40 --hx1k --json output/Go.json --pcf output/go.pcf --package vq100 --freq 25 --asc output/Go.asc
+// icepack output/Go.asc output/Go.bin
+
+module Go(
+    i_Switch: logic[4],
+) -> (
+    o_LED: logic[4],
+) {
+    o_LED = i_Switch;
+}

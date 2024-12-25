@@ -2,3 +2,4 @@ target/
 .mooncakes/
 .DS_Store
 output/
+gen_bitstream.sh
