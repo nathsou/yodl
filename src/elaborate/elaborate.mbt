@@ -44,7 +44,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
       Logic => {
         let wire = mod.add_wire!(
           name=name_binding,
-          width=len,
+          width=len.expect_fixed!(span),
           port=None,
           attributes=src_attribute(span),
         )
@@ -52,6 +52,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
         Value::Signal(SigWire(wire))
       }
       _ => {
+        let len = len.expect_fixed!(span)
         let val = Array::new(capacity=len)
 
         for i in 0..<len {
@@ -64,6 +65,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
     Instance({ name, span, .. }) => {
       let inst: @parse.Expr = @parse.Expr::Instance(
         name~,
+        params=[],
         ports={},
         span~,
         ty={ val: Some(ty) },
@@ -255,7 +257,11 @@ fn elaborate_expr(
 
       Value::Signal(@rtlil.SigConst(ConstInteger(value=result, width=lhs_val.width)))
     }
-    Instance(name~, ports~, span~, ty=_) => {
+    Instance(name~, params~, ports~, span~, ty=_) => {
+      if params.length() > 0 {
+        raise Unreachable(message="Parameterized instance after simplification", span~)
+      }
+
       let mod_def = self.modules[name].or_error!(ElaboratorError::UnknownModule(name~, span~))
 
       let connections: Map[@rtlil.Id, @rtlil.Signal] = {}

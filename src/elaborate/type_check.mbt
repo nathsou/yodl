@@ -58,7 +58,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
     }
 }
 
-fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> @parse.Type!TypeCheckerError {
+fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> @parse.Type!Error {
     let ty = match expr {
         Identifier(name~, span~, ..) => {
             match env.resolve(name) {
@@ -68,7 +68,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
         }
         Natural(width~, ..) => match width {
             Some(0 | 1) => @parse.Logic
-            Some(width) => @parse.Type::Vector(ty=@parse.Logic, len=width)
+            Some(width) => @parse.Type::Vector(ty=@parse.Logic, len=Fixed(width))
             None => Nat
         }
         Unary(expr~, ..) => {
@@ -115,7 +115,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
 
             match ty {
                 Vector(ty=inner_ty, len~) => {
-                    if msb >= len {
+                    if msb >= len.expect_fixed!(span) {
                         raise InvalidSlicingRange(span~)
                     }
 
@@ -123,7 +123,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
                         raise InvalidSlicingRange(span~)
                     }
 
-                    @parse.Type::Vector(ty=inner_ty, len=(msb - lsb) + 1)
+                    @parse.Type::Vector(ty=inner_ty, len=Fixed((msb - lsb) + 1))
                 }
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
@@ -187,7 +187,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
                         match self.check_expr!(expr, env) {
                             Vector(ty=inner_ty, len=spread_len) => {
                                 check_elem_ty!(inner_ty)
-                                len += spread_len
+                                len += spread_len.expect_fixed!(expr.span())
                             }
                             _ => raise SpreadOnNonVector(span~)
                         }
@@ -199,7 +199,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
                 }
             }
 
-            @parse.Type::Vector(ty=elem_ty.unwrap(), len~)
+            @parse.Type::Vector(ty=elem_ty.unwrap(), len=Fixed(len))
         }
         Spread(span~, ..) => {
             raise SpreadOutsideVector(span~)
@@ -295,7 +295,7 @@ fn ensure_valid_port_type(ty: @parse.Type, span: @parse.Span) -> Unit!TypeChecke
 
 pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
     match decl {
-        Module({ name, inputs, outputs, body, span }) => {
+        Module({ name, params, inputs, outputs, body, span }) => {
             let env = Scope::new()
 
             for input in inputs {
@@ -314,6 +314,7 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
 
             self.modules[name] = {
                 name,
+                params,
                 inputs,
                 outputs,
                 span,

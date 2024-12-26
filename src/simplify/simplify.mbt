@@ -44,7 +44,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 }
 
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
-  match expr {
+  let res = match expr {
     Natural(_) => expr
     Identifier(name~, span~, ty~) => {
       match self.genvars.resolve(name) {
@@ -79,14 +79,14 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
       let simplified_expr = self.simplify_expr!(expr)
       @parse.Expr::PortAccess(expr=simplified_expr, port~, span~, ty~)
     }
-    Instance(name~, span~, ty~, ports~) => {
+    Instance(name~, params~, span~, ty~, ports~) => {
       let simplified_ports = {}
 
       for name, val in ports {
         simplified_ports[name] = self.simplify_expr!(val)
       }
 
-      @parse.Expr::Instance(name~, span~, ty~, ports=simplified_ports)
+      @parse.Expr::Instance(name~, params~, ports=simplified_ports, span~, ty~)
     }
     Vector(elems~, span~, ty~) => {
       let simplified_elems = []
@@ -102,6 +102,8 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
       @parse.Expr::Spread(expr=simplified_expr, span~, ty~)
     }
   }
+
+  res.constant_folding!()
 }
 
 pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt) -> Array[@parse.Stmt]!Error {
@@ -161,14 +163,14 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt) -> Array[@parse.Stmt]!
 
 pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl!Error {
   match decl {
-    Module({ name, inputs, outputs, body, span }) => {
+    Module({ name, params, inputs, outputs, body, span }) => {
       let simplified_body = []
 
       for stmt in body {
         simplified_body.push_iter(self.simplify_stmt!(stmt).iter())
       }
 
-      @parse.Decl::Module({ name, inputs, outputs, body: simplified_body, span })
+      @parse.Decl::Module({ name, params, inputs, outputs, body: simplified_body, span })
     }
   }
 }

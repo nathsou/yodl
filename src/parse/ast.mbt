@@ -29,7 +29,7 @@ pub(all) enum Expr {
   Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
   Slicing(expr~: Expr, msb~: Expr, lsb~: Expr, span~: Span, ty~: Ref[Type?])
   PortAccess(expr~: Expr, port~: String, span~: Span, ty~: Ref[Type?])
-  Instance(name~: String, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
+  Instance(name~: String, params~: Array[Expr], ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
 }
@@ -50,6 +50,7 @@ pub(all) struct ForRange {
 
 pub(all) struct ModuleSignature {
     name: String
+    params: Array[String]
     inputs: Array[Port]
     outputs: Array[Port]
     span: Span
@@ -59,10 +60,31 @@ impl Eq for ModuleSignature with op_equal(self, other) {
   self.name == other.name && self.span.file == other.span.file
 }
 
+pub(all) enum VectorLen {
+  Fixed(Int)
+  Dynamic(Expr)
+}
+
+impl Eq for VectorLen with op_equal(self, other) {
+  match (self, other) {
+    (Fixed(a), Fixed(b)) => a == b
+    _ => false
+  }
+}
+
+pub fn expect_fixed(self: VectorLen, span: Span) -> Int!Error {
+  match self {
+    Fixed(value) => value
+    Dynamic(_) => {
+      raise Failure("Expected fixed vector length \{span}")
+    }
+  }
+}
+
 pub(all) enum Type {
   Nat
   Logic
-  Vector(ty~: Type, len~: Int)
+  Vector(ty~: Type, len~: VectorLen)
   Instance(ModuleSignature)
   Name(name~: String)
 } derive(Eq)
@@ -71,7 +93,7 @@ pub(all) enum PortDirection {
   Input; Output
 } derive(Hash, Eq)
 
-pub(readonly) struct Port {
+pub(all) struct Port {
   name: String
   ty: Type
   dir: PortDirection
@@ -80,6 +102,7 @@ pub(readonly) struct Port {
 
 pub(all) struct ModuleDecl {
     name: String
+    params: Array[String]
     inputs: Array[Port]
     outputs: Array[Port]
     body: Array[Stmt]
@@ -139,6 +162,29 @@ pub fn is_constant_expr(self: Expr) -> Bool {
   }
 }
 
+pub fn constant_folding(self: Expr) -> Expr!Error {
+  rewrite_expr!(self, fn!(expr) {
+    match expr {
+      Binary(op = Mul | Add | Sub as op, lhs~, rhs~, span~, ty~) => {
+        match (lhs.expect_int?(), rhs.expect_int?()) {
+          (Ok(lhs), Ok(rhs)) => {
+            let value = match op {
+              Mul => lhs * rhs
+              Add => lhs + rhs
+              Sub => lhs - rhs
+              _ => raise Failure("Invalid arithmetical binary operator")
+            }
+
+            Natural(value=value, width=None, span~, ty~)
+          }
+          _ => expr
+        }
+      }
+      _ => expr
+    }
+  })
+}
+
 pub fn expect_int(self: Expr) -> Int!Error {
   match self {
     Natural(value~, ..) => value
@@ -166,7 +212,8 @@ pub fn width(self: Type) -> Int? {
   match self {
     Nat => None
     Logic => Some(1)
-    Vector(len~, ..) => Some(len)
+    Vector(len=Fixed(len), ..) => Some(len)
+    Vector(len=Dynamic(_), ..) => None
     Instance(_) => None
     Name(_) => None
   }

@@ -100,8 +100,23 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.write(".")
       self.write(port)
     }
-    Instance(name~, ports~, ..) => {
+    Instance(name~, params~, ports~, ..) => {
       self.write(name)
+
+      if params.length() > 0 {
+        self.write("<")
+
+        for i, param in params {
+          if i > 0 {
+            self.write(", ")
+          }
+
+          self.emit_expr(param)
+        }
+
+        self.write(">")
+      }
+
       self.write("(")
 
       let wrap = ports.size() > 2
@@ -248,7 +263,18 @@ pub impl Show for Type with output(ty, logger) {
     Vector(ty~, len~) => {
       logger.write_string(ty.to_string())
       logger.write_char('[')
-      logger.write_string(len.to_string())
+
+      match len {
+        Fixed(len) => {
+          logger.write_string(len.to_string())
+        }
+        Dynamic(expr) => {
+          let emitter = Emitter::new()
+          emitter.emit_expr(expr)
+          logger.write_string(emitter.to_string())
+        }
+      }
+
       logger.write_char(']')
     }
     Instance({ name, .. }) => {
@@ -283,10 +309,16 @@ fn emit_port_list(self: Emitter, ports: Array[Port]) -> Unit {
 
 pub fn emit_decl(self: Emitter, decl: Decl) -> Unit {
   match decl {
-    Module({ name, inputs, outputs, body, .. }) => {
+    Module({ name, params, inputs, outputs, body, .. }) => {
       self.write("module ")
       self.write(name)
-      self.write(" ")
+
+      if params.length() > 0 {
+        self.write("<")
+        self.write(String::concat(params, separator=", "))
+        self.write(">")
+      }
+
       self.emit_port_list(inputs)
       self.write(" -> ")
       self.emit_port_list(outputs)

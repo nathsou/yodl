@@ -13,18 +13,18 @@ module FullAdder(
     carry_out = (carry_in and xor1) or (a and b);
 }
 
-module Adder8(
-    a: logic[8],
-    b: logic[8],
+module Adder<N>(
+    a: logic[N],
+    b: logic[N],
     carry_in: logic,
 ) -> (
-    sum: logic[8],
+    sum: logic[N],
     carry_out: logic,
 ) {
-    let carry_chain: logic[9];
+    let carry_chain: logic[N + 1];
     carry_chain[0] = carry_in;
 
-    for i in 0..<8 {
+    for i in 0..<N {
         FullAdder(
             a: a[i],
             b: b[i],
@@ -34,7 +34,7 @@ module Adder8(
         );
     }
 
-    carry_out = carry_chain[8];
+    carry_out = carry_chain[N];
 }
 
 // Nexys A7
@@ -43,7 +43,7 @@ module Top(
 ) -> (
     led: logic[16],
 ) {
-    let adder = Adder8(
+    let adder = Adder<8>(
         a: sw[7:0],
         b: sw[15:8],
         carry_in: 1'0,

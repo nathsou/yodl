@@ -5,17 +5,28 @@ fn run(file: String) -> String!Error {
   let tokens = lexer.lex!()
   let parser = @parse.Parser::new(tokens, file~)
   let decls = parser.parse!()
+  let monomorphizer = @simplify.Monomorphizer::new()
+  let mono_decls = monomorphizer.monomorphize!(decls)
   let checker = @elaborate.TypeChecker::new()
   let simplifier = @simplify.Simplifier::new()
   let simplified_decls = []
   let emitter = @parse.Emitter::new()
 
-  for decl in decls {
+  // {
+  //   let emitter = @parse.Emitter::new()
+  //   for decl in mono_decls {
+  //     emitter.emit_decl(decl)
+  //     emitter.emit("\n")
+  //   }
+
+  //   println(emitter.to_string())
+  // }
+
+  for decl in mono_decls {
     checker.check_decl!(decl)
     let simplified_decl = simplifier.simplify_decl!(decl)
     simplified_decls.push(simplified_decl)
     emitter.emit_decl(simplified_decl)
-
     emitter.emit("\n")
   }
   

@@ -153,7 +153,7 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
   match token {
     Identifier(name) => {
       self.advance()
-      if self.matches(Lparen) {
+      if self.matches(Lparen) || self.matches(Lchevron) {
         self.parse_instance_expr!(module_name=name)
       } else {
         Identifier(name~, span=self.span(start_idx), ty={ val: None })
@@ -208,6 +208,22 @@ fn parse_vector_expr(self: Parser) -> Expr!ParserError {
 
 fn parse_instance_expr(self: Parser, module_name~: String) -> Expr!ParserError {
   let start_idx = self.index
+
+  let params = []
+
+  if self.consumes(Lchevron) {
+    while not(self.matches(Rchevron)) {
+      let param = self.parse_expr!()
+      params.push(param)
+
+      if not(self.consumes(Comma)) {
+        break
+      }
+    }
+
+    self.expect!(Rchevron, start_idx)
+  }
+
   self.expect!(Lparen, start_idx)
   let ports = {}
 
@@ -225,7 +241,7 @@ fn parse_instance_expr(self: Parser, module_name~: String) -> Expr!ParserError {
 
   self.expect!(Rparen, start_idx)
 
-  Instance(name=module_name, ports~, span=self.span(start_idx), ty={ val: None })
+  Instance(name=module_name, params~, ports~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_expr(self: Parser) -> Expr!ParserError {
@@ -328,9 +344,15 @@ fn parse_type(self: Parser) -> Type!ParserError {
   }
 
   if self.consumes(Lbracket) {
-    let (width, _) = self.parse_integer!()
+    let expr = self.parse_expr!()
+
+    let len = match expr {
+      Natural(value~, width=_, ..) => Fixed(value)
+      _ => Dynamic(expr)
+    }
+
     self.expect!(Rbracket, start_idx)
-    return Vector(ty=base_ty, len=width)
+    return Vector(ty=base_ty, len~)
   } else {
     return base_ty
   }
@@ -364,10 +386,32 @@ fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]!ParserError
   ports
 }
 
+fn parse_module_parameter_list(self: Parser) -> Array[String]!ParserError {
+  if self.consumes(Lchevron) {
+    let start_idx = self.index
+    let params = []
+
+    while not(self.matches(Rchevron)) {
+      let param = self.parse_identifier!()
+      params.push(param)
+
+      if not(self.consumes(Comma)) {
+        break
+      }
+    }
+
+    self.expect!(Rchevron, start_idx)
+    params
+  } else {
+    []
+  }
+}
+
 fn parse_module_decl(self: Parser) -> ModuleDecl!ParserError {
   let start_idx = self.index
   self.expect!(Module, start_idx)
   let name = self.parse_identifier!()
+  let params = self.parse_module_parameter_list!()
   let inputs = self.parse_port_list!(dir=Input)
   self.expect!(RightThinArrow, start_idx)
   let outputs = self.parse_port_list!(dir=Output)
@@ -379,7 +423,7 @@ fn parse_module_decl(self: Parser) -> ModuleDecl!ParserError {
     body.push(stmt)
   }
 
-  { name, inputs, outputs, body, span: self.span(start_idx) }
+  { name, params, inputs, outputs, body, span: self.span(start_idx) }
 }
 
 
