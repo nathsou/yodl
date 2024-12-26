@@ -1,4 +1,4 @@
-// yosys -p "read_rtlil output/FullAdder.rtlil; check -assert; select Adder8; show -pause"
+// yosys -p "read_rtlil output/FullAdder.rtlil; check -assert; write_verilog output/FullAdder.v"
 
 module FullAdder(
     a: logic,
@@ -35,4 +35,21 @@ module Adder8(
     }
 
     carry_out = carry_chain[8];
+}
+
+// Nexys A7
+module Top(
+    sw: logic[16],
+) -> (
+    led: logic[16],
+) {
+    let adder = Adder8(
+        a: sw[7:0],
+        b: sw[15:8],
+        carry_in: 1'0,
+    );
+
+    led[15:9] = 7'0;
+    led[8] = adder.carry_out;
+    led[7:0] = adder.sum;
 }

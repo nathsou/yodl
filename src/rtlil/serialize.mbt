@@ -34,7 +34,7 @@ pub impl Show for Value with output(self, logger) {
 pub impl Show for Constant with output(self, logger) {
   match self {
     ConstValue(v) => logger.write_string(v.to_string())
-    ConstInteger(i) => logger.write_string(i.to_string())
+    ConstInteger(value~, width~) => logger.write_string("\{width}'\{value}")
     ConstString(s) => logger.write_string("\"\{s}\"")
   }
 }

@@ -97,7 +97,7 @@ module Adder<W>(
     let carry: logic[W];
     carry[0] = carry_in;
 
-    repeat i in 0..<W {
+    for i in 0..<W {
         FullAdder(
             a: a[i],
             b: b[i],

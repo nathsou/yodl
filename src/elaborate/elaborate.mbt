@@ -21,6 +21,7 @@ type! ElaboratorError {
   UnresolvedType(span~: @parse.Span)
   IndexOutOfBounds(index~: UInt, len~: UInt, span~: @parse.Span)
   Unreachable(message~: String, span~: @parse.Span)
+  WidthMismatch(span~: @parse.Span, expected~: UInt, received~: UInt)
 } derive(Show)
 
 enum Value {
@@ -35,7 +36,7 @@ fn bits(bits: Array[@rtlil.BinaryDigit]) -> Value {
 
 fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value!Error {
   match ty {
-    Nat => Value::Signal(@rtlil.SigConst(ConstInteger(0)))
+    Nat => Value::Signal(@rtlil.SigConst(ConstInteger(value=0, width=32)))
     Logic => {
       bits([X])
     }
@@ -83,9 +84,14 @@ fn expect_signal(self: Value, span: @parse.Span) -> @rtlil.Signal!ElaboratorErro
   }
 }
 
-fn expect_integer(self: Value, span: @parse.Span) -> Int!ElaboratorError {
+struct SizedInt {
+  value: Int
+  width: UInt
+}
+
+fn expect_integer(self: Value, span: @parse.Span) -> SizedInt!ElaboratorError {
   match self {
-    Signal(@rtlil.SigConst(ConstInteger(n))) => n
+    Signal(@rtlil.SigConst(ConstInteger(value~, width~))) => { value, width }
     _ => raise ExpectedSignal(span~)
   }
 }
@@ -164,8 +170,13 @@ fn elaborate_expr(
         }
       }
     }
-    Natural(value~, ..) => {
-      Value::Signal(@rtlil.SigConst(ConstInteger(value.reinterpret_as_int())))
+    Natural(value~, width~, ..) => {
+      let w = match width {
+        Some(width) => width
+        None => 32
+      }
+
+      Value::Signal(@rtlil.SigConst(ConstInteger(value=value.reinterpret_as_int(), width=w)))
     }
     Unary(span~, ..) => {
       raise Unsupported(message="Unary operators are not supported yet", span~)
@@ -199,11 +210,11 @@ fn elaborate_expr(
         name=GenId("\{mod_name}_\{self.next_genidx()}"),
         parameters={
           let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
-          parameters[@rtlil.PubId("A_SIGNED")] = @rtlil.ConstInteger(0)
-          parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(1)
-          parameters[@rtlil.PubId("B_SIGNED")] = @rtlil.ConstInteger(0)
-          parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(1)
-          parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(1)
+          parameters[@rtlil.PubId("A_SIGNED")] = @rtlil.ConstInteger(value=0, width=1)
+          parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(value=1, width=1)
+          parameters[@rtlil.PubId("B_SIGNED")] = @rtlil.ConstInteger(value=0, width=1)
+          parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(value=1, width=1)
+          parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(value=1, width=1)
           parameters
         },
         connections={
@@ -222,14 +233,18 @@ fn elaborate_expr(
       let lhs_val = self.elaborate_expr!(lhs, mod).expect_integer!(lhs.span())
       let rhs_val = self.elaborate_expr!(rhs, mod).expect_integer!(rhs.span())
 
+      if lhs_val.width != rhs_val.width {
+        raise WidthMismatch(span=span, expected=lhs_val.width, received=rhs_val.width)
+      }
+
       let result = match op {
-        Add => lhs_val + rhs_val
-        Sub => lhs_val - rhs_val
-        Mul => lhs_val * rhs_val
+        Add => lhs_val.value + rhs_val.value
+        Sub => lhs_val.value - rhs_val.value
+        Mul => lhs_val.value * rhs_val.value
         _ => raise Unreachable(message="Invalid arithmetical binary operator", span~)
       }
 
-      Value::Signal(@rtlil.SigConst(ConstInteger(result)))
+      Value::Signal(@rtlil.SigConst(ConstInteger(value=result, width=lhs_val.width)))
     }
     Instance(name~, ports~, span~, ty=_) => {
       let mod_def = self.modules[name].or_error!(ElaboratorError::UnknownModule(name~, span~))
@@ -299,7 +314,7 @@ fn elaborate_expr(
       }
     }
     Indexing(expr~, index~, ..) => {
-      let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span()).reinterpret_as_uint()
+      let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span()).value.reinterpret_as_uint()
 
       match self.elaborate_expr!(expr, mod){
         Signal(sig) => {
@@ -323,8 +338,8 @@ fn elaborate_expr(
     }
     Slicing(expr~, msb~, lsb~, ..) => {
       let sig = self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
-      let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span()).reinterpret_as_uint()
-      let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span()).reinterpret_as_uint()
+      let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span()).value.reinterpret_as_uint()
+      let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span()).value.reinterpret_as_uint()
 
       Value::Signal(@rtlil.SigChunk(signal=sig, offset=msb, width=(msb - lsb) + 1))
     }

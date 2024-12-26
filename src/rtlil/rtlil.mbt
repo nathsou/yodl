@@ -44,14 +44,14 @@ pub(all) enum BinaryDigit {
 
 pub(all) enum Constant {
   ConstValue(Value)
-  ConstInteger(Int)
+  ConstInteger(value~: Int, width~: UInt)
   ConstString(String)
 }
 
 pub fn size(self: Constant) -> UInt {
   match self {
     ConstValue(v) => v.width
-    ConstInteger(_) => 32
+    ConstInteger(width~, ..) => width
     ConstString(str) => str.length().reinterpret_as_uint() * 8
   }
 }

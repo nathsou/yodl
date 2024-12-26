@@ -64,7 +64,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
             }
         }
         Natural(width~, ..) => match width {
-            Some(0) => @parse.Logic
+            Some(0 | 1) => @parse.Logic
             Some(width) => @parse.Vector(ty=@parse.Logic, len=width)
             None => Nat
         }
