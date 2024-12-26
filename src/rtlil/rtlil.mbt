@@ -43,15 +43,15 @@ pub(all) enum BinaryDigit {
 } derive(Eq)
 
 pub(all) enum Constant {
-  ConstValue(Value)
-  ConstInteger(value~: Int, width~: Int)
+  ConstValue(width~: Int, bits~: Array[BinaryDigit])
+  ConstInteger(Int)
   ConstString(String)
 }
 
 pub fn size(self: Constant) -> Int {
   match self {
-    ConstValue(v) => v.width
-    ConstInteger(width~, ..) => width
+    ConstValue(width~, ..) => width
+    ConstInteger(_) => 32
     ConstString(str) => str.length() * 8
   }
 }

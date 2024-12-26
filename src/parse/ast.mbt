@@ -111,6 +111,7 @@ pub(all) struct ModuleDecl {
 
 pub(all) enum Decl {
   Module(ModuleDecl)
+  ModuleDeclaration(ModuleSignature)
 }
 
 pub fn ty(self: Expr) -> Ref[Type?] {
@@ -208,13 +209,29 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
   None
 }
 
-pub fn width(self: Type) -> Int? {
+pub fn width(self: Type, params_env~: Map[String, Int]?) -> Int? {
   match self {
     Nat => None
     Logic => Some(1)
     Vector(len=Fixed(len), ..) => Some(len)
-    Vector(len=Dynamic(_), ..) => None
+    Vector(len=Dynamic(Identifier(name~, ..)), ..) => {
+      match params_env {
+        Some(env) => env[name]
+        None => None
+      }
+    }
+    Vector(..) => None
     Instance(_) => None
     Name(_) => None
+  }
+}
+
+pub fn signature(self: ModuleDecl) -> ModuleSignature {
+  {
+    name: self.name,
+    params: self.params,
+    inputs: self.inputs,
+    outputs: self.outputs,
+    span: self.span,
   }
 }

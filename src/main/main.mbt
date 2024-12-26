@@ -12,15 +12,15 @@ fn run(file: String) -> String!Error {
   let simplified_decls = []
   let emitter = @parse.Emitter::new()
 
-  // {
-  //   let emitter = @parse.Emitter::new()
-  //   for decl in mono_decls {
-  //     emitter.emit_decl(decl)
-  //     emitter.emit("\n")
-  //   }
+  {
+    let emitter = @parse.Emitter::new()
+    for decl in mono_decls {
+      emitter.emit_decl(decl)
+      emitter.emit("\n")
+    }
 
-  //   println(emitter.to_string())
-  // }
+    println(emitter.to_string())
+  }
 
   for decl in mono_decls {
     checker.check_decl!(decl)

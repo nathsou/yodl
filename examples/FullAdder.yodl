@@ -37,17 +37,41 @@ module Adder<N>(
     carry_out = carry_chain[N];
 }
 
+declare module $dff<WIDTH, CLK_POLARITY>(
+    CLK: logic,
+    D: logic[WIDTH],
+) -> (
+    Q: logic[WIDTH],
+);
+
+module Reg<N>(
+    clk: logic,
+    d: logic[N],
+) -> (
+    q: logic[N],
+) {
+    $dff<N, 1>(
+        CLK: clk,
+        D: d,
+        Q: q,
+    );
+}
+
 // Nexys A7
 module Top(
-    sw: logic[16],
+    clk: logic,
 ) -> (
     led: logic[16],
 ) {
-    let adder = Adder<8>(
-        a: sw[7:0],
-        b: sw[15:8],
+    let counter = Reg<32>(clk: clk);
+
+    let adder = Adder<32>(
+        a: counter.q,
+        b: 32'1,
         carry_in: 1'0,
     );
 
-    led = [...7'0, adder.carry_out, ...adder.sum];
+    counter.d = adder.sum;
+
+    led = adder.sum[31:16];
 }

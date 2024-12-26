@@ -3,10 +3,11 @@ pub(readonly) struct Elaborator {
   mut autoidx: Int
   modules: Map[String, @rtlil.Module]
   env: Map[String, Value]
+  declared_modules: Map[String, @parse.ModuleSignature]
 }
 
 pub fn Elaborator::new() -> Elaborator {
-  { autoidx: 0, modules: {}, env: {} }
+  { autoidx: 0, modules: {}, env: {}, declared_modules: {} }
 }
 
 type! ElaboratorError {
@@ -21,7 +22,6 @@ type! ElaboratorError {
   UnresolvedType(span~: @parse.Span)
   IndexOutOfBounds(index~: Int, len~: Int, span~: @parse.Span)
   Unreachable(message~: String, span~: @parse.Span)
-  WidthMismatch(span~: @parse.Span, expected~: Int, received~: Int)
 } derive(Show)
 
 enum Value {
@@ -31,12 +31,12 @@ enum Value {
 }
 
 fn bits(bits: Array[@rtlil.BinaryDigit]) -> Value {
-  Value::Signal(@rtlil.SigConst(ConstValue({ width: bits.length(), bits })))
+  Value::Signal(@rtlil.SigConst(ConstValue(width=bits.length(), bits~)))
 }
 
 fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value!Error {
   match ty {
-    Nat => Value::Signal(@rtlil.SigConst(ConstInteger(value=0, width=32)))
+    Nat => Value::Signal(@rtlil.SigConst(ConstValue(bits=[Z], width=32)))
     Logic => {
       bits([X])
     }
@@ -95,14 +95,9 @@ fn expect_signal(self: Value, span: @parse.Span) -> @rtlil.Signal!ElaboratorErro
   }
 }
 
-struct SizedInt {
-  value: Int
-  width: Int
-}
-
-fn expect_integer(self: Value, span: @parse.Span) -> SizedInt!ElaboratorError {
+fn expect_integer(self: Value, span: @parse.Span) -> Int!ElaboratorError {
   match self {
-    Signal(@rtlil.SigConst(ConstInteger(value~, width~))) => { value, width }
+    Signal(@rtlil.SigConst(ConstInteger(n))) => n
     _ => raise ExpectedSignal(span~)
   }
 }
@@ -121,7 +116,7 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   for input in mod.inputs {
     let _ = mod_def.add_wire!(
       name=PubId(input.name),
-      width=input.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
+      width=input.ty.width(params_env=None).or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
       port=Some({ direction: Input, id: port_id }),
       attributes=src_attribute(input.span),
     )
@@ -132,7 +127,7 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   for output in mod.outputs {
     let _ = mod_def.add_wire!(
       name=PubId(output.name),
-      width=output.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
+      width=output.ty.width(params_env=None).or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
       port=Some({ direction: Output, id: port_id }),
       attributes=src_attribute(output.span),
     )
@@ -181,13 +176,8 @@ fn elaborate_expr(
         }
       }
     }
-    Natural(value~, width~, ..) => {
-      let w = match width {
-        Some(width) => width
-        None => 32
-      }
-
-      Value::Signal(@rtlil.SigConst(ConstInteger(value=value, width=w)))
+    Natural(value~, ..) => {
+      Value::Signal(@rtlil.SigConst(ConstInteger(value)))
     }
     Unary(span~, ..) => {
       raise Unsupported(message="Unary operators are not supported yet", span~)
@@ -221,11 +211,11 @@ fn elaborate_expr(
         name=GenId("\{mod_name}_\{self.next_genidx()}"),
         parameters={
           let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
-          parameters[@rtlil.PubId("A_SIGNED")] = @rtlil.ConstInteger(value=0, width=1)
-          parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(value=1, width=1)
-          parameters[@rtlil.PubId("B_SIGNED")] = @rtlil.ConstInteger(value=0, width=1)
-          parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(value=1, width=1)
-          parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(value=1, width=1)
+          parameters[@rtlil.PubId("A_SIGNED")] = @rtlil.ConstInteger(0)
+          parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(1)
+          parameters[@rtlil.PubId("B_SIGNED")] = @rtlil.ConstInteger(0)
+          parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(1)
+          parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(1)
           parameters
         },
         connections={
@@ -244,25 +234,53 @@ fn elaborate_expr(
       let lhs_val = self.elaborate_expr!(lhs, mod).expect_integer!(lhs.span())
       let rhs_val = self.elaborate_expr!(rhs, mod).expect_integer!(rhs.span())
 
-      if lhs_val.width != rhs_val.width {
-        raise WidthMismatch(span=span, expected=lhs_val.width, received=rhs_val.width)
-      }
-
       let result = match op {
-        Add => lhs_val.value + rhs_val.value
-        Sub => lhs_val.value - rhs_val.value
-        Mul => lhs_val.value * rhs_val.value
+        Add => lhs_val + rhs_val
+        Sub => lhs_val - rhs_val
+        Mul => lhs_val * rhs_val
         _ => raise Unreachable(message="Invalid arithmetical binary operator", span~)
       }
 
-      Value::Signal(@rtlil.SigConst(ConstInteger(value=result, width=lhs_val.width)))
+      Value::Signal(@rtlil.SigConst(ConstInteger(result)))
     }
     Instance(name~, params~, ports~, span~, ty=_) => {
-      if params.length() > 0 {
+      if params.length() > 0 && not(self.declared_modules.contains(name)) {
         raise Unreachable(message="Parameterized instance after simplification", span~)
       }
 
-      let mod_def = self.modules[name].or_error!(ElaboratorError::UnknownModule(name~, span~))
+      let (mod_def_wires, param_names) = match self.modules[name] {
+        Some(mod) => (mod.wires, [])
+        None => match self.declared_modules[name] {
+          Some(sig) => {
+            let wires: Map[@rtlil.Id, @rtlil.Wire] = {}
+
+            let params_env = {}
+
+            for idx, param in params {
+              let val = param.expect_int!()
+              params_env[sig.params[idx]] = val
+            }
+
+            fn define_ports(ports: Array[@parse.Port], dir: @parse.PortDirection, port_offset: Int) -> Unit!Error {
+              for port_id, port in ports {
+                wires[@rtlil.PubId(port.name)] = {
+                  name: @rtlil.PubId(port.name),
+                  width: port.ty.width(params_env=Some(params_env)).or_error!(Unsupported(message="Only logic types are supported", span=port.span)),
+                  port: Some({ direction: dir, id: port_offset + port_id }),
+                  attributes: src_attribute(port.span),
+                  mod: mod,
+                }
+              }
+            }
+
+            define_ports!(sig.inputs, Input, 0)
+            define_ports!(sig.outputs, Output, sig.inputs.length())
+
+            (wires, sig.params)
+          }
+          None => raise ElaboratorError::UnknownModule(name~, span~)
+        }
+      }
 
       let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
       let unconnected_wires: Map[@rtlil.Id, @rtlil.Signal] = {}
@@ -270,7 +288,7 @@ fn elaborate_expr(
       let extra_ports = []
       let cell_name = name_binding.or(GenId("\{name}_\{self.next_genidx()}"))
 
-      for name, wire in mod_def.wires {
+      for name, wire in mod_def_wires {
         match wire.port {
           Some(_) => {
             if not(ports.contains(name.inner())) {
@@ -289,7 +307,7 @@ fn elaborate_expr(
       }
 
       for port_name, expr in ports {
-        if not(mod_def.wires.contains(PubId(port_name))) {
+        if not(mod_def_wires.contains(PubId(port_name))) {
           extra_ports.push(port_name)
         }
 
@@ -307,10 +325,18 @@ fn elaborate_expr(
 
       let cell = mod.add_cell!(
         name=cell_name,
-        type_=PubId(name),
+        type_=if name.starts_with("$") { GenId(name.substring(start=1)) } else { PubId(name) },
         attributes=src_attribute(span),
         connections~,
-        parameters={},
+        parameters={
+          let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
+
+          for idx, param in params {
+            parameters[@rtlil.PubId(param_names[idx])] = @rtlil.ConstInteger(param.expect_int!())
+          }
+
+          parameters
+        }
       )
 
       Value::Instance(cell)
@@ -329,7 +355,7 @@ fn elaborate_expr(
       }
     }
     Indexing(expr~, index~, ..) => {
-      let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span()).value
+      let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span())
 
       match self.elaborate_expr!(expr, mod){
         Signal(sig) => {
@@ -353,8 +379,8 @@ fn elaborate_expr(
     }
     Slicing(expr~, msb~, lsb~, ..) => {
       let sig = self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
-      let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span()).value
-      let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span()).value
+      let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span())
+      let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span())
 
       if msb < lsb {
         raise Unreachable(message="Invalid slicing range", span=expr.span())
@@ -449,6 +475,9 @@ pub fn elaborate_decl(self: Elaborator, decl: @parse.Decl) -> Unit! {
     Module(mod) => {
       self.env.clear()
       self.elaborate_module!(mod)
+    }
+    ModuleDeclaration(sig) => {
+      self.declared_modules[sig.name] = sig
     }
   }
 }

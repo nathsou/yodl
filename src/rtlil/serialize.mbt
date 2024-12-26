@@ -33,8 +33,11 @@ pub impl Show for Value with output(self, logger) {
 
 pub impl Show for Constant with output(self, logger) {
   match self {
-    ConstValue(v) => logger.write_string(v.to_string())
-    ConstInteger(value~, width~) => logger.write_string("\{width}'\{value}")
+    ConstValue(width~, bits~) => {
+      let bits = String::concat(bits.map(fn(bit) { bit.to_string() }))
+      logger.write_string("\{width}'\{bits}")
+    }
+    ConstInteger(n) => logger.write_string(n.to_string())
     ConstString(s) => logger.write_string("\"\{s}\"")
   }
 }

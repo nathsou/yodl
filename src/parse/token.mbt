@@ -7,13 +7,13 @@ enum TokenType {
   Equal; EqualEqual; BangEqual; RightThinArrow
   DotDotLeftChevron; DotDotEqual; DotDotDot
   // keywords
-  Module; Let; Logic; In; For
+  Module; Let; Logic; In; For; Declare
   And; Or; Not; Xor; Nand; Nor; Xnor
   // literals
   Identifier(String); Natural(value~: Int, width~: Int?)
 } derive(Eq, Show)
 
-pub(readonly) struct Span {
+pub(all) struct Span {
   file: String
   start: (Int, Int)
   end: (Int, Int)

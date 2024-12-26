@@ -3,6 +3,7 @@ pub(readonly) struct Monomorphizer {
   modules: Map[String, @parse.ModuleDecl]
   parameterized: Map[String, @parse.ModuleDecl]
   monomorphized: Map[String, Array[MonomorphizedModule]]
+  declared_modules: Map[String, @parse.ModuleSignature]
 }
 
 pub(readonly) struct MonomorphizedModule {
@@ -15,6 +16,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
     modules: {},
     parameterized: {},
     monomorphized: {},
+    declared_modules: {},
   }
 }
 
@@ -118,7 +120,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
         mono_params.push(self.monomorphize_expr!(param, params_env~))
       }
 
-      let mono_name = if params.length() > 0 {
+      let (mono_name, mono_params) = if params.length() > 0 && not(self.declared_modules.contains(name)) {
         let mod = self.register_monomorphized_module!(
           name~,
           params={
@@ -133,9 +135,9 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
           span~,
         )
 
-        mod.name
+        (mod.name, [])
       } else {
-        name
+        (name, mono_params)
       }
 
       let mono_ports = {}
@@ -144,7 +146,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
         mono_ports[port_name] = self.monomorphize_expr!(port_expr, params_env~)
       }
 
-      @parse.Expr::Instance(name=mono_name, params=[], ports=mono_ports, span~, ty~)
+      @parse.Expr::Instance(name=mono_name, params=mono_params, ports=mono_ports, span~, ty~)
     }
     Vector(elems~, span~, ty~) => {
       let mono_elems = []
@@ -278,6 +280,9 @@ fn collect_instances(self: Monomorphizer, decl: @parse.Decl) -> Unit!Error {
         self.parameterized[mod.name] = mod
       }
     }
+    ModuleDeclaration(sig) => {
+      self.declared_modules[sig.name] = sig
+    }
   }
 }
 
@@ -287,6 +292,10 @@ pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@pa
   }
 
   let monomorphized = []
+
+  for decl in self.declared_modules.values() {
+    monomorphized.push(@parse.Decl::ModuleDeclaration(decl))
+  }
 
   for mod in self.modules.values() {
     monomorphized.push(@parse.Decl::Module(mod))

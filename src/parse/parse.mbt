@@ -11,6 +11,7 @@ pub(readonly) type! ParserError {
   ExpectedExpr(received~: TokenType, span~: Span)
   ExpectedStmt(received~: TokenType, span~: Span)
   ExpectedType(received~: TokenType, span~: Span)
+  ExpectedDecl(received~: TokenType, span~: Span)
   ExpectedRangeOperator(received~: TokenType, span~: Span)
 } derive(Show)
 
@@ -407,7 +408,7 @@ fn parse_module_parameter_list(self: Parser) -> Array[String]!ParserError {
   }
 }
 
-fn parse_module_decl(self: Parser) -> ModuleDecl!ParserError {
+fn parse_module_signature(self: Parser) -> ModuleSignature!ParserError {
   let start_idx = self.index
   self.expect!(Module, start_idx)
   let name = self.parse_identifier!()
@@ -415,6 +416,13 @@ fn parse_module_decl(self: Parser) -> ModuleDecl!ParserError {
   let inputs = self.parse_port_list!(dir=Input)
   self.expect!(RightThinArrow, start_idx)
   let outputs = self.parse_port_list!(dir=Output)
+
+  { name, params, inputs, outputs, span: self.span(start_idx) }
+}
+
+fn parse_module_definition(self: Parser) -> ModuleDecl!ParserError {
+  let start_idx = self.index
+  let { name, params, inputs, outputs, .. } = self.parse_module_signature!()
   self.expect!(Lbrace, start_idx)
   let body = []
 
@@ -428,7 +436,16 @@ fn parse_module_decl(self: Parser) -> ModuleDecl!ParserError {
 
 
 fn parse_decl(self: Parser) -> Decl!ParserError {
-  Module(self.parse_module_decl!())
+  match self.peek() {
+    Module => Module(self.parse_module_definition!())
+    Declare => {
+      self.advance()
+      let sig = self.parse_module_signature!()
+      self.expect!(Semicolon, self.index)
+      ModuleDeclaration(sig)
+    }
+    token => raise ExpectedDecl(received=token, span=self.span(self.index))
+  }
 }
 
 pub fn parse(self: Parser) -> Array[Decl]!ParserError {

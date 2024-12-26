@@ -172,5 +172,8 @@ pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl!Error {
 
       @parse.Decl::Module({ name, params, inputs, outputs, body: simplified_body, span })
     }
+    ModuleDeclaration(sig) => {
+      @parse.Decl::ModuleDeclaration(sig)
+    }
   }
 }

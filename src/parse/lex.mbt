@@ -26,7 +26,7 @@ fn is_digit(c: Char) -> Bool {
 }
 
 fn is_alpha(c: Char) -> Bool {
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$'
 }
 
 fn is_alphanumeric(c: Char) -> Bool {
@@ -283,6 +283,7 @@ fn next(self: Lexer) -> LexerResult[Token] {
           "logic" => Logic
           "in" => In
           "for" => For
+          "declare" => Declare
           "and" => And
           "or" => Or
           "not" => Not

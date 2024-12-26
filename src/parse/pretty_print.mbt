@@ -307,21 +307,25 @@ fn emit_port_list(self: Emitter, ports: Array[Port]) -> Unit {
   self.write(")")
 }
 
+fn emit_module_sig(self: Emitter, sig: ModuleSignature) -> Unit {
+  self.write("module ")
+  self.write(sig.name)
+
+  if sig.params.length() > 0 {
+    self.write("<")
+    self.write(String::concat(sig.params, separator=", "))
+    self.write(">")
+  }
+
+  self.emit_port_list(sig.inputs)
+  self.write(" -> ")
+  self.emit_port_list(sig.outputs)
+}
+
 pub fn emit_decl(self: Emitter, decl: Decl) -> Unit {
   match decl {
-    Module({ name, params, inputs, outputs, body, .. }) => {
-      self.write("module ")
-      self.write(name)
-
-      if params.length() > 0 {
-        self.write("<")
-        self.write(String::concat(params, separator=", "))
-        self.write(">")
-      }
-
-      self.emit_port_list(inputs)
-      self.write(" -> ")
-      self.emit_port_list(outputs)
+    Module({ name, params, inputs, outputs, body, span }) => {
+      self.emit_module_sig({ name, params, inputs, outputs, span })
       self.write(" {\n")
       self.indent += 1
 
@@ -333,6 +337,9 @@ pub fn emit_decl(self: Emitter, decl: Decl) -> Unit {
       self.indent -= 1
       self.write("}")
     }
+    ModuleDeclaration(sig) => {
+      self.emit_module_sig(sig)
+      self.write(";")
+    }
   }
 }
-

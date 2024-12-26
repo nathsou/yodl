@@ -29,6 +29,45 @@ type! TypeCheckerError {
     SpreadOutsideVector(span~: @parse.Span)
 } derive(Show)
 
+fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
+    while not(eqs.is_empty()) {
+        let (ty1, ty2) = eqs.pop().unwrap()
+
+        if ty1 == ty2 {
+            continue
+        }
+
+        match (ty1, ty2) {
+            (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(name~, ..)))) => {
+                match subst[name] {
+                    Some(len2) => {
+                        if len != len2 {
+                            raise IncompatibleTypes(ty1=ty1, ty2=ty2, span~)
+                        }
+                    }
+                    None => {
+                        subst[name] = len
+                    }
+                }
+
+                eqs.push((ty1_inner, ty2_inner))
+            }
+            (Vector(ty=_, len=Dynamic(Identifier(_))), Vector(ty=_, len=Fixed(_))) => {
+                eqs.push((ty2, ty1))
+            }
+            _ => {
+                raise IncompatibleTypes(ty1=ty1, ty2=ty2, span~)
+            }
+        }
+    }
+
+    subst
+}
+
+fn unify(ty1: @parse.Type, ty2: @parse.Type, span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
+    unify_aux!([(ty1, ty2)], span~, subst~)
+}
+
 fn declare_name(env~: Scope[@parse.Type], name~: String, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
     match env.declare?(name, ty) {
         Ok(_) => ()
@@ -77,10 +116,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
         Binary(lhs~, rhs~, span~, ..) => {
             let ty_lhs = self.check_expr!(lhs, env)
             let ty_rhs = self.check_expr!(rhs, env)
-
-            if ty_lhs != ty_rhs {
-                raise IncompatibleTypes(ty1=ty_lhs, ty2=ty_rhs, span~)
-            }
+            let _ = unify!(ty_lhs, ty_rhs, span~)
 
             ty_lhs
         }
@@ -142,14 +178,13 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
         Instance(name~, ports~, span~, ..) => {
             match self.modules[name] {
                 Some(mod) => {
+                    let subst = {}
+
                     for port_name, expr in ports {
                         match mod.get_port(port_name) {
                             Some(port_def) => {
                                 let expr_ty = self.check_expr!(expr, env)
-
-                                if expr_ty != port_def.ty {
-                                    raise IncompatibleTypes(ty1=expr_ty, ty2=port_def.ty, span~)
-                                }
+                                let _ = unify!(port_def.ty, expr_ty, span~, subst~)
                             }
                             None => raise UnknownModulePort(module_name=name, port_name=port_name, span~)
                         }
@@ -167,13 +202,12 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
 
             let mut elem_ty = None
             let mut len = 0
+            let subst = {}
 
             fn check_elem_ty(ty: @parse.Type) -> Unit!TypeCheckerError {
                 match elem_ty {
                     Some(ty2) => {
-                        if ty != ty2 {
-                            raise IncompatibleTypes(ty1=ty, ty2=ty2, span~)
-                        }
+                        let _ = unify!(ty, ty2, span~, subst~)
                     }
                     None => {
                         elem_ty = Some(ty)
@@ -221,10 +255,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
                 (Some(ty), Some(expr)) => {
                     let ty = self.resolve_ty!(ty, span~)
                     let expr_ty = self.check_expr!(expr, env)
-
-                    if ty != expr_ty {
-                        raise IncompatibleTypes(ty1=ty, ty2=expr_ty, span~)
-                    }
+                    let _ = unify!(ty, expr_ty, span~)
 
                     declare_name!(env~, name~, ty~, span~)
                     ty
@@ -256,10 +287,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
 
             let lhs_ty = self.check_expr!(lhs, env)
             let rhs_ty = self.check_expr!(rhs, env)
-
-            if lhs_ty != rhs_ty {
-                raise IncompatibleTypes(ty1=lhs_ty, ty2=rhs_ty, span~)
-            }
+            let _ = unify!(lhs_ty, rhs_ty, span~)
         }
         Scope(body~, ..) => {
             let new_env = env.child()
@@ -319,6 +347,9 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
                 outputs,
                 span,
             }
+        }
+        ModuleDeclaration(sig) => {
+            self.modules[sig.name] = sig
         }
     }
 }
