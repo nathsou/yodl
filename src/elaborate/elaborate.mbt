@@ -160,6 +160,61 @@ fn declare(self: Elaborator, name: String, value: Value, span~: @parse.Span) -> 
   self.env[name] = value
 }
 
+fn expr_width(expr: @parse.Expr) -> Int?!Error {
+  expr.ty().val.or_error!(Unreachable(message="Untyped expression", span=expr.span())).width(params_env=None)
+}
+
+fn binary_op_cell(
+  self: Elaborator,
+  cell_type~: String,
+  lhs~: @parse.Expr,
+  rhs~: @parse.Expr,
+  mod~: @rtlil.Module,
+  span~: @parse.Span,
+) -> Value!Error {
+  let width = match (expr_width!(lhs), expr_width!(rhs)) {
+    (Some(lhs_width), Some(rhs_width)) => {
+      if lhs_width != rhs_width {
+        raise Unsupported(message="Binary operator with different width operands", span~)
+      }
+
+      lhs_width
+    }
+    _ => raise Unreachable(message="Untyped binary operator", span~)
+  }
+
+  let output = mod.add_wire!(
+    name=GenId("\{cell_type}_y_\{self.next_genidx()}"),
+    width~,
+    port=None,
+    attributes=src_attribute(span),
+  )
+  
+  let _ = mod.add_cell!(
+    type_=GenId(cell_type),
+    name=GenId("\{cell_type}_\{self.next_genidx()}"),
+    parameters={
+      let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
+      parameters[@rtlil.PubId("A_SIGNED")] = @rtlil.ConstInteger(0)
+      parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(width)
+      parameters[@rtlil.PubId("B_SIGNED")] = @rtlil.ConstInteger(0)
+      parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(width)
+      parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(width)
+      parameters
+    },
+    connections={
+      let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
+      connections[@rtlil.PubId("A")] = self.elaborate_expr!(lhs, mod).expect_signal!(lhs.span())
+      connections[@rtlil.PubId("B")] = self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span())
+      connections[@rtlil.PubId("Y")] = SigWire(output)
+      connections
+    },
+    attributes=src_attribute(span),
+  )
+
+  Value::Signal(SigWire(output))
+}
+
 fn elaborate_expr(
   self: Elaborator,
   expr: @parse.Expr,
@@ -183,65 +238,25 @@ fn elaborate_expr(
       raise Unsupported(message="Unary operators are not supported yet", span~)
     }
     Binary(
-      op=And | Or | Xor | Nand | Nor | Xnor as op,
+      op~,
       lhs~,
       rhs~,
       span~,
       ..
     ) => {
-      let mod_name = match op {
+      let cell_type = match op {
+        Add => "add"
+        Sub => "sub"
+        Mul => "mul"
         And => "and"
         Or => "or"
         Xor => "xor"
         Nand => "nand"
         Nor => "nor"
         Xnor => "xnor"
-        _ => raise Unreachable(message="Invalid logical binary operator", span~)
       }
 
-      let output = mod.add_wire!(
-        name=GenId("\{mod_name}_y_\{self.next_genidx()}"),
-        width=1,
-        port=None,
-        attributes=src_attribute(span),
-      )
-      
-      let _ = mod.add_cell!(
-        type_=GenId(mod_name),
-        name=GenId("\{mod_name}_\{self.next_genidx()}"),
-        parameters={
-          let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
-          parameters[@rtlil.PubId("A_SIGNED")] = @rtlil.ConstInteger(0)
-          parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(1)
-          parameters[@rtlil.PubId("B_SIGNED")] = @rtlil.ConstInteger(0)
-          parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(1)
-          parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(1)
-          parameters
-        },
-        connections={
-          let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
-          connections[@rtlil.PubId("A")] = self.elaborate_expr!(lhs, mod).expect_signal!(lhs.span())
-          connections[@rtlil.PubId("B")] = self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span())
-          connections[@rtlil.PubId("Y")] = SigWire(output)
-          connections
-        },
-        attributes=src_attribute(span),
-      )
-
-      Value::Signal(SigWire(output))
-    }
-    Binary(op=Add | Sub | Mul as op, lhs~, rhs~, span~, ..) => {
-      let lhs_val = self.elaborate_expr!(lhs, mod).expect_integer!(lhs.span())
-      let rhs_val = self.elaborate_expr!(rhs, mod).expect_integer!(rhs.span())
-
-      let result = match op {
-        Add => lhs_val + rhs_val
-        Sub => lhs_val - rhs_val
-        Mul => lhs_val * rhs_val
-        _ => raise Unreachable(message="Invalid arithmetical binary operator", span~)
-      }
-
-      Value::Signal(@rtlil.SigConst(ConstInteger(result)))
+      self.binary_op_cell!(cell_type~, lhs~, rhs~, mod~, span~)
     }
     Instance(name~, params~, ports~, span~, ty=_) => {
       if params.length() > 0 && not(self.declared_modules.contains(name)) {
@@ -252,6 +267,7 @@ fn elaborate_expr(
         Some(mod) => (mod.wires, [])
         None => match self.declared_modules[name] {
           Some(sig) => {
+            // TODO: Clean up (by creating a port signature instead of artificial wires)
             let wires: Map[@rtlil.Id, @rtlil.Wire] = {}
 
             let params_env = {}
@@ -437,7 +453,7 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
               )
 
               self.declare!(name, Value::Signal(SigWire(wire)), span=expr.span())
-              mod.connect!(SigWire(wire), sig)
+              mod.connect!(SigWire(wire), sig, span=expr.span())
             }
             Instance(cell) => {
               self.declare!(name, Value::Instance(cell), span=expr.span())
@@ -457,7 +473,7 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
     Assign(lhs~, rhs~, ..) => {
       let sig1 = self.elaborate_expr!(lhs, mod).expect_signal!(lhs.span())
       let sig2 = self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span())
-      mod.connect!(sig1, sig2)
+      mod.connect!(sig1, sig2, span=lhs.span())
     }
     For(span~, ..) => {
       raise Unreachable(message="For loop after simplification", span~)

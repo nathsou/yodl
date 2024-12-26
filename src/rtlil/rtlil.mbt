@@ -3,7 +3,7 @@
 pub(readonly) type! RTLILError {
   WireAlreadyDeclared(name~: Id)
   CellAlreadyDeclared(name~: Id)
-  IncompatibleWidths(width1~: Int, width2~: Int)
+  IncompatibleWidths(width1~: Int, width2~: Int, span~: @parse.Span)
 } derive(Show)
 
 pub(all) enum Id {
@@ -154,9 +154,11 @@ pub fn add_cell(
   cell
 }
 
-pub fn connect(self: Module, sig1: Signal, sig2: Signal) -> Unit!RTLILError {
+pub fn connect(self: Module, sig1: Signal, sig2: Signal, span~: @parse.Span) -> Unit!RTLILError {
   if sig1.size() != sig2.size() {
-    raise IncompatibleWidths(width1=sig1.size(), width2=sig2.size())
+    println(sig1)
+    println(sig2)
+    raise IncompatibleWidths(width1=sig1.size(), width2=sig2.size(), span~)
   }
 
   self.connections.push((sig1, sig2))

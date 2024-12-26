@@ -1,0 +1,32 @@
+
+declare module $dff<WIDTH, CLK_POLARITY>(
+    CLK: logic,
+    D: logic[WIDTH],
+) -> (
+    Q: logic[WIDTH],
+);
+
+module Reg<N>(
+    clk: logic,
+    d: logic[N],
+) -> (
+    q: logic[N],
+) {
+    $dff<N, 1>(
+        CLK: clk,
+        D: d,
+        Q: q,
+    );
+}
+
+module Top(
+    clk: logic,
+) -> (
+    led: logic[16],
+) {
+    let counter = Reg<32>(clk: clk);
+    let sum = counter.q + 32'1;
+    
+    counter.d = sum;
+    led = sum[31:16];
+}
