@@ -137,6 +137,25 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
 
       self.write(")")
     }
+    Vector(elems~, ..) => {
+      self.write("[")
+      self.indent += 1
+
+      for i, elem in elems {
+        if i > 0 {
+          self.write(", ")
+        }
+
+        self.emit_expr(elem)
+      }
+
+      self.indent -= 1
+      self.write("]")
+    }
+    Spread(expr~, ..) => {
+      self.write("...")
+      self.emit_expr(expr)
+    }
   }
 }
 

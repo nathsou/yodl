@@ -257,6 +257,8 @@ fn next(self: Lexer) -> LexerResult[Token] {
           Ok(DotDotLeftChevron)
         } else if self.consumes('=') {
           Ok(DotDotEqual)
+        } else if self.consumes('.') {
+          Ok(DotDotDot)
         } else {
           Err(UnexepectedChar(char))
         }

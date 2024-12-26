@@ -88,6 +88,19 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
 
       @parse.Expr::Instance(name~, span~, ty~, ports=simplified_ports)
     }
+    Vector(elems~, span~, ty~) => {
+      let simplified_elems = []
+
+      for elem in elems {
+        simplified_elems.push(self.simplify_expr!(elem))
+      }
+
+      @parse.Expr::Vector(elems=simplified_elems, span~, ty~)
+    }
+    Spread(expr~, span~, ty~) => {
+      let simplified_expr = self.simplify_expr!(expr)
+      @parse.Expr::Spread(expr=simplified_expr, span~, ty~)
+    }
   }
 }
 

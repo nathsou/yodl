@@ -5,7 +5,7 @@ enum TokenType {
   Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang; SingleQuote
   Plus; Minus; Star; Slash
   Equal; EqualEqual; BangEqual; RightThinArrow
-  DotDotLeftChevron; DotDotEqual
+  DotDotLeftChevron; DotDotEqual; DotDotDot
   // keywords
   Module; Let; Logic; In; For
   And; Or; Not; Xor; Nand; Nor; Xnor

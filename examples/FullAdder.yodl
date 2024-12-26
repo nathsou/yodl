@@ -49,7 +49,5 @@ module Top(
         carry_in: 1'0,
     );
 
-    led[15:9] = 7'0;
-    led[8] = adder.carry_out;
-    led[7:0] = adder.sum;
+    led = [...7'0, adder.carry_out, ...adder.sum];
 }

@@ -10,7 +10,7 @@ Circuit description (Yodl) -> Visualization (Digital) -> Software simulation (Yo
 
 - [ ] [Digital](https://github.com/hneemann/Digital) (with integrated component/wiring positioning editor?) export
 - [ ] [RTLIL](https://yosyshq.readthedocs.io/projects/yosys/en/latest/yosys_internals/formats/rtlil_rep.html) Export
-- [ ] RTLIL to KiCad schematic converter
+- [x] RTLIL to KiCad schematic converter
 - [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export
 - [ ] Built-in event-driven simulator?
 

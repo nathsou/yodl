@@ -30,6 +30,8 @@ pub(all) enum Expr {
   Slicing(expr~: Expr, msb~: Expr, lsb~: Expr, span~: Span, ty~: Ref[Type?])
   PortAccess(expr~: Expr, port~: String, span~: Span, ty~: Ref[Type?])
   Instance(name~: String, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
+  Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
+  Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
 }
 
 pub(all) enum Stmt {
@@ -98,6 +100,8 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Slicing(ty~, ..) => ty
     PortAccess(ty~, ..) => ty
     Instance(ty~, ..) => ty
+    Vector(ty~, ..) => ty
+    Spread(ty~, ..) => ty
   }
 }
 
@@ -111,6 +115,8 @@ pub fn span(self: Expr) -> Span {
     Slicing(span~, ..) => span
     PortAccess(span~, ..) => span
     Instance(span~, ..) => span
+    Vector(span~, ..) => span
+    Spread(span~, ..) => span
   }
 }
 
@@ -128,6 +134,8 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Slicing(_) => false
     PortAccess(_) => false
     Instance(_) => false
+    Vector(_) => false
+    Spread(_) => false
   }
 }
 

@@ -174,8 +174,36 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
       self.expect!(Rparen, start_idx)
       expr
     }
+    Lbracket => self.parse_vector_expr!()
+    DotDotDot => self.parse_spread_expr!()
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
+}
+
+fn parse_spread_expr(self: Parser) -> Expr!ParserError {
+  let start_idx = self.index
+  self.expect!(DotDotDot, start_idx)
+  let expr = self.parse_expr!()
+  Spread(expr~, span=self.span(start_idx), ty={ val: None })
+}
+
+fn parse_vector_expr(self: Parser) -> Expr!ParserError {
+  let start_idx = self.index
+  self.expect!(Lbracket, start_idx)
+  let elems = []
+
+  while not(self.matches(Rbracket)) {
+    let elem = self.parse_expr!()
+    elems.push(elem)
+
+    if not(self.consumes(Comma)) {
+      break
+    }
+  }
+
+  self.expect!(Rbracket, start_idx)
+
+  Vector(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_instance_expr(self: Parser, module_name~: String) -> Expr!ParserError {

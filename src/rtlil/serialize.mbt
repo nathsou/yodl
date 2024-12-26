@@ -85,9 +85,12 @@ pub impl Show for Signal with output(self, logger) {
       }
     }
     SigConcat(signals) => {
-      logger.write_string("{")
-      logger.write_iter(signals.iter(), sep=", ")
-      logger.write_string("}")
+      logger.write_iter(
+        prefix="{ ",
+        signals.iter(),
+        sep=" ",
+        suffix=" }",
+      )
     }
   }
 }

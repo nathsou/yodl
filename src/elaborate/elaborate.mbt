@@ -80,6 +80,15 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
 fn expect_signal(self: Value, span: @parse.Span) -> @rtlil.Signal!ElaboratorError {
   match self {
     Signal(sig) => sig
+    Vector(elems) => {
+      let signals = []
+
+      for elem in elems {
+        signals.push(elem.expect_signal!(span))
+      }
+
+      @rtlil.SigConcat(signals)
+    }
     _ => raise ExpectedSignal(span~)
   }
 }
@@ -307,10 +316,10 @@ fn elaborate_expr(
         Instance(cell) => {
           match mod.wires[GenId("\{cell.name.inner()}_\{port}")] {
             Some(wire) => Value::Signal(SigWire(wire))
-            None => raise UnknownModulePort(module_name=cell.name.inner(), port_name=port, span=span)
+            None => raise UnknownModulePort(module_name=cell.name.inner(), port_name=port, span~)
           }
         }
-        _ => raise Unsupported(message="Port access on non-instance", span=span)
+        _ => raise Unsupported(message="Port access on non-instance", span~)
       }
     }
     Indexing(expr~, index~, ..) => {
@@ -341,7 +350,39 @@ fn elaborate_expr(
       let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span()).value
       let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span()).value
 
+      if msb < lsb {
+        raise Unreachable(message="Invalid slicing range", span=expr.span())
+      }
+
       Value::Signal(@rtlil.SigChunk(signal=sig, offset=msb, width=(msb - lsb) + 1))
+    }
+    Vector(elems~, ..) => {
+      let values = Array::new(capacity=elems.length())
+
+      for elem in elems {
+        match elem {
+          Spread(expr~, ..) => {
+            let val = self.elaborate_expr!(expr, mod)
+
+            match val {
+              Vector(values) => {
+                for value in values {
+                  values.push(value)
+                }
+              }
+              _ => values.push(val)
+            }
+          }
+          _ => {
+            values.push(self.elaborate_expr!(elem, mod))
+          }
+        }
+      }
+
+      Value::Vector(values)
+    }
+    Spread(span~, ..) => {
+      raise Unreachable(message="Spread operator outside Vector", span~)
     }
   }
 }

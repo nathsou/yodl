@@ -24,6 +24,9 @@ type! TypeCheckerError {
     ExpectedConstantExpr(span~: @parse.Span)
     InvalidPortType(ty~: @parse.Type, span~: @parse.Span)
     LetStmtMustHaveTypeOrValue(span~: @parse.Span)
+    EmptyVector(span~: @parse.Span)
+    SpreadOnNonVector(span~: @parse.Span)
+    SpreadOutsideVector(span~: @parse.Span)
 } derive(Show)
 
 fn declare_name(env~: Scope[@parse.Type], name~: String, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
@@ -65,7 +68,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
         }
         Natural(width~, ..) => match width {
             Some(0 | 1) => @parse.Logic
-            Some(width) => @parse.Vector(ty=@parse.Logic, len=width)
+            Some(width) => @parse.Type::Vector(ty=@parse.Logic, len=width)
             None => Nat
         }
         Unary(expr~, ..) => {
@@ -156,6 +159,50 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
                 }
                 None => raise TypeCheckerError::UnknownModule(name~, span~)
             }
+        }
+        Vector(elems~, span~, ..) => {
+            if elems.is_empty() {
+                raise EmptyVector(span~)
+            }
+
+            let mut elem_ty = None
+            let mut len = 0
+
+            fn check_elem_ty(ty: @parse.Type) -> Unit!TypeCheckerError {
+                match elem_ty {
+                    Some(ty2) => {
+                        if ty != ty2 {
+                            raise IncompatibleTypes(ty1=ty, ty2=ty2, span~)
+                        }
+                    }
+                    None => {
+                        elem_ty = Some(ty)
+                    }
+                }
+            }
+
+            for elem in elems {
+                match elem {
+                    Spread(expr~, ..) => {
+                        match self.check_expr!(expr, env) {
+                            Vector(ty=inner_ty, len=spread_len) => {
+                                check_elem_ty!(inner_ty)
+                                len += spread_len
+                            }
+                            _ => raise SpreadOnNonVector(span~)
+                        }
+                    }
+                    _ => {
+                        check_elem_ty!(self.check_expr!(elem, env))
+                        len += 1
+                    }
+                }
+            }
+
+            @parse.Type::Vector(ty=elem_ty.unwrap(), len~)
+        }
+        Spread(span~, ..) => {
+            raise SpreadOutsideVector(span~)
         }
     }
 
