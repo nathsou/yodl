@@ -22,7 +22,7 @@ fn precedence(self: BinaryOp) -> Int {
 }
 
 pub(all) enum Expr {
-  Natural(value~: UInt, width~: UInt?, span~: Span, ty~: Ref[Type?])
+  Natural(value~: Int, width~: Int?, span~: Span, ty~: Ref[Type?])
   Identifier(name~: String, span~: Span, ty~: Ref[Type?])
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
@@ -60,7 +60,7 @@ impl Eq for ModuleSignature with op_equal(self, other) {
 pub(all) enum Type {
   Nat
   Logic
-  Vector(ty~: Type, len~: UInt)
+  Vector(ty~: Type, len~: Int)
   Instance(ModuleSignature)
   Name(name~: String)
 } derive(Eq)
@@ -133,7 +133,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
 
 pub fn expect_int(self: Expr) -> Int!Error {
   match self {
-    Natural(value~, ..) => value.reinterpret_as_int()
+    Natural(value~, ..) => value
     _ => raise Failure("Expected integer expression")
   }
 }
@@ -154,7 +154,7 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
   None
 }
 
-pub fn width(self: Type) -> UInt? {
+pub fn width(self: Type) -> Int? {
   match self {
     Nat => None
     Logic => Some(1)

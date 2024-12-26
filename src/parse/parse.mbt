@@ -74,7 +74,7 @@ fn parse_identifier(self: Parser) -> String!ParserError {
   }
 }
 
-fn parse_integer(self: Parser) -> (UInt, UInt?)!ParserError {
+fn parse_integer(self: Parser) -> (Int, Int?)!ParserError {
   let token = self.peek()
   let start_idx = self.index
 

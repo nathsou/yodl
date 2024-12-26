@@ -33,7 +33,7 @@ fn declare_name(env~: Scope[@parse.Type], name~: String, ty~: @parse.Type, span~
     }
 }
 
-fn eval_const_expr(expr: @parse.Expr) -> UInt!TypeCheckerError {
+fn eval_const_expr(expr: @parse.Expr) -> Int!TypeCheckerError {
     match expr {
         Natural(value~, ..) => value
         _ => raise ExpectedConstantExpr(span=expr.span())

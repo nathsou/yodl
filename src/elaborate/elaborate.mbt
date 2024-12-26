@@ -1,6 +1,6 @@
 
 pub(readonly) struct Elaborator {
-  mut autoidx: UInt
+  mut autoidx: Int
   modules: Map[String, @rtlil.Module]
   env: Map[String, Value]
 }
@@ -19,9 +19,9 @@ type! ElaboratorError {
   ExtraPorts(extra_ports~: Array[String], span~: @parse.Span)
   UntypedLet(span~: @parse.Span)
   UnresolvedType(span~: @parse.Span)
-  IndexOutOfBounds(index~: UInt, len~: UInt, span~: @parse.Span)
+  IndexOutOfBounds(index~: Int, len~: Int, span~: @parse.Span)
   Unreachable(message~: String, span~: @parse.Span)
-  WidthMismatch(span~: @parse.Span, expected~: UInt, received~: UInt)
+  WidthMismatch(span~: @parse.Span, expected~: Int, received~: Int)
 } derive(Show)
 
 enum Value {
@@ -31,7 +31,7 @@ enum Value {
 }
 
 fn bits(bits: Array[@rtlil.BinaryDigit]) -> Value {
-  Value::Signal(@rtlil.SigConst(ConstValue({ width: bits.length().reinterpret_as_uint(), bits })))
+  Value::Signal(@rtlil.SigConst(ConstValue({ width: bits.length(), bits })))
 }
 
 fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value!Error {
@@ -52,9 +52,9 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
         Value::Signal(SigWire(wire))
       }
       _ => {
-        let val = Array::new(capacity=len.reinterpret_as_int())
+        let val = Array::new(capacity=len)
 
-        for i in 0..<len.reinterpret_as_int() {
+        for i in 0..<len {
           val.push(self.default_value!(ty~, mod~, span~, name_binding=name_binding.join("[\{i}]")))
         }
 
@@ -86,7 +86,7 @@ fn expect_signal(self: Value, span: @parse.Span) -> @rtlil.Signal!ElaboratorErro
 
 struct SizedInt {
   value: Int
-  width: UInt
+  width: Int
 }
 
 fn expect_integer(self: Value, span: @parse.Span) -> SizedInt!ElaboratorError {
@@ -105,7 +105,7 @@ fn src_attribute(span: @parse.Span) -> Map[@rtlil.Id, @rtlil.Constant] {
 fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let mod_def = @rtlil.Module::new(PubId(mod.name))
 
-  let mut port_id: UInt = 1
+  let mut port_id: Int = 1
 
   for input in mod.inputs {
     let _ = mod_def.add_wire!(
@@ -140,7 +140,7 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   self.modules[mod.name] = mod_def
 }
 
-fn next_genidx(self: Elaborator) -> UInt {
+fn next_genidx(self: Elaborator) -> Int {
   let idx = self.autoidx
   self.autoidx += 1
   idx
@@ -176,7 +176,7 @@ fn elaborate_expr(
         None => 32
       }
 
-      Value::Signal(@rtlil.SigConst(ConstInteger(value=value.reinterpret_as_int(), width=w)))
+      Value::Signal(@rtlil.SigConst(ConstInteger(value=value, width=w)))
     }
     Unary(span~, ..) => {
       raise Unsupported(message="Unary operators are not supported yet", span~)
@@ -314,7 +314,7 @@ fn elaborate_expr(
       }
     }
     Indexing(expr~, index~, ..) => {
-      let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span()).value.reinterpret_as_uint()
+      let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span()).value
 
       match self.elaborate_expr!(expr, mod){
         Signal(sig) => {
@@ -325,21 +325,21 @@ fn elaborate_expr(
           Value::Signal(@rtlil.SigChunk(signal=sig, offset=idx, width=1))
         }
         Vector(values) => {
-          let len = values.length().reinterpret_as_uint()
+          let len = values.length()
 
           if idx >= len {
             raise IndexOutOfBounds(index=idx, len~, span=expr.span())
           }
           
-          values[idx.reinterpret_as_int()]
+          values[idx]
         }
         _ => raise Unsupported(message="Indexing on non-vector data type", span=expr.span())
       }
     }
     Slicing(expr~, msb~, lsb~, ..) => {
       let sig = self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
-      let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span()).value.reinterpret_as_uint()
-      let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span()).value.reinterpret_as_uint()
+      let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span()).value
+      let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span()).value
 
       Value::Signal(@rtlil.SigChunk(signal=sig, offset=msb, width=(msb - lsb) + 1))
     }

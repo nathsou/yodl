@@ -3,7 +3,7 @@
 pub(readonly) type! RTLILError {
   WireAlreadyDeclared(name~: Id)
   CellAlreadyDeclared(name~: Id)
-  IncompatibleWidths(width1~: UInt, width2~: UInt)
+  IncompatibleWidths(width1~: Int, width2~: Int)
 } derive(Show)
 
 pub(all) enum Id {
@@ -34,7 +34,7 @@ pub fn join(self: Id, suffix: String) -> Id {
 
 // A value consists of a width in bits and a bit representation, most significant bit first
 pub(all) struct Value {
-    width: UInt
+    width: Int
     bits: Array[BinaryDigit]
 }
 
@@ -44,26 +44,26 @@ pub(all) enum BinaryDigit {
 
 pub(all) enum Constant {
   ConstValue(Value)
-  ConstInteger(value~: Int, width~: UInt)
+  ConstInteger(value~: Int, width~: Int)
   ConstString(String)
 }
 
-pub fn size(self: Constant) -> UInt {
+pub fn size(self: Constant) -> Int {
   match self {
     ConstValue(v) => v.width
     ConstInteger(width~, ..) => width
-    ConstString(str) => str.length().reinterpret_as_uint() * 8
+    ConstString(str) => str.length() * 8
   }
 }
 
 pub(all) struct PortSpec {
-  id: UInt
+  id: Int
   direction: @parse.PortDirection
 }
 
 pub(all) struct Wire {
   name: Id
-  width: UInt
+  width: Int
   port: PortSpec?
   attributes: Map[Id, Constant]
   mod: Module
@@ -73,15 +73,15 @@ pub(all) struct Wire {
 pub(all) enum Signal {
   SigConst(Constant)
   SigWire(Wire)
-  SigChunk(signal~: Signal, offset~: UInt, width~: UInt)
+  SigChunk(signal~: Signal, offset~: Int, width~: Int)
   SigConcat(Array[Signal])
 }
 
-fn sum(iter: Iter[UInt]) -> UInt {
+fn sum(iter: Iter[Int]) -> Int {
   iter.fold(fn(a, b) { a + b }, init=0)
 }
 
-pub fn size(self: Signal) -> UInt {
+pub fn size(self: Signal) -> Int {
   match self {
     SigConst(c) => c.size()
     SigWire(w) => w.width
@@ -111,7 +111,7 @@ pub fn Module::new(name: Id) -> Module {
   { name, wires: {}, cells: {}, attributes: {}, parameters: {}, connections: [] }
 }
 
-pub fn add_wire(self: Module, name~: Id, width~: UInt, port~: PortSpec? = None, attributes~: Map[Id, Constant] = {}) -> Wire!RTLILError {
+pub fn add_wire(self: Module, name~: Id, width~: Int, port~: PortSpec? = None, attributes~: Map[Id, Constant] = {}) -> Wire!RTLILError {
   if self.wires.contains(name) {
     raise WireAlreadyDeclared(name~)
   }

@@ -10,7 +10,7 @@ enum TokenType {
   Module; Let; Logic; In; For
   And; Or; Not; Xor; Nand; Nor; Xnor
   // literals
-  Identifier(String); Natural(value~: UInt, width~: UInt?)
+  Identifier(String); Natural(value~: Int, width~: Int?)
 } derive(Eq, Show)
 
 pub(readonly) struct Span {

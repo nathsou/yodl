@@ -1,6 +1,6 @@
 
 pub(all) struct Serializer {
-  autoidx: UInt
+  autoidx: Int
   modules: Map[String, Module]
   builder: StringBuilder
   mut indent: Int
@@ -11,7 +11,7 @@ fn write(self: Serializer, s: String) -> Unit {
   self.builder.write_string(s)
 }
 
-pub fn Serializer::new(autoidx~: UInt, modules~: Map[String, Module]) -> Serializer {
+pub fn Serializer::new(autoidx~: Int, modules~: Map[String, Module]) -> Serializer {
   { autoidx, modules, builder: StringBuilder::new(), indent: 0 }
 }
 

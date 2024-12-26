@@ -48,7 +48,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
     Natural(_) => expr
     Identifier(name~, span~, ty~) => {
       match self.genvars.resolve(name) {
-        Some(value) => @parse.Expr::Natural(value=value.reinterpret_as_uint(), width=None, span~, ty~)
+        Some(value) => @parse.Expr::Natural(value=value, width=None, span~, ty~)
         None => match self.names.resolve(name) {
           Some(unique_name) => @parse.Expr::Identifier(name=unique_name.to_string(), span~, ty~)
           None => expr

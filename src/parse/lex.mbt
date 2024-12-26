@@ -93,14 +93,14 @@ fn parse_identifier(self: Lexer) -> String {
 
 let zero_ascii: Int = '0'.to_int()
 
-fn parse_digit(c: Char) -> UInt {
-  (c.to_int() - zero_ascii).reinterpret_as_uint()
+fn parse_digit(c: Char) -> Int {
+  c.to_int() - zero_ascii
 }
 
-fn parse_uint(s: String) -> UInt {
+fn parse_uint(s: String) -> Int {
   // assumes the string only contains (base-10) digits
-  let mut n: UInt = 0
-  let p: UInt = 10
+  let mut n: Int = 0
+  let p: Int = 10
 
   for c in s {
     n = n * p + parse_digit(c)
@@ -109,7 +109,7 @@ fn parse_uint(s: String) -> UInt {
   n
 }
 
-fn parse_integer(self: Lexer) -> (UInt, UInt?) {
+fn parse_integer(self: Lexer) -> (Int, Int?) {
   let builder = StringBuilder::new()
   let mut width = None
 
