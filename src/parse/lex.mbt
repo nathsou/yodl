@@ -247,6 +247,10 @@ fn next(self: Lexer) -> LexerResult[Token] {
         Ok(Bang)
       }
     }
+    '?' => {
+      self.advance()
+      Ok(QuestionMark)
+    }
     '=' => {
       self.advance()
       if self.consumes('=') {

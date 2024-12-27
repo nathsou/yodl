@@ -245,6 +245,17 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
         Spread(span~, ..) => {
             raise SpreadOutsideVector(span~)
         }
+        Ternary(cond~, then~, else_~, span~, ..) => {
+            let cond_ty = self.check_expr!(cond, env)
+            let then_ty = self.check_expr!(then, env)
+            let else_ty = self.check_expr!(else_, env)
+
+            let _ = unify!(cond_ty, @parse.Logic, span~)
+            let ty = self.resolve_ty!(then_ty, span~)
+            let _ = unify!(ty, else_ty, span~)
+
+            ty
+        }
     }
 
     expr.set_ty(ty)

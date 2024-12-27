@@ -45,6 +45,7 @@ pub impl Show for BinaryOp with output(op, logger) {
     Geq => ">="
     Shl => "<<"
     Shr => ">>"
+    Ternary => "?:"
     And => "and"
     Or => "or"
     Xor => "xor"
@@ -180,6 +181,15 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
     Spread(expr~, ..) => {
       self.write("...")
       self.emit_expr(expr)
+    }
+    Ternary(cond~, then~, else_~, ..) => {
+      self.write("(")
+      self.emit_expr(cond)
+      self.write(" ? ")
+      self.emit_expr(then)
+      self.write(" : ")
+      self.emit_expr(else_)
+      self.write(")")
     }
   }
 }

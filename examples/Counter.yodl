@@ -22,10 +22,11 @@ module Reg<N>(
 module Top(
     clk: logic,
     sw: logic[16],
+    btn_c: logic,
 ) -> (
     led: logic[16],
 ) {
     let counter = Reg<32>(clk: clk);
-    counter.d = (counter.q + sw)[31:0];
+    counter.d = btn_c ? 32'0 : (counter.q + sw)[31:0];
     led = counter.q[31:16];
 }

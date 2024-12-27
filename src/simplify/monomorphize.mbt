@@ -161,6 +161,12 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
       let mono_expr = self.monomorphize_expr!(expr, params_env~)
       @parse.Expr::Spread(expr=mono_expr, span~, ty~)
     }
+    Ternary(cond~, then~, else_~, span~, ty~) => {
+      let mono_cond = self.monomorphize_expr!(cond, params_env~)
+      let mono_then = self.monomorphize_expr!(then, params_env~)
+      let mono_else = self.monomorphize_expr!(else_, params_env~)
+      @parse.Expr::Ternary(cond=mono_cond, then=mono_then, else_=mono_else, span~, ty~)
+    }
   }
 
   res.constant_folding!()

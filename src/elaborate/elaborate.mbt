@@ -37,9 +37,7 @@ fn bits(bits: Array[@rtlil.BinaryDigit]) -> Value {
 fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value!Error {
   match ty {
     Nat => Value::Signal(@rtlil.SigConst(ConstValue(bits=[Z], width=32)))
-    Logic => {
-      bits([X])
-    }
+    Logic => bits([X])
     Vector(ty~, len~) => match ty {
       Logic => {
         let wire = mod.add_wire!(
@@ -194,6 +192,7 @@ fn binary_op_cell(
         Nand => "nand"
         Nor => "nor"
         Xnor => "xnor"
+        Ternary => raise Unsupported(message="Ternary operator is not a binop", span~)
       }
 
       let wy = op.output_width(wa, wb)
@@ -439,6 +438,38 @@ fn elaborate_expr(
     }
     Spread(span~, ..) => {
       raise Unreachable(message="Spread operator outside Vector", span~)
+    }
+    Ternary(cond~, then~, else_~, span~, ..) => {
+      let cell_type = "mux"
+      let width = expr_width!(then).or_error!(Unreachable(message="Unsized ternary expression operand", span=expr.span()))
+
+      let output = mod.add_wire!(
+        name=GenId("\{cell_type}_y_\{self.next_genidx()}"),
+        width~,
+        port=None,
+        attributes=src_attribute(span),
+      )
+      
+      let _ = mod.add_cell!(
+        type_=GenId(cell_type),
+        name=GenId("\{cell_type}_\{self.next_genidx()}"),
+        parameters={
+          let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
+          parameters[@rtlil.PubId("WIDTH")] = @rtlil.ConstInteger(width)
+          parameters
+        },
+        connections={
+          let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
+          connections[@rtlil.PubId("A")] = self.elaborate_expr!(else_, mod).expect_signal!(then.span())
+          connections[@rtlil.PubId("B")] = self.elaborate_expr!(then, mod).expect_signal!(else_.span())
+          connections[@rtlil.PubId("S")] = self.elaborate_expr!(cond, mod).expect_signal!(cond.span())
+          connections[@rtlil.PubId("Y")] = SigWire(output)
+          connections
+        },
+        attributes=src_attribute(span),
+      )
+
+      Value::Signal(SigWire(output))
     }
   }
 }

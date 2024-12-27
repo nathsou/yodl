@@ -8,6 +8,7 @@ pub(readonly) enum BinaryOp {
   Add; Sub; Mul; Div; Mod
   Equ; Neq; Lss; Gtr; Leq; Geq
   Shl; Shr
+  Ternary
 }
 
 fn precedence(self: BinaryOp) -> Int {
@@ -23,6 +24,7 @@ fn precedence(self: BinaryOp) -> Int {
     Xnor => 4
     Equ | Neq => 3
     Lss | Gtr | Leq | Geq => 2
+    Ternary => 1
   }
 }
 
@@ -37,6 +39,7 @@ pub(all) enum Expr {
   Instance(name~: String, params~: Array[Expr], ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
+  Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
 }
 
 pub(all) enum Stmt {
@@ -131,6 +134,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Instance(ty~, ..) => ty
     Vector(ty~, ..) => ty
     Spread(ty~, ..) => ty
+    Ternary(ty~, ..) => ty
   }
 }
 
@@ -146,6 +150,7 @@ pub fn span(self: Expr) -> Span {
     Instance(span~, ..) => span
     Vector(span~, ..) => span
     Spread(span~, ..) => span
+    Ternary(span~, ..) => span
   }
 }
 
@@ -165,6 +170,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Instance(_) => false
     Vector(_) => false
     Spread(_) => false
+    Ternary(_) => false
   }
 }
 
@@ -185,6 +191,12 @@ pub fn constant_folding(self: Expr) -> Expr!Error {
 
             Natural(value=value, width=None, span~, ty~)
           }
+          _ => expr
+        }
+      }
+      Ternary(cond~, then~, else_~, ..) => {
+        match cond.expect_int?() {
+          Ok(cond) => if cond != 0 { then } else { else_ }
           _ => expr
         }
       }
@@ -268,5 +280,6 @@ pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
     Nand => max(wa, wb)
     Nor => max(wa, wb)
     Xnor => max(wa, wb)
+    Ternary => max(wa, wb)
   }
 }

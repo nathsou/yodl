@@ -106,9 +106,20 @@ fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr!ParserError {
           let start_idx = self.index
           self.advance() // consume the operator
 
-          // left-associative
-          let rhs = self.precedence_climbing!(precedence + 1)
-          lhs = Binary(op~, lhs~, rhs~, span=self.span(start_idx), ty={ val: None })
+          match op {
+            Ternary => {
+              let then = self.parse_expr!()
+              self.expect!(Colon, start_idx)
+              let else_ = self.precedence_climbing!(precedence)
+              lhs = Ternary(cond=lhs, then~, else_~, ty={ val: None }, span=self.span(start_idx))
+            }
+            _ => {
+              // left-associative
+              let rhs = self.precedence_climbing!(precedence + 1)
+              lhs = Binary(op~, lhs~, rhs~, span=self.span(start_idx), ty={ val: None })
+            }
+          }
+
         } else {
           break
         }

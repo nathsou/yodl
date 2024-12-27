@@ -101,6 +101,12 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
       let simplified_expr = self.simplify_expr!(expr)
       @parse.Expr::Spread(expr=simplified_expr, span~, ty~)
     }
+    Ternary(cond~, then~, else_~, span~, ty~) => {
+      let simplified_cond = self.simplify_expr!(cond)
+      let simplified_then = self.simplify_expr!(then)
+      let simplified_else = self.simplify_expr!(else_)
+      @parse.Expr::Ternary(cond=simplified_cond, then=simplified_then, else_=simplified_else, span~, ty~)
+    }
   }
 
   res.constant_folding!()

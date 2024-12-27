@@ -55,6 +55,12 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!Error) -> Expr!Error {
       let expr = rewrite_expr!(expr, rewrite)
       Spread(expr~, span~, ty~)
     }
+    Ternary(cond~, then~, else_~, span~, ty~) => {
+      let cond = rewrite_expr!(cond, rewrite)
+      let then = rewrite_expr!(then, rewrite)
+      let else_ = rewrite_expr!(else_, rewrite)
+      Ternary(cond~, then~, else_~, span~, ty~)
+    }
   }
 
   (rewrite)!(res)
