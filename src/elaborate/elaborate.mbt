@@ -60,7 +60,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
         Value::Vector(val)
       }
     }
-    Instance({ name, span, .. }) => {
+    Instance(sig={ name, span, .. }, params=_) => {
       let inst: @parse.Expr = @parse.Expr::Instance(
         name~,
         params=[],
@@ -114,7 +114,7 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   for input in mod.inputs {
     let _ = mod_def.add_wire!(
       name=PubId(input.name),
-      width=input.ty.width(params_env=None).or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
+      width=input.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
       port=Some({ direction: Input, id: port_id }),
       attributes=src_attribute(input.span),
     )
@@ -125,7 +125,7 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   for output in mod.outputs {
     let _ = mod_def.add_wire!(
       name=PubId(output.name),
-      width=output.ty.width(params_env=None).or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
+      width=output.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
       port=Some({ direction: Output, id: port_id }),
       attributes=src_attribute(output.span),
     )
@@ -159,7 +159,7 @@ fn declare(self: Elaborator, name: String, value: Value, span~: @parse.Span) -> 
 }
 
 fn expr_width(expr: @parse.Expr) -> Int?!Error {
-  expr.ty().val.or_error!(Unreachable(message="Untyped expression", span=expr.span())).width(params_env=None)
+  expr.ty().val.or_error!(Unreachable(message="Untyped expression", span=expr.span())).width()
 }
 
 fn binary_op_cell(
@@ -270,8 +270,8 @@ fn elaborate_expr(
         raise Unreachable(message="Parameterized instance after simplification", span~)
       }
 
-      let (mod_def_wires, param_names) = match self.modules[name] {
-        Some(mod) => (mod.wires, [])
+      let (mod_def_wires, param_names, attributes) = match self.modules[name] {
+        Some(mod) => (mod.wires, [], {})
         None => match self.declared_modules[name] {
           Some(sig) => {
             // TODO: Clean up (by creating a port signature instead of artificial wires)
@@ -288,7 +288,7 @@ fn elaborate_expr(
               for port_id, port in ports {
                 wires[@rtlil.PubId(port.name)] = {
                   name: @rtlil.PubId(port.name),
-                  width: port.ty.width(params_env=Some(params_env)).or_error!(Unsupported(message="Only logic types are supported", span=port.span)),
+                  width: port.ty.substitute(params_env~).width().or_error!(Unsupported(message="Only logic types are supported", span=port.span)),
                   port: Some({ direction: dir, id: port_offset + port_id }),
                   attributes: src_attribute(port.span),
                   mod: mod,
@@ -299,7 +299,7 @@ fn elaborate_expr(
             define_ports!(sig.inputs, Input, 0)
             define_ports!(sig.outputs, Output, sig.inputs.length())
 
-            (wires, sig.params)
+            (wires, sig.params, sig.attributes)
           }
           None => raise ElaboratorError::UnknownModule(name~, span~)
         }
@@ -316,7 +316,7 @@ fn elaborate_expr(
           Some(_) => {
             if not(ports.contains(name.inner())) {
               let wire = mod.add_wire!(
-                name=GenId("\{cell_name.inner()}_\{name.inner()}"),
+                name=GenId("\{cell_name.inner()}.\{name.inner()}"),
                 width=wire.width,
                 port=None,
                 attributes=src_attribute(span),
@@ -346,21 +346,95 @@ fn elaborate_expr(
         connections[id] = wire
       }
 
-      let cell = mod.add_cell!(
-        name=cell_name,
-        type_=if name.starts_with("$") { GenId(name.substring(start=1)) } else { PubId(name) },
-        attributes=src_attribute(span),
-        connections~,
-        parameters={
-          let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
-
-          for idx, param in params {
-            parameters[@rtlil.PubId(param_names[idx])] = @rtlil.ConstInteger(param.expect_int!())
+      let cell = if attributes.contains("internal") {
+        fn port_wire(port_name: String) -> @rtlil.Signal! {
+          match connections[@rtlil.PubId(port_name)] {
+            Some(sig) => sig
+            None => raise UnknownModulePort(module_name=name, port_name~, span~)
           }
-
-          parameters
         }
-      )
+
+        match name {
+          "Reg" => {
+            let width = params[0].expect_int!()
+            let uses_reset = ports.contains("rst")
+            let uses_enable = ports.contains("en")
+
+            let cell_type = match (uses_reset, uses_enable) {
+              (false, false) => "dff"
+              (true, false) => "adff"
+              (false, true) => "dffe"
+              (true, true) => "adffe"
+            }
+
+            mod.add_cell!(
+              type_=GenId(cell_type),
+              name=cell_name,
+              parameters={
+                let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
+                parameters[@rtlil.PubId("CLK_POLARITY")] = @rtlil.ConstInteger(1)
+                parameters[@rtlil.PubId("WIDTH")] = @rtlil.ConstInteger(width)
+
+                if uses_reset {
+                  parameters[@rtlil.PubId("ARST_POLARITY")] = @rtlil.ConstInteger(1)
+                  parameters[@rtlil.PubId("ARST_VALUE")] = @rtlil.ConstInteger(0)
+                }
+
+                if uses_enable {
+                  parameters[@rtlil.PubId("EN_POLARITY")] = @rtlil.ConstInteger(1)
+                }
+
+                parameters
+              },
+              connections={
+                let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
+                connections[@rtlil.PubId("CLK")] = port_wire!("clk")
+                connections[@rtlil.PubId("D")] = port_wire!("d")
+                connections[@rtlil.PubId("Q")] = port_wire!("q")
+
+                if uses_reset {
+                  connections[@rtlil.PubId("ARST")] = port_wire!("rst")
+                }
+
+                if uses_enable {
+                  connections[@rtlil.PubId("EN")] = port_wire!("en")
+                }
+
+                connections
+              },
+              attributes=src_attribute(span),
+            )
+          }
+          _ => raise Unsupported(message="Unknown internal module \"\{name}\"", span~)
+        }
+      } else {
+        let cell_type = match attributes["alias"] {
+          Some({ args: [String(alias_name)], .. }) => {
+            if alias_name.starts_with("$") {
+              @rtlil.GenId(alias_name.substring(start=1))
+            } else {
+              @rtlil.PubId(alias_name)
+            }
+          }
+          _ => @rtlil.PubId(name)
+        }
+
+        mod.add_cell!(
+          name=cell_name,
+          type_=cell_type,
+          attributes=src_attribute(span),
+          connections~,
+          parameters={
+            let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
+
+            for idx, param in params {
+              parameters[@rtlil.PubId(param_names[idx])] = @rtlil.ConstInteger(param.expect_int!())
+            }
+
+            parameters
+          }
+        )
+      }
 
       Value::Instance(cell)
     }
@@ -369,7 +443,7 @@ fn elaborate_expr(
 
       match val {
         Instance(cell) => {
-          match mod.wires[GenId("\{cell.name.inner()}_\{port}")] {
+          match mod.wires[GenId("\{cell.name.inner()}.\{port}")] {
             Some(wire) => Value::Signal(SigWire(wire))
             None => raise UnknownModulePort(module_name=cell.name.inner(), port_name=port, span~)
           }

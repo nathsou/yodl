@@ -28,6 +28,8 @@ type! TypeCheckerError {
     SpreadOnNonVector(span~: @parse.Span)
     SpreadOutsideVector(span~: @parse.Span)
     UnsizedOperand(span~: @parse.Span)
+    InvalidAttribute(name~: String, span~: @parse.Span)
+    InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], span~: @parse.Span)
 } derive(Show)
 
 fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
@@ -88,10 +90,10 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
         Logic => Logic
         Nat => Nat
         Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty!(inner_ty, span~), len~)
-        Instance(mod) => Instance(mod)
+        Instance(_) => ty
         Name(name~) => {
             match self.modules[name] {
-                Some(mod) => Instance(mod)
+                Some(sig) => Instance(sig~, params={})
                 None => raise TypeCheckerError::UnknownModule(name~, span~)
             }
         }
@@ -118,8 +120,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
             let ty_lhs = self.check_expr!(lhs, env)
             let ty_rhs = self.check_expr!(rhs, env)
 
-            let wa = ty_lhs.width(params_env=None).or_error!(UnsizedOperand(span~))
-            let wb = ty_rhs.width(params_env=None).or_error!(UnsizedOperand(span~))
+            let wa = ty_lhs.width().or_error!(UnsizedOperand(span~))
+            let wb = ty_rhs.width().or_error!(UnsizedOperand(span~))
             let wy = op.output_width(wa, wb)
 
             match wy {
@@ -173,22 +175,26 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
         }
         PortAccess(expr~, port~, span~, ..) => {
             match self.check_expr!(expr, env) {
-                Instance(mod) => {
-                    match mod.get_port(port) {
-                        Some(port_def) => port_def.ty
-                        None => raise UnknownModulePort(module_name=mod.name, port_name=port, span~)
+                Instance(sig~, params~) => {
+                    match sig.get_port(port) {
+                        Some(port_def) => port_def.ty.substitute(params_env=params)
+                        None => raise UnknownModulePort(module_name=sig.name, port_name=port, span~)
                     }
                 }
                 _ => raise PortAccessOnNonInstance(span~)
             }
         }
-        Instance(name~, ports~, span~, ..) => {
+        Instance(name~, params~, ports~, span~, ..) => {
             match self.modules[name] {
-                Some(mod) => {
+                Some(sig) => {
                     let subst = {}
 
+                    for idx, param in params {
+                        subst[sig.params[idx]] = param.expect_int!()
+                    }
+
                     for port_name, expr in ports {
-                        match mod.get_port(port_name) {
+                        match sig.get_port(port_name) {
                             Some(port_def) => {
                                 let expr_ty = self.check_expr!(expr, env)
                                 let _ = unify!(port_def.ty, expr_ty, span~, subst~)
@@ -197,7 +203,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
                         }
                     }
 
-                    @parse.Type::Instance(mod)
+                    @parse.Type::Instance(sig~, params=subst)
                 }
                 None => raise TypeCheckerError::UnknownModule(name~, span~)
             }
@@ -340,10 +346,47 @@ fn ensure_valid_port_type(ty: @parse.Type, span: @parse.Span) -> Unit!TypeChecke
     }
 }
 
+enum AttributeValueType {
+    Str
+    // Int
+}
+
+let attribute_signatures: Map[String, Array[AttributeValueType]] = {
+    "internal": [],
+    "alias": [Str],
+}
+
+fn check_attribute(attr: @parse.Attribute) -> Unit!TypeCheckerError {
+    match attribute_signatures[attr.name] {
+        Some(expected) => {
+            if expected.length() != attr.args.length() {
+                raise InvalidAttributeArgs(name=attr.name, args=attr.args, span=attr.span)
+            }
+
+            for arg, expected in @utils.zip(attr.args, expected) {
+                match (arg, expected) {
+                    // (Int(_), Int) => ()
+                    (String(_), Str) => ()
+                    _ => raise InvalidAttributeArgs(name=attr.name, args=attr.args, span=attr.span)
+                }
+            }
+        }
+        None => raise InvalidAttribute(name=attr.name, span=attr.span)
+    }
+}
+
+fn check_attributes(attrs: Map[String, @parse.Attribute]) -> Unit!TypeCheckerError {
+    for attr in attrs.values() {
+        check_attribute!(attr)
+    }
+}
+
 pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
     match decl {
-        Module({ name, params, inputs, outputs, body, span }) => {
+        Module({ name, params, attributes, inputs, outputs, body, span }) => {
             let env = Scope::new()
+
+            check_attributes!(attributes)
 
             for input in inputs {
                 ensure_valid_port_type!(input.ty, input.span)
@@ -362,12 +405,14 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
             self.modules[name] = {
                 name,
                 params,
+                attributes,
                 inputs,
                 outputs,
                 span,
             }
         }
         ModuleDeclaration(sig) => {
+            check_attributes!(sig.attributes)
             self.modules[sig.name] = sig
         }
     }

@@ -37,25 +37,15 @@ module Adder<N>(
     carry_out = carry_chain[N];
 }
 
-declare module $dff<WIDTH, CLK_POLARITY>(
-    CLK: logic,
-    D: logic[WIDTH],
-) -> (
-    Q: logic[WIDTH],
-);
-
-module Reg<N>(
+@internal
+declare module Reg<N>(
     clk: logic,
     d: logic[N],
+    en?: logic,
+    rst?: logic,
 ) -> (
     q: logic[N],
-) {
-    $dff<N, 1>(
-        CLK: clk,
-        D: d,
-        Q: q,
-    );
-}
+);
 
 // Nexys A7
 module Top(

@@ -77,16 +77,12 @@ pub(all) enum Signal {
   SigConcat(Array[Signal])
 }
 
-fn sum(iter: Iter[Int]) -> Int {
-  iter.fold(fn(a, b) { a + b }, init=0)
-}
-
 pub fn size(self: Signal) -> Int {
   match self {
     SigConst(c) => c.size()
     SigWire(w) => w.width
     SigChunk(width~, ..) => width
-    SigConcat(signals) => sum(signals.iter().map(fn(sig) { sig.size() }))
+    SigConcat(signals) => @utils.sum(signals.iter().map(fn(sig) { sig.size() }))
   }
 }
 

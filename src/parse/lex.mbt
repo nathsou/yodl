@@ -26,7 +26,7 @@ fn is_digit(c: Char) -> Bool {
 }
 
 fn is_alpha(c: Char) -> Bool {
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$'
+  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
 }
 
 fn is_alphanumeric(c: Char) -> Bool {
@@ -288,9 +288,25 @@ fn next(self: Lexer) -> LexerResult[Token] {
       self.advance()
       Ok(Percent)
     }
+    '@' => {
+      self.advance()
+      Ok(At)
+    }
     '\'' => {
       self.advance()
       Ok(SingleQuote)
+    }
+    '"' => {
+      let builder = StringBuilder::new()
+      self.advance()
+
+      while self.peek() != '"' {
+        builder.write_char(self.peek())
+        self.advance()
+      }
+
+      self.advance()
+      Ok(StringLiteral(builder.to_string()))
     }
     _ => {
       if is_digit(char) {

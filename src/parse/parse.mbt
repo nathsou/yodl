@@ -360,9 +360,10 @@ fn parse_type(self: Parser) -> Type!ParserError {
 fn parse_port(self: Parser, dir~: PortDirection) -> Port!ParserError {
   let start_idx = self.index
   let name = self.parse_identifier!()
+  let optional = self.consumes(QuestionMark)
   self.expect!(Colon, start_idx)
   let ty = self.parse_type!()
-  { name, ty, dir, span: self.span(start_idx) }
+  { name, ty, dir, optional, span: self.span(start_idx) }
 }
 
 fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]!ParserError {
@@ -424,7 +425,62 @@ fn parse_module_parameter_list[T](self: Parser, parse_elem: (Parser) -> T!Parser
   }
 }
 
-fn parse_module_signature(self: Parser) -> ModuleSignature!ParserError {
+fn parse_attribute_value(self: Parser) -> AttributeValue!ParserError {
+  let token = self.peek()
+  let start_idx = self.index
+
+  match token {
+    StringLiteral(str) => {
+      self.advance()
+      AttributeValue::String(str)
+    }
+    Natural(value~, ..) => {
+      self.advance()
+      AttributeValue::Int(value)
+    }
+    _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
+  }
+}
+
+fn parse_attribute(self: Parser) -> Attribute!ParserError {
+  let start_idx = self.index
+  self.expect!(At, start_idx)
+  let name = self.parse_identifier!()
+
+  let args = if self.consumes(Lparen) {
+    let args = []
+
+    while not(self.matches(Rparen)) {
+      let val = self.parse_attribute_value!()
+      args.push(val)
+
+      if not(self.consumes(Comma)) {
+        break
+      }
+    }
+
+    self.expect!(Rparen, start_idx)
+
+    args
+  } else {
+    []
+  }
+
+  { name, args, span: self.span(start_idx) }
+}
+
+fn parse_attributes(self: Parser) -> Map[String, Attribute]!ParserError {
+  let attrs = {}
+
+  while self.matches(At) {
+    let attr = self.parse_attribute!()
+    attrs[attr.name] = attr
+  }
+
+  attrs
+}
+
+fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> ModuleSignature!ParserError {
   let start_idx = self.index
   self.expect!(Module, start_idx)
   let name = self.parse_identifier!()
@@ -433,12 +489,12 @@ fn parse_module_signature(self: Parser) -> ModuleSignature!ParserError {
   self.expect!(RightThinArrow, start_idx)
   let outputs = self.parse_port_list!(dir=Output)
 
-  { name, params, inputs, outputs, span: self.span(start_idx) }
+  { name, params, attributes, inputs, outputs, span: self.span(start_idx) }
 }
 
-fn parse_module_definition(self: Parser) -> ModuleDecl!ParserError {
+fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl!ParserError {
   let start_idx = self.index
-  let { name, params, inputs, outputs, .. } = self.parse_module_signature!()
+  let { name, params, attributes, inputs, outputs, .. } = sig
   self.expect!(Lbrace, start_idx)
   let body = []
 
@@ -447,19 +503,26 @@ fn parse_module_definition(self: Parser) -> ModuleDecl!ParserError {
     body.push(stmt)
   }
 
-  { name, params, inputs, outputs, body, span: self.span(start_idx) }
+  { name, params, attributes, inputs, outputs, body, span: self.span(start_idx) }
 }
 
+fn parse_module_def_or_decl(self: Parser) -> Decl!ParserError {
+  let start_idx = self.index
+  let attributes = self.parse_attributes!()
+  let is_declaration = self.consumes(Declare)
+  let sig = self.parse_module_signature!(attributes~)
+
+  if is_declaration {
+    self.expect!(Semicolon, start_idx)
+    ModuleDeclaration(sig)
+  } else {
+    Module(self.parse_module_definition!(sig~))
+  }
+}
 
 fn parse_decl(self: Parser) -> Decl!ParserError {
   match self.peek() {
-    Module => Module(self.parse_module_definition!())
-    Declare => {
-      self.advance()
-      let sig = self.parse_module_signature!()
-      self.expect!(Semicolon, self.index)
-      ModuleDeclaration(sig)
-    }
+    At | Declare | Module => self.parse_module_def_or_decl!()
     token => raise ExpectedDecl(received=token, span=self.span(self.index))
   }
 }

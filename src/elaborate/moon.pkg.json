@@ -5,6 +5,7 @@
             "alias": "parse",
             "value": []
         },
-        "nathsou/yodl/rtlil"
+        "nathsou/yodl/rtlil",
+        "nathsou/yodl/utils"
     ]
 }

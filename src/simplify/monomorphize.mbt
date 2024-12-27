@@ -238,6 +238,7 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
       name: port.name,
       ty: self.monomorphize_type!(port.ty, params_env~),
       dir: port.dir,
+      optional: port.optional,
       span: port.span,
     })
   }
@@ -247,6 +248,7 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
       name: port.name,
       ty: self.monomorphize_type!(port.ty, params_env~),
       dir: port.dir,
+      optional: port.optional,
       span: port.span,
     })
   }
@@ -270,6 +272,7 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
       }
     },
     params: [],
+    attributes: mod.attributes,
     inputs: mono_inputs,
     outputs: mono_outputs,
     body: mono_body,

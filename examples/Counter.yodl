@@ -1,23 +1,13 @@
 
-declare module $dff<WIDTH, CLK_POLARITY>(
-    CLK: logic,
-    D: logic[WIDTH],
-) -> (
-    Q: logic[WIDTH],
-);
-
-module Reg<N>(
+@internal
+declare module Reg<N>(
     clk: logic,
     d: logic[N],
+    en?: logic,
+    rst?: logic,
 ) -> (
     q: logic[N],
-) {
-    $dff<N, 1>(
-        CLK: clk,
-        D: d,
-        Q: q,
-    );
-}
+);
 
 module Top(
     clk: logic,
@@ -26,7 +16,7 @@ module Top(
 ) -> (
     led: logic[16],
 ) {
-    let counter = Reg<32>(clk: clk);
-    counter.d = btn_c ? 32'0 : (counter.q + sw)[31:0];
+    let counter = Reg<32>(clk: clk, rst: btn_c);
+    counter.d = (counter.q + sw)[31:0];
     led = counter.q[31:16];
 }

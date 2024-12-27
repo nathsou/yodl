@@ -1,1 +1,5 @@
-{}
+{
+    "import": [
+        "nathsou/yodl/utils"
+    ]
+}

@@ -50,6 +50,17 @@ pub(all) enum Stmt {
   Scope(body~: Array[Stmt], span~: Span)
 }
 
+pub(readonly) enum AttributeValue {
+  String(String)
+  Int(Int)
+}
+
+pub(readonly) struct Attribute {
+  name: String
+  args: Array[AttributeValue]
+  span: Span
+}
+
 pub(all) struct ForRange {
   start: Expr
   end: Expr
@@ -59,6 +70,7 @@ pub(all) struct ForRange {
 pub(all) struct ModuleSignature {
     name: String
     params: Array[String]
+    attributes: Map[String, Attribute]
     inputs: Array[Port]
     outputs: Array[Port]
     span: Span
@@ -93,7 +105,7 @@ pub(all) enum Type {
   Nat
   Logic
   Vector(ty~: Type, len~: VectorLen)
-  Instance(ModuleSignature)
+  Instance(sig~: ModuleSignature, params~: Map[String, Int])
   Name(name~: String)
 } derive(Eq)
 
@@ -106,11 +118,13 @@ pub(all) struct Port {
   ty: Type
   dir: PortDirection
   span: Span
+  optional: Bool
 }
 
 pub(all) struct ModuleDecl {
     name: String
     params: Array[String]
+    attributes: Map[String, Attribute]
     inputs: Array[Port]
     outputs: Array[Port]
     body: Array[Stmt]
@@ -228,20 +242,46 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
   None
 }
 
-pub fn width(self: Type, params_env~: Map[String, Int]?) -> Int? {
+pub fn width(self: Type) -> Int? {
   match self {
     Nat => None
     Logic => Some(1)
     Vector(len=Fixed(len), ..) => Some(len)
-    Vector(len=Dynamic(Identifier(name~, ..)), ..) => {
-      match params_env {
-        Some(env) => env[name]
-        None => None
-      }
-    }
     Vector(..) => None
     Instance(_) => None
     Name(_) => None
+  }
+}
+
+pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
+  match self {
+    Nat => Nat
+    Logic => Logic
+    Vector(ty~, len=Dynamic(Identifier(name~, ..)) as len) => {
+      Vector(ty=substitute(ty, params_env~), len=match params_env[name] {
+        Some(value) => Fixed(value)
+        None => len
+      })
+    }
+    Vector(ty~, len~) => Vector(ty=substitute(ty, params_env~), len~)
+    Instance(sig~, params~) => {
+      let new_params: Map[String, Int] = {}
+
+      for name, value in params {
+        new_params[name] = match params_env[name] {
+          Some(new_value) => new_value
+          None => value
+        }
+      }
+
+      Instance(sig~, params=new_params)
+    }
+    Name(name~) => {
+      match params_env[name] {
+        Some(_) => Nat
+        None => Name(name~)
+      }
+    }
   }
 }
 
@@ -249,20 +289,17 @@ pub fn signature(self: ModuleDecl) -> ModuleSignature {
   {
     name: self.name,
     params: self.params,
+    attributes: self.attributes,
     inputs: self.inputs,
     outputs: self.outputs,
     span: self.span,
   }
 }
 
-fn max(a: Int, b: Int) -> Int {
-  if a > b { a } else { b }
-}
-
 pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
   match self {
-    Add => max(wa, wb) + 1
-    Sub => max(wa, wb)
+    Add => @utils.max(wa, wb) + 1
+    Sub => @utils.max(wa, wb)
     Mul => wa + wb
     Div => wa
     Mod => wb
@@ -274,12 +311,12 @@ pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
     Leq => 1
     Shl => wa
     Shr => wa
-    And => max(wa, wb)
-    Or => max(wa, wb)
-    Xor => max(wa, wb)
-    Nand => max(wa, wb)
-    Nor => max(wa, wb)
-    Xnor => max(wa, wb)
-    Ternary => max(wa, wb)
+    And => @utils.max(wa, wb)
+    Or => @utils.max(wa, wb)
+    Xor => @utils.max(wa, wb)
+    Nand => @utils.max(wa, wb)
+    Nor => @utils.max(wa, wb)
+    Xnor => @utils.max(wa, wb)
+    Ternary => @utils.max(wa, wb)
   }
 }

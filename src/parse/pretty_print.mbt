@@ -297,7 +297,7 @@ pub impl Show for Type with output(ty, logger) {
 
       logger.write_char(']')
     }
-    Instance({ name, .. }) => {
+    Instance(sig={ name, .. }, params=_) => {
       logger.write_string(name)
     }
     Name(name~) => {
@@ -308,6 +308,11 @@ pub impl Show for Type with output(ty, logger) {
 
 pub impl Show for Port with output(port, logger) {
   logger.write_string(port.name)
+
+  if port.optional {
+    logger.write_string("?")
+  }
+
   logger.write_string(": ")
   logger.write_string(port.ty.to_string())
 }
@@ -327,7 +332,40 @@ fn emit_port_list(self: Emitter, ports: Array[Port]) -> Unit {
   self.write(")")
 }
 
+pub impl Show for AttributeValue with output(val, logger) {
+  match val {
+    String(str) => {
+      logger.write_char('"')
+      logger.write_string(str)
+      logger.write_char('"')
+    }
+    Int(n) => {
+      logger.write_string(n.to_string())
+    }
+  }
+}
+
+pub impl Show for Attribute with output(attr, logger) {
+  logger.write_char('@')
+  logger.write_string(attr.name)
+  if attr.args.length() > 0 {
+    logger.write_iter(
+      attr.args.iter(),
+      prefix="(",
+      sep=", ",
+      suffix=")",
+    )
+  }
+}
+
 fn emit_module_sig(self: Emitter, sig: ModuleSignature) -> Unit {
+  if sig.attributes.size() > 0 {
+    for attr in sig.attributes.values() {
+      self.write(attr.to_string())
+      self.write("\n")
+    }
+  }
+
   self.write("module ")
   self.write(sig.name)
 
@@ -344,8 +382,8 @@ fn emit_module_sig(self: Emitter, sig: ModuleSignature) -> Unit {
 
 pub fn emit_decl(self: Emitter, decl: Decl) -> Unit {
   match decl {
-    Module({ name, params, inputs, outputs, body, span }) => {
-      self.emit_module_sig({ name, params, inputs, outputs, span })
+    Module({ body, .. } as mod) => {
+      self.emit_module_sig(mod.signature())
       self.write(" {\n")
       self.indent += 1
 
