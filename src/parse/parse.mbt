@@ -372,7 +372,7 @@ fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]!ParserError
 
   self.expect!(Lparen, start_idx)
 
-  while not(self.consumes(Rparen)) {
+  while not(self.matches(Rparen)) {
     let port = self.parse_port!(dir~)
     ports.push(port)
 
@@ -380,6 +380,8 @@ fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]!ParserError
       break
     }
   }
+
+  self.expect!(Rparen, start_idx)
 
   ports
 }
@@ -488,13 +490,14 @@ fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> 
   let inputs = self.parse_port_list!(dir=Input)
   self.expect!(RightThinArrow, start_idx)
   let outputs = self.parse_port_list!(dir=Output)
+  let ports = @utils.concat(inputs, outputs)
 
-  { name, params, attributes, inputs, outputs, span: self.span(start_idx) }
+  { name, params, attributes, ports, span: self.span(start_idx) }
 }
 
 fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl!ParserError {
   let start_idx = self.index
-  let { name, params, attributes, inputs, outputs, .. } = sig
+  let { name, params, attributes, ports, .. } = sig
   self.expect!(Lbrace, start_idx)
   let body = []
 
@@ -503,7 +506,7 @@ fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl!Pa
     body.push(stmt)
   }
 
-  { name, params, attributes, inputs, outputs, body, span: self.span(start_idx) }
+  { name, params, attributes, ports, body, span: self.span(start_idx) }
 }
 
 fn parse_module_def_or_decl(self: Parser) -> Decl!ParserError {

@@ -109,28 +109,13 @@ fn src_attribute(span: @parse.Span) -> Map[@rtlil.Id, @rtlil.Constant] {
 fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let mod_def = @rtlil.Module::new(PubId(mod.name))
 
-  let mut port_id: Int = 1
-
-  for input in mod.inputs {
+  for port_id, port in mod.ports {
     let _ = mod_def.add_wire!(
-      name=PubId(input.name),
-      width=input.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
-      port=Some({ direction: Input, id: port_id }),
-      attributes=src_attribute(input.span),
+      name=PubId(port.name),
+      width=port.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
+      port=Some({ direction: port.dir, id: port_id }),
+      attributes=src_attribute(port.span),
     )
-
-    port_id += 1
-  }
-
-  for output in mod.outputs {
-    let _ = mod_def.add_wire!(
-      name=PubId(output.name),
-      width=output.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
-      port=Some({ direction: Output, id: port_id }),
-      attributes=src_attribute(output.span),
-    )
-
-    port_id += 1
   }
 
   for stmt in mod.body {
@@ -270,36 +255,36 @@ fn elaborate_expr(
         raise Unreachable(message="Parameterized instance after simplification", span~)
       }
 
-      let (mod_def_wires, param_names, attributes) = match self.modules[name] {
-        Some(mod) => (mod.wires, [], {})
+      let (port_widths, param_names, attributes) = match self.modules[name] {
+        Some(mod) => {
+          let port_widths = {}
+
+          for wire in mod.wires.values() {
+            match wire.port {
+              Some(_) => {
+                port_widths[wire.name.inner()] = wire.width
+              }
+              _ => ()
+            }
+          }
+
+          (port_widths, [], {})
+        }
         None => match self.declared_modules[name] {
           Some(sig) => {
-            // TODO: Clean up (by creating a port signature instead of artificial wires)
-            let wires: Map[@rtlil.Id, @rtlil.Wire] = {}
-
+            let port_widths = {}
             let params_env = {}
 
-            for idx, param in params {
+            for name, param in @utils.zip(sig.params, params) {
               let val = param.expect_int!()
-              params_env[sig.params[idx]] = val
+              params_env[name] = val
             }
 
-            fn define_ports(ports: Array[@parse.Port], dir: @parse.PortDirection, port_offset: Int) -> Unit!Error {
-              for port_id, port in ports {
-                wires[@rtlil.PubId(port.name)] = {
-                  name: @rtlil.PubId(port.name),
-                  width: port.ty.substitute(params_env~).width().or_error!(Unsupported(message="Only logic types are supported", span=port.span)),
-                  port: Some({ direction: dir, id: port_offset + port_id }),
-                  attributes: src_attribute(port.span),
-                  mod: mod,
-                }
-              }
+            for port in sig.ports {
+              port_widths[port.name] = port.ty.substitute(params_env~).width().or_error!(Unsupported(message="Only logic types are supported", span=port.span))
             }
 
-            define_ports!(sig.inputs, Input, 0)
-            define_ports!(sig.outputs, Output, sig.inputs.length())
-
-            (wires, sig.params, sig.attributes)
+            (port_widths, sig.params, sig.attributes)
           }
           None => raise ElaboratorError::UnknownModule(name~, span~)
         }
@@ -311,26 +296,21 @@ fn elaborate_expr(
       let extra_ports = []
       let cell_name = name_binding.or(GenId("\{name}_\{self.next_genidx()}"))
 
-      for name, wire in mod_def_wires {
-        match wire.port {
-          Some(_) => {
-            if not(ports.contains(name.inner())) {
-              let wire = mod.add_wire!(
-                name=GenId("\{cell_name.inner()}.\{name.inner()}"),
-                width=wire.width,
-                port=None,
-                attributes=src_attribute(span),
-              )
+      for name, width in port_widths {
+        if not(ports.contains(name)) {
+          let wire = mod.add_wire!(
+            name=GenId("\{cell_name.inner()}.\{name}"),
+            width~,
+            port=None,
+            attributes=src_attribute(span),
+          )
 
-              unconnected_wires[@rtlil.PubId(name.inner())] = SigWire(wire)
-            }
-          }
-          _ => ()
+          unconnected_wires[@rtlil.PubId(name)] = SigWire(wire)
         }
       }
 
       for port_name, expr in ports {
-        if not(mod_def_wires.contains(PubId(port_name))) {
+        if not(port_widths.contains(port_name)) {
           extra_ports.push(port_name)
         }
 

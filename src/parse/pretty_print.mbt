@@ -317,7 +317,7 @@ pub impl Show for Port with output(port, logger) {
   logger.write_string(port.ty.to_string())
 }
 
-fn emit_port_list(self: Emitter, ports: Array[Port]) -> Unit {
+fn emit_port_list(self: Emitter, ports: Iter[Port]) -> Unit {
   self.write("(\n")
   self.indent += 1
 
@@ -375,9 +375,9 @@ fn emit_module_sig(self: Emitter, sig: ModuleSignature) -> Unit {
     self.write(">")
   }
 
-  self.emit_port_list(sig.inputs)
+  self.emit_port_list(sig.inputs())
   self.write(" -> ")
-  self.emit_port_list(sig.outputs)
+  self.emit_port_list(sig.outputs())
 }
 
 pub fn emit_decl(self: Emitter, decl: Decl) -> Unit {

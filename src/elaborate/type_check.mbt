@@ -383,19 +383,14 @@ fn check_attributes(attrs: Map[String, @parse.Attribute]) -> Unit!TypeCheckerErr
 
 pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
     match decl {
-        Module({ name, params, attributes, inputs, outputs, body, span }) => {
+        Module({ name, params, attributes, ports, body, span }) => {
             let env = Scope::new()
 
             check_attributes!(attributes)
 
-            for input in inputs {
-                ensure_valid_port_type!(input.ty, input.span)
-                declare_name!(env~, name=input.name, ty=input.ty, span~)
-            }
-
-            for output in outputs {
-                ensure_valid_port_type!(output.ty, output.span)
-                declare_name!(env~, name=output.name, ty=output.ty, span~)
+            for port in ports {
+                ensure_valid_port_type!(port.ty, port.span)
+                declare_name!(env~, name=port.name, ty=port.ty, span~)
             }
 
             for stmt in body {
@@ -406,8 +401,7 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
                 name,
                 params,
                 attributes,
-                inputs,
-                outputs,
+                ports,
                 span,
             }
         }

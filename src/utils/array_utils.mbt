@@ -12,3 +12,17 @@ pub fn zip[X, Y](xs: Array[X], ys: Array[Y]) -> Iter2[X, Y] {
     }
   })
 }
+
+pub fn concat[T](xs: Array[T], ys: Array[T]) -> Array[T] {
+  let result = Array::new(capacity=xs.length() + ys.length())
+
+  for i in 0..<xs.length() {
+    result.push(xs[i])
+  }
+
+  for i in 0..<ys.length() {
+    result.push(ys[i])
+  }
+
+  result
+}

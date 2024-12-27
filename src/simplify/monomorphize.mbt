@@ -230,21 +230,10 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
     params_env.declare!(mod.params[i], param)
   }
 
-  let mono_inputs: Array[@parse.Port] = []
-  let mono_outputs: Array[@parse.Port] = []
+  let mono_ports: Array[@parse.Port] = []
 
-  for port in mod.inputs {
-    mono_inputs.push({
-      name: port.name,
-      ty: self.monomorphize_type!(port.ty, params_env~),
-      dir: port.dir,
-      optional: port.optional,
-      span: port.span,
-    })
-  }
-
-  for port in mod.outputs {
-    mono_outputs.push({
+  for port in mod.ports {
+    mono_ports.push({
       name: port.name,
       ty: self.monomorphize_type!(port.ty, params_env~),
       dir: port.dir,
@@ -273,8 +262,7 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
     },
     params: [],
     attributes: mod.attributes,
-    inputs: mono_inputs,
-    outputs: mono_outputs,
+    ports: mono_ports,
     body: mono_body,
     span: mod.span,
   }

@@ -169,14 +169,14 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt) -> Array[@parse.Stmt]!
 
 pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl!Error {
   match decl {
-    Module({ name, params, attributes, inputs, outputs, body, span }) => {
+    Module({ name, params, attributes, ports, body, span }) => {
       let simplified_body = []
 
       for stmt in body {
         simplified_body.push_iter(self.simplify_stmt!(stmt).iter())
       }
 
-      @parse.Decl::Module({ name, params, attributes, inputs, outputs, body: simplified_body, span })
+      @parse.Decl::Module({ name, params, attributes, ports, body: simplified_body, span })
     }
     ModuleDeclaration(sig) => {
       @parse.Decl::ModuleDeclaration(sig)

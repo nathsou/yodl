@@ -71,8 +71,7 @@ pub(all) struct ModuleSignature {
     name: String
     params: Array[String]
     attributes: Map[String, Attribute]
-    inputs: Array[Port]
-    outputs: Array[Port]
+    ports: Array[Port]
     span: Span
 }
 
@@ -125,8 +124,7 @@ pub(all) struct ModuleDecl {
     name: String
     params: Array[String]
     attributes: Map[String, Attribute]
-    inputs: Array[Port]
-    outputs: Array[Port]
+    ports: Array[Port]
     body: Array[Stmt]
     span: Span
 }
@@ -227,15 +225,9 @@ pub fn expect_int(self: Expr) -> Int!Error {
 }
 
 pub fn get_port(self: ModuleSignature, name: String) -> Port? {
-  for input in self.inputs {
-    if input.name == name {
-      return Some(input)
-    }
-  }
-
-  for output in self.outputs {
-    if output.name == name {
-      return Some(output)
+  for port in self.ports {
+    if port.name == name {
+      return Some(port)
     }
   }
 
@@ -290,8 +282,7 @@ pub fn signature(self: ModuleDecl) -> ModuleSignature {
     name: self.name,
     params: self.params,
     attributes: self.attributes,
-    inputs: self.inputs,
-    outputs: self.outputs,
+    ports: self.ports,
     span: self.span,
   }
 }
@@ -319,4 +310,12 @@ pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
     Xnor => @utils.max(wa, wb)
     Ternary => @utils.max(wa, wb)
   }
+}
+
+pub fn inputs(self: ModuleSignature) -> Iter[Port] {
+  self.ports.iter().filter(fn(port) { port.dir == Input })
+}
+
+pub fn outputs(self: ModuleSignature) -> Iter[Port] {
+  self.ports.iter().filter(fn(port) { port.dir == Output })
 }
