@@ -5,7 +5,9 @@ enum TokenType {
   Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang; SingleQuote
   Plus; Minus; Star; Slash
   Equal; EqualEqual; BangEqual; RightThinArrow
+  LchevronEqual; RchevronEqual; LchevronLchevron; RchevronRchevron
   DotDotLeftChevron; DotDotEqual; DotDotDot
+  Percent
   // keywords
   Module; Let; Logic; In; For; Declare
   And; Or; Not; Xor; Nand; Nor; Xnor
@@ -35,6 +37,16 @@ fn to_binop(self: TokenType) -> BinaryOp? {
     Plus => Some(Add)
     Minus => Some(Sub)
     Star => Some(Mul)
+    Slash => Some(Div)
+    Percent => Some(Mod)
+    EqualEqual => Some(Equ)
+    BangEqual => Some(Neq)
+    Lchevron => Some(Lss)
+    Rchevron => Some(Gtr)
+    LchevronEqual => Some(Leq)
+    RchevronEqual => Some(Geq)
+    LchevronLchevron => Some(Shl)
+    RchevronRchevron => Some(Shr)
     And => Some(And)
     Or => Some(Or)
     Xor => Some(Xor)

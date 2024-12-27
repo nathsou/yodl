@@ -32,9 +32,19 @@ pub impl Show for UnaryOp with output(op, logger) {
 
 pub impl Show for BinaryOp with output(op, logger) {
   logger.write_string(match op {
-    Mul => "*"
     Add => "+"
     Sub => "-"
+    Mul => "*"
+    Div => "/"
+    Mod => "%"
+    Equ => "=="
+    Neq => "!="
+    Lss => "<"
+    Gtr => ">"
+    Leq => "<="
+    Geq => ">="
+    Shl => "<<"
+    Shr => ">>"
     And => "and"
     Or => "or"
     Xor => "xor"

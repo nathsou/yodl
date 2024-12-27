@@ -42,7 +42,7 @@ fn expect(self: Parser, expected: TokenType, span_start_idx: Int) -> Unit!Parser
 }
 
 fn matches(self: Parser, token: TokenType) -> Bool {
-  self.peek() == token
+  self.index < self.tokens.length() && self.peek() == token
 }
 
 fn matches_predicate(self: Parser, predicate: (TokenType) -> Bool) -> Bool {
@@ -209,22 +209,7 @@ fn parse_vector_expr(self: Parser) -> Expr!ParserError {
 
 fn parse_instance_expr(self: Parser, module_name~: String) -> Expr!ParserError {
   let start_idx = self.index
-
-  let params = []
-
-  if self.consumes(Lchevron) {
-    while not(self.matches(Rchevron)) {
-      let param = self.parse_expr!()
-      params.push(param)
-
-      if not(self.consumes(Comma)) {
-        break
-      }
-    }
-
-    self.expect!(Rchevron, start_idx)
-  }
-
+  let params = self.parse_module_parameter_list!(Parser::parse_expr)
   self.expect!(Lparen, start_idx)
   let ports = {}
 
@@ -387,20 +372,40 @@ fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]!ParserError
   ports
 }
 
-fn parse_module_parameter_list(self: Parser) -> Array[String]!ParserError {
+fn parse_module_parameter_list[T](self: Parser, parse_elem: (Parser) -> T!ParserError) -> Array[T]!ParserError {
   if self.consumes(Lchevron) {
     let start_idx = self.index
     let params = []
 
-    while not(self.matches(Rchevron)) {
-      let param = self.parse_identifier!()
+    // Parsing parameter lists can be ambiguous. For example, `$dff<N, 1>(` will attempt to parse `1>(` as a comparison operator.
+    // To handle this, we create a sub-parser to parse tokens inside the parameter list only, such as `N, 1`.
+    // Note that this implies that `>` cannot appear within the parameter list.
+    let sub_parser = {
+      let tokens = []
+
+      for i in self.index..<self.tokens.length() {
+        let token = self.tokens[i]
+
+        if token.kind == Rchevron {
+          break
+        } else {
+          tokens.push(token)
+        }
+      }
+
+      Parser::new(tokens, file=self.file)
+    }
+
+    while sub_parser.index < sub_parser.tokens.length() {
+      let param = parse_elem!(sub_parser)
       params.push(param)
 
-      if not(self.consumes(Comma)) {
+      if not(sub_parser.consumes(Comma)) {
         break
       }
     }
 
+    self.index += sub_parser.tokens.length()
     self.expect!(Rchevron, start_idx)
     params
   } else {
@@ -412,7 +417,7 @@ fn parse_module_signature(self: Parser) -> ModuleSignature!ParserError {
   let start_idx = self.index
   self.expect!(Module, start_idx)
   let name = self.parse_identifier!()
-  let params = self.parse_module_parameter_list!()
+  let params = self.parse_module_parameter_list!(Parser::parse_identifier)
   let inputs = self.parse_port_list!(dir=Input)
   self.expect!(RightThinArrow, start_idx)
   let outputs = self.parse_port_list!(dir=Output)

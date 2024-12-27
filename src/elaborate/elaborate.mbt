@@ -166,26 +166,46 @@ fn expr_width(expr: @parse.Expr) -> Int?!Error {
 
 fn binary_op_cell(
   self: Elaborator,
-  cell_type~: String,
+  op~: @parse.BinaryOp,
   lhs~: @parse.Expr,
   rhs~: @parse.Expr,
   mod~: @rtlil.Module,
   span~: @parse.Span,
 ) -> Value!Error {
-  let width = match (expr_width!(lhs), expr_width!(rhs)) {
-    (Some(lhs_width), Some(rhs_width)) => {
-      if lhs_width != rhs_width {
-        raise Unsupported(message="Binary operator with different width operands", span~)
+  let (cell_type, wa, wb, wy) = match (expr_width!(lhs), expr_width!(rhs)) {
+    (Some(wa), Some(wb)) => {
+      let cell_type = match op {
+        Add => "add"
+        Sub => "sub"
+        Mul => "mul"
+        Div => "div"
+        Mod => "mod"
+        Equ => "eq"
+        Neq => "ne"
+        Gtr => "gt"
+        Lss => "lt"
+        Geq => "ge"
+        Leq => "le"
+        Shl => "shl"
+        Shr => "shr"
+        And => "and"
+        Or => "or"
+        Xor => "xor"
+        Nand => "nand"
+        Nor => "nor"
+        Xnor => "xnor"
       }
 
-      lhs_width
+      let wy = op.output_width(wa, wb)
+
+      (cell_type, wa, wb, wy)
     }
-    _ => raise Unreachable(message="Untyped binary operator", span~)
+    _ => raise Unsupported(message="Binary operator with unsupported types", span~)
   }
 
   let output = mod.add_wire!(
     name=GenId("\{cell_type}_y_\{self.next_genidx()}"),
-    width~,
+    width=wy,
     port=None,
     attributes=src_attribute(span),
   )
@@ -196,10 +216,10 @@ fn binary_op_cell(
     parameters={
       let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
       parameters[@rtlil.PubId("A_SIGNED")] = @rtlil.ConstInteger(0)
-      parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(width)
+      parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(wa)
       parameters[@rtlil.PubId("B_SIGNED")] = @rtlil.ConstInteger(0)
-      parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(width)
-      parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(width)
+      parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(wb)
+      parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(wy)
       parameters
     },
     connections={
@@ -244,19 +264,7 @@ fn elaborate_expr(
       span~,
       ..
     ) => {
-      let cell_type = match op {
-        Add => "add"
-        Sub => "sub"
-        Mul => "mul"
-        And => "and"
-        Or => "or"
-        Xor => "xor"
-        Nand => "nand"
-        Nor => "nor"
-        Xnor => "xnor"
-      }
-
-      self.binary_op_cell!(cell_type~, lhs~, rhs~, mod~, span~)
+      self.binary_op_cell!(op~, lhs~, rhs~, mod~, span~)
     }
     Instance(name~, params~, ports~, span~, ty=_) => {
       if params.length() > 0 && not(self.declared_modules.contains(name)) {

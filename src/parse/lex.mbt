@@ -219,11 +219,25 @@ fn next(self: Lexer) -> LexerResult[Token] {
     }
     '<' => {
       self.advance()
-      Ok(Lchevron)
+
+      if self.consumes('=') {
+        Ok(LchevronEqual)
+      } else if self.consumes('<') {
+        Ok(LchevronLchevron)
+      } else {
+        Ok(Lchevron)
+      }
     }
     '>' => {
       self.advance()
-      Ok(Rchevron)
+
+      if self.consumes('=') {
+        Ok(RchevronEqual)
+      } else if self.consumes('>') {
+        Ok(RchevronRchevron)
+      } else {
+        Ok(Rchevron)
+      }
     }
     '!' => {
       self.advance()
@@ -265,6 +279,10 @@ fn next(self: Lexer) -> LexerResult[Token] {
       } else {
         Ok(Dot)
       }
+    }
+    '%' => {
+      self.advance()
+      Ok(Percent)
     }
     '\'' => {
       self.advance()

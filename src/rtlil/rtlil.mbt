@@ -156,8 +156,6 @@ pub fn add_cell(
 
 pub fn connect(self: Module, sig1: Signal, sig2: Signal, span~: @parse.Span) -> Unit!RTLILError {
   if sig1.size() != sig2.size() {
-    println(sig1)
-    println(sig2)
     raise IncompatibleWidths(width1=sig1.size(), width2=sig2.size(), span~)
   }
 

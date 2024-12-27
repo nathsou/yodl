@@ -5,19 +5,24 @@ pub(readonly) enum UnaryOp {
 
 pub(readonly) enum BinaryOp {
   And; Or; Xor; Nand; Nor; Xnor
-  Add; Sub; Mul
+  Add; Sub; Mul; Div; Mod
+  Equ; Neq; Lss; Gtr; Leq; Geq
+  Shl; Shr
 }
 
 fn precedence(self: BinaryOp) -> Int {
   match self {
-    Mul => 12
-    Add | Sub => 11
-    And => 10
-    Or => 9
-    Xor => 8
-    Nand => 7
-    Nor => 6
-    Xnor => 5
+    Mul | Div | Mod => 12
+    Shl | Shr => 11
+    Add | Sub => 10
+    And => 9
+    Or => 8
+    Xor => 7
+    Nand => 6
+    Nor => 5
+    Xnor => 4
+    Equ | Neq => 3
+    Lss | Gtr | Leq | Geq => 2
   }
 }
 
@@ -166,13 +171,15 @@ pub fn is_constant_expr(self: Expr) -> Bool {
 pub fn constant_folding(self: Expr) -> Expr!Error {
   rewrite_expr!(self, fn!(expr) {
     match expr {
-      Binary(op = Mul | Add | Sub as op, lhs~, rhs~, span~, ty~) => {
+      Binary(op = Add | Sub | Mul | Div | Mod as op, lhs~, rhs~, span~, ty~) => {
         match (lhs.expect_int?(), rhs.expect_int?()) {
           (Ok(lhs), Ok(rhs)) => {
             let value = match op {
-              Mul => lhs * rhs
               Add => lhs + rhs
               Sub => lhs - rhs
+              Mul => lhs * rhs
+              Div => lhs / rhs
+              Mod => lhs % rhs
               _ => raise Failure("Invalid arithmetical binary operator")
             }
 
@@ -233,5 +240,33 @@ pub fn signature(self: ModuleDecl) -> ModuleSignature {
     inputs: self.inputs,
     outputs: self.outputs,
     span: self.span,
+  }
+}
+
+fn max(a: Int, b: Int) -> Int {
+  if a > b { a } else { b }
+}
+
+pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
+  match self {
+    Add => max(wa, wb) + 1
+    Sub => max(wa, wb)
+    Mul => wa + wb
+    Div => wa
+    Mod => wb
+    Equ => 1
+    Neq => 1
+    Gtr => 1
+    Lss => 1
+    Geq => 1
+    Leq => 1
+    Shl => wa
+    Shr => wa
+    And => max(wa, wb)
+    Or => max(wa, wb)
+    Xor => max(wa, wb)
+    Nand => max(wa, wb)
+    Nor => max(wa, wb)
+    Xnor => max(wa, wb)
   }
 }

@@ -27,6 +27,7 @@ type! TypeCheckerError {
     EmptyVector(span~: @parse.Span)
     SpreadOnNonVector(span~: @parse.Span)
     SpreadOutsideVector(span~: @parse.Span)
+    UnsizedOperand(span~: @parse.Span)
 } derive(Show)
 
 fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
@@ -113,12 +114,18 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
         Unary(expr~, ..) => {
             self.check_expr!(expr, env) 
         }
-        Binary(lhs~, rhs~, span~, ..) => {
+        Binary(op~, lhs~, rhs~, span~, ..) => {
             let ty_lhs = self.check_expr!(lhs, env)
             let ty_rhs = self.check_expr!(rhs, env)
-            let _ = unify!(ty_lhs, ty_rhs, span~)
 
-            ty_lhs
+            let wa = ty_lhs.width(params_env=None).or_error!(UnsizedOperand(span~))
+            let wb = ty_rhs.width(params_env=None).or_error!(UnsizedOperand(span~))
+            let wy = op.output_width(wa, wb)
+
+            match wy {
+                1 => Logic
+                width => Vector(ty=Logic, len=Fixed(width))
+            }
         }
         Indexing(expr~, index~, span~, ..) => {
             let ty = self.check_expr!(expr, env)
@@ -254,10 +261,10 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
             ty.val = Some(match (ty.val, expr) {
                 (Some(ty), Some(expr)) => {
                     let ty = self.resolve_ty!(ty, span~)
+                    declare_name!(env~, name~, ty~, span~)
                     let expr_ty = self.check_expr!(expr, env)
                     let _ = unify!(ty, expr_ty, span~)
 
-                    declare_name!(env~, name~, ty~, span~)
                     ty
                 }
                 (Some(ty), None) => {
@@ -268,6 +275,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
                 (None, Some(expr)) => {
                     let ty = self.check_expr!(expr, env)
                     declare_name!(env~, name~, ty~, span~)
+
                     ty
                 }
                 (None, None) => {
