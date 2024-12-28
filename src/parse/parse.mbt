@@ -158,6 +158,29 @@ fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
   lhs
 }
 
+fn parse_match_expr(self: Parser) -> Expr!ParserError {
+  let start_idx = self.index
+  self.expect!(Match, start_idx)
+  let subject = self.parse_expr!()
+  self.expect!(Lbrace, start_idx)
+  let cases = []
+
+  while not(self.matches(Rbrace)) {
+    let value = self.parse_expr!()
+    self.expect!(RightThickArrow, start_idx)
+    let expr = self.parse_expr!()
+    cases.push((value, expr))
+
+    if not(self.consumes(Comma)) {
+      break
+    }
+  }
+
+  self.expect!(Rbrace, start_idx)
+
+  Match(subject~, cases~, span=self.span(start_idx), ty={ val: None })
+}
+
 fn parse_primary_expr(self: Parser) -> Expr!ParserError {
   let token = self.peek()
   let start_idx = self.index
@@ -188,6 +211,7 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
     }
     Lbracket => self.parse_vector_expr!()
     DotDotDot => self.parse_spread_expr!()
+    Match => self.parse_match_expr!()
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
 }

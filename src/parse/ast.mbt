@@ -1,9 +1,9 @@
 
-pub(readonly) enum UnaryOp {
+pub(all) enum UnaryOp {
   Not
 }
 
-pub(readonly) enum BinaryOp {
+pub(all) enum BinaryOp {
   And; Or; Xor; Nand; Nor; Xnor
   Add; Sub; Mul; Div; Mod
   Equ; Neq; Lss; Gtr; Leq; Geq
@@ -40,6 +40,7 @@ pub(all) enum Expr {
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
+  Match(subject~: Expr, cases~: Array[(Expr, Expr)], span~: Span, ty~: Ref[Type?])
 }
 
 pub(all) enum Stmt {
@@ -50,7 +51,7 @@ pub(all) enum Stmt {
   Scope(body~: Array[Stmt], span~: Span)
 }
 
-pub(readonly) enum AttributeValue {
+pub(all) enum AttributeValue {
   String(String)
   Int(Int)
 }
@@ -147,6 +148,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Vector(ty~, ..) => ty
     Spread(ty~, ..) => ty
     Ternary(ty~, ..) => ty
+    Match(ty~, ..) => ty
   }
 }
 
@@ -163,6 +165,7 @@ pub fn span(self: Expr) -> Span {
     Vector(span~, ..) => span
     Spread(span~, ..) => span
     Ternary(span~, ..) => span
+    Match(span~, ..) => span
   }
 }
 
@@ -183,6 +186,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Vector(_) => false
     Spread(_) => false
     Ternary(_) => false
+    Match(_) => false
   }
 }
 
@@ -209,6 +213,22 @@ pub fn constant_folding(self: Expr) -> Expr!Error {
       Ternary(cond~, then~, else_~, ..) => {
         match cond.expect_int?() {
           Ok(cond) => if cond != 0 { then } else { else_ }
+          _ => expr
+        }
+      }
+      Match(subject~, cases~, ..) => {
+        match subject.expect_int?() {
+          Ok(subject) => {
+            for case in cases {
+              let (value, _) = case
+              match value.expect_int?() {
+                Ok(case) => if subject == case { return value }
+                _ => ()
+              }
+            }
+
+            expr
+          }
           _ => expr
         }
       }

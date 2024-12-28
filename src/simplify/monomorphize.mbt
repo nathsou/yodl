@@ -167,6 +167,19 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
       let mono_else = self.monomorphize_expr!(else_, params_env~)
       @parse.Expr::Ternary(cond=mono_cond, then=mono_then, else_=mono_else, span~, ty~)
     }
+    Match(subject~, cases~, span~, ty~) => {
+      let mono_subject = self.monomorphize_expr!(subject, params_env~)
+      let mono_cases = []
+
+      for case in cases {
+        let (pat, expr) = case
+        let mono_pat = self.monomorphize_expr!(pat, params_env~)
+        let mono_expr = self.monomorphize_expr!(expr, params_env~)
+        mono_cases.push((mono_pat, mono_expr))
+      }
+
+      @parse.Expr::Match(subject=mono_subject, cases=mono_cases, span~, ty~)
+    }
   }
 
   res.constant_folding!()

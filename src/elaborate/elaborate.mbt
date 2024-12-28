@@ -22,6 +22,9 @@ type! ElaboratorError {
   UnresolvedType(span~: @parse.Span)
   IndexOutOfBounds(index~: Int, len~: Int, span~: @parse.Span)
   Unreachable(message~: String, span~: @parse.Span)
+  MatchReturnTypeMustBeSignal(span~: @parse.Span)
+  DuplicateMatchCase(index~: Int, span~: @parse.Span)
+  MissingMatchCase(index~: Int, span~: @parse.Span)
 } derive(Show)
 
 enum Value {
@@ -32,6 +35,23 @@ enum Value {
 
 fn bits(bits: Array[@rtlil.BinaryDigit]) -> Value {
   Value::Signal(@rtlil.SigConst(ConstValue(width=bits.length(), bits~)))
+}
+
+fn bits_from_int(n: Int, width~: Int) -> @rtlil.Constant {
+  let bits = @utils.fill(width, @rtlil.BinaryDigit::X)
+  let mut n = n
+
+  for i in 0..<width {
+    bits[width - i - 1] = if (n & 1) == 1 {
+      @rtlil.BinaryDigit::One
+    } else {
+      @rtlil.BinaryDigit::Zero
+    }
+
+    n /= 2
+  }
+
+  ConstValue(width~, bits~)
 }
 
 fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value!Error {
@@ -106,6 +126,43 @@ fn src_attribute(span: @parse.Span) -> Map[@rtlil.Id, @rtlil.Constant] {
   attributes
 }
 
+fn map_attributes(attributes: Map[String, @parse.AttributeValue]) -> Map[@rtlil.Id, @rtlil.Constant] {
+  let mapped = {}
+
+  for name, value in attributes {
+    match value {
+      String(str) => {
+        mapped[@rtlil.PubId(name)] = @rtlil.ConstString(str)
+      }
+      Int(n) => {
+        mapped[@rtlil.PubId(name)] = @rtlil.ConstInteger(n)
+      }
+    }
+  }
+
+  mapped
+}
+
+fn map_signals(signals: Map[String, @rtlil.Signal]) -> Map[@rtlil.Id, @rtlil.Signal] {
+  let mapped = {}
+
+  for name, sig in signals {
+    mapped[@rtlil.PubId(name)] = sig
+  }
+
+  mapped
+}
+
+fn map_parameters(parameters: Map[String, @rtlil.Constant]) -> Map[@rtlil.Id, @rtlil.Constant] {
+  let mapped = {}
+
+  for name, value in parameters {
+    mapped[@rtlil.PubId(name)] = value
+  }
+
+  mapped
+}
+
 fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let mod_def = @rtlil.Module::new(PubId(mod.name))
 
@@ -154,6 +211,7 @@ fn binary_op_cell(
   rhs~: @parse.Expr,
   mod~: @rtlil.Module,
   span~: @parse.Span,
+  attributes~: Map[@rtlil.Id, @rtlil.Constant] = {},
 ) -> Value!Error {
   let (cell_type, wa, wb, wy) = match (expr_width!(lhs), expr_width!(rhs)) {
     (Some(wa), Some(wb)) => {
@@ -187,32 +245,30 @@ fn binary_op_cell(
     _ => raise Unsupported(message="Binary operator with unsupported types", span~)
   }
 
+  let cell_name = "\{cell_type}_\{self.next_genidx()}"
+
   let output = mod.add_wire!(
-    name=GenId("\{cell_type}_y_\{self.next_genidx()}"),
+    name=GenId("\{cell_name}.y"),
     width=wy,
     port=None,
-    attributes=src_attribute(span),
+    attributes=@utils.merge(src_attribute(span), attributes),
   )
   
   let _ = mod.add_cell!(
     type_=GenId(cell_type),
-    name=GenId("\{cell_type}_\{self.next_genidx()}"),
-    parameters={
-      let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
-      parameters[@rtlil.PubId("A_SIGNED")] = @rtlil.ConstInteger(0)
-      parameters[@rtlil.PubId("A_WIDTH")] = @rtlil.ConstInteger(wa)
-      parameters[@rtlil.PubId("B_SIGNED")] = @rtlil.ConstInteger(0)
-      parameters[@rtlil.PubId("B_WIDTH")] = @rtlil.ConstInteger(wb)
-      parameters[@rtlil.PubId("Y_WIDTH")] = @rtlil.ConstInteger(wy)
-      parameters
-    },
-    connections={
-      let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
-      connections[@rtlil.PubId("A")] = self.elaborate_expr!(lhs, mod).expect_signal!(lhs.span())
-      connections[@rtlil.PubId("B")] = self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span())
-      connections[@rtlil.PubId("Y")] = SigWire(output)
-      connections
-    },
+    name=GenId(cell_name),
+    parameters=map_parameters({
+      "A_SIGNED": @rtlil.ConstInteger(0),
+      "A_WIDTH": @rtlil.ConstInteger(wa),
+      "B_SIGNED": @rtlil.ConstInteger(0),
+      "B_WIDTH": @rtlil.ConstInteger(wb),
+      "Y_WIDTH": @rtlil.ConstInteger(wy),
+    }),
+    connections=map_signals({
+      "A": self.elaborate_expr!(lhs, mod).expect_signal!(lhs.span()),
+      "B": self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span()),
+      "Y": SigWire(output),
+    }),
     attributes=src_attribute(span),
   )
 
@@ -235,8 +291,11 @@ fn elaborate_expr(
         }
       }
     }
-    Natural(value~, ..) => {
-      Value::Signal(@rtlil.SigConst(ConstInteger(value)))
+    Natural(value~, width~, ..) => {
+      match width {
+        Some(width) => Value::Signal(@rtlil.SigConst(bits_from_int(value, width~)))
+        None => Value::Signal(@rtlil.SigConst(ConstInteger(value)))
+      }
     }
     Unary(span~, ..) => {
       raise Unsupported(message="Unary operators are not supported yet", span~)
@@ -357,7 +416,7 @@ fn elaborate_expr(
 
                 if uses_reset {
                   parameters[@rtlil.PubId("ARST_POLARITY")] = @rtlil.ConstInteger(1)
-                  parameters[@rtlil.PubId("ARST_VALUE")] = @rtlil.ConstInteger(0)
+                  parameters[@rtlil.PubId("ARST_VALUE")] = bits_from_int(0, width~)
                 }
 
                 if uses_enable {
@@ -495,10 +554,11 @@ fn elaborate_expr(
     }
     Ternary(cond~, then~, else_~, span~, ..) => {
       let cell_type = "mux"
+      let cell_name = "\{cell_type}_\{self.next_genidx()}"
       let width = expr_width!(then).or_error!(Unreachable(message="Unsized ternary expression operand", span=expr.span()))
 
       let output = mod.add_wire!(
-        name=GenId("\{cell_type}_y_\{self.next_genidx()}"),
+        name=GenId("\{cell_name}.y"),
         width~,
         port=None,
         attributes=src_attribute(span),
@@ -506,21 +566,97 @@ fn elaborate_expr(
       
       let _ = mod.add_cell!(
         type_=GenId(cell_type),
-        name=GenId("\{cell_type}_\{self.next_genidx()}"),
-        parameters={
-          let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
-          parameters[@rtlil.PubId("WIDTH")] = @rtlil.ConstInteger(width)
-          parameters
-        },
-        connections={
-          let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
-          connections[@rtlil.PubId("A")] = self.elaborate_expr!(else_, mod).expect_signal!(then.span())
-          connections[@rtlil.PubId("B")] = self.elaborate_expr!(then, mod).expect_signal!(else_.span())
-          connections[@rtlil.PubId("S")] = self.elaborate_expr!(cond, mod).expect_signal!(cond.span())
-          connections[@rtlil.PubId("Y")] = SigWire(output)
-          connections
-        },
+        name=GenId(cell_name),
+        parameters=map_parameters({
+          "WIDTH": @rtlil.ConstInteger(width)
+        }),
+        connections=map_signals({
+          "A": self.elaborate_expr!(else_, mod).expect_signal!(then.span()),
+          "B": self.elaborate_expr!(then, mod).expect_signal!(else_.span()),
+          "S": self.elaborate_expr!(cond, mod).expect_signal!(cond.span()),
+          "Y": SigWire(output)
+        }),
         attributes=src_attribute(span),
+      )
+
+      Value::Signal(SigWire(output))
+    }
+    Match(subject~, cases~, span~, ty~) => {
+      let width = ty.val.unwrap().width().or_error!(MatchReturnTypeMustBeSignal(span~))
+      let s_width = expr_width!(subject).or_error!(Unreachable(message="Unsized match subject", span=subject.span()))
+      let max_cases = @utils.pow2(s_width)
+      let cell_type = "pmux"
+      let cell_name = "\{cell_type}_\{self.next_genidx()}"
+      
+      let output = mod.add_wire!(
+        name=GenId("\{cell_name}.y"),
+        width~,
+        port=None,
+        attributes=src_attribute(span),
+      )
+
+      let (b_sig, s_sig) = {
+        let sigs: Array[(@parse.Expr, @rtlil.Signal)?] = @utils.fill(max_cases, None)
+
+        for case in cases {
+          let (lhs, rhs) = case
+          let index = lhs.expect_int!()
+
+          if index >= max_cases {
+            raise IndexOutOfBounds(index~, len=max_cases, span=lhs.span())
+          }
+
+          match sigs[index] {
+            Some(_) => raise DuplicateMatchCase(index~, span=lhs.span())
+            None => {
+              let rhs_sig = self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span())
+              sigs[index] = Some((lhs, rhs_sig))
+            }
+          }
+        }
+
+        let unwrapped_sigs: Array[@rtlil.Signal] = []
+        let comparisons: Array[@rtlil.Signal] = []
+
+        for idx, sig in sigs {
+          match sig {
+            Some((lhs, sig)) => {
+              let eq_cell = self.binary_op_cell!(
+                op=Equ,
+                lhs~,
+                rhs=subject,
+                mod~,
+                span~,
+                attributes=map_attributes({"full_case": Int(1)})
+              )
+
+              comparisons.push(eq_cell.expect_signal!(lhs.span()))
+              unwrapped_sigs.push(sig)
+            }
+            None => raise MissingMatchCase(index=idx, span~)
+          }
+        }
+
+        (@rtlil.SigConcat(unwrapped_sigs), @rtlil.SigConcat(comparisons))
+      }
+
+      let _ = mod.add_cell!(
+        type_=GenId(cell_type),
+        name=GenId(cell_name),
+        parameters=map_parameters({
+          "S_WIDTH": @rtlil.ConstInteger(@utils.pow2(s_width)),
+          "WIDTH": @rtlil.ConstInteger(width),
+        }),
+        connections=map_signals({
+          "A": SigConst(ConstValue(width~, bits=@utils.fill(width, @rtlil.BinaryDigit::X))),
+          "B": b_sig,
+          "S": s_sig,
+          "Y": SigWire(output),
+        }),
+        attributes=@utils.merge(
+          src_attribute(span),
+          map_attributes({"full_case": Int(1)}),
+        ),
       )
 
       Value::Signal(SigWire(output))

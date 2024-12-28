@@ -4,13 +4,13 @@ enum TokenType {
   Lparen; Rparen; Lbrace; Rbrace; Comma; Semicolon; Colon
   Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang; SingleQuote
   Plus; Minus; Star; Slash
-  Equal; EqualEqual; BangEqual; RightThinArrow
+  Equal; EqualEqual; BangEqual; RightThinArrow; RightThickArrow
   LchevronEqual; RchevronEqual; LchevronLchevron; RchevronRchevron
   DotDotLeftChevron; DotDotEqual; DotDotDot
   Percent; QuestionMark; At
   // keywords
   Module; Let; Logic; In; For; Declare
-  And; Or; Not; Xor; Nand; Nor; Xnor
+  And; Or; Not; Xor; Nand; Nor; Xnor; Match
   // literals
   Identifier(String); Natural(value~: Int, width~: Int?)
   StringLiteral(String)

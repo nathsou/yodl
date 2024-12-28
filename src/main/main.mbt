@@ -47,7 +47,7 @@ fn run(file: String) -> String!Error {
 }
 
 fn main {
-  let file = "Counter"
+  let file = "RegisterFile"
 
   match run?("examples/\{file}.yodl") {
     Ok(rtlil) => {

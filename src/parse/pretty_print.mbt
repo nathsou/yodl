@@ -191,6 +191,25 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.emit_expr(else_)
       self.write(")")
     }
+    Match(subject~, cases~, ..) => {
+      self.write("match ")
+      self.emit_expr(subject)
+      self.write(" {\n")
+      self.indent += 1
+
+      for case in cases {
+        let (value, expr) = case
+        self.write_indent()
+        self.emit_expr(value)
+        self.write(" => ")
+        self.emit_expr(expr)
+        self.write(",\n")
+      }
+
+      self.indent -= 1
+      self.write_indent()
+      self.write("}")
+    }
   }
 }
 

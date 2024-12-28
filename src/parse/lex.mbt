@@ -255,6 +255,8 @@ fn next(self: Lexer) -> LexerResult[Token] {
       self.advance()
       if self.consumes('=') {
         Ok(EqualEqual)
+      } else if self.consumes('>') {
+        Ok(RightThickArrow)
       } else {
         Ok(Equal)
       }
@@ -322,6 +324,7 @@ fn next(self: Lexer) -> LexerResult[Token] {
           "in" => In
           "for" => For
           "declare" => Declare
+          "match" => Match
           "and" => And
           "or" => Or
           "not" => Not

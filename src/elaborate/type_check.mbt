@@ -30,6 +30,7 @@ type! TypeCheckerError {
     UnsizedOperand(span~: @parse.Span)
     InvalidAttribute(name~: String, span~: @parse.Span)
     InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], span~: @parse.Span)
+    EmptyMatch(span~: @parse.Span)
 } derive(Show)
 
 fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
@@ -261,6 +262,35 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
             let _ = unify!(ty, else_ty, span~)
 
             ty
+        }
+        Match(subject~, cases~, span~, ..) => {
+            let subject_ty = self.check_expr!(subject, env)
+            
+            if cases.is_empty() {
+                raise EmptyMatch(span~)
+            }
+
+            let mut ty = None
+            let subst = {}
+
+            for case in cases {
+                let (pat, expr) = case
+                let pat_ty = self.check_expr!(pat, env)
+                let expr_ty = self.check_expr!(expr, env)
+
+                let _ = unify!(subject_ty, pat_ty, subst~, span~)
+
+                match ty {
+                    Some(ty2) => {
+                        let _ = unify!(ty2, expr_ty, subst~, span~)
+                    }
+                    None => {
+                        ty = Some(expr_ty)
+                    }
+                }
+            }
+
+            ty.unwrap()
         }
     }
 

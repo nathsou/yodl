@@ -1,0 +1,56 @@
+
+@internal
+declare module Reg<N>(
+    clk: logic,
+    d: logic[N],
+    en?: logic,
+    rst?: logic,
+) -> (
+    q: logic[N],
+);
+
+module RegisterFile(
+    clk: logic,
+    rst: logic,
+    write_enable: logic,
+    write_dest: logic[3],
+    write_data: logic[16],
+    read_src1: logic[3],
+    read_src2: logic[3],
+) -> (
+    read_data1: logic[16],
+    read_data2: logic[16],
+) {
+    let regs = [
+        16'0,
+        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'1)).q,
+        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'2)).q,
+        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'3)).q,
+        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'4)).q,
+        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'5)).q,
+        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'6)).q,
+        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'7)).q,
+    ];
+
+    read_data1 = match read_src1 {
+        3'0 => regs[0],
+        3'1 => regs[1],
+        3'2 => regs[2],
+        3'3 => regs[3],
+        3'4 => regs[4],
+        3'5 => regs[5],
+        3'6 => regs[6],
+        3'7 => regs[7],
+    };
+
+    read_data2 = match read_src2 {
+        3'0 => regs[0],
+        3'1 => regs[1],
+        3'2 => regs[2],
+        3'3 => regs[3],
+        3'4 => regs[4],
+        3'5 => regs[5],
+        3'6 => regs[6],
+        3'7 => regs[7],
+    };
+}
