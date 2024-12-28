@@ -339,3 +339,12 @@ pub fn inputs(self: ModuleSignature) -> Iter[Port] {
 pub fn outputs(self: ModuleSignature) -> Iter[Port] {
   self.ports.iter().filter(fn(port) { port.dir == Output })
 }
+
+pub fn is_numerical(self: Type) -> Bool {
+  match self {
+    Nat => true
+    Logic => true
+    Vector(ty~, ..) => ty.is_numerical()
+    _ => false
+  }
+}

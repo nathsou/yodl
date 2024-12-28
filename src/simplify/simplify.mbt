@@ -43,17 +43,47 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
   { name, id: count }
 }
 
+// 1. Resolve identifiers to unique names
+// 2. Replace genvars with their values
+// 3. Rewrite non-constant indexing expressions to match expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
   @parse.rewrite_expr!(expr, fn(expr) {
     match expr {
-        Identifier(name~, span~, ty~) => {
-          match self.genvars.resolve(name) {
-            Some(value) => @parse.Expr::Natural(value=value, width=None, span~, ty~)
-            None => match self.names.resolve(name) {
-              Some(unique_name) => @parse.Expr::Identifier(name=unique_name.to_string(), span~, ty~)
-              None => expr
-            }
+      Identifier(name~, span~, ty~) => {
+        match self.genvars.resolve(name) {
+          Some(value) => @parse.Expr::Natural(value=value, width=None, span~, ty~)
+          None => match self.names.resolve(name) {
+            Some(unique_name) => @parse.Expr::Identifier(name=unique_name.to_string(), span~, ty~)
+            None => expr
           }
+        }
+      }
+      Indexing(expr~, index~, span~, ty~) as indexing_expr => {
+        match index.expect_int?() {
+          Ok(_) => indexing_expr
+          Err(_) => {
+            let s_width = index.ty().val.unwrap().width().or_error!(Failure("Unsized index"))
+            let match_expr = @parse.Expr::Match(
+              subject=index,
+              cases={
+                let cases = []
+
+                for i in 0..<@utils.pow2(s_width) {
+                  let lhs = @parse.Expr::Natural(value=i, width=Some(s_width), span~, ty=index.ty())
+                  let idx = @parse.Expr::Natural(value=i, width=None, span~, ty=index.ty())
+                  cases.push((lhs, @parse.Expr::Indexing(expr~, index=idx, span~, ty~)))
+                }
+
+                cases
+              },
+              default=None,
+              span~,
+              ty~,
+            )
+
+            self.simplify_expr!(match_expr)
+          }
+        }
       }
       _ => expr
     }

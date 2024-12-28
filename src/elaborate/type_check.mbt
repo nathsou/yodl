@@ -134,12 +134,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
             let ty = self.check_expr!(expr, env)
             let index_ty = self.check_expr!(index, env)
 
-            if index_ty != @parse.Nat {
-                raise IndexMustBeInteger(span~)
-            }
-
-            if not(index.is_constant_expr()) {
-                raise IndexMustBeConstantExpr(span~)
+            if not(index_ty.is_numerical()) {
+                raise IndexMustBeInteger(span=index.span())
             }
 
             match ty {
