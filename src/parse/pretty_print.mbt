@@ -61,15 +61,25 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
   }
 
   match expr {
-    Natural(value~, width~, ..) => {
+    Natural(value~, width~, base~, ..) => {
       match width {
         Some(width) => {
           self.write(width.to_string())
           self.write("'")
-          self.write(value.to_string())
+
+          let base_prefix = match base {
+            2 => 'b'
+            8 => 'o'
+            10 => 'd'
+            16 => 'h'
+            _ => '?'
+          }
+
+          self.builder.write_char(base_prefix)
+          self.write(@utils.show_nat(value, base~, width=Some(width)))
         }
         None => {
-          self.write(value.to_string())
+          self.write(@utils.show_nat(value, base~, width=None))
         }
       }
     }

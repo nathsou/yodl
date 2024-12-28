@@ -301,8 +301,37 @@ fn elaborate_expr(
         None => Value::Signal(@rtlil.SigConst(ConstInteger(value)))
       }
     }
-    Unary(span~, ..) => {
-      raise Unsupported(message="Unary operators are not supported yet", span~)
+    Unary(op~, expr~, span~, ..) => {
+      let cell_type = match op {
+        Not => "not"
+      }
+
+      let cell_name = "\{cell_type}_\{self.next_genidx()}"
+      let width = expr_width!(expr).or_error!(Unsupported(message="Unsized unary expression operand", span=expr.span()))
+
+      let output = mod.add_wire!(
+        name=GenId("\{cell_name}.y"),
+        width~,
+        port=None,
+        attributes=src_attribute(span),
+      )
+      
+      let _ = mod.add_cell!(
+        type_=GenId(cell_type),
+        name=GenId(cell_name),
+        parameters=map_parameters({
+          "A_SIGNED": @rtlil.ConstInteger(0),
+          "A_WIDTH": @rtlil.ConstInteger(width),
+          "Y_WIDTH": @rtlil.ConstInteger(width),
+        }),
+        connections=map_signals({
+          "A": self.elaborate_expr!(expr, mod).expect_signal!(expr.span()),
+          "Y": SigWire(output),
+        }),
+        attributes=src_attribute(span),
+      )
+
+      Value::Signal(SigWire(output))
     }
     Binary(
       op~,
@@ -400,8 +429,8 @@ fn elaborate_expr(
 
             let cell_type = match (uses_reset, uses_enable) {
               (false, false) => "dff"
-              (true, false) => "adff"
               (false, true) => "dffe"
+              (true, false) => "adff"
               (true, true) => "adffe"
             }
 

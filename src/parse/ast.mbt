@@ -29,7 +29,7 @@ fn precedence(self: BinaryOp) -> Int {
 }
 
 pub(all) enum Expr {
-  Natural(value~: Int, width~: Int?, span~: Span, ty~: Ref[Type?])
+  Natural(value~: Int, width~: Int?, base~: Int, span~: Span, ty~: Ref[Type?])
   Identifier(name~: String, span~: Span, ty~: Ref[Type?])
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
@@ -210,7 +210,7 @@ pub fn constant_folding(self: Expr) -> Expr!Error {
               _ => raise Failure("Invalid arithmetical binary operator")
             }
 
-            Natural(value=value, width=None, span~, ty~)
+            Natural(value=value, width=None, base=10, span~, ty~)
           }
           _ => expr
         }
@@ -354,6 +354,6 @@ pub fn is_numerical(self: Type) -> Bool {
   }
 }
 
-pub fn Expr::nat(n: Int, span~: Span) -> Expr {
-  Natural(value=n, width=None, span~, ty={ val: Some(Nat) })
+pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
+  Natural(value=n, width~, base~, span~, ty={ val: Some(Nat) })
 }

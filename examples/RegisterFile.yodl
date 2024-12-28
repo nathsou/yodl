@@ -56,3 +56,28 @@ module RegisterFile(
     read_data1 = regs[read_src1];
     read_data2 = regs[read_src2];
 }
+
+module Top(
+    clk: logic,
+    sw: logic[16],
+    btn_c: logic,
+) -> (
+    led: logic[16],
+) {
+    let read_src1 = sw[14:12];
+    let read_src2 = sw[11:9];
+    let data = [...8'0, ...sw[7:0]];
+    let write_enable = sw[15];
+
+    let regs = RegisterFile(
+        clk,
+        rst: btn_c,
+        write_enable,
+        write_dest: read_src1,
+        write_data: data,
+        read_src1,
+        read_src2,
+    );
+
+    led = write_enable ? data : [...regs.read_data1[7:0], ...regs.read_data2[7:0]];
+}

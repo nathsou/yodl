@@ -76,14 +76,14 @@ fn parse_identifier(self: Parser) -> String!ParserError {
   }
 }
 
-fn parse_integer(self: Parser) -> (Int, Int?)!ParserError {
+fn parse_integer(self: Parser) -> ParsedInteger!ParserError {
   let token = self.peek()
   let start_idx = self.index
 
   match token {
-    Natural(value~, width~) => {
+    Natural(value~, width~, base~) => {
       self.advance()
-      (value, width)
+      { value, width, base }
     }
     _ => raise ExpectedInteger(received=token, span=self.span(start_idx))
   }
@@ -208,9 +208,9 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
         Identifier(name~, span=self.span(start_idx), ty={ val: None })
       }
     }
-    Natural(value~, width~) => {
+    Natural(value~, width~, base~) => {
       self.advance()
-      Natural(value~, width~, span=self.span(start_idx), ty={ val: None })
+      Natural(value~, width~, base~, span=self.span(start_idx), ty={ val: None })
     }
     Not => {
       self.advance()
@@ -385,8 +385,7 @@ fn parse_type(self: Parser) -> Type!ParserError {
 
   if self.consumes(Lchevron) {
     while not(self.matches(Rchevron)) {
-      let (param, _) = self.parse_integer!()
-      params.push(param)
+      params.push(self.parse_integer!().value)
 
       if not(self.consumes(Comma)) {
         break

@@ -52,7 +52,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
     (match expr {
       Identifier(name~, span~, ty~) => {
         match self.genvars.resolve(name) {
-          Some(value) => @parse.Expr::Natural(value=value, width=None, span~, ty~)
+          Some(value) => @parse.Expr::Natural(value=value, width=None, base=10, span~, ty~)
           None => match self.names.resolve(name) {
             Some(unique_name) => @parse.Expr::Identifier(name=unique_name.to_string(), span~, ty~)
             None => expr
@@ -70,8 +70,8 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
                 let cases = []
 
                 for i in 0..<@utils.pow2(s_width) {
-                  let lhs = @parse.Expr::Natural(value=i, width=Some(s_width), span~, ty=index.ty())
-                  let idx = @parse.Expr::Natural(value=i, width=None, span~, ty=index.ty())
+                  let lhs = @parse.Expr::nat(i, width=Some(s_width), base=10, span~)
+                  let idx = @parse.Expr::nat(i, width=None, base=10, span~)
                   cases.push((lhs, @parse.Expr::Indexing(expr~, index=idx, span~, ty~)))
                 }
 

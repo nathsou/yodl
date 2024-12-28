@@ -21,8 +21,13 @@ fn is_whitespace(c: Char) -> Bool {
   }
 }
 
-fn is_digit(c: Char) -> Bool {
-  c >= '0' && c <= '9'
+fn is_digit(c: Char, base~: Int) -> Bool {
+  match base {
+    2 => c == '0' || c == '1'
+    8 => c >= '0' && c <= '7'
+    16 => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+    _ => c >= '0' && c <= '9'
+  }
 }
 
 fn is_alpha(c: Char) -> Bool {
@@ -30,7 +35,7 @@ fn is_alpha(c: Char) -> Bool {
 }
 
 fn is_alphanumeric(c: Char) -> Bool {
-  is_alpha(c) || is_digit(c)
+  is_alpha(c) || is_digit(c, base=10)
 }
 
 pub fn Lexer::new(input: String, file~: String) -> Lexer {
@@ -91,44 +96,74 @@ fn parse_identifier(self: Lexer) -> String {
   builder.to_string()
 }
 
-let zero_ascii: Int = '0'.to_int()
-
 fn parse_digit(c: Char) -> Int {
-  c.to_int() - zero_ascii
+  match c {
+    '0' => 0
+    '1' => 1
+    '2' => 2
+    '3' => 3
+    '4' => 4
+    '5' => 5
+    '6' => 6
+    '7' => 7
+    '8' => 8
+    '9' => 9
+    'a' | 'A' => 10
+    'b' | 'B' => 11
+    'c' | 'C' => 12
+    'd' | 'D' => 13
+    'e' | 'E' => 14
+    'f' | 'F' => 15
+    _ => 0
+  }
 }
 
-fn parse_uint(s: String) -> Int {
-  // assumes the string only contains (base-10) digits
+fn parse_uint(s: String, base~: Int) -> Int {
   let mut n: Int = 0
-  let p: Int = 10
 
   for c in s {
-    n = n * p + parse_digit(c)
+    n = n * base + parse_digit(c)
   }
 
   n
 }
 
-fn parse_integer(self: Lexer) -> (Int, Int?) {
+struct ParsedInteger {
+  value: Int
+  width: Int?
+  base: Int
+}
+
+fn parse_integer(self: Lexer) -> ParsedInteger {
   let builder = StringBuilder::new()
+  let mut base = 10
   let mut width = None
 
-  for i in self.index..<self.input.length() {
-    let char = self.input[i]
+  while self.index < self.input.length() {
+    let char = self.input[self.index]
 
-    if is_digit(char) {
+    if is_digit(char, base~) {
       builder.write_char(char)
       self.advance()
     } else if char == '\'' {
-      width = Some(parse_uint(builder.to_string()))
-      builder.reset()
       self.advance()
+
+      match self.peek() {
+        'b' => { self.advance(); base = 2; }
+        'o' => { self.advance(); base = 8; }
+        'd' => { self.advance(); base = 10; }
+        'h' => { self.advance(); base = 16; }
+        _ => ()
+      }
+
+      width = Some(parse_uint(builder.to_string(), base=10))
+      builder.reset()
     } else {
       break
     }
   }
 
-  (parse_uint(builder.to_string()), width)
+  { value: parse_uint(builder.to_string(), base~), width, base }
 }
 
 fn advance(self: Lexer) -> Unit {
@@ -315,9 +350,9 @@ fn next(self: Lexer) -> LexerResult[Token] {
       Ok(StringLiteral(builder.to_string()))
     }
     _ => {
-      if is_digit(char) {
-        let (value, width) = self.parse_integer()
-        Ok(Natural(value~, width~))
+      if is_digit(char, base=10) {
+        let { value, width, base } = self.parse_integer()
+        Ok(Natural(value~, width~, base~))
       } else if is_alpha(char) || char == '_' {
         let identifier = self.parse_identifier()
 

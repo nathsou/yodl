@@ -1,0 +1,84 @@
+
+// For the Alchitry Cu board
+// yosys -p "read_rtlil output/Timer.rtlil; check -assert; synth_ice40 -top Top -json output/Timer.json"
+// nextpnr-ice40 --hx8k --json output/Timer.json --pcf output/cu.pcf --package cb132 --freq 100 --asc output/Timer.asc
+// icepack output/Timer.asc output/Timer.bin
+
+@internal
+declare module Reg<N>(
+    clk: logic,
+    d: logic[N],
+    en?: logic,
+    rst?: logic,
+) -> (
+    q: logic[N],
+);
+
+// outputs a 1 for one clock cycle once per second
+module Timer(clk: logic) -> (q: logic) {
+    let counter = Reg<27>(clk);
+    counter.d = counter.q + 1;
+    let end = counter.q == 100000000; // 100 Mhz clock
+    counter.rst = end;
+    q = end;
+}
+
+module SevenSegment(char: logic[4]) -> (segs: logic[8]) {
+    segs = match char {
+        4'h0 => 8'b0111111,
+        4'h1 => 8'b0000110,
+        4'h2 => 8'b1011011,
+        4'h3 => 8'b1001111,
+        4'h4 => 8'b1100110,
+        4'h5 => 8'b1101101,
+        4'h6 => 8'b1111101,
+        4'h7 => 8'b0000111,
+        4'h8 => 8'b1111111,
+        4'h9 => 8'b1100111,
+        4'ha => 8'b1110111,
+        4'hb => 8'b1111100,
+        4'hc => 8'b0111001,
+        4'hd => 8'b1011110,
+        4'he => 8'b1111001,
+        4'hf => 8'b1110001,
+    };
+}
+
+module Segments(
+    clk: logic,
+    rst: logic,
+    value: logic[16],
+) -> (
+    segs: logic[8],
+    sel: logic[4],
+) {
+    let counter = Reg<13>(clk, rst);
+    counter.d = counter.q + 1;
+
+    let packed = match counter.q[12:11] {
+        2'b00 => [...value[3:0], ...4'b1110],
+        2'b01 => [...value[7:4], ...4'b1101],
+        2'b10 => [...value[11:8], ...4'b1011],
+        2'b11 => [...value[15:12], ...4'b0111],
+    };
+
+    segs = not SevenSegment(char: packed[7:4]).segs;
+    sel = packed[3:0];
+}
+
+module Top(
+    clk: logic,
+    rst_n: logic,
+) -> (
+    io_led: logic[24],
+    io_seg: logic[8],
+    io_an: logic[4],
+) {
+    let rst = not rst_n;
+    let timer = Timer(clk);
+    let seconds = Reg<24>(clk, rst);
+    seconds.d = seconds.q + timer.q;
+    Segments(clk, rst, value: seconds.q[15:0], segs: io_seg, sel: io_an);
+
+    io_led = seconds.q;
+}

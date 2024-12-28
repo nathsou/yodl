@@ -83,9 +83,9 @@ fn register_monomorphized_module(
 fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elaborate.Scope[Int]) -> @parse.Expr!Error {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
-      Identifier(name~, span~, ty~) => {
+      Identifier(name~, span~, ty=_) => {
         match params_env.resolve(name) {
-          Some(value) => @parse.Expr::Natural(value=value, width=None, span~, ty~)
+          Some(value) => @parse.Expr::nat(value, width=None, base=10, span~)
           None => expr
         }
       }
