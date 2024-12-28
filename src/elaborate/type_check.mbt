@@ -263,10 +263,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
 
             ty
         }
-        Match(subject~, cases~, span~, ..) => {
+        Match(subject~, cases~, default~, span~, ..) => {
             let subject_ty = self.check_expr!(subject, env)
             
-            if cases.is_empty() {
+            if cases.is_empty() && default.is_empty() {
                 raise EmptyMatch(span~)
             }
 

@@ -13,6 +13,7 @@ pub(readonly) type! ParserError {
   ExpectedType(received~: TokenType, span~: Span)
   ExpectedDecl(received~: TokenType, span~: Span)
   ExpectedRangeOperator(received~: TokenType, span~: Span)
+  MultipleDefaultCases(span~: Span)
 } derive(Show)
 
 pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
@@ -164,12 +165,25 @@ fn parse_match_expr(self: Parser) -> Expr!ParserError {
   let subject = self.parse_expr!()
   self.expect!(Lbrace, start_idx)
   let cases = []
+  let mut default = None
 
   while not(self.matches(Rbrace)) {
-    let value = self.parse_expr!()
-    self.expect!(RightThickArrow, start_idx)
-    let expr = self.parse_expr!()
-    cases.push((value, expr))
+    if self.consumes(Underscore) {
+      self.expect!(RightThickArrow, start_idx)
+      let expr = self.parse_expr!()
+
+      match default {
+        Some(_) => raise MultipleDefaultCases(span=self.span(start_idx))
+        None => {
+          default = Some(expr)
+        }
+      }
+    } else {
+      let value = self.parse_expr!()
+      self.expect!(RightThickArrow, start_idx)
+      let expr = self.parse_expr!()
+      cases.push((value, expr))
+    }
 
     if not(self.consumes(Comma)) {
       break
@@ -178,7 +192,7 @@ fn parse_match_expr(self: Parser) -> Expr!ParserError {
 
   self.expect!(Rbrace, start_idx)
 
-  Match(subject~, cases~, span=self.span(start_idx), ty={ val: None })
+  Match(subject~, cases~, default~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_primary_expr(self: Parser) -> Expr!ParserError {

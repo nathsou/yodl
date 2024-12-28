@@ -581,7 +581,7 @@ fn elaborate_expr(
 
       Value::Signal(SigWire(output))
     }
-    Match(subject~, cases~, span~, ty~) => {
+    Match(subject~, cases~, default~, span~, ty~) => {
       let width = ty.val.unwrap().width().or_error!(MatchReturnTypeMustBeSignal(span~))
       let s_width = expr_width!(subject).or_error!(Unreachable(message="Unsized match subject", span=subject.span()))
       let max_cases = @utils.pow2(s_width)
@@ -595,7 +595,7 @@ fn elaborate_expr(
         attributes=src_attribute(span),
       )
 
-      let (b_sig, s_sig) = {
+      let (default_sig, b_sig, s_sig) = {
         let sigs: Array[(@parse.Expr, @rtlil.Signal)?] = @utils.fill(max_cases, None)
 
         for case in cases {
@@ -633,11 +633,20 @@ fn elaborate_expr(
               comparisons.push(eq_cell.expect_signal!(lhs.span()))
               unwrapped_sigs.push(sig)
             }
-            None => raise MissingMatchCase(index=idx, span~)
+            None => {
+              if default.is_empty() {
+                raise MissingMatchCase(index=idx, span=span)
+              }
+            }
           }
         }
 
-        (@rtlil.SigConcat(unwrapped_sigs), @rtlil.SigConcat(comparisons))
+        let default_sig = match default {
+          Some(expr) => self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
+          None => SigConst(ConstValue(width~, bits=@utils.fill(width, @rtlil.BinaryDigit::X)))
+        }
+
+        (default_sig, @rtlil.SigConcat(unwrapped_sigs), @rtlil.SigConcat(comparisons))
       }
 
       let _ = mod.add_cell!(
@@ -648,7 +657,7 @@ fn elaborate_expr(
           "WIDTH": @rtlil.ConstInteger(width),
         }),
         connections=map_signals({
-          "A": SigConst(ConstValue(width~, bits=@utils.fill(width, @rtlil.BinaryDigit::X))),
+          "A": default_sig,
           "B": b_sig,
           "S": s_sig,
           "Y": SigWire(output),

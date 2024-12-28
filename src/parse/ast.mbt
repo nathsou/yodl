@@ -40,7 +40,7 @@ pub(all) enum Expr {
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
-  Match(subject~: Expr, cases~: Array[(Expr, Expr)], span~: Span, ty~: Ref[Type?])
+  Match(subject~: Expr, cases~: Array[(Expr, Expr)], default~: Expr?, span~: Span, ty~: Ref[Type?])
 }
 
 pub(all) enum Stmt {

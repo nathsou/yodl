@@ -294,6 +294,10 @@ fn next(self: Lexer) -> LexerResult[Token] {
       self.advance()
       Ok(At)
     }
+    '_' => {
+      self.advance()
+      Ok(Underscore)
+    }
     '\'' => {
       self.advance()
       Ok(SingleQuote)

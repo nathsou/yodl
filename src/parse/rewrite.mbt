@@ -61,7 +61,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!Error) -> Expr!Error {
       let else_ = rewrite_expr!(else_, rewrite)
       Ternary(cond~, then~, else_~, span~, ty~)
     }
-    Match(subject~, cases~, span~, ty~) => {
+    Match(subject~, cases~, default~, span~, ty~) => {
       let new_subject = rewrite_expr!(subject, rewrite)
       let new_cases = []
 
@@ -72,7 +72,12 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!Error) -> Expr!Error {
         new_cases.push((pat, expr))
       }
 
-      Match(subject=new_subject, cases=new_cases, span~, ty~)
+      let new_default = match default {
+        Some(expr) => Some(rewrite_expr!(expr, rewrite))
+        None => None
+      }
+
+      Match(subject=new_subject, cases=new_cases, default=new_default, span~, ty~)
     }
   }
 

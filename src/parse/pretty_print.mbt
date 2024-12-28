@@ -191,7 +191,7 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.emit_expr(else_)
       self.write(")")
     }
-    Match(subject~, cases~, ..) => {
+    Match(subject~, cases~, default~, ..) => {
       self.write("match ")
       self.emit_expr(subject)
       self.write(" {\n")
@@ -204,6 +204,16 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
         self.write(" => ")
         self.emit_expr(expr)
         self.write(",\n")
+      }
+
+      match default {
+        Some(expr) => {
+          self.write_indent()
+          self.write("_ => ")
+          self.emit_expr(expr)
+          self.write(",\n")
+        }
+        None => ()
       }
 
       self.indent -= 1

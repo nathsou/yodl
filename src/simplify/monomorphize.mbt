@@ -81,108 +81,52 @@ fn register_monomorphized_module(
 }
 
 fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elaborate.Scope[Int]) -> @parse.Expr!Error {
-  let res = match expr {
-    Natural(_) => expr
-    Identifier(name~, span~, ty~) => {
-      match params_env.resolve(name) {
-        Some(value) => @parse.Expr::Natural(value=value, width=None, span~, ty~)
-        None => expr
+  @parse.rewrite_expr!(expr, fn(expr) {
+    match expr {
+      Identifier(name~, span~, ty~) => {
+        match params_env.resolve(name) {
+          Some(value) => @parse.Expr::Natural(value=value, width=None, span~, ty~)
+          None => expr
+        }
       }
-    }
-    Unary(op~, expr~, span~, ty~) => {
-      let mono_expr = self.monomorphize_expr!(expr, params_env~)
-      @parse.Expr::Unary(op~, expr=mono_expr, span~, ty~)
-    }
-    Binary(op~, lhs~, rhs~, span~, ty~) => {
-      let mono_lhs = self.monomorphize_expr!(lhs, params_env~)
-      let mono_rhs = self.monomorphize_expr!(rhs, params_env~)
-      @parse.Expr::Binary(op~, lhs=mono_lhs, rhs=mono_rhs, span~, ty~)
-    }
-    Indexing(expr~, index~, span~, ty~) => {
-      let mono_expr = self.monomorphize_expr!(expr, params_env~)
-      let mono_index = self.monomorphize_expr!(index, params_env~)
-      @parse.Expr::Indexing(expr=mono_expr, index=mono_index, span~, ty~)
-    }
-    Slicing(expr~, msb~, lsb~, span~, ty~) => {
-      let mono_expr = self.monomorphize_expr!(expr, params_env~)
-      let mono_msb = self.monomorphize_expr!(msb, params_env~)
-      let mono_lsb = self.monomorphize_expr!(lsb, params_env~)
-      @parse.Expr::Slicing(expr=mono_expr, msb=mono_msb, lsb=mono_lsb, span~, ty~)
-    }
-    PortAccess(expr~, port~, span~, ty~) => {
-      let mono_expr = self.monomorphize_expr!(expr, params_env~)
-      @parse.Expr::PortAccess(expr=mono_expr, port=port, span~, ty~)
-    }
-    Instance(name~, params~, ports~, span~, ty~) => {
-      let mono_params = []
+      Instance(name~, params~, ports~, span~, ty~) => {
+        let mono_params = []
 
-      for param in params {
-        mono_params.push(self.monomorphize_expr!(param, params_env~))
+        for param in params {
+          mono_params.push(self.monomorphize_expr!(param, params_env~))
+        }
+
+        let (mono_name, mono_params) = if params.length() > 0 && not(self.declared_modules.contains(name)) {
+          let mod = self.register_monomorphized_module!(
+            name~,
+            params={
+              let params = []
+
+              for param in mono_params {
+                params.push(param.expect_int!())
+              }
+
+              params
+            },
+            span~,
+          )
+
+          (mod.name, [])
+        } else {
+          (name, mono_params)
+        }
+
+        let mono_ports = {}
+
+        for port_name, port_expr in ports {
+          mono_ports[port_name] = self.monomorphize_expr!(port_expr, params_env~)
+        }
+
+        @parse.Expr::Instance(name=mono_name, params=mono_params, ports=mono_ports, span~, ty~)
       }
-
-      let (mono_name, mono_params) = if params.length() > 0 && not(self.declared_modules.contains(name)) {
-        let mod = self.register_monomorphized_module!(
-          name~,
-          params={
-            let params = []
-
-            for param in mono_params {
-              params.push(param.expect_int!())
-            }
-
-            params
-          },
-          span~,
-        )
-
-        (mod.name, [])
-      } else {
-        (name, mono_params)
-      }
-
-      let mono_ports = {}
-
-      for port_name, port_expr in ports {
-        mono_ports[port_name] = self.monomorphize_expr!(port_expr, params_env~)
-      }
-
-      @parse.Expr::Instance(name=mono_name, params=mono_params, ports=mono_ports, span~, ty~)
+      _ => expr
     }
-    Vector(elems~, span~, ty~) => {
-      let mono_elems = []
-
-      for elem in elems {
-        mono_elems.push(self.monomorphize_expr!(elem, params_env~))
-      }
-
-      @parse.Expr::Vector(elems=mono_elems, span~, ty~)
-    }
-    Spread(expr~, span~, ty~) => {
-      let mono_expr = self.monomorphize_expr!(expr, params_env~)
-      @parse.Expr::Spread(expr=mono_expr, span~, ty~)
-    }
-    Ternary(cond~, then~, else_~, span~, ty~) => {
-      let mono_cond = self.monomorphize_expr!(cond, params_env~)
-      let mono_then = self.monomorphize_expr!(then, params_env~)
-      let mono_else = self.monomorphize_expr!(else_, params_env~)
-      @parse.Expr::Ternary(cond=mono_cond, then=mono_then, else_=mono_else, span~, ty~)
-    }
-    Match(subject~, cases~, span~, ty~) => {
-      let mono_subject = self.monomorphize_expr!(subject, params_env~)
-      let mono_cases = []
-
-      for case in cases {
-        let (pat, expr) = case
-        let mono_pat = self.monomorphize_expr!(pat, params_env~)
-        let mono_expr = self.monomorphize_expr!(expr, params_env~)
-        mono_cases.push((mono_pat, mono_expr))
-      }
-
-      @parse.Expr::Match(subject=mono_subject, cases=mono_cases, span~, ty~)
-    }
-  }
-
-  res.constant_folding!()
+  })
 }
 
 fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, params_env~: @elaborate.Scope[Int]) -> @parse.Stmt!Error {
