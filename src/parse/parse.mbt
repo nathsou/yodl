@@ -265,9 +265,13 @@ fn parse_instance_expr(self: Parser, module_name~: String) -> Expr!ParserError {
   while not(self.matches(Rparen)) {
     let start_idx = self.index
     let name = self.parse_identifier!()
-    self.expect!(Colon, start_idx)
-    let expr = self.parse_expr!()
-    ports[name] = expr
+    
+    if self.consumes(Colon) {
+      let expr = self.parse_expr!()
+      ports[name] = expr
+    } else {
+      ports[name] = Identifier(name~, span=self.span(start_idx), ty={ val: None })
+    }
 
     if not(self.consumes(Comma)) {
       break

@@ -15,7 +15,6 @@ type! TypeCheckerError {
     VariableRedeclared(name~: String, span~: @parse.Span)
     InvalidAssignmentTarget(span~: @parse.Span)
     IndexMustBeInteger(span~: @parse.Span)
-    IndexMustBeConstantExpr(span~: @parse.Span)
     IndexedExpressionMustBeVector(span~: @parse.Span)
     UnknownModule(name~: String, span~: @parse.Span)
     UnknownModulePort(module_name~: String, port_name~: String, span~: @parse.Span)

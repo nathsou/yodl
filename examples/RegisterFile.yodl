@@ -22,16 +22,16 @@ module RegisterFile(
     read_data2: logic[16],
 ) {
     let regs = [
-        16'0,
-        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'1)).q,
-        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'2)).q,
-        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'3)).q,
-        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'4)).q,
-        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'5)).q,
-        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'6)).q,
-        Reg<16>(clk: clk, rst: rst, d: write_data, en: write_enable and (write_dest == 3'7)).q,
+        Reg<16>(clk, d: 16'0, en: 1'0),
+        Reg<16>(clk, rst, d: write_data, en: write_enable and (write_dest == 3'1)),
+        Reg<16>(clk, rst, d: write_data, en: write_enable and (write_dest == 3'2)),
+        Reg<16>(clk, rst, d: write_data, en: write_enable and (write_dest == 3'3)),
+        Reg<16>(clk, rst, d: write_data, en: write_enable and (write_dest == 3'4)),
+        Reg<16>(clk, rst, d: write_data, en: write_enable and (write_dest == 3'5)),
+        Reg<16>(clk, rst, d: write_data, en: write_enable and (write_dest == 3'6)),
+        Reg<16>(clk, rst, d: write_data, en: write_enable and (write_dest == 3'7)),
     ];
 
-    read_data1 = regs[read_src1];
-    read_data2 = regs[read_src2];
+    read_data1 = regs[read_src1].q;
+    read_data2 = regs[read_src2].q;
 }

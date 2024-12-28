@@ -46,6 +46,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 1. Resolve identifiers to unique names
 // 2. Replace genvars with their values
 // 3. Rewrite non-constant indexing expressions to match expressions
+// 4. Rewrite port accesses on match expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
   @parse.rewrite_expr!(expr, fn(expr) {
     match expr {
@@ -83,6 +84,26 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
 
             self.simplify_expr!(match_expr)
           }
+        }
+      }
+      PortAccess(expr~, port~, span=port_acc_span, ty=port_acc_ty) as port_access_expr => {
+        match expr {
+          Match(subject~, cases~, default~, span~, ty=_) => {
+            let new_cases = []
+            let new_default = match default {
+              Some(default) => Some(@parse.PortAccess(expr=default, port~, span=port_acc_span, ty=port_acc_ty))
+              None => None
+            }
+
+            for case in cases {
+              let (value, expr) = case
+              let new_expr = @parse.PortAccess(expr~, port~, span=port_acc_span, ty=port_acc_ty)
+              new_cases.push((value, new_expr))
+            }
+
+            @parse.Expr::Match(subject=subject, cases=new_cases, default=new_default, span~, ty=port_acc_ty)
+          }
+          _ => port_access_expr
         }
       }
       _ => expr
