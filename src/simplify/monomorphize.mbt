@@ -82,7 +82,7 @@ fn register_monomorphized_module(
 
 fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elaborate.Scope[Int]) -> @parse.Expr!Error {
   @parse.rewrite_expr!(expr, fn(expr) {
-    match expr {
+    (match expr {
       Identifier(name~, span~, ty~) => {
         match params_env.resolve(name) {
           Some(value) => @parse.Expr::Natural(value=value, width=None, span~, ty~)
@@ -125,7 +125,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
         @parse.Expr::Instance(name=mono_name, params=mono_params, ports=mono_ports, span~, ty~)
       }
       _ => expr
-    }
+    }).constant_folding!()
   })
 }
 
@@ -144,6 +144,19 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, params_env~: @elabo
       let mono_ty = match ty.val {
         Some(ty) => Some(self.monomorphize_type!(ty, params_env~))
         None => None
+      }
+
+      match ty.val {
+        Some(Name(name~, params~)) => {
+          if params.length() > 0 {
+            let _ = self.register_monomorphized_module!(
+              name~,
+              params~,
+              span~,
+            )
+          }
+        }
+        _ => ()
       }
 
       @parse.Stmt::Let(name=name, ty={ val: mono_ty }, expr=mono_expr, span~)

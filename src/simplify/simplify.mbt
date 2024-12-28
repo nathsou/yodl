@@ -49,7 +49,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 4. Rewrite port accesses on match expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
   @parse.rewrite_expr!(expr, fn(expr) {
-    match expr {
+    (match expr {
       Identifier(name~, span~, ty~) => {
         match self.genvars.resolve(name) {
           Some(value) => @parse.Expr::Natural(value=value, width=None, span~, ty~)
@@ -107,7 +107,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
         }
       }
       _ => expr
-    }
+    }).constant_folding!()
   })
 }
 

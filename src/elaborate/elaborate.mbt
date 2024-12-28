@@ -80,10 +80,10 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
         Value::Vector(val)
       }
     }
-    Instance(sig={ name, span, .. }, params=_) => {
+    Instance(sig={ name, span, .. }, params~) => {
       let inst: @parse.Expr = @parse.Expr::Instance(
         name~,
-        params=[],
+        params=params.values().map(fn(p) { @parse.Expr::nat(p, span~) }).collect(),
         ports={},
         span~,
         ty={ val: Some(ty) },
@@ -211,6 +211,7 @@ fn binary_op_cell(
   rhs~: @parse.Expr,
   mod~: @rtlil.Module,
   span~: @parse.Span,
+  output_width~: Int? = None,
   attributes~: Map[@rtlil.Id, @rtlil.Constant] = {},
 ) -> Value!Error {
   let (cell_type, wa, wb, wy) = match (expr_width!(lhs), expr_width!(rhs)) {
@@ -238,7 +239,10 @@ fn binary_op_cell(
         Ternary => raise Unsupported(message="Ternary operator is not a binop", span~)
       }
 
-      let wy = op.output_width(wa, wb)
+      let wy = match output_width {
+        Some(output_width) => @utils.min(op.output_width(wa, wb), output_width)
+        None => op.output_width(wa, wb)
+      }
 
       (cell_type, wa, wb, wy)
     }
@@ -305,9 +309,10 @@ fn elaborate_expr(
       lhs~,
       rhs~,
       span~,
-      ..
+      ty~,
     ) => {
-      self.binary_op_cell!(op~, lhs~, rhs~, mod~, span~)
+      let output_width = ty.val.unwrap().width().or_error!(Unsupported(message="Only logic types are supported", span~))
+      self.binary_op_cell!(op~, lhs~, rhs~, mod~, span~, output_width=Some(output_width))
     }
     Instance(name~, params~, ports~, span~, ty=_) => {
       if params.length() > 0 && not(self.declared_modules.contains(name)) {
@@ -334,7 +339,7 @@ fn elaborate_expr(
             let port_widths = {}
             let params_env = {}
 
-            for name, param in @utils.zip(sig.params, params) {
+            for name, param in @utils.zip2(sig.params, params) {
               let val = param.expect_int!()
               params_env[name] = val
             }
@@ -350,22 +355,20 @@ fn elaborate_expr(
       }
 
       let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
-      let unconnected_wires: Map[@rtlil.Id, @rtlil.Signal] = {}
+      let inline_connections: Map[@rtlil.Id, @rtlil.Signal] = {}
 
       let extra_ports = []
       let cell_name = name_binding.or(GenId("\{name}_\{self.next_genidx()}"))
 
       for name, width in port_widths {
-        if not(ports.contains(name)) {
-          let wire = mod.add_wire!(
-            name=GenId("\{cell_name.inner()}.\{name}"),
-            width~,
-            port=None,
-            attributes=src_attribute(span),
-          )
+        let wire = mod.add_wire!(
+          name=GenId("\{cell_name.inner()}.\{name}"),
+          width~,
+          port=None,
+          attributes=src_attribute(span),
+        )
 
-          unconnected_wires[@rtlil.PubId(name)] = SigWire(wire)
-        }
+        connections[@rtlil.PubId(name)] = SigWire(wire)
       }
 
       for port_name, expr in ports {
@@ -374,15 +377,11 @@ fn elaborate_expr(
         }
 
         let sig = self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
-        connections[@rtlil.PubId(port_name)] = sig
+        inline_connections[PubId(port_name)] = sig
       }
       
       if not(extra_ports.is_empty()) {
         raise ExtraPorts(extra_ports~, span~)
-      }
-
-      for id, wire in unconnected_wires {
-        connections[id] = wire
       }
 
       let cell = if attributes.contains("internal") {
@@ -475,6 +474,10 @@ fn elaborate_expr(
         )
       }
 
+      for wire_name, sig in inline_connections {
+        mod.connect!(connections[wire_name].unwrap(), sig, span~)
+      }
+
       Value::Instance(cell)
     }
     PortAccess(expr~, port~, span~, ..) => {
@@ -484,7 +487,9 @@ fn elaborate_expr(
         Instance(cell) => {
           match mod.wires[GenId("\{cell.name.inner()}.\{port}")] {
             Some(wire) => Value::Signal(SigWire(wire))
-            None => raise UnknownModulePort(module_name=cell.name.inner(), port_name=port, span~)
+            None => {
+              raise UnknownModulePort(module_name=cell.name.inner(), port_name=port, span~)
+            }
           }
         }
         _ => raise Unsupported(message="Port access on non-instance", span~)

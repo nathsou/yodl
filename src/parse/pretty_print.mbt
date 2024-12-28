@@ -326,11 +326,29 @@ pub impl Show for Type with output(ty, logger) {
 
       logger.write_char(']')
     }
-    Instance(sig={ name, .. }, params=_) => {
+    Instance(sig={ name, .. }, params~) => {
       logger.write_string(name)
+
+      if params.size() > 0 {
+        logger.write_iter(
+          params.values(),
+          prefix="<",
+          sep=", ",
+          suffix=">",
+        )
+      }
     }
-    Name(name~) => {
+    Name(name~, params~) => {
       logger.write_string(name)
+
+      if params.length() > 0 {
+        logger.write_iter(
+          params.iter(),
+          prefix="<",
+          sep=", ",
+          suffix=">",
+        )
+      }
     }
   }
 }

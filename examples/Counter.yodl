@@ -16,7 +16,7 @@ module Top(
 ) -> (
     led: logic[16],
 ) {
-    let counter = Reg<32>(clk: clk, rst: btn_c);
-    counter.d = (counter.q + sw)[31:0];
+    let counter = Reg<32>(clk, rst: btn_c);
+    counter.d = counter.q + sw;
     led = counter.q[31:16];
 }

@@ -53,7 +53,7 @@ module Top(
 ) -> (
     led: logic[16],
 ) {
-    let counter = Reg<32>(clk: clk);
+    let counter = Reg<32>(clk);
 
     let adder = Adder<32>(
         a: counter.q,

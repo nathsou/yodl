@@ -369,20 +369,39 @@ fn parse_stmt(self: Parser) -> Stmt!ParserError {
 
 fn parse_type(self: Parser) -> Type!ParserError {
   let start_idx = self.index
+  let params: Array[Int] = []
 
-  let base_ty = match self.peek() {
+  let mut base_ty = match self.peek() {
     Logic => {
       self.advance()
       Type::Logic
     }
     Identifier(name) => {
       self.advance()
-      Type::Name(name~)
+      Type::Name(name~, params=[])
     }
     _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
   }
 
-  if self.consumes(Lbracket) {
+  if self.consumes(Lchevron) {
+    while not(self.matches(Rchevron)) {
+      let (param, _) = self.parse_integer!()
+      params.push(param)
+
+      if not(self.consumes(Comma)) {
+        break
+      }
+    }
+
+    self.expect!(Rchevron, start_idx)
+
+    base_ty = match base_ty {
+      Type::Name(name~, params=_) => Type::Name(name~, params~)
+      _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
+    }
+  }
+
+  while self.consumes(Lbracket) {
     let expr = self.parse_expr!()
 
     let len = match expr {
@@ -391,12 +410,10 @@ fn parse_type(self: Parser) -> Type!ParserError {
     }
 
     self.expect!(Rbracket, start_idx)
-    return Vector(ty=base_ty, len~)
-  } else {
-    return base_ty
+    base_ty = Vector(ty=base_ty, len~)
   }
 
-  raise ExpectedType(received=self.peek(), span=self.span(start_idx))
+  base_ty
 }
 
 fn parse_port(self: Parser, dir~: PortDirection) -> Port!ParserError {

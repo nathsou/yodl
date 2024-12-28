@@ -92,11 +92,16 @@ impl Eq for VectorLen with op_equal(self, other) {
   }
 }
 
+pub(readonly) type! AstError {
+  ExpectedFixedVectorLength(span~: Span)
+  ExpectedIntegerExpression(span~: Span)
+} derive(Show)
+
 pub fn expect_fixed(self: VectorLen, span: Span) -> Int!Error {
   match self {
     Fixed(value) => value
     Dynamic(_) => {
-      raise Failure("Expected fixed vector length \{span}")
+      raise ExpectedFixedVectorLength(span~)
     }
   }
 }
@@ -106,7 +111,7 @@ pub(all) enum Type {
   Logic
   Vector(ty~: Type, len~: VectorLen)
   Instance(sig~: ModuleSignature, params~: Map[String, Int])
-  Name(name~: String)
+  Name(name~: String, params~: Array[Int])
 } derive(Eq)
 
 pub(all) enum PortDirection {
@@ -240,7 +245,7 @@ pub fn constant_folding(self: Expr) -> Expr!Error {
 pub fn expect_int(self: Expr) -> Int!Error {
   match self {
     Natural(value~, ..) => value
-    _ => raise Failure("Expected integer expression")
+    _ => raise ExpectedIntegerExpression(span=self.span())
   }
 }
 
@@ -256,7 +261,7 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
 
 pub fn width(self: Type) -> Int? {
   match self {
-    Nat => None
+    Nat => Some(32)
     Logic => Some(1)
     Vector(len=Fixed(len), ..) => Some(len)
     Vector(..) => None
@@ -288,10 +293,10 @@ pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
 
       Instance(sig~, params=new_params)
     }
-    Name(name~) => {
+    Name(name~, params~) => {
       match params_env[name] {
         Some(_) => Nat
-        None => Name(name~)
+        None => Name(name~, params~)
       }
     }
   }
@@ -347,4 +352,8 @@ pub fn is_numerical(self: Type) -> Bool {
     Vector(ty~, ..) => ty.is_numerical()
     _ => false
   }
+}
+
+pub fn Expr::nat(n: Int, span~: Span) -> Expr {
+  Natural(value=n, width=None, span~, ty={ val: Some(Nat) })
 }

@@ -30,6 +30,7 @@ type! TypeCheckerError {
     InvalidAttribute(name~: String, span~: @parse.Span)
     InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], span~: @parse.Span)
     EmptyMatch(span~: @parse.Span)
+    InvalidInstanceTypeParameterCount(module_name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
 } derive(Show)
 
 fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
@@ -85,22 +86,28 @@ fn eval_const_expr(expr: @parse.Expr) -> Int!TypeCheckerError {
     }
 }
 
-fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.Type!TypeCheckerError {
+fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.Type! {
     match ty {
         Logic => Logic
         Nat => Nat
         Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty!(inner_ty, span~), len~)
         Instance(_) => ty
-        Name(name~) => {
+        Name(name~, params~) => {
             match self.modules[name] {
-                Some(sig) => Instance(sig~, params={})
+                Some(sig) => {
+                    if sig.params.length() != params.length() {
+                        raise InvalidInstanceTypeParameterCount(module_name=name, expected=sig.params.length(), actual=params.length(), span~)
+                    }
+
+                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params, params)))
+                }
                 None => raise TypeCheckerError::UnknownModule(name~, span~)
             }
         }
     }
 }
 
-fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> @parse.Type!Error {
+fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], expected_ty~: @parse.Type? = None) -> @parse.Type!Error {
     let ty = match expr {
         Identifier(name~, span~, ..) => {
             match env.resolve(name) {
@@ -122,7 +129,13 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type]) -> 
 
             let wa = ty_lhs.width().or_error!(UnsizedOperand(span~))
             let wb = ty_rhs.width().or_error!(UnsizedOperand(span~))
-            let wy = op.output_width(wa, wb)
+
+            let expected_width = match expected_ty {
+                Some(expected_ty) => expected_ty.width().or_error!(Failure("Expected type must have a width"))
+                None => wa
+            }
+
+            let wy = @utils.min(op.output_width(wa, wb), expected_width)
 
             match wy {
                 1 => Logic
@@ -304,7 +317,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
                 (Some(ty), Some(expr)) => {
                     let ty = self.resolve_ty!(ty, span~)
                     declare_name!(env~, name~, ty~, span~)
-                    let expr_ty = self.check_expr!(expr, env)
+                    let expr_ty = self.check_expr!(expr, env, expected_ty=Some(ty))
                     let _ = unify!(ty, expr_ty, span~)
 
                     ty
@@ -336,7 +349,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
             }
 
             let lhs_ty = self.check_expr!(lhs, env)
-            let rhs_ty = self.check_expr!(rhs, env)
+            let rhs_ty = self.check_expr!(rhs, env, expected_ty=Some(lhs_ty))
             let _ = unify!(lhs_ty, rhs_ty, span~)
         }
         Scope(body~, ..) => {
@@ -388,7 +401,7 @@ fn check_attribute(attr: @parse.Attribute) -> Unit!TypeCheckerError {
                 raise InvalidAttributeArgs(name=attr.name, args=attr.args, span=attr.span)
             }
 
-            for arg, expected in @utils.zip(attr.args, expected) {
+            for arg, expected in @utils.zip2(attr.args, expected) {
                 match (arg, expected) {
                     // (Int(_), Int) => ()
                     (String(_), Str) => ()
