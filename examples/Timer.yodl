@@ -14,9 +14,19 @@ declare module Reg<N>(
     q: logic[N],
 );
 
+@internal
+declare module RegSyncReset<N>(
+    clk: logic,
+    d: logic[N],
+    en?: logic,
+    rst?: logic,
+) -> (
+    q: logic[N],
+);
+
 // outputs a 1 for one clock cycle once per second
 module Timer(clk: logic) -> (q: logic) {
-    let counter = Reg<27>(clk);
+    let counter = RegSyncReset<27>(clk);
     counter.d = counter.q + 1;
     let end = counter.q == 100000000; // 100 Mhz clock
     counter.rst = end;

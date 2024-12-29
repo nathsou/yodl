@@ -213,23 +213,28 @@ fn port_wire_id(cell_name: @rtlil.Id, port_name: String) -> @rtlil.Id {
 
 // select which $dff cell to use based on the presence of the "en" and "rst" ports 
 fn remove_unused_register_ports(cell~: @rtlil.Cell, mod~: @rtlil.Module) -> Unit {
-  if cell.type_ == GenId("sdffe") {
+  if cell.type_ == GenId("sdffe") || cell.type_ == GenId("adffe") {
     let uses_rst = cell.accessed_ports.contains("rst")
     let uses_en = cell.accessed_ports.contains("en")
-
-    let cell_type = @rtlil.GenId(match (uses_en, uses_rst) {
+    let sync_reset = cell.type_.inner() == "sdffe"
+    cell.type_ = @rtlil.GenId(match (uses_en, uses_rst) {
       (false, false) => "dff"
-      (false, true) => "sdff"
+      (false, true) => if sync_reset { "sdff" } else { "adff" }
       (true, false) => "dffe"
-      (true, true) => "sdffe"
+      (true, true) => if sync_reset { "sdffe" } else { "adffe" }
     })
 
-    cell.type_ = cell_type
-
     if not(uses_rst) {
-      cell.connections.remove(PubId("SRST"))
-      cell.parameters.remove(PubId("SRST_POLARITY"))
-      cell.parameters.remove(PubId("SRST_VALUE"))
+      if sync_reset {
+        cell.parameters.remove(PubId("SRST_POLARITY"))
+        cell.parameters.remove(PubId("SRST_VALUE"))
+        cell.connections.remove(PubId("SRST"))
+      } else {
+        cell.parameters.remove(PubId("ARST_POLARITY"))
+        cell.parameters.remove(PubId("ARST_VALUE"))
+        cell.connections.remove(PubId("ARST"))
+      }
+
       mod.wires.remove(port_wire_id(cell.name, "rst"))
     }
 
@@ -477,29 +482,39 @@ fn elaborate_expr(
         }
 
         match name {
-          "Reg" => {
+          "Reg" | "RegSyncReset" => {
             let width = params[0].expect_int!()
+            let sync_reset = name == "RegSyncReset"
+            let cell_type = if sync_reset { "sdffe" } else { "adffe" }
 
-            mod.add_cell!(
-              type_=GenId("sdffe"),
+            let cell = mod.add_cell!(
+              type_=GenId(cell_type),
               name=cell_name,
               parameters=map_parameters({
                 "CLK_POLARITY": @rtlil.ConstInteger(1),
                 "WIDTH": @rtlil.ConstInteger(width),
-                "SRST_POLARITY": @rtlil.ConstInteger(1),
-                "SRST_VALUE": bits_from_int(0, width~),
                 "EN_POLARITY": @rtlil.ConstInteger(1),
               }),
               connections=map_signals({
                 "CLK": port_wire!("clk"),
                 "D": port_wire!("d"),
                 "Q": port_wire!("q"),
-                "SRST": port_wire!("rst"),
                 "EN": port_wire!("en"),
               }),
               attributes=src_attribute(span),
               accessed_ports~,
             )
+
+            let (rst_polarity_name, rst_value_name, rst_name) = match sync_reset {
+              true => ("SRST_POLARITY", "SRST_VALUE", "SRST")
+              false => ("ARST_POLARITY", "ARST_VALUE", "ARST")
+            }
+
+            cell.parameters[@rtlil.PubId(rst_polarity_name)] = @rtlil.ConstInteger(1)
+            cell.parameters[@rtlil.PubId(rst_value_name)] = bits_from_int(0, width~)
+            cell.connections[@rtlil.PubId(rst_name)] = port_wire!("rst")
+
+            cell
           }
           _ => raise Unsupported(message="Unknown internal module \"\{name}\"", span~)
         }
@@ -577,8 +592,6 @@ fn elaborate_expr(
           if idx >= len {
             raise IndexOutOfBounds(index=idx, len~, span=expr.span())
           }
-
-          println("Indexing vector at \{idx} of \{len}")
           
           values[idx]
         }
