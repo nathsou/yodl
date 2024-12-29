@@ -88,10 +88,11 @@ pub fn size(self: Signal) -> Int {
 
 pub(all) struct Cell {
   name: Id
-  type_: Id
+  mut type_: Id
   attributes: Map[Id, Constant]
   parameters: Map[Id, Constant]
   connections: Map[Id, Signal]
+  accessed_ports: Set[String]
 }
 
 pub(all) struct Module {
@@ -132,6 +133,7 @@ pub fn add_cell(
   connections~: Map[Id, Signal] = {},
   attributes~: Map[Id, Constant] = {},
   parameters~: Map[Id, Constant] = {},
+  accessed_ports~: Set[String] = Set::new(),
 ) -> Cell!RTLILError {
   if self.cells.contains(name) {
     raise CellAlreadyDeclared(name~)
@@ -143,6 +145,7 @@ pub fn add_cell(
     connections,
     attributes,
     parameters,
+    accessed_ports,
   }
 
   self.cells[name] = cell

@@ -183,7 +183,44 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
     raise ModuleAlreadyDeclared(name=mod.name, span=mod.span)
   }
 
+  for cell in mod_def.cells.values() {
+    remove_unused_register_ports(cell~, mod=mod_def)
+  }
+
   self.modules[mod.name] = mod_def
+}
+
+fn port_wire_id(cell_name: @rtlil.Id, port_name: String) -> @rtlil.Id {
+  GenId("\{cell_name.inner()}.\{port_name}")
+}
+
+fn remove_unused_register_ports(cell~: @rtlil.Cell, mod~: @rtlil.Module) -> Unit {
+  if cell.type_ == GenId("sdffe") {
+    let uses_rst = cell.accessed_ports.contains("rst")
+    let uses_en = cell.accessed_ports.contains("en")
+
+    let cell_type = @rtlil.GenId(match (uses_en, uses_rst) {
+      (false, false) => "dff"
+      (false, true) => "sdff"
+      (true, false) => "dffe"
+      (true, true) => "sdffe"
+    })
+
+    cell.type_ = cell_type
+
+    if not(uses_rst) {
+      cell.connections.remove(PubId("SRST"))
+      cell.parameters.remove(PubId("SRST_POLARITY"))
+      cell.parameters.remove(PubId("SRST_VALUE"))
+      mod.wires.remove(port_wire_id(cell.name, "rst"))
+    }
+
+    if not(uses_en) {
+      cell.connections.remove(PubId("EN"))
+      cell.parameters.remove(PubId("EN_POLARITY"))
+      mod.wires.remove(port_wire_id(cell.name, "en"))
+    }
+  }
 }
 
 fn next_genidx(self: Elaborator) -> Int {
@@ -385,19 +422,19 @@ fn elaborate_expr(
 
       let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
       let inline_connections: Map[@rtlil.Id, @rtlil.Signal] = {}
-
+      let accessed_ports = Set::from_iter(ports.keys())
       let extra_ports = []
       let cell_name = name_binding.or(GenId("\{name}_\{self.next_genidx()}"))
 
-      for name, width in port_widths {
+      for port_name, width in port_widths {
         let wire = mod.add_wire!(
-          name=GenId("\{cell_name.inner()}.\{name}"),
+          name=port_wire_id(cell_name, port_name),
           width~,
           port=None,
           attributes=src_attribute(span),
         )
 
-        connections[@rtlil.PubId(name)] = SigWire(wire)
+        connections[@rtlil.PubId(port_name)] = SigWire(wire)
       }
 
       for port_name, expr in ports {
@@ -424,52 +461,26 @@ fn elaborate_expr(
         match name {
           "Reg" => {
             let width = params[0].expect_int!()
-            let uses_reset = ports.contains("rst")
-            let uses_enable = ports.contains("en")
-
-            let cell_type = match (uses_reset, uses_enable) {
-              (false, false) => "dff"
-              (false, true) => "dffe"
-              (true, false) => "adff"
-              (true, true) => "adffe"
-            }
 
             mod.add_cell!(
-              type_=GenId(cell_type),
+              type_=GenId("sdffe"),
               name=cell_name,
-              parameters={
-                let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
-                parameters[@rtlil.PubId("CLK_POLARITY")] = @rtlil.ConstInteger(1)
-                parameters[@rtlil.PubId("WIDTH")] = @rtlil.ConstInteger(width)
-
-                if uses_reset {
-                  parameters[@rtlil.PubId("ARST_POLARITY")] = @rtlil.ConstInteger(1)
-                  parameters[@rtlil.PubId("ARST_VALUE")] = bits_from_int(0, width~)
-                }
-
-                if uses_enable {
-                  parameters[@rtlil.PubId("EN_POLARITY")] = @rtlil.ConstInteger(1)
-                }
-
-                parameters
-              },
-              connections={
-                let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
-                connections[@rtlil.PubId("CLK")] = port_wire!("clk")
-                connections[@rtlil.PubId("D")] = port_wire!("d")
-                connections[@rtlil.PubId("Q")] = port_wire!("q")
-
-                if uses_reset {
-                  connections[@rtlil.PubId("ARST")] = port_wire!("rst")
-                }
-
-                if uses_enable {
-                  connections[@rtlil.PubId("EN")] = port_wire!("en")
-                }
-
-                connections
-              },
+              parameters=map_parameters({
+                "CLK_POLARITY": @rtlil.ConstInteger(1),
+                "WIDTH": @rtlil.ConstInteger(width),
+                "SRST_POLARITY": @rtlil.ConstInteger(1),
+                "SRST_VALUE": bits_from_int(0, width~),
+                "EN_POLARITY": @rtlil.ConstInteger(1),
+              }),
+              connections=map_signals({
+                "CLK": port_wire!("clk"),
+                "D": port_wire!("d"),
+                "Q": port_wire!("q"),
+                "SRST": port_wire!("rst"),
+                "EN": port_wire!("en"),
+              }),
               attributes=src_attribute(span),
+              accessed_ports~,
             )
           }
           _ => raise Unsupported(message="Unknown internal module \"\{name}\"", span~)
@@ -499,7 +510,8 @@ fn elaborate_expr(
             }
 
             parameters
-          }
+          },
+          accessed_ports~,
         )
       }
 
@@ -514,8 +526,11 @@ fn elaborate_expr(
 
       match val {
         Instance(cell) => {
-          match mod.wires[GenId("\{cell.name.inner()}.\{port}")] {
-            Some(wire) => Value::Signal(SigWire(wire))
+          match mod.wires[port_wire_id(cell.name, port)] {
+            Some(wire) => {
+              cell.accessed_ports.add(port)
+              Value::Signal(SigWire(wire))
+            }
             None => {
               raise UnknownModulePort(module_name=cell.name.inner(), port_name=port, span~)
             }
