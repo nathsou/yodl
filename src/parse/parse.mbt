@@ -135,7 +135,7 @@ fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr!ParserError {
 
 fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
   let start_idx = self.index
-  let mut lhs = self.parse_primary_expr!()
+  let mut lhs = self.parse_replication_expr!()
 
   while true {
     if self.consumes(Lbracket) {
@@ -232,9 +232,52 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
     Lbracket => self.parse_vector_expr!()
     DotDotDot => self.parse_spread_expr!()
     Match => self.parse_match_expr!()
+    Dollar => self.parse_function_call_expr!()
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
 }
+
+fn parse_function_call_expr(self: Parser) -> Expr!ParserError {
+  let start_idx = self.index
+  self.expect!(Dollar, start_idx)
+  let name = self.parse_identifier!()
+  let args = []
+  self.expect!(Lparen, start_idx)
+
+  while not(self.matches(Rparen)) {
+    let arg = self.parse_expr!()
+    args.push(arg)
+
+    if not(self.consumes(Comma)) {
+      break
+    }
+  }
+
+  self.expect!(Rparen, start_idx)
+
+  FunCall(name="$\{name}", args~, span=self.span(start_idx), ty={ val: None })
+}
+
+fn parse_replication_expr(self: Parser) -> Expr!ParserError {
+  let start_idx = self.index
+  let lhs = self.parse_primary_expr!()
+
+  if self.consumes(X) {
+    let mut concat = true
+
+    if not(self.consumes(Lbrace)) {
+      concat = false
+      self.expect!(Lbracket, start_idx) 
+    }
+
+    let expr = self.parse_expr!()
+    self.expect!(if concat { Rbrace } else { Rbracket }, start_idx)
+
+    Replicate(expr~, count=lhs, concat~, span=self.span(start_idx), ty={ val: None })
+  } else {
+    lhs
+  }
+} 
 
 fn parse_tuple_or_paren_expr(self: Parser) -> Expr!ParserError {
   let start_idx = self.index

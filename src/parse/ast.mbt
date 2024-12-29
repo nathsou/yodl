@@ -42,6 +42,8 @@ pub(all) enum Expr {
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
   Match(subject~: Expr, cases~: Array[(Expr, Expr)], default~: Expr?, span~: Span, ty~: Ref[Type?])
   Tuple(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
+  Replicate(expr~: Expr, count~: Expr, concat~: Bool, span~: Span, ty~: Ref[Type?])
+  FunCall(name~: String, args~: Array[Expr], span~: Span, ty~: Ref[Type?])
 }
 
 pub(all) enum Stmt {
@@ -157,6 +159,8 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Ternary(ty~, ..) => ty
     Match(ty~, ..) => ty
     Tuple(ty~, ..) => ty
+    Replicate(ty~, ..) => ty
+    FunCall(ty~, ..) => ty
   }
 }
 
@@ -175,6 +179,8 @@ pub fn span(self: Expr) -> Span {
     Ternary(span~, ..) => span
     Match(span~, ..) => span
     Tuple(span~, ..) => span
+    Replicate(span~, ..) => span
+    FunCall(span~, ..) => span
   }
 }
 
@@ -193,6 +199,8 @@ pub fn ctor(self: Expr) -> String {
     Ternary(_) => "Ternary"
     Match(_) => "Match"
     Tuple(_) => "Tuple"
+    Replicate(_) => "Replicate"
+    FunCall(_) => "FunCall"
   }
 }
 
@@ -215,10 +223,13 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Ternary(_) => false
     Match(_) => false
     Tuple(_) => false
+    Replicate(_) => false
+    FunCall(_) => false
   }
 }
 
-pub fn constant_folding(self: Expr) -> Expr!Error {
+// perform partial evaluation on the expression
+pub fn partial_eval(self: Expr) -> Expr!Error {
   rewrite_expr!(self, fn!(expr) {
     match expr {
       Binary(op = Add | Sub | Mul | Div | Mod as op, lhs~, rhs~, span~, ty~) => {

@@ -88,6 +88,20 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!Error) -> Expr!Error {
 
       Tuple(elems=new_elems, span~, ty~)
     }
+    Replicate(expr~, count~, concat~, span~, ty~) => {
+      let expr = rewrite_expr!(expr, rewrite)
+      let count = rewrite_expr!(count, rewrite)
+      Replicate(expr~, count~, concat~, span~, ty~)
+    }
+    FunCall(name~, args~, span~, ty~) => {
+      let new_args = []
+
+      for arg in args {
+        new_args.push(rewrite_expr!(arg, rewrite))
+      }
+
+      FunCall(name~, args=new_args, span~, ty~)
+    }
   }
 
   (rewrite)!(res)

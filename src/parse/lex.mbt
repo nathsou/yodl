@@ -149,15 +149,18 @@ fn parse_integer(self: Lexer) -> ParsedInteger {
       self.advance()
 
       match self.peek() {
-        'b' => { self.advance(); base = 2; }
-        'o' => { self.advance(); base = 8; }
-        'd' => { self.advance(); base = 10; }
-        'h' => { self.advance(); base = 16; }
+        'b' => { self.advance(); base = 2 }
+        'o' => { self.advance(); base = 8 }
+        'd' => { self.advance(); base = 10 }
+        'h' => { self.advance(); base = 16 }
         _ => ()
       }
 
       width = Some(parse_uint(builder.to_string(), base=10))
       builder.reset()
+    } else if char == '_' {
+      // ignore, used as a separator for readability
+      self.advance()
     } else {
       break
     }
@@ -329,6 +332,10 @@ fn next(self: Lexer) -> LexerResult[Token] {
       self.advance()
       Ok(At)
     }
+    '$' => {
+      self.advance()
+      Ok(Dollar)
+    }
     '_' => {
       self.advance()
       Ok(Underscore)
@@ -371,6 +378,12 @@ fn next(self: Lexer) -> LexerResult[Token] {
           "nand" => Nand
           "nor" => Nor
           "xnor" => Xnor
+          "x" => {
+            match self.lookahead(0) {
+              '{' | '[' => X
+              _ => Identifier("x")
+            }
+          }
           _ => Identifier(identifier)
         })
       } else {

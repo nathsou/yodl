@@ -48,6 +48,8 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 3. Rewrite non-constant indexing expressions to match expressions
 // 4. Rewrite port accesses on match expressions
 // 5. Rewrite tuple indexing into slicing expressions
+// 6. Rewrite replication expressions into concatenation expressions
+// 7. Remove unecessary spreads
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
@@ -136,8 +138,26 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
           _ => port_access_expr
         }
       }
+      Replicate(expr~, count~, concat~, span~, ty~) => {
+        // Rewrite replication expressions into concatenation expressions
+        let repeated_expr = self.simplify_expr!(match concat {
+          true => @parse.Expr::Spread(expr~, span~, ty~)
+          false => expr
+        })
+
+        let elems = @utils.fill(count.expect_int!(), repeated_expr)
+        
+        @parse.Expr::Vector(elems~, span~, ty~)
+      }
+      Spread(expr~, ..) as spread_expr => {
+        // Remove unecessary spreads
+        match expr.ty().val.unwrap().width() {
+          Some(1) => expr
+          _ => spread_expr
+        }
+      }
       _ => expr
-    }).constant_folding!()
+    }).partial_eval!()
   })
 }
 

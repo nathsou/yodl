@@ -7,7 +7,8 @@ enum TokenType {
   Equal; EqualEqual; BangEqual; RightThinArrow; RightThickArrow
   LchevronEqual; RchevronEqual; LchevronLchevron; RchevronRchevron
   DotDotLeftChevron; DotDotEqual; DotDotDot
-  Percent; QuestionMark; At; Underscore
+  Percent; QuestionMark; At; Underscore; X // Replication operator
+  Dollar
   // keywords
   Module; Let; Logic; In; For; Declare
   And; Or; Not; Xor; Nand; Nor; Xnor; Match

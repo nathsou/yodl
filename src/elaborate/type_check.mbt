@@ -31,6 +31,7 @@ type! TypeCheckerError {
     InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], span~: @parse.Span)
     EmptyMatch(span~: @parse.Span)
     InvalidInstanceTypeParameterCount(module_name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
+    FunCallAfterMonomorphization(span~: @parse.Span)
 } derive(Show)
 
 fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
@@ -318,6 +319,25 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             }
 
             @parse.Type::Tuple(elem_tys)
+        }
+        Replicate(expr~, count~, concat~, span~, ..) => {
+            let count_ty = self.check_expr!(count, env)
+            let _ = unify!(count_ty, @parse.Nat, span~)
+            let expr_ty = self.check_expr!(expr, env)
+            let count = eval_const_expr!(count)
+            
+            let (elem_ty, len) = match concat {
+                true => {
+                    let expr_width = expr_ty.width().or_error!(ExpectedConstantExpr(span~))
+                    (@parse.Type::Logic, count * expr_width)
+                }
+                false => (expr_ty, count)
+            }
+
+            Vector(ty=elem_ty, len=Fixed(len))
+        }
+        FunCall(span~, ..) => {
+            raise FunCallAfterMonomorphization(span~)
         }
     }
 

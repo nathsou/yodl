@@ -245,6 +245,27 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.indent -= 1
       self.write(")")
     }
+    Replicate(expr~, count~, concat~, ..) => {
+      self.emit_expr(count)
+      self.write("x")
+      self.write(if concat { "{" } else { "[" })
+      self.emit_expr(expr)
+      self.write(if concat { "}" } else { "]" })
+    }
+    FunCall(name~, args~, ..) => {
+      self.write(name)
+      self.write("(")
+
+      for i, arg in args {
+        if i > 0 {
+          self.write(", ")
+        }
+
+        self.emit_expr(arg)
+      }
+
+      self.write(")")
+    }
   }
 }
 

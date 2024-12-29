@@ -25,6 +25,8 @@ type! ElaboratorError {
   MatchReturnTypeMustBeSignal(span~: @parse.Span)
   DuplicateMatchCase(index~: Int, span~: @parse.Span)
   MissingMatchCase(index~: Int, span~: @parse.Span)
+  ReplicateExprAfterSimplification(span~: @parse.Span)
+  FunctionCallAfterSimplification(span~: @parse.Span)
 } derive(Show)
 
 enum Value {
@@ -575,11 +577,9 @@ fn elaborate_expr(
     Indexing(expr~, index~, ..) => {
       let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span())
       let val = self.elaborate_expr!(expr, mod)
-      println("\{val.ctor()}.\{idx}")
 
       match val {
         Signal(sig) => {
-          println(sig)
           if idx > sig.size() {
             raise IndexOutOfBounds(index=idx, len=sig.size(), span=expr.span())
           }
@@ -763,6 +763,12 @@ fn elaborate_expr(
       }
 
       Value::Vector(values)
+    }
+    Replicate(span~, ..) => {
+      raise ReplicateExprAfterSimplification(span~)
+    }
+    FunCall(span~, ..) => {
+      raise FunctionCallAfterSimplification(span~)
     }
   }
 }

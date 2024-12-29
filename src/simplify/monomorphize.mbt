@@ -23,6 +23,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
 pub(readonly) type! MonomorphizerError {
   ModuleNotFound(name~: String, span~: @parse.Span)
   InvalidModuleParameterCount(name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
+  InvalidFunCallArity(name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
 } derive(Show)
 
 fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, params_env~: @elaborate.Scope[Int]) -> @parse.Type!Error {
@@ -124,8 +125,20 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
 
         @parse.Expr::Instance(name=mono_name, params=mono_params, ports=mono_ports, span~, ty~)
       }
+      FunCall(name~, args~, span~, ty=_) => {
+        let fun = match builtin_functions[name] {
+          Some(fun) => fun
+          None => return expr
+        }
+
+        if args.length() != fun.arity {
+          raise InvalidFunCallArity(name~, expected=fun.arity, actual=args.length(), span~)
+        }
+
+        (fun.apply)!(args, span)
+      }
       _ => expr
-    }).constant_folding!()
+    }).partial_eval!()
   })
 }
 
@@ -224,9 +237,12 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
         mod.name
       } else {
         let builder = StringBuilder::new()
-        builder.write_char('%')
         builder.write_string(mod.name)
-        builder.write_string(String::concat(params.map(fn(n) { n.to_string() }), separator="_"))
+        if params.length() > 0 {
+          builder.write_char('<')
+          builder.write_string(String::concat(params.map(fn(n) { n.to_string() }), separator="_"))
+          builder.write_char('>')
+        }
         builder.to_string()
       }
     },
@@ -269,4 +285,36 @@ pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@pa
   }
 
   monomorphized
+}
+
+struct BuiltinFunction {
+  arity: Int
+  apply: (Array[@parse.Expr], @parse.Span) -> @parse.Expr!Error
+}
+
+let builtin_functions: Map[String, BuiltinFunction] = {
+  "$clog2": {
+    arity: 1,
+    apply: fn(args, span) {
+      let arg = args[0].expect_int!()
+      let value = @utils.clog2(arg)
+      @parse.Expr::nat(value, span~)
+    }
+  },
+  "$pow": {
+    arity: 2,
+    apply: fn(args, span) {
+      let base = args[0].expect_int!()
+      let exp = args[1].expect_int!()
+      @parse.Expr::nat(@utils.pow(base, exp), span~)
+    }
+  },
+  "$cdiv": {
+    arity: 2,
+    apply: fn(args, span) {
+      let dividend = args[0].expect_int!()
+      let divisor = args[1].expect_int!()
+      @parse.Expr::nat(@utils.cdiv(dividend, divisor), span~)
+    }
+  },
 }

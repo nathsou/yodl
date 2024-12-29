@@ -15,8 +15,29 @@ pub fn clog2(n: Int) -> Int {
   @math.ceil(@math.log2(n.to_double())).to_int()
 }
 
+pub fn cdiv(dividend: Int, divisor: Int) -> Int {
+  @math.ceil(dividend.to_double() / divisor.to_double()).to_int()
+}
+
 pub fn pow2(n: Int) -> Int {
   1 << n
+}
+
+pub fn pow(n: Int, exp: Int) -> Int {
+  let mut n = n
+  let mut exp = exp
+  let mut res = 1
+
+  while exp > 0 {
+    if (exp & 1) == 1 {
+      res *= n
+    }
+
+    n *= n
+    exp /= 2
+  }
+
+  res
 }
 
 pub fn log_n(n: Double, base: Double) -> Double {
