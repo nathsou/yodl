@@ -230,6 +230,21 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.write_indent()
       self.write("}")
     }
+    Tuple(elems~, ..) => {
+      self.write("(")
+      self.indent += 1
+
+      for i, elem in elems {
+        if i > 0 {
+          self.write(", ")
+        }
+
+        self.emit_expr(elem)
+      }
+
+      self.indent -= 1
+      self.write(")")
+    }
   }
 }
 
@@ -359,6 +374,14 @@ pub impl Show for Type with output(ty, logger) {
           suffix=">",
         )
       }
+    }
+    Tuple(elems) => {
+      logger.write_iter(
+        prefix="(",
+        elems.iter(),
+        sep=", ",
+        suffix=")",
+      )
     }
   }
 }

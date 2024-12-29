@@ -41,6 +41,7 @@ pub(all) enum Expr {
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
   Match(subject~: Expr, cases~: Array[(Expr, Expr)], default~: Expr?, span~: Span, ty~: Ref[Type?])
+  Tuple(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
 }
 
 pub(all) enum Stmt {
@@ -112,6 +113,7 @@ pub(all) enum Type {
   Vector(ty~: Type, len~: VectorLen)
   Instance(sig~: ModuleSignature, params~: Map[String, Int])
   Name(name~: String, params~: Array[Int])
+  Tuple(Array[Type])
 } derive(Eq)
 
 pub(all) enum PortDirection {
@@ -154,6 +156,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Spread(ty~, ..) => ty
     Ternary(ty~, ..) => ty
     Match(ty~, ..) => ty
+    Tuple(ty~, ..) => ty
   }
 }
 
@@ -171,6 +174,25 @@ pub fn span(self: Expr) -> Span {
     Spread(span~, ..) => span
     Ternary(span~, ..) => span
     Match(span~, ..) => span
+    Tuple(span~, ..) => span
+  }
+}
+
+pub fn ctor(self: Expr) -> String {
+  match self {
+    Natural(_) => "Natural"
+    Identifier(_) => "Identifier"
+    Unary(_) => "Unary"
+    Binary(_) => "Binary"
+    Indexing(_) => "Indexing"
+    Slicing(_) => "Slicing"
+    PortAccess(_) => "PortAccess"
+    Instance(_) => "Instance"
+    Vector(_) => "Vector"
+    Spread(_) => "Spread"
+    Ternary(_) => "Ternary"
+    Match(_) => "Match"
+    Tuple(_) => "Tuple"
   }
 }
 
@@ -192,6 +214,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Spread(_) => false
     Ternary(_) => false
     Match(_) => false
+    Tuple(_) => false
   }
 }
 
@@ -264,9 +287,27 @@ pub fn width(self: Type) -> Int? {
     Nat => Some(32)
     Logic => Some(1)
     Vector(len=Fixed(len), ..) => Some(len)
-    Vector(..) => None
+    Vector(ty~, len~) => match ty.width() {
+      Some(width) => match len {
+        Fixed(len) => Some(width * len)
+        Dynamic(_) => None
+      }
+      None => None
+    }
     Instance(_) => None
     Name(_) => None
+    Tuple(elems) => {
+      let mut width = 0
+
+      for elem in elems {
+        match elem.width() {
+          Some(elem_width) => width += elem_width
+          None => return None
+        }
+      }
+
+      Some(width)
+    }
   }
 }
 
@@ -299,6 +340,7 @@ pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
         None => Name(name~, params~)
       }
     }
+    Tuple(elems) => Tuple(elems.map(fn(elem) { substitute(elem, params_env~) }))
   }
 }
 
@@ -357,3 +399,4 @@ pub fn is_numerical(self: Type) -> Bool {
 pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
   Natural(value=n, width~, base~, span~, ty={ val: Some(Nat) })
 }
+

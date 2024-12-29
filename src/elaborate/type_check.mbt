@@ -104,6 +104,15 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
                 None => raise TypeCheckerError::UnknownModule(name~, span~)
             }
         }
+        Tuple(elems) => {
+            let elem_tys = Array::new(capacity=elems.length())
+
+            for elem in elems {
+                elem_tys.push(self.resolve_ty!(elem, span~))
+            }
+
+            Tuple(elem_tys)
+        }
     }
 }
 
@@ -152,6 +161,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
 
             match ty {
                 Vector(ty=inner_ty, ..) => inner_ty
+                Tuple(elems) => elems[eval_const_expr!(index)]
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
@@ -299,6 +309,15 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             }
 
             ty.unwrap()
+        }
+        Tuple(elems~, ..) => {
+            let elem_tys = Array::new(capacity=elems.length())
+
+            for elem in elems {
+                elem_tys.push(self.check_expr!(elem, env))
+            }
+
+            @parse.Type::Tuple(elem_tys)
         }
     }
 

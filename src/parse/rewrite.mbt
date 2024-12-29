@@ -79,6 +79,15 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!Error) -> Expr!Error {
 
       Match(subject=new_subject, cases=new_cases, default=new_default, span~, ty~)
     }
+    Tuple(elems~, span~, ty~) => {
+      let new_elems = []
+
+      for elem in elems {
+        new_elems.push(rewrite_expr!(elem, rewrite))
+      }
+
+      Tuple(elems=new_elems, span~, ty~)
+    }
   }
 
   (rewrite)!(res)

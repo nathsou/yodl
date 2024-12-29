@@ -56,14 +56,14 @@ module Segments(
     counter.d = counter.q + 1;
 
     let packed = match counter.q[12:11] {
-        2'b00 => [...value[3:0], ...4'b1110],
-        2'b01 => [...value[7:4], ...4'b1101],
-        2'b10 => [...value[11:8], ...4'b1011],
-        2'b11 => [...value[15:12], ...4'b0111],
+        2'b00 => (value[3:0], 4'b1110),
+        2'b01 => (value[7:4], 4'b1101),
+        2'b10 => (value[11:8], 4'b1011),
+        2'b11 => (value[15:12], 4'b0111),
     };
 
-    segs = not SevenSegment(char: packed[7:4]).segs;
-    sel = packed[3:0];
+    segs = not SevenSegment(char: packed.0).segs;
+    sel = packed.1;
 }
 
 module Top(

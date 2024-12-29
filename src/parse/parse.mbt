@@ -14,6 +14,7 @@ pub(readonly) type! ParserError {
   ExpectedDecl(received~: TokenType, span~: Span)
   ExpectedRangeOperator(received~: TokenType, span~: Span)
   MultipleDefaultCases(span~: Span)
+  InvalidPortOrTupleAccess(span~: Span)
 } derive(Show)
 
 pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
@@ -149,8 +150,18 @@ fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
         lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
       }
     } else if self.consumes(Dot) {
-      let port = self.parse_identifier!()
-      lhs = PortAccess(expr=lhs, port~, span=self.span(start_idx), ty={ val: None })
+      match self.peek() {
+        Identifier(port) => {
+          self.advance()
+          lhs = PortAccess(expr=lhs, port~, span=self.span(start_idx), ty={ val: None })
+        }
+        Natural(value~, ..) => {
+          self.advance()
+          let span = self.span(start_idx)
+          lhs = Indexing(expr=lhs, index=nat(value, span~), span~, ty={ val: None })
+        }
+        _ => raise InvalidPortOrTupleAccess(span=self.span(start_idx))
+      }
     } else {
       break
     }
@@ -217,16 +228,34 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
       let expr = self.parse_expr!()
       Unary(op=Not, expr~, span=self.span(start_idx), ty={ val: None })
     }
-    Lparen => {
-      self.advance()
-      let expr = self.parse_expr!()
-      self.expect!(Rparen, start_idx)
-      expr
-    }
+    Lparen => self.parse_tuple_or_paren_expr!()
     Lbracket => self.parse_vector_expr!()
     DotDotDot => self.parse_spread_expr!()
     Match => self.parse_match_expr!()
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
+  }
+}
+
+fn parse_tuple_or_paren_expr(self: Parser) -> Expr!ParserError {
+  let start_idx = self.index
+  self.expect!(Lparen, start_idx)
+  let elems = []
+
+  while not(self.matches(Rparen)) {
+    let elem = self.parse_expr!()
+    elems.push(elem)
+
+    if not(self.consumes(Comma)) {
+      break
+    }
+  }
+
+  self.expect!(Rparen, start_idx)
+
+  if elems.length() == 1 {
+    elems[0]
+  } else {
+    Tuple(elems~, span=self.span(start_idx), ty={ val: None })
   }
 }
 

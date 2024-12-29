@@ -33,6 +33,14 @@ enum Value {
   Vector(Array[Value])
 }
 
+fn ctor(self: Value) -> String {
+  match self {
+    Signal(_) => "Signal"
+    Instance(_) => "Instance"
+    Vector(_) => "Vector"
+  }
+}
+
 fn bits(bits: Array[@rtlil.BinaryDigit]) -> Value {
   Value::Signal(@rtlil.SigConst(ConstValue(width=bits.length(), bits~)))
 }
@@ -93,6 +101,15 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
     }
     Name(_) => {
       raise UnresolvedType(span~)
+    }
+    Tuple(elems) => {
+      let val = Array::new(capacity=elems.length())
+
+      for ty in elems {
+        val.push(self.default_value!(ty~, mod~, span~, name_binding~))
+      }
+
+      Value::Vector(val)
     }
   }
 }
@@ -194,6 +211,7 @@ fn port_wire_id(cell_name: @rtlil.Id, port_name: String) -> @rtlil.Id {
   GenId("\{cell_name.inner()}.\{port_name}")
 }
 
+// select which $dff cell to use based on the presence of the "en" and "rst" ports 
 fn remove_unused_register_ports(cell~: @rtlil.Cell, mod~: @rtlil.Module) -> Unit {
   if cell.type_ == GenId("sdffe") {
     let uses_rst = cell.accessed_ports.contains("rst")
@@ -541,9 +559,12 @@ fn elaborate_expr(
     }
     Indexing(expr~, index~, ..) => {
       let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span())
+      let val = self.elaborate_expr!(expr, mod)
+      println("\{val.ctor()}.\{idx}")
 
-      match self.elaborate_expr!(expr, mod){
+      match val {
         Signal(sig) => {
+          println(sig)
           if idx > sig.size() {
             raise IndexOutOfBounds(index=idx, len=sig.size(), span=expr.span())
           }
@@ -556,6 +577,8 @@ fn elaborate_expr(
           if idx >= len {
             raise IndexOutOfBounds(index=idx, len~, span=expr.span())
           }
+
+          println("Indexing vector at \{idx} of \{len}")
           
           values[idx]
         }
@@ -718,6 +741,15 @@ fn elaborate_expr(
       )
 
       Value::Signal(SigWire(output))
+    }
+    Tuple(elems~, ..) => {
+      let values = Array::new(capacity=elems.length())
+
+      for elem in elems {
+        values.push(self.elaborate_expr!(elem, mod))
+      }
+
+      Value::Vector(values)
     }
   }
 }

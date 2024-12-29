@@ -29,7 +29,7 @@ pub fn Simplifier::new() -> Simplifier {
 }
 
 pub(readonly) type! SimplificationError {
-
+  TupleAccessOutOfBounds(span~: @parse.Span)
 }
 
 pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
@@ -47,10 +47,12 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 2. Replace genvars with their values
 // 3. Rewrite non-constant indexing expressions to match expressions
 // 4. Rewrite port accesses on match expressions
+// 5. Rewrite tuple indexing into slicing expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
       Identifier(name~, span~, ty~) => {
+        // Resolve identifiers to unique names
         match self.genvars.resolve(name) {
           Some(value) => @parse.Expr::Natural(value=value, width=None, base=10, span~, ty~)
           None => match self.names.resolve(name) {
@@ -61,8 +63,35 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
       }
       Indexing(expr~, index~, span~, ty~) as indexing_expr => {
         match index.expect_int?() {
-          Ok(_) => indexing_expr
+          Ok(idx) => {
+            match expr.ty().val {
+              // Rewrite tuple indexing into slicing
+              Some(Tuple(tys)) => {
+                let total_width = expr.ty().val.unwrap().width().or_error!(Failure("Unsized tuple"))
+                let mut offset = total_width - 1
+
+                for ty_idx, ty in tys {
+                  let ty_width = ty.width().or_error!(Failure("Unsized tuple element"))
+                  if ty_idx == idx {
+                    return @parse.Expr::Slicing(
+                      expr~,
+                      lsb=@parse.nat(offset - ty_width + 1, span=index.span()),
+                      msb=@parse.nat(offset, span=index.span()),
+                      span~,
+                      ty={ val: Some(ty) },
+                    )
+                  }
+
+                  offset -= ty_width
+                }
+
+                raise TupleAccessOutOfBounds(span~)
+              }
+              _ => indexing_expr
+            }
+          }
           Err(_) => {
+            // Rewrite non-constant indexing expressions to match expressions
             let s_width = index.ty().val.unwrap().width().or_error!(Failure("Unsized index"))
             let match_expr = @parse.Expr::Match(
               subject=index,
@@ -87,6 +116,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
         }
       }
       PortAccess(expr~, port~, span=port_acc_span, ty=port_acc_ty) as port_access_expr => {
+        // Rewrite port accesses on match expressions
         match expr {
           Match(subject~, cases~, default~, span~, ty=_) => {
             let new_cases = []
