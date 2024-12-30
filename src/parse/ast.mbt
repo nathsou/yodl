@@ -368,13 +368,21 @@ pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError
     _ => ()
   }
 
-  let bits_rev = Array::new(capacity=required_width)
+  let bits = if value == 0 {
+    [Zero]
+  } else {
+    let bits_rev = Array::new(capacity=required_width)
+    let mut n = value
 
-  for i in 0..<required_width {
-    bits_rev.push(if (value & (1 << i)) == 0 { Zero } else { One })
+    while n > 0 {
+      bits_rev.push(if (n & 1) == 0 { Zero } else { One })
+      n = n >> 1
+    }
+
+    bits_rev.rev()
   }
 
-  { bits: bits_rev.rev(), value: Some(value), span }
+  { bits, value: Some(value), span }
 }
 
 pub fn expect_int(self: Expr) -> Int! {
