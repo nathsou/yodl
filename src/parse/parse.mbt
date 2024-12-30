@@ -82,9 +82,9 @@ fn parse_integer(self: Parser) -> ParsedInteger!ParserError {
   let start_idx = self.index
 
   match token {
-    Natural(value~, width~, base~) => {
+    Natural(bits~, width~, base~) => {
       self.advance()
-      { value, width, base }
+      { bits, width, base }
     }
     _ => raise ExpectedInteger(received=token, span=self.span(start_idx))
   }
@@ -155,10 +155,10 @@ fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
           self.advance()
           lhs = PortAccess(expr=lhs, port~, span=self.span(start_idx), ty={ val: None })
         }
-        Natural(value~, ..) => {
+        Natural(bits~, width~, base~, ..) => {
           self.advance()
           let span = self.span(start_idx)
-          lhs = Indexing(expr=lhs, index=nat(value, span~), span~, ty={ val: None })
+          lhs = Indexing(expr=lhs, index=Expr::Natural(bits~, base~, width~, span~, ty={ val: None }), span~, ty={ val: None })
         }
         _ => raise InvalidPortOrTupleAccess(span=self.span(start_idx))
       }
@@ -219,9 +219,9 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
         Identifier(name~, span=self.span(start_idx), ty={ val: None })
       }
     }
-    Natural(value~, width~, base~) => {
+    Natural(bits~, width~, base~) => {
       self.advance()
-      Natural(value~, width~, base~, span=self.span(start_idx), ty={ val: None })
+      Natural(bits~, width~, base~, span=self.span(start_idx), ty={ val: None })
     }
     Not => {
       self.advance()
@@ -374,7 +374,7 @@ fn parse_assignment_stmt(self: Parser) -> Stmt!ParserError {
   }
 }
 
-fn parse_block(self: Parser) -> Array[Stmt]!ParserError {
+fn parse_block(self: Parser) -> Array[Stmt]! {
   self.expect!(Lbrace, self.index)
   let stmts = []
 
@@ -387,7 +387,7 @@ fn parse_block(self: Parser) -> Array[Stmt]!ParserError {
   stmts
 }
 
-fn parse_stmt(self: Parser) -> Stmt!ParserError {
+fn parse_stmt(self: Parser) -> Stmt! {
   let token = self.peek()
   let start_idx = self.index
 
@@ -439,7 +439,7 @@ fn parse_stmt(self: Parser) -> Stmt!ParserError {
   }
 }
 
-fn parse_type(self: Parser) -> Type!ParserError {
+fn parse_type(self: Parser) -> Type! {
   let start_idx = self.index
   let params: Array[Int] = []
 
@@ -457,7 +457,7 @@ fn parse_type(self: Parser) -> Type!ParserError {
 
   if self.consumes(Lchevron) {
     while not(self.matches(Rchevron)) {
-      params.push(self.parse_integer!().value)
+      params.push(self.parse_integer!().bits.as_int!())
 
       if not(self.consumes(Comma)) {
         break
@@ -476,7 +476,7 @@ fn parse_type(self: Parser) -> Type!ParserError {
     let expr = self.parse_expr!()
 
     let len = match expr {
-      Natural(value~, width=_, ..) => Fixed(value)
+      Natural(bits~, width=_, ..) => Fixed(bits.as_int!())
       _ => Dynamic(expr)
     }
 
@@ -487,7 +487,7 @@ fn parse_type(self: Parser) -> Type!ParserError {
   base_ty
 }
 
-fn parse_port(self: Parser, dir~: PortDirection) -> Port!ParserError {
+fn parse_port(self: Parser, dir~: PortDirection) -> Port! {
   let start_idx = self.index
   let name = self.parse_identifier!()
   let optional = self.consumes(QuestionMark)
@@ -496,7 +496,7 @@ fn parse_port(self: Parser, dir~: PortDirection) -> Port!ParserError {
   { name, ty, dir, optional, span: self.span(start_idx) }
 }
 
-fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]!ParserError {
+fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]! {
   let start_idx = self.index
   let ports = []
 
@@ -557,7 +557,7 @@ fn parse_module_parameter_list[T](self: Parser, parse_elem: (Parser) -> T!Parser
   }
 }
 
-fn parse_attribute_value(self: Parser) -> AttributeValue!ParserError {
+fn parse_attribute_value(self: Parser) -> AttributeValue! {
   let token = self.peek()
   let start_idx = self.index
 
@@ -566,15 +566,15 @@ fn parse_attribute_value(self: Parser) -> AttributeValue!ParserError {
       self.advance()
       AttributeValue::String(str)
     }
-    Natural(value~, ..) => {
+    Natural(bits~, ..) => {
       self.advance()
-      AttributeValue::Int(value)
+      AttributeValue::Int(bits.as_int!())
     }
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
 }
 
-fn parse_attribute(self: Parser) -> Attribute!ParserError {
+fn parse_attribute(self: Parser) -> Attribute! {
   let start_idx = self.index
   self.expect!(At, start_idx)
   let name = self.parse_identifier!()
@@ -601,7 +601,7 @@ fn parse_attribute(self: Parser) -> Attribute!ParserError {
   { name, args, span: self.span(start_idx) }
 }
 
-fn parse_attributes(self: Parser) -> Map[String, Attribute]!ParserError {
+fn parse_attributes(self: Parser) -> Map[String, Attribute]! {
   let attrs = {}
 
   while self.matches(At) {
@@ -612,7 +612,7 @@ fn parse_attributes(self: Parser) -> Map[String, Attribute]!ParserError {
   attrs
 }
 
-fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> ModuleSignature!ParserError {
+fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> ModuleSignature! {
   let start_idx = self.index
   self.expect!(Module, start_idx)
   let name = self.parse_identifier!()
@@ -625,7 +625,7 @@ fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> 
   { name, params, attributes, ports, span: self.span(start_idx) }
 }
 
-fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl!ParserError {
+fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl! {
   let start_idx = self.index
   let { name, params, attributes, ports, .. } = sig
   self.expect!(Lbrace, start_idx)
@@ -639,7 +639,7 @@ fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl!Pa
   { name, params, attributes, ports, body, span: self.span(start_idx) }
 }
 
-fn parse_module_def_or_decl(self: Parser) -> Decl!ParserError {
+fn parse_module_def_or_decl(self: Parser) -> Decl! {
   let start_idx = self.index
   let attributes = self.parse_attributes!()
   let is_declaration = self.consumes(Declare)
@@ -653,14 +653,14 @@ fn parse_module_def_or_decl(self: Parser) -> Decl!ParserError {
   }
 }
 
-fn parse_decl(self: Parser) -> Decl!ParserError {
+fn parse_decl(self: Parser) -> Decl! {
   match self.peek() {
     At | Declare | Module => self.parse_module_def_or_decl!()
     token => raise ExpectedDecl(received=token, span=self.span(self.index))
   }
 }
 
-pub fn parse(self: Parser) -> Array[Decl]!ParserError {
+pub fn parse(self: Parser) -> Array[Decl]! {
   let decls = []
 
   while self.index < self.tokens.length() {

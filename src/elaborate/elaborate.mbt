@@ -43,19 +43,19 @@ fn ctor(self: Value) -> String {
   }
 }
 
-fn bits(bits: Array[@rtlil.BinaryDigit]) -> Value {
+fn bits(bits: Array[@parse.BinaryDigit]) -> Value {
   Value::Signal(@rtlil.SigConst(ConstValue(width=bits.length(), bits~)))
 }
 
 fn bits_from_int(n: Int, width~: Int) -> @rtlil.Constant {
-  let bits = @utils.fill(width, @rtlil.BinaryDigit::X)
+  let bits = @utils.fill(width, @parse.BinaryDigit::X)
   let mut n = n
 
   for i in 0..<width {
     bits[width - i - 1] = if (n & 1) == 1 {
-      @rtlil.BinaryDigit::One
+      @parse.BinaryDigit::One
     } else {
-      @rtlil.BinaryDigit::Zero
+      @parse.BinaryDigit::Zero
     }
 
     n /= 2
@@ -64,7 +64,7 @@ fn bits_from_int(n: Int, width~: Int) -> @rtlil.Constant {
   ConstValue(width~, bits~)
 }
 
-fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value!Error {
+fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value! {
   match ty {
     Nat => Value::Signal(@rtlil.SigConst(ConstValue(bits=[Z], width=32)))
     Logic => bits([X])
@@ -93,7 +93,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
     Instance(sig={ name, span, .. }, params~) => {
       let inst: @parse.Expr = @parse.Expr::Instance(
         name~,
-        params=params.values().map(fn(p) { @parse.Expr::nat(p, span~) }).collect(),
+        params=@utils.map!(params.values().collect(), fn(p) { @parse.Expr::nat!(p, span~) }),
         ports={},
         span~,
         ty={ val: Some(ty) },
@@ -256,13 +256,13 @@ fn next_genidx(self: Elaborator) -> Int {
 
 fn declare(self: Elaborator, name: String, value: Value, span~: @parse.Span) -> Unit!ElaboratorError {
   if self.env.contains(name) {
-    raise NameConflict(name=name, span=span)
+    raise NameConflict(name~, span~)
   }
   
   self.env[name] = value
 }
 
-fn expr_width(expr: @parse.Expr) -> Int?!Error {
+fn expr_width(expr: @parse.Expr) -> Int?! {
   match expr {
     Natural(width=Some(width), ..) => Some(width)
     _ => expr.ty().val.or_error!(Unreachable(message="Untyped expression", span=expr.span())).width()
@@ -278,7 +278,7 @@ fn binary_op_cell(
   span~: @parse.Span,
   output_width~: Int? = None,
   attributes~: Map[@rtlil.Id, @rtlil.Constant] = {},
-) -> Value!Error {
+) -> Value! {
   let (cell_type, wa, wb, wy) = match (expr_width!(lhs), expr_width!(rhs)) {
     (Some(wa), Some(wb)) => {
       let cell_type = match op {
@@ -360,10 +360,10 @@ fn elaborate_expr(
         }
       }
     }
-    Natural(value~, width~, ..) => {
+    Natural(bits~, width~, ..) => {
       match width {
-        Some(width) => Value::Signal(@rtlil.SigConst(bits_from_int(value, width~)))
-        None => Value::Signal(@rtlil.SigConst(ConstInteger(value)))
+        Some(width) => Value::Signal(@rtlil.SigConst(@rtlil.Constant::ConstValue(width~, bits=bits.bits)))
+        None => Value::Signal(@rtlil.SigConst(ConstInteger(bits.as_int!())))
       }
     }
     Unary(op~, expr~, span~, ..) => {
@@ -731,7 +731,7 @@ fn elaborate_expr(
 
         let default_sig = match default {
           Some(expr) => self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
-          None => SigConst(ConstValue(width~, bits=@utils.fill(width, @rtlil.BinaryDigit::X)))
+          None => SigConst(ConstValue(width~, bits=@utils.fill(width, @parse.BinaryDigit::X)))
         }
 
         (default_sig, @rtlil.SigConcat(unwrapped_sigs), @rtlil.SigConcat(comparisons))

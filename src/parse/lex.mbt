@@ -9,6 +9,8 @@ pub(readonly) struct Lexer {
 
 pub(readonly) type! LexerError {
   UnexepectedChar(Char)
+  InvalidWidthSpecifierDigit(Char)
+  InvalidDigitInBase(digit~: Char, base~: Int)
 } derive(Show)
 
 fn is_whitespace(c: Char) -> Bool {
@@ -21,11 +23,15 @@ fn is_whitespace(c: Char) -> Bool {
   }
 }
 
+fn is_undetermined_digit(c: Char) -> Bool {
+  c == 'x' || c == 'X' || c == 'z' || c == 'Z'
+}
+
 fn is_digit(c: Char, base~: Int) -> Bool {
   match base {
-    2 => c == '0' || c == '1'
+    2 => c == '0' || c == '1' || is_undetermined_digit(c)
     8 => c >= '0' && c <= '7'
-    16 => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+    16 => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') // TODO: support x z in hex
     _ => c >= '0' && c <= '9'
   }
 }
@@ -48,6 +54,22 @@ fn peek(self: Lexer) -> Char {
 
 fn lookahead(self: Lexer, n: Int) -> Char {
   self.input[self.index + n]
+}
+
+fn next_non_whitespace(self: Lexer) -> Char? {
+  let mut i = self.index
+
+  while i < self.input.length() {
+    let char = self.input[i]
+
+    if not(is_whitespace(char)) {
+      return Some(char)
+    }
+
+    i += 1
+  }
+
+  None
 }
 
 fn matches(self: Lexer, char: Char) -> Bool {
@@ -96,7 +118,7 @@ fn parse_identifier(self: Lexer) -> String {
   builder.to_string()
 }
 
-fn parse_digit(c: Char) -> Int {
+fn parse_digit(c: Char) -> Int!LexerError {
   match c {
     '0' => 0
     '1' => 1
@@ -114,36 +136,42 @@ fn parse_digit(c: Char) -> Int {
     'd' | 'D' => 13
     'e' | 'E' => 14
     'f' | 'F' => 15
-    _ => 0
+    _ => raise InvalidWidthSpecifierDigit(c)
   }
 }
 
-fn parse_uint(s: String, base~: Int) -> Int {
-  let mut n: Int = 0
+fn parse_uint(s: String, base~: Int) -> Int!LexerError {
+  let mut n = 0
 
   for c in s {
-    n = n * base + parse_digit(c)
+    n = n * base + parse_digit!(c)
   }
 
   n
 }
 
 struct ParsedInteger {
-  value: Int
+  bits: Bits
   width: Int?
   base: Int
 }
 
-fn parse_integer(self: Lexer) -> ParsedInteger {
+fn parse_integer(self: Lexer) -> ParsedInteger! {
   let builder = StringBuilder::new()
   let mut base = 10
   let mut width = None
+  let mut is_undetermined = false
+  let span_start = (self.line, self.column)
 
   while self.index < self.input.length() {
-    let char = self.input[self.index]
+    let char = self.peek()
 
     if is_digit(char, base~) {
       builder.write_char(char)
+
+      if not(is_undetermined) {
+        is_undetermined = is_undetermined_digit(char)
+      }
       self.advance()
     } else if char == '\'' {
       self.advance()
@@ -156,7 +184,7 @@ fn parse_integer(self: Lexer) -> ParsedInteger {
         _ => ()
       }
 
-      width = Some(parse_uint(builder.to_string(), base=10))
+      width = Some(parse_uint!(builder.to_string(), base=10))
       builder.reset()
     } else if char == '_' {
       // ignore, used as a separator for readability
@@ -166,7 +194,29 @@ fn parse_integer(self: Lexer) -> ParsedInteger {
     }
   }
 
-  { value: parse_uint(builder.to_string(), base~), width, base }
+  let span = { start: span_start, end: (self.line, self.column), file: self.file }
+
+  let bits = if is_undetermined {
+    let digits = builder.to_string()
+    let bits = Array::new(capacity=digits.length())
+
+    for digit in digits {
+      bits.push(match digit {
+        '0' => BinaryDigit::Zero
+        '1' => BinaryDigit::One
+        'x' | 'X' => BinaryDigit::X
+        'z' | 'Z' => BinaryDigit::Z
+        _ => raise InvalidDigitInBase(digit~, base=2)
+      })
+    }
+
+    Bits::new(bits, span~)
+  } else {
+    let value = parse_uint!(builder.to_string(), base~)
+    Bits::from!(value, width~, span~)
+  }
+
+  { bits, width, base }
 }
 
 fn advance(self: Lexer) -> Unit {
@@ -186,7 +236,7 @@ enum LexerResult[T] {
   EOF
 }
 
-fn next(self: Lexer) -> LexerResult[Token] {
+fn next(self: Lexer) -> LexerResult[Token]! {
   self.skip_whitespaces()
 
   if self.index >= self.input.length() {
@@ -250,7 +300,7 @@ fn next(self: Lexer) -> LexerResult[Token] {
           self.advance()
         }
         
-        return self.next()
+        return self.next!()
       } else {
         Ok(Slash)
       }
@@ -358,8 +408,8 @@ fn next(self: Lexer) -> LexerResult[Token] {
     }
     _ => {
       if is_digit(char, base=10) {
-        let { value, width, base } = self.parse_integer()
-        Ok(Natural(value~, width~, base~))
+        let { bits, width, base } = self.parse_integer!()
+        Ok(Natural(bits~, width~, base~))
       } else if is_alpha(char) || char == '_' {
         let identifier = self.parse_identifier()
 
@@ -379,8 +429,8 @@ fn next(self: Lexer) -> LexerResult[Token] {
           "nor" => Nor
           "xnor" => Xnor
           "x" => {
-            match self.lookahead(0) {
-              '{' | '[' => X
+            match self.next_non_whitespace() {
+              Some('{' | '[') => X
               _ => Identifier("x")
             }
           }
@@ -401,11 +451,11 @@ fn next(self: Lexer) -> LexerResult[Token] {
   }
 }
 
-pub fn lex(self: Lexer) -> Array[Token]!LexerError {
+pub fn lex(self: Lexer) -> Array[Token]! {
   let tokens = []
 
   while true {
-    match self.next() {
+    match self.next!() {
       Ok(token) => tokens.push(token)
       Err(error) => raise error
       EOF => break

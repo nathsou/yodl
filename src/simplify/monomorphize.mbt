@@ -26,14 +26,14 @@ pub(readonly) type! MonomorphizerError {
   InvalidFunCallArity(name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
 } derive(Show)
 
-fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, params_env~: @elaborate.Scope[Int]) -> @parse.Type!Error {
+fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, params_env~: @elaborate.Scope[Int]) -> @parse.Type! {
   match ty {
     Vector(ty~, len~) => {
       let mono_ty = self.monomorphize_type!(ty, params_env~)
       let len = match len {
         Fixed(len) => @parse.VectorLen::Fixed(len)
         Dynamic(expr) => match self.monomorphize_expr!(expr, params_env~) {
-          Natural(value~, ..) => @parse.VectorLen::Fixed(value)
+          Natural(bits~, ..) => @parse.VectorLen::Fixed(bits.as_int!())
           expr => @parse.VectorLen::Dynamic(expr)
         }
       }
@@ -49,7 +49,7 @@ fn register_monomorphized_module(
   name~: String,
   params~: Array[Int],
   span~: @parse.Span,
-) -> @parse.ModuleDecl!Error {
+) -> @parse.ModuleDecl! {
     let mod_decl = match self.parameterized[name] {
       Some(mod_decl) => mod_decl
       None => match self.modules[name] {
@@ -81,12 +81,12 @@ fn register_monomorphized_module(
   mono_mod
 }
 
-fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elaborate.Scope[Int]) -> @parse.Expr!Error {
+fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elaborate.Scope[Int]) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
       Identifier(name~, span~, ty=_) => {
         match params_env.resolve(name) {
-          Some(value) => @parse.Expr::nat(value, width=None, base=10, span~)
+          Some(value) => @parse.Expr::nat!(value, width=None, base=10, span~)
           None => expr
         }
       }
@@ -142,7 +142,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
   })
 }
 
-fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, params_env~: @elaborate.Scope[Int]) -> @parse.Stmt!Error {
+fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, params_env~: @elaborate.Scope[Int]) -> @parse.Stmt! {
   match stmt {
     Expr(expr~, span~) => {
       let mono_expr = self.monomorphize_expr!(expr, params_env~)
@@ -206,7 +206,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, params_env~: @elabo
   }
 }
 
-fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Array[Int]) -> @parse.ModuleDecl!Error {
+fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Array[Int]) -> @parse.ModuleDecl! {
   let params_env = @elaborate.Scope::new()
 
   for i, param in params {
@@ -253,7 +253,7 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
   }
 }
 
-fn collect_instances(self: Monomorphizer, decl: @parse.Decl) -> Unit!Error {
+fn collect_instances(self: Monomorphizer, decl: @parse.Decl) -> Unit! {
   match decl {
     Module(mod) => {
       if mod.params.is_empty() {
@@ -268,7 +268,7 @@ fn collect_instances(self: Monomorphizer, decl: @parse.Decl) -> Unit!Error {
   }
 }
 
-pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@parse.Decl]!Error {
+pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@parse.Decl]! {
   for decl in decls {
     self.collect_instances!(decl)
   }
@@ -288,7 +288,7 @@ pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@pa
 
 struct BuiltinFunction {
   arity: Int
-  apply: (Array[@parse.Expr], @parse.Span) -> @parse.Expr!Error
+  apply: (Array[@parse.Expr], @parse.Span) -> @parse.Expr!
 }
 
 let builtin_functions: Map[String, BuiltinFunction] = {
@@ -297,7 +297,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let arg = args[0].expect_int!()
       let value = @utils.clog2(arg)
-      @parse.Expr::nat(value, span~)
+      @parse.Expr::nat!(value, span~)
     }
   },
   "$pow": {
@@ -305,7 +305,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let base = args[0].expect_int!()
       let exp = args[1].expect_int!()
-      @parse.Expr::nat(@utils.pow(base, exp), span~)
+      @parse.Expr::nat!(@utils.pow(base, exp), span~)
     }
   },
   "$cdiv": {
@@ -313,7 +313,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let dividend = args[0].expect_int!()
       let divisor = args[1].expect_int!()
-      @parse.Expr::nat(@utils.cdiv(dividend, divisor), span~)
+      @parse.Expr::nat!(@utils.cdiv(dividend, divisor), span~)
     }
   },
 }

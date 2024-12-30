@@ -1,5 +1,5 @@
 
-pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!Error) -> Expr!Error {
+pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
   let res = match expr {
     Natural(_) => expr
     Identifier(_) => expr

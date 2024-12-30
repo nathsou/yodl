@@ -1,35 +1,6 @@
 
-pub(all) enum UnaryOp {
-  Not
-}
-
-pub(all) enum BinaryOp {
-  And; Or; Xor; Nand; Nor; Xnor
-  Add; Sub; Mul; Div; Mod
-  Equ; Neq; Lss; Gtr; Leq; Geq
-  Shl; Shr
-  Ternary
-}
-
-fn precedence(self: BinaryOp) -> Int {
-  match self {
-    Mul | Div | Mod => 12
-    Shl | Shr => 11
-    Add | Sub => 10
-    And => 9
-    Or => 8
-    Xor => 7
-    Nand => 6
-    Nor => 5
-    Xnor => 4
-    Equ | Neq => 3
-    Lss | Gtr | Leq | Geq => 2
-    Ternary => 1
-  }
-}
-
 pub(all) enum Expr {
-  Natural(value~: Int, width~: Int?, base~: Int, span~: Span, ty~: Ref[Type?])
+  Natural(bits~: Bits, width~: Int?, base~: Int, span~: Span, ty~: Ref[Type?])
   Identifier(name~: String, span~: Span, ty~: Ref[Type?])
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
@@ -52,6 +23,92 @@ pub(all) enum Stmt {
   Assign(lhs~: Expr, rhs~: Expr, span~: Span)
   For(var~: String, range~: ForRange, body~: Array[Stmt], span~: Span)
   Scope(body~: Array[Stmt], span~: Span)
+}
+
+pub(all) enum Decl {
+  Module(ModuleDecl)
+  ModuleDeclaration(ModuleSignature)
+}
+
+pub(all) enum Type {
+  Nat
+  Logic
+  Vector(ty~: Type, len~: VectorLen)
+  Instance(sig~: ModuleSignature, params~: Map[String, Int])
+  Name(name~: String, params~: Array[Int])
+  Tuple(Array[Type])
+} derive(Eq)
+
+pub(all) enum UnaryOp {
+  Not
+}
+
+pub(all) enum BinaryOp {
+  And; Or; Xor; Nand; Nor; Xnor
+  Add; Sub; Mul; Div; Mod
+  Equ; Neq; Lss; Gtr; Leq; Geq
+  Shl; Shr
+  Ternary // hack for precedence climbing
+}
+
+pub(all) enum BinaryDigit {
+  Zero; One; X; Z; M; DontCare
+} derive(Eq)
+
+pub fn is_determined(self: BinaryDigit) -> Bool {
+  match self {
+    Zero | One => true
+    _ => false
+  }
+}
+
+pub impl Show for BinaryDigit with output(self, logger) {
+  logger.write_char(match self {
+    Zero => '0'
+    One => '1'
+    X => 'x'
+    Z => 'z'
+    M => 'm'
+    DontCare => '-'
+  })
+}
+
+pub(all) struct Bits {
+  bits: Array[BinaryDigit]
+  mut value: Int?
+  span: Span
+}
+
+impl Eq for Bits with op_equal(self, other) {
+  self.bits == other.bits
+}
+
+impl Show for Bits with output(self, logger) {
+  match self.value {
+    Some(value) => logger.write_string(value.to_string())
+    None => {
+      for bit in self.bits {
+        logger.write_string(bit.to_string())
+      }
+    }
+  }
+}
+
+fn precedence(self: BinaryOp) -> Int {
+  match self {
+    Mul | Div | Mod => 12
+    Shl | Shr => 11
+    Add | Sub => 10
+    And => 9
+    Or => 8
+    Xor => 7
+    Nand => 6
+    Nor => 5
+    Xnor => 4
+    Equ | Neq => 3
+    Lss | Gtr | Leq | Geq => 2
+    Ternary => 1
+  }
 }
 
 pub(all) enum AttributeValue {
@@ -98,9 +155,11 @@ impl Eq for VectorLen with op_equal(self, other) {
 pub(readonly) type! AstError {
   ExpectedFixedVectorLength(span~: Span)
   ExpectedIntegerExpression(span~: Span)
+  NaturalContainsUndeterminedDigit(span~: Span)
+  ValueTooLargeForWidth(value~: Int, width~: Int, span~: Span)
 } derive(Show)
 
-pub fn expect_fixed(self: VectorLen, span: Span) -> Int!Error {
+pub fn expect_fixed(self: VectorLen, span: Span) -> Int! {
   match self {
     Fixed(value) => value
     Dynamic(_) => {
@@ -108,15 +167,6 @@ pub fn expect_fixed(self: VectorLen, span: Span) -> Int!Error {
     }
   }
 }
-
-pub(all) enum Type {
-  Nat
-  Logic
-  Vector(ty~: Type, len~: VectorLen)
-  Instance(sig~: ModuleSignature, params~: Map[String, Int])
-  Name(name~: String, params~: Array[Int])
-  Tuple(Array[Type])
-} derive(Eq)
 
 pub(all) enum PortDirection {
   Input; Output
@@ -137,11 +187,6 @@ pub(all) struct ModuleDecl {
     ports: Array[Port]
     body: Array[Stmt]
     span: Span
-}
-
-pub(all) enum Decl {
-  Module(ModuleDecl)
-  ModuleDeclaration(ModuleSignature)
 }
 
 pub fn ty(self: Expr) -> Ref[Type?] {
@@ -229,7 +274,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
 }
 
 // perform partial evaluation on the expression
-pub fn partial_eval(self: Expr) -> Expr!Error {
+pub fn partial_eval(self: Expr) -> Expr! {
   rewrite_expr!(self, fn!(expr) {
     match expr {
       Binary(op = Add | Sub | Mul | Div | Mod as op, lhs~, rhs~, span~, ty~) => {
@@ -244,7 +289,7 @@ pub fn partial_eval(self: Expr) -> Expr!Error {
               _ => raise Failure("Invalid arithmetical binary operator")
             }
 
-            Natural(value=value, width=None, base=10, span~, ty~)
+            Natural(bits=Bits::from!(value, span~), width=None, base=10, span~, ty~)
           }
           _ => expr
         }
@@ -276,9 +321,64 @@ pub fn partial_eval(self: Expr) -> Expr!Error {
   })
 }
 
-pub fn expect_int(self: Expr) -> Int!Error {
+pub fn as_int(self: Bits) -> Int!AstError {
+  match self.value {
+    Some(value) => value
+    None => {
+      let value = bits_to_int!(self.bits, span=self.span)
+      self.value = Some(value)
+      value
+    }
+  }
+}
+
+///|
+/// attempts to interpret the bits as a binary integer
+/// returns an error if any bit is undetermined (not a 0 or a 1)
+fn bits_to_int(bits: Array[BinaryDigit], span~: Span) -> Int!AstError {
+  let mut value = 0
+
+  for i in 0..<bits.length() {
+    let bit = bits[bits.length() - i - 1]
+
+    value = match bit {
+      Zero => value * 2
+      One => value * 2 + 1
+      _ => raise NaturalContainsUndeterminedDigit(span~)
+    }
+  }
+
+  value
+}
+
+pub fn Bits::new(bits: Array[BinaryDigit], value~: Int? = None, span~: Span) -> Bits {
+  { bits, value, span }
+}
+
+pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError {
+  let required_width = @utils.clog2(value)
+
+  match width {
+    Some(width) => {
+      if width < required_width {
+        raise ValueTooLargeForWidth(value~, width~, span~)
+      }
+    }
+    _ => ()
+  }
+
+  let bits_rev = Array::new(capacity=required_width)
+
+  for i in 0..<required_width {
+    bits_rev.push(if (value & (1 << i)) == 0 { Zero } else { One })
+  }
+
+  { bits: bits_rev.rev(), value: Some(value), span }
+}
+
+pub fn expect_int(self: Expr) -> Int! {
   match self {
-    Natural(value~, ..) => value
+    Natural(bits~, ..) => bits.as_int!()
     _ => raise ExpectedIntegerExpression(span=self.span())
   }
 }
@@ -407,7 +507,11 @@ pub fn is_numerical(self: Type) -> Bool {
   }
 }
 
-pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
-  Natural(value=n, width~, base~, span~, ty={ val: Some(Nat) })
-}
+pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr!AstError {
+  let ty = match width {
+    Some(width) => Type::Vector(ty=Logic, len=Fixed(width))
+    None => Nat
+  }
 
+  Natural(bits=Bits::from!(n, width~, span~), width~, base~, span~, ty={ val: Some(ty) })
+}

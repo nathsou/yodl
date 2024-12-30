@@ -1,5 +1,5 @@
 
-fn run(file: String) -> String!Error {
+fn run(file: String) -> String! {
   let source = @fs.read_file_to_string!(path=file)
   let lexer = @parse.Lexer::new(source, file~)
   let tokens = lexer.lex!()
@@ -47,7 +47,7 @@ fn run(file: String) -> String!Error {
 }
 
 fn main {
-  let file = "Timer"
+  let file = "RegisterFile"
 
   match run?("examples/\{file}.yodl") {
     Ok(rtlil) => {

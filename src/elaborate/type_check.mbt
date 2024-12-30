@@ -47,7 +47,7 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
                 match subst[name] {
                     Some(len2) => {
                         if len != len2 {
-                            raise IncompatibleTypes(ty1=ty1, ty2=ty2, span~)
+                            raise IncompatibleTypes(ty1~, ty2~, span~)
                         }
                     }
                     None => {
@@ -61,7 +61,7 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
                 eqs.push((ty2, ty1))
             }
             _ => {
-                raise IncompatibleTypes(ty1=ty1, ty2=ty2, span~)
+                raise IncompatibleTypes(ty1~, ty2~, span~)
             }
         }
     }
@@ -76,13 +76,15 @@ fn unify(ty1: @parse.Type, ty2: @parse.Type, span~: @parse.Span, subst~: Map[Str
 fn declare_name(env~: Scope[@parse.Type], name~: String, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
     match env.declare?(name, ty) {
         Ok(_) => ()
-        Err(_) => raise VariableRedeclared(name~, span~)
+        Err(MemberAlreadyDeclared) => raise VariableRedeclared(name~, span~)
     }
 }
 
-fn eval_const_expr(expr: @parse.Expr) -> Int!TypeCheckerError {
+// expr should already have been partially evaluated using `Expr::partial_eval`
+// during the monomorphization pass
+fn eval_const_expr(expr: @parse.Expr) -> Int! {
     match expr {
-        Natural(value~, ..) => value
+        Natural(bits~, ..) => bits.as_int!()
         _ => raise ExpectedConstantExpr(span=expr.span())
     }
 }
@@ -117,7 +119,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
     }
 }
 
-fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], expected_ty~: @parse.Type? = None) -> @parse.Type!Error {
+fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], expected_ty~: @parse.Type? = None) -> @parse.Type! {
     let ty = match expr {
         Identifier(name~, span~, ..) => {
             match env.resolve(name) {
@@ -126,7 +128,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             }
         }
         Natural(width~, ..) => match width {
-            Some(0 | 1) => @parse.Logic
+            Some(1) => @parse.Logic
             Some(width) => @parse.Type::Vector(ty=@parse.Logic, len=Fixed(width))
             None => Nat
         }
@@ -134,11 +136,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             self.check_expr!(expr, env) 
         }
         Binary(op~, lhs~, rhs~, span~, ..) => {
-            let ty_lhs = self.check_expr!(lhs, env)
-            let ty_rhs = self.check_expr!(rhs, env)
+            let lhs_ty = self.check_expr!(lhs, env)
+            let rhs_ty = self.check_expr!(rhs, env)
 
-            let wa = ty_lhs.width().or_error!(UnsizedOperand(span~))
-            let wb = ty_rhs.width().or_error!(UnsizedOperand(span~))
+            let wa = lhs_ty.width().or_error!(UnsizedOperand(span~))
+            let wb = rhs_ty.width().or_error!(UnsizedOperand(span~))
 
             let expected_width = match expected_ty {
                 Some(expected_ty) => expected_ty.width().or_error!(Failure("Expected type must have a width"))
@@ -289,27 +291,37 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                 raise EmptyMatch(span~)
             }
 
-            let mut ty = None
+            let mut ret_ty = None
             let subst = {}
+
+            fn check_ret_ty(ty: @parse.Type) -> Unit!TypeCheckerError {
+                match ret_ty {
+                    Some(ty2) => {
+                        let _ = unify!(ty, ty2, span~, subst~)
+                    }
+                    None => {
+                        ret_ty = Some(ty)
+                    }
+                }
+            }
 
             for case in cases {
                 let (pat, expr) = case
                 let pat_ty = self.check_expr!(pat, env)
                 let expr_ty = self.check_expr!(expr, env)
-
                 let _ = unify!(subject_ty, pat_ty, subst~, span~)
-
-                match ty {
-                    Some(ty2) => {
-                        let _ = unify!(ty2, expr_ty, subst~, span~)
-                    }
-                    None => {
-                        ty = Some(expr_ty)
-                    }
-                }
+                check_ret_ty!(expr_ty)
             }
 
-            ty.unwrap()
+            match default {
+                Some(expr) => {
+                    let expr_ty = self.check_expr!(expr, env)
+                    check_ret_ty!(expr_ty)
+                }
+                None => ()
+            }
+
+            ret_ty.unwrap()
         }
         Tuple(elems~, ..) => {
             let elem_tys = Array::new(capacity=elems.length())
@@ -346,7 +358,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
     ty
 }
 
-fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> Unit!Error {
+fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> Unit! {
     match stmt {
         Expr(expr~, ..) => {
             let _ = self.check_expr!(expr, env)
@@ -458,9 +470,9 @@ fn check_attributes(attrs: Map[String, @parse.Attribute]) -> Unit!TypeCheckerErr
     }
 }
 
-pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
+pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
     match decl {
-        Module({ name, params, attributes, ports, body, span }) => {
+        Module({ name, params: _, attributes, ports, body, span } as mod) => {
             let env = Scope::new()
 
             check_attributes!(attributes)
@@ -474,13 +486,7 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit!Error {
                 self.check_stmt!(stmt, env)
             }
 
-            self.modules[name] = {
-                name,
-                params,
-                attributes,
-                ports,
-                span,
-            }
+            self.modules[name] = mod.signature()
         }
         ModuleDeclaration(sig) => {
             check_attributes!(sig.attributes)

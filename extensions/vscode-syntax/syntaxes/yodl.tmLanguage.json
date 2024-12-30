@@ -33,6 +33,10 @@
         {
             "name": "keyword.other.attribute.yodl",
             "match": "@[A-Za-z_][A-Za-z0-9_]*"
+        },
+        {
+            "name": "entity.name.identifier.yodl",
+            "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
         }
     ],
     "fileTypes": [

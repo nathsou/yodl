@@ -35,15 +35,11 @@ pub fn join(self: Id, suffix: String) -> Id {
 // A value consists of a width in bits and a bit representation, most significant bit first
 pub(all) struct Value {
     width: Int
-    bits: Array[BinaryDigit]
+    bits: Array[@parse.BinaryDigit]
 }
 
-pub(all) enum BinaryDigit {
-  Zero; One; X; Z; M; DontCare
-} derive(Eq)
-
 pub(all) enum Constant {
-  ConstValue(width~: Int, bits~: Array[BinaryDigit])
+  ConstValue(width~: Int, bits~: Array[@parse.BinaryDigit])
   ConstInteger(Int)
   ConstString(String)
 }

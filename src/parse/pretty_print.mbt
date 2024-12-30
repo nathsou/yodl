@@ -61,7 +61,7 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
   }
 
   match expr {
-    Natural(value~, width~, base~, ..) => {
+    Natural(bits~, width~, base~, ..) => {
       match width {
         Some(width) => {
           self.write(width.to_string())
@@ -76,10 +76,24 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
           }
 
           self.builder.write_char(base_prefix)
-          self.write(@utils.show_nat(value, base~, width=Some(width)))
+          match bits.value {
+            Some(value) => {
+              self.write(@utils.show_nat(value, base~, width=Some(width)))
+            }
+            None => {
+              self.write(bits.to_string())
+            }
+          }
         }
         None => {
-          self.write(@utils.show_nat(value, base~, width=None))
+          match bits.value {
+            Some(value) => {
+              self.write(@utils.show_nat(value, base~, width=None))
+            }
+            None => {
+              self.write(bits.to_string())
+            }
+          }
         }
       }
     }

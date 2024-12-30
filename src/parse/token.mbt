@@ -13,7 +13,7 @@ enum TokenType {
   Module; Let; Logic; In; For; Declare
   And; Or; Not; Xor; Nand; Nor; Xnor; Match
   // literals
-  Identifier(String); Natural(value~: Int, width~: Int?, base~: Int)
+  Identifier(String); Natural(bits~: Bits, width~: Int?, base~: Int)
   StringLiteral(String)
 } derive(Eq, Show)
 

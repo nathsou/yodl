@@ -51,13 +51,13 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 6. Rewrite replication expressions into concatenation expressions
 // 7. Remove unecessary spreads
 // 8. Rewrite flat constant vectors to natural expressions
-pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
+pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
       Identifier(name~, span~, ty~) => {
         // Resolve identifiers to unique names
         match self.genvars.resolve(name) {
-          Some(value) => @parse.Expr::Natural(value=value, width=None, base=10, span~, ty~)
+          Some(value) => @parse.Expr::Natural(bits=@parse.Bits::from!(value, span~), width=None, base=10, span~, ty~)
           None => match self.names.resolve(name) {
             Some(unique_name) => @parse.Expr::Identifier(name=unique_name.to_string(), span~, ty~)
             None => expr
@@ -78,8 +78,8 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
                   if ty_idx == idx {
                     return @parse.Expr::Slicing(
                       expr~,
-                      lsb=@parse.nat(offset - ty_width + 1, span=index.span()),
-                      msb=@parse.nat(offset, span=index.span()),
+                      lsb=@parse.nat!(offset - ty_width + 1, span=index.span()),
+                      msb=@parse.nat!(offset, span=index.span()),
                       span~,
                       ty={ val: Some(ty) },
                     )
@@ -102,8 +102,8 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
                 let cases = []
 
                 for i in 0..<@utils.pow2(s_width) {
-                  let lhs = @parse.Expr::nat(i, width=Some(s_width), base=10, span~)
-                  let idx = @parse.Expr::nat(i, width=None, base=10, span~)
+                  let lhs = @parse.Expr::nat!(i, width=Some(s_width), base=10, span~)
+                  let idx = @parse.Expr::nat!(i, width=None, base=10, span~)
                   cases.push((lhs, @parse.Expr::Indexing(expr~, index=idx, span~, ty~)))
                 }
 
@@ -157,17 +157,19 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
           _ => spread_expr
         }
       }
-      Vector(elems~, span~, ty={ val: Some(Vector(ty=Logic, len=Fixed(len))) }) => {
+      Vector(elems~, span~, ty={ val: Some(Vector(ty=Logic, len=Fixed(len))) } as ty) => {
         // Rewrite flat constant vectors to natural expressions
         if elems.iter().all(fn(elem) { match elem { Natural(_) => true; _ => false } }) {
-          let mut value = 0
+          let bits = []
 
           for elem in elems {
-            let bit = elem.expect_int!()
-            value = (value << 1) | bit
+            bits.append(match elem {
+              Natural(bits={bits, ..}, ..) => bits
+              _ => []
+            })
           }
 
-          @parse.nat(value, width=Some(len), span~)
+          @parse.Expr::Natural(bits=@parse.Bits::new(bits, span~), width=Some(len), base=2, span~, ty~)
         } else {
           expr
         }
@@ -177,7 +179,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
   })
 }
 
-pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt) -> Array[@parse.Stmt]!Error {
+pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt) -> Array[@parse.Stmt]! {
   match stmt {
     Expr(expr~, span~) => {
       let simplified_expr = self.simplify_expr!(expr)
@@ -232,7 +234,7 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt) -> Array[@parse.Stmt]!
   }
 }
 
-pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl!Error {
+pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl! {
   match decl {
     Module({ name, params, attributes, ports, body, span }) => {
       let simplified_body = []

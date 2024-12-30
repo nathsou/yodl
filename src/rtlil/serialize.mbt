@@ -15,17 +15,6 @@ pub fn Serializer::new(autoidx~: Int, modules~: Map[String, Module]) -> Serializ
   { autoidx, modules, builder: StringBuilder::new(), indent: 0 }
 }
 
-pub impl Show for BinaryDigit with output(self, logger) {
-  logger.write_char(match self {
-    Zero => '0'
-    One => '1'
-    X => 'x'
-    Z => 'z'
-    M => 'm'
-    DontCare => '-'
-  })
-}
-
 pub impl Show for Value with output(self, logger) {
   let bits = String::concat(self.bits.map(fn(bit) { bit.to_string() }))
   logger.write_string("\{self.width}'\{bits}")
@@ -34,7 +23,7 @@ pub impl Show for Value with output(self, logger) {
 pub impl Show for Constant with output(self, logger) {
   match self {
     ConstValue(width~, bits~) => {
-      let bits = String::concat(bits.map(fn(bit) { bit.to_string() }))
+      let bits = String::concat(bits.map(fn(bit) { bit.to_string() })).pad_start(width, '0')
       logger.write_string("\{width}'\{bits}")
     }
     ConstInteger(n) => logger.write_string(n.to_string())

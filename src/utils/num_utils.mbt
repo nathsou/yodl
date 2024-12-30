@@ -12,7 +12,10 @@ pub fn sum(iter: Iter[Int]) -> Int {
 }
 
 pub fn clog2(n: Int) -> Int {
-  @math.ceil(@math.log2(n.to_double())).to_int()
+  match n {
+    0 => 1 // 1 bit is required to represent 0
+    _ => @math.ceil(@math.log2(n.to_double())).to_int()
+  }
 }
 
 pub fn cdiv(dividend: Int, divisor: Int) -> Int {
