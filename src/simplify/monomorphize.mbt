@@ -239,9 +239,8 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
         let builder = StringBuilder::new()
         builder.write_string(mod.name)
         if params.length() > 0 {
-          builder.write_char('<')
+          builder.write_char('_')
           builder.write_string(String::concat(params.map(fn(n) { n.to_string() }), separator="_"))
-          builder.write_char('>')
         }
         builder.to_string()
       }

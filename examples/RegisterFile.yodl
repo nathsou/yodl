@@ -21,63 +21,32 @@ module ProgramCounter(
     pc.d = jump ? jump_addr : pc.q + 1'1;
 }
 
-module RegisterFile(
+module RegisterFile<WIDTH, DEPTH>(
     clk: logic,
     rst: logic,
     write_enable: logic,
-    write_dest: logic[3],
-    write_data: logic[16],
-    read_src1: logic[3],
-    read_src2: logic[3],
+    write_dest: logic[$clog2(DEPTH)],
+    write_data: logic[WIDTH],
+    read_src: logic[$clog2(DEPTH)],
+    data_out: logic,
 ) -> (
-    read_data1: logic[16],
-    read_data2: logic[16],
+    reg0_data: logic[WIDTH],
+    reg1_data: logic[WIDTH],
+    read_data: logic[WIDTH],
 ) {
-    let regs: logic[16][8];
+    let regs = (DEPTH)x[Reg<WIDTH>(clk, rst, d: write_data)];
 
-    regs[0] = 16'0;
-
-    for i in 1..=6 {
-        regs[i] = Reg<16>(
-            clk,
-            rst,
-            en: write_enable and (write_dest == i),
-            d: write_data,
-        ).q;
+    for i in 0..<DEPTH {
+        regs[i].en = write_enable and (write_dest == i);
     }
 
-    regs[7] = ProgramCounter(
-        clk,
-        rst,
-        jump: write_enable and (write_dest == 3'7),
-        jump_addr: write_data,
-    ).q;
-
-    read_data1 = regs[read_src1];
-    read_data2 = regs[read_src2];
+    reg0_data = regs[0].q;
+    reg1_data = regs[1].q;
+    // read_data = data_out ? regs[read_src].q : (WIDTH)x{1'z};
+    read_data = regs[read_src].q;
 }
 
-module Top(
-    clk: logic,
-    sw: logic[16],
-    btn_c: logic,
-) -> (
-    led: logic[16],
-) {
-    let read_src1 = sw[14:12];
-    let read_src2 = sw[11:9];
-    let data = [...8'0, ...sw[7:0]];
-    let write_enable = sw[15];
-
-    let regs = RegisterFile(
-        clk,
-        rst: btn_c,
-        write_enable,
-        write_dest: read_src1,
-        write_data: data,
-        read_src1,
-        read_src2,
-    );
-
-    led = write_enable ? data : [...regs.read_data1[7:0], ...regs.read_data2[7:0]];
+module Top(clk: logic, rst_n: logic) -> () {
+    let rst = not rst_n;
+    RegisterFile<8, 8>(clk, rst);
 }

@@ -1,0 +1,39 @@
+{
+    "name": "yodl-syntax-highlighting",
+    "displayName": "Yodl Syntax Highlighting",
+    "description": "Provides syntax highlighting for the Yodl Hardware Description Language.",
+    "version": "0.0.1",
+    "publisher": "nathsou",
+    "engines": {
+        "vscode": "^1.60.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "yodl",
+                "aliases": [
+                    "YODL",
+                    "yodl"
+                ],
+                "extensions": [
+                    ".yodl"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "yodl",
+                "scopeName": "source.yodl",
+                "path": "./syntaxes/yodl.tmLanguage.json"
+            }
+        ]
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/nathsou/yodl"
+    }
+}

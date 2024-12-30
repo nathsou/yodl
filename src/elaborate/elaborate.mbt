@@ -263,7 +263,10 @@ fn declare(self: Elaborator, name: String, value: Value, span~: @parse.Span) -> 
 }
 
 fn expr_width(expr: @parse.Expr) -> Int?!Error {
-  expr.ty().val.or_error!(Unreachable(message="Untyped expression", span=expr.span())).width()
+  match expr {
+    Natural(width=Some(width), ..) => Some(width)
+    _ => expr.ty().val.or_error!(Unreachable(message="Untyped expression", span=expr.span())).width()
+  }
 }
 
 fn binary_op_cell(

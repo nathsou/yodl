@@ -50,6 +50,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 5. Rewrite tuple indexing into slicing expressions
 // 6. Rewrite replication expressions into concatenation expressions
 // 7. Remove unecessary spreads
+// 8. Rewrite flat constant vectors to natural expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
@@ -147,13 +148,28 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr!Error {
 
         let elems = @utils.fill(count.expect_int!(), repeated_expr)
         
-        @parse.Expr::Vector(elems~, span~, ty~)
+        self.simplify_expr!(@parse.Expr::Vector(elems~, span~, ty~))
       }
       Spread(expr~, ..) as spread_expr => {
         // Remove unecessary spreads
         match expr.ty().val.unwrap().width() {
           Some(1) => expr
           _ => spread_expr
+        }
+      }
+      Vector(elems~, span~, ty={ val: Some(Vector(ty=Logic, len=Fixed(len))) }) => {
+        // Rewrite flat constant vectors to natural expressions
+        if elems.iter().all(fn(elem) { match elem { Natural(_) => true; _ => false } }) {
+          let mut value = 0
+
+          for elem in elems {
+            let bit = elem.expect_int!()
+            value = (value << 1) | bit
+          }
+
+          @parse.nat(value, width=Some(len), span~)
+        } else {
+          expr
         }
       }
       _ => expr

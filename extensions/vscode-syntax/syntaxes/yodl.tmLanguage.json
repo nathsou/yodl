@@ -1,0 +1,41 @@
+{
+    "name": "yodl",
+    "scopeName": "source.yodl",
+    "patterns": [
+        {
+            "name": "comment.line.double-slash.yodl",
+            "match": "//.*$"
+        },
+        {
+            "name": "keyword.control.yodl",
+            "match": "\\b(declare|module|let|match|for|in)\\b"
+        },
+        {
+            "name": "storage.type.yodl",
+            "match": "\\blogic\\b"
+        },
+        {
+            "name": "constant.numeric.yodl",
+            "match": "\\b\\d+'[bhod]?[A-Za-z0-9_]+\\b|\\b\\d+(?:_\\d+)*\\b"
+        },
+        {
+            "name": "punctuation.separator.parameters.yodl",
+            "match": "[(),;]"
+        },
+        {
+            "name": "entity.name.function.yodl",
+            "match": "\\$[A-Za-z_0-9]+"
+        },
+        {
+            "name": "keyword.operator.yodl",
+            "match": "(and|or|not|xor|nand|nor|xnor|==|!=|<=|>=|<|>|\\+|-|\\*|\\/|%|\\.{3}|=>|\\?|:|\\.)"
+        },
+        {
+            "name": "keyword.other.attribute.yodl",
+            "match": "@[A-Za-z_][A-Za-z0-9_]*"
+        }
+    ],
+    "fileTypes": [
+        "yodl"
+    ]
+}
