@@ -55,6 +55,7 @@ fn write_wire(self: Serializer, wire: Wire) -> Unit {
       let dir = match port.direction {
         Input => "input"
         Output => "output"
+        Inout => "inout"
       }
 
       self.builder.write_string(" \{dir} \{port.id}")

@@ -492,8 +492,16 @@ fn parse_port(self: Parser, dir~: PortDirection) -> Port! {
   let name = self.parse_identifier!()
   let optional = self.consumes(QuestionMark)
   self.expect!(Colon, start_idx)
+  let attributes1 = self.parse_attributes!()
   let ty = self.parse_type!()
-  { name, ty, dir, optional, span: self.span(start_idx) }
+  let attributes2 = self.parse_attributes!()
+  let attributes = @utils.merge(attributes1, attributes2)
+  let dir = match attributes["inout"] {
+    Some(_) => Inout
+    None => dir
+  }
+
+  { name, ty, dir, optional, attributes, span: self.span(start_idx) }
 }
 
 fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]! {
@@ -640,13 +648,11 @@ fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl! {
 }
 
 fn parse_module_def_or_decl(self: Parser) -> Decl! {
-  let start_idx = self.index
   let attributes = self.parse_attributes!()
   let is_declaration = self.consumes(Declare)
   let sig = self.parse_module_signature!(attributes~)
 
   if is_declaration {
-    self.expect!(Semicolon, start_idx)
     ModuleDeclaration(sig)
   } else {
     Module(self.parse_module_definition!(sig~))

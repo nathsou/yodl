@@ -440,13 +440,17 @@ enum AttributeValueType {
     // Int
 }
 
-let attribute_signatures: Map[String, Array[AttributeValueType]] = {
+let module_attribute_signatures: Map[String, Array[AttributeValueType]] = {
     "internal": [],
     "alias": [Str],
 }
 
-fn check_attribute(attr: @parse.Attribute) -> Unit!TypeCheckerError {
-    match attribute_signatures[attr.name] {
+let port_attribute_signatures: Map[String, Array[AttributeValueType]] = {
+    "inout": [],
+}
+
+fn check_attribute(attr: @parse.Attribute, signatures~: Map[String, Array[AttributeValueType]]) -> Unit!TypeCheckerError {
+    match signatures[attr.name] {
         Some(expected) => {
             if expected.length() != attr.args.length() {
                 raise InvalidAttributeArgs(name=attr.name, args=attr.args, span=attr.span)
@@ -464,9 +468,9 @@ fn check_attribute(attr: @parse.Attribute) -> Unit!TypeCheckerError {
     }
 }
 
-fn check_attributes(attrs: Map[String, @parse.Attribute]) -> Unit!TypeCheckerError {
+fn check_attributes(attrs: Map[String, @parse.Attribute], signatures~: Map[String, Array[AttributeValueType]]) -> Unit!TypeCheckerError {
     for attr in attrs.values() {
-        check_attribute!(attr)
+        check_attribute!(attr, signatures~)
     }
 }
 
@@ -475,10 +479,11 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
         Module({ name, params: _, attributes, ports, body, span } as mod) => {
             let env = Scope::new()
 
-            check_attributes!(attributes)
+            check_attributes!(attributes, signatures=module_attribute_signatures)
 
             for port in ports {
                 ensure_valid_port_type!(port.ty, port.span)
+                check_attributes!(port.attributes, signatures=port_attribute_signatures)
                 declare_name!(env~, name=port.name, ty=port.ty, span~)
             }
 
@@ -489,7 +494,13 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
             self.modules[name] = mod.signature()
         }
         ModuleDeclaration(sig) => {
-            check_attributes!(sig.attributes)
+            check_attributes!(sig.attributes, signatures=module_attribute_signatures)
+            
+            for port in sig.ports {
+                ensure_valid_port_type!(port.ty, port.span)
+                check_attributes!(port.attributes, signatures=port_attribute_signatures)
+            }
+
             self.modules[sig.name] = sig
         }
     }

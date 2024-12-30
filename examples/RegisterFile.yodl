@@ -7,7 +7,7 @@ declare module Reg<N>(
     rst?: logic,
 ) -> (
     q: logic[N],
-);
+)
 
 module ProgramCounter(
     clk: logic,

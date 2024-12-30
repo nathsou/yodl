@@ -45,7 +45,7 @@ pub fn fill[T](n: Int, value: T) -> Array[T] {
 }
 
 pub fn merge[K: Eq + Hash, V](map1: Map[K, V], map2: Map[K, V]) -> Map[K, V] {
-  let result = {}
+  let result = Map::new(capacity=map1.size() + map2.size())
 
   for key, value in map1 {
     result[key] = value

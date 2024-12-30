@@ -45,7 +45,7 @@ declare module Reg<N>(
     rst?: logic,
 ) -> (
     q: logic[N],
-);
+)
 
 // Nexys A7
 module Top(

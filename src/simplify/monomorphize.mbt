@@ -222,6 +222,7 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
       dir: port.dir,
       optional: port.optional,
       span: port.span,
+      attributes: port.attributes,
     })
   }
 

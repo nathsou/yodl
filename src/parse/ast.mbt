@@ -169,7 +169,7 @@ pub fn expect_fixed(self: VectorLen, span: Span) -> Int! {
 }
 
 pub(all) enum PortDirection {
-  Input; Output
+  Input; Output; Inout
 } derive(Hash, Eq)
 
 pub(all) struct Port {
@@ -178,6 +178,7 @@ pub(all) struct Port {
   dir: PortDirection
   span: Span
   optional: Bool
+  attributes: Map[String, Attribute]
 }
 
 pub(all) struct ModuleDecl {

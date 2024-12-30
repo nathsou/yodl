@@ -1,9 +1,4 @@
 
-// For the Alchitry Cu board
-// yosys -p "read_rtlil output/Timer.rtlil; check -assert; synth_ice40 -top Top -json output/Timer.json"
-// nextpnr-ice40 --hx8k --json output/Timer.json --pcf output/cu.pcf --package cb132 --freq 100 --asc output/Timer.asc
-// icepack output/Timer.asc output/Timer.bin
-
 @internal
 declare module Reg<N>(
     clk: logic,
@@ -13,24 +8,6 @@ declare module Reg<N>(
 ) -> (
     q: logic[N],
 )
-
-@internal
-declare module RegSyncReset<N>(
-    clk: logic,
-    d: logic[N],
-    en?: logic,
-    rst?: logic,
-) -> (
-    q: logic[N],
-)
-
-// outputs a 1 for one clock cycle once every `CYCLES` clock cycles
-module Timer<CYCLES>(clk: logic) -> (q: logic) {
-    let counter = Reg<$clog2(CYCLES)>(clk);
-    let end = counter.q == CYCLES;
-    counter.d = end ? $clog2(CYCLES)x{1'0} : counter.q + 1;
-    q = end;
-}
 
 module SevenSegment(char: logic[4]) -> (segs: logic[8]) {
     segs = match char {
@@ -75,8 +52,28 @@ module Segments(
     sel = packed.1;
 }
 
+module Buffer<N>(d: logic[N], en: logic) -> (q: logic[N]) {
+    q = en ? d : N x {1'bZ};
+}
+
+// Simulate pull-down resistors on the d port to fix
+// an issue with the first revision of the Alchitry Io Element board
+// see https://alchitry.com/tutorials/io-element/
+module FakePullDown<SIZE>(
+    clk: logic,
+    d: @inout logic[SIZE],
+) -> (
+    q: logic[SIZE],
+) {
+    let flip = Reg<4>(clk);
+    flip.d = flip.q + 1;
+    Reg<SIZE>(clk, d, en: flip.q > 4'd2, q);
+    d = flip.q == 4'0 ? SIZE x {1'b0} : SIZE x {1'bz};
+}
+
 module Top(
     clk: logic,
+    io_sw: @inout logic[5],
     rst_n: logic,
 ) -> (
     io_led: logic[24],
@@ -84,9 +81,13 @@ module Top(
     io_an: logic[4],
 ) {
     let rst = not rst_n;
-    let timer = Timer<100_000_000>(clk); // 100 Mhz clock
-    let seconds = Reg<16>(clk, rst);
-    seconds.d = seconds.q + timer.q;
-    Segments(clk, rst, value: seconds.q, segs: io_seg, sel: io_an);
-    io_led = [...8'0, ...seconds.q];
+    let chars: logic[16] = 16'hbbbb;
+    
+    // Buffer<16>(d: 16'hBABA, en: io_sw[0], q: chars);
+    // Buffer<16>(d: 16'hF0FE, en: io_sw[1], q: chars);
+    // Buffer<16>(d: 16'h0000, en: io_sw[0] nor io_sw[1], q: chars);
+    Segments(clk, rst, value: chars, segs: io_seg, sel: io_an);
+
+    let sw = FakePullDown<5>(clk, d: io_sw).q;
+    io_led = [...sw, ...3'd0, ...chars];
 }

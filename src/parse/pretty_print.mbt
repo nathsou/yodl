@@ -429,6 +429,12 @@ pub impl Show for Port with output(port, logger) {
   }
 
   logger.write_string(": ")
+
+  for attr in port.attributes.values() {
+    logger.write_string(attr.to_string())
+    logger.write_char(' ')
+  }
+
   logger.write_string(port.ty.to_string())
 }
 
