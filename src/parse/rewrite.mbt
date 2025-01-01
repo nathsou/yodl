@@ -23,18 +23,18 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
       let lsb = rewrite_expr!(lsb, rewrite)
       Slicing(expr~, msb~, lsb~, span~, ty~)
     }
-    PortAccess(expr~, port~, span~, ty~) => {
+    FieldAccess(expr~, field=port, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)
-      PortAccess(expr~, port~, span~, ty~)
+      FieldAccess(expr~, field=port, span~, ty~)
     }
     Instance(name~, params~, ports~, span~, ty~) => {
-      let new_params = []
+      let new_params = Array::new(capacity=params.length())
 
       for param in params {
         new_params.push(rewrite_expr!(param, rewrite))
       }
 
-      let new_ports = {}
+      let new_ports = Map::new(capacity=ports.size())
 
       for port, expr in ports {
         new_ports[port] = rewrite_expr!(expr, rewrite)
@@ -43,7 +43,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
       Instance(name~, params=new_params, ports=new_ports, span~, ty~)
     }
     Vector(elems~, span~, ty~) => {
-      let new_elems = []
+      let new_elems = Array::new(capacity=elems.length())
 
       for elem in elems {
         new_elems.push(rewrite_expr!(elem, rewrite))
@@ -63,7 +63,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
     }
     Match(subject~, cases~, default~, span~, ty~) => {
       let new_subject = rewrite_expr!(subject, rewrite)
-      let new_cases = []
+      let new_cases = Array::new(capacity=cases.length())
 
       for case in cases {
         let (pat, expr) = case
@@ -80,7 +80,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
       Match(subject=new_subject, cases=new_cases, default=new_default, span~, ty~)
     }
     Tuple(elems~, span~, ty~) => {
-      let new_elems = []
+      let new_elems = Array::new(capacity=elems.length())
 
       for elem in elems {
         new_elems.push(rewrite_expr!(elem, rewrite))
@@ -94,13 +94,22 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
       Replicate(expr~, count~, concat~, span~, ty~)
     }
     FunCall(name~, args~, span~, ty~) => {
-      let new_args = []
+      let new_args = Array::new(capacity=args.length())
 
       for arg in args {
         new_args.push(rewrite_expr!(arg, rewrite))
       }
 
       FunCall(name~, args=new_args, span~, ty~)
+    }
+    Struct(fields~, span~, ty~) => {
+      let new_fields = Map::new(capacity=fields.size())
+
+      for field, expr in fields {
+        new_fields[field] = rewrite_expr!(expr, rewrite)
+      }
+
+      Struct(fields=new_fields, span~, ty~)
     }
   }
 

@@ -18,7 +18,7 @@ type! TypeCheckerError {
     IndexedExpressionMustBeVector(span~: @parse.Span)
     UnknownModule(name~: String, span~: @parse.Span)
     UnknownModulePort(module_name~: String, port_name~: String, span~: @parse.Span)
-    PortAccessOnNonInstance(span~: @parse.Span)
+    InvalidFieldAccess(field~: String, span~: @parse.Span)
     InvalidSlicingRange(span~: @parse.Span)
     ExpectedConstantExpr(span~: @parse.Span)
     InvalidPortType(ty~: @parse.Type, span~: @parse.Span)
@@ -32,6 +32,7 @@ type! TypeCheckerError {
     EmptyMatch(span~: @parse.Span)
     InvalidInstanceTypeParameterCount(module_name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
     FunCallAfterMonomorphization(span~: @parse.Span)
+    InvalidStructField(name~: String, span~: @parse.Span)
 } derive(Show)
 
 fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
@@ -116,6 +117,15 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
 
             Tuple(elem_tys)
         }
+        Struct(fields) => {
+            let field_tys = Map::new(capacity=fields.size())
+
+            for name, ty in fields {
+                field_tys[name] = self.resolve_ty!(ty, span~)
+            }
+
+            Struct(field_tys)
+        }
     }
 }
 
@@ -195,7 +205,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
-        PortAccess(expr~, port~, span~, ..) => {
+        FieldAccess(expr~, field=port, span~, ..) => {
             match self.check_expr!(expr, env) {
                 Instance(sig~, params~) => {
                     match sig.get_port(port) {
@@ -203,7 +213,13 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                         None => raise UnknownModulePort(module_name=sig.name, port_name=port, span~)
                     }
                 }
-                _ => raise PortAccessOnNonInstance(span~)
+                Struct(fields) => {
+                    match fields[port] {
+                        Some(ty) => ty
+                        None => raise InvalidStructField(name=port, span~)
+                    }
+                }
+                _ => raise InvalidFieldAccess(field=port, span~)
             }
         }
         Instance(name~, params~, ports~, span~, ..) => {
@@ -355,6 +371,15 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
         FunCall(span~, ..) => {
             raise FunCallAfterMonomorphization(span~)
         }
+        Struct(fields~, ..) => {
+            let field_tys = Map::new(capacity=fields.size())
+
+            for name, ty in fields {
+                field_tys[name] = self.check_expr!(ty, env)
+            }
+
+            @parse.Type::Struct(field_tys)
+        }
     }
 
     expr.set_ty(ty)
@@ -395,7 +420,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
         }
         Assign(lhs~, rhs~, span~, ..) => {
             let is_valid_assignment_target = match lhs {
-                Identifier(..) | Indexing(..) | Slicing(..) | PortAccess(..) => true
+                Identifier(..) | Indexing(..) | Slicing(..) | FieldAccess(..) => true
                 _ => false
             };
 

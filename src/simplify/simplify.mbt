@@ -118,19 +118,19 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
           }
         }
       }
-      PortAccess(expr~, port~, span=port_acc_span, ty=port_acc_ty) as port_access_expr => {
+      FieldAccess(expr~, field=port, span=port_acc_span, ty=port_acc_ty) as port_access_expr => {
         // Rewrite port accesses on match expressions
         match expr {
           Match(subject~, cases~, default~, span~, ty=_) => {
             let new_cases = []
             let new_default = match default {
-              Some(default) => Some(@parse.PortAccess(expr=default, port~, span=port_acc_span, ty=port_acc_ty))
+              Some(default) => Some(@parse.FieldAccess(expr=default, field=port, span=port_acc_span, ty=port_acc_ty))
               None => None
             }
 
             for case in cases {
               let (value, expr) = case
-              let new_expr = @parse.PortAccess(expr~, port~, span=port_acc_span, ty=port_acc_ty)
+              let new_expr = @parse.FieldAccess(expr~, field=port, span=port_acc_span, ty=port_acc_ty)
               new_cases.push((value, new_expr))
             }
 

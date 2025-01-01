@@ -130,7 +130,7 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.emit_expr(lsb)
       self.write("]")
     }
-    PortAccess(expr~, port~, ..) => {
+    FieldAccess(expr~, field=port, ..) => {
       self.emit_expr(expr)
       self.write(".")
       self.write(port)
@@ -280,6 +280,23 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
 
       self.write(")")
     }
+    Struct(fields~, ..) => {
+      self.write("{\n")
+      self.indent += 1
+
+      for field in fields {
+        let (name, expr) = field
+        self.write_indent()
+        self.write(name)
+        self.write(": ")
+        self.emit_expr(expr)
+        self.write(",\n")
+      }
+
+      self.indent -= 1
+      self.write_indent()
+      self.write("}")
+    }
   }
 }
 
@@ -361,6 +378,17 @@ pub fn emit_stmt(self: Emitter, stmt: Stmt) -> Unit {
   }
 }
 
+struct StructField {
+  name: String
+  ty: Type
+}
+
+impl Show for StructField with output(field, logger) {
+  logger.write_string(field.name)
+  logger.write_string(": ")
+  logger.write_string(field.ty.to_string())
+}
+
 pub impl Show for Type with output(ty, logger) {
   match ty {
     Nat => {
@@ -416,6 +444,17 @@ pub impl Show for Type with output(ty, logger) {
         elems.iter(),
         sep=", ",
         suffix=")",
+      )
+    }
+    Struct(fields) => {
+      logger.write_iter(
+        prefix="{ ",
+        fields.iter().map(fn(field) {
+          let (name, ty) = field
+          { name, ty }
+        }),
+        sep=", ",
+        suffix=" }",
       )
     }
   }

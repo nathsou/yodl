@@ -67,3 +67,13 @@ pub fn map[A, B, E: Error](values: Array[A], f: (A) -> B!E) -> Array[B]!E {
   
   mapped
 }
+
+pub fn map_values[K: Eq + Hash, V](map: Map[K, V], f: (V) -> V) -> Map[K, V] {
+  let result = Map::new(capacity=map.size())
+
+  for key, value in map {
+    result[key] = f(value)
+  }
+
+  result
+}

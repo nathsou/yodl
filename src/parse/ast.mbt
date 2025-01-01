@@ -6,13 +6,14 @@ pub(all) enum Expr {
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
   Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
   Slicing(expr~: Expr, msb~: Expr, lsb~: Expr, span~: Span, ty~: Ref[Type?])
-  PortAccess(expr~: Expr, port~: String, span~: Span, ty~: Ref[Type?])
+  FieldAccess(expr~: Expr, field~: String, span~: Span, ty~: Ref[Type?])
   Instance(name~: String, params~: Array[Expr], ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
   Match(subject~: Expr, cases~: Array[(Expr, Expr)], default~: Expr?, span~: Span, ty~: Ref[Type?])
   Tuple(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
+  Struct(fields~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Replicate(expr~: Expr, count~: Expr, concat~: Bool, span~: Span, ty~: Ref[Type?])
   FunCall(name~: String, args~: Array[Expr], span~: Span, ty~: Ref[Type?])
 }
@@ -37,6 +38,7 @@ pub(all) enum Type {
   Instance(sig~: ModuleSignature, params~: Map[String, Int])
   Name(name~: String, params~: Array[Int])
   Tuple(Array[Type])
+  Struct(Map[String, Type])
 } derive(Eq)
 
 pub(all) enum UnaryOp {
@@ -198,13 +200,14 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Binary(ty~, ..) => ty
     Indexing(ty~, ..) => ty
     Slicing(ty~, ..) => ty
-    PortAccess(ty~, ..) => ty
+    FieldAccess(ty~, ..) => ty
     Instance(ty~, ..) => ty
     Vector(ty~, ..) => ty
     Spread(ty~, ..) => ty
     Ternary(ty~, ..) => ty
     Match(ty~, ..) => ty
     Tuple(ty~, ..) => ty
+    Struct(ty~, ..) => ty
     Replicate(ty~, ..) => ty
     FunCall(ty~, ..) => ty
   }
@@ -218,13 +221,14 @@ pub fn span(self: Expr) -> Span {
     Binary(span~, ..) => span
     Indexing(span~, ..) => span
     Slicing(span~, ..) => span
-    PortAccess(span~, ..) => span
+    FieldAccess(span~, ..) => span
     Instance(span~, ..) => span
     Vector(span~, ..) => span
     Spread(span~, ..) => span
     Ternary(span~, ..) => span
     Match(span~, ..) => span
     Tuple(span~, ..) => span
+    Struct(span~, ..) => span
     Replicate(span~, ..) => span
     FunCall(span~, ..) => span
   }
@@ -238,13 +242,14 @@ pub fn ctor(self: Expr) -> String {
     Binary(_) => "Binary"
     Indexing(_) => "Indexing"
     Slicing(_) => "Slicing"
-    PortAccess(_) => "PortAccess"
+    FieldAccess(_) => "PortAccess"
     Instance(_) => "Instance"
     Vector(_) => "Vector"
     Spread(_) => "Spread"
     Ternary(_) => "Ternary"
     Match(_) => "Match"
     Tuple(_) => "Tuple"
+    Struct(_) => "Struct"
     Replicate(_) => "Replicate"
     FunCall(_) => "FunCall"
   }
@@ -262,13 +267,14 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Binary(lhs~, rhs~, ..) => lhs.is_constant_expr() && rhs.is_constant_expr()
     Indexing(_) => false
     Slicing(_) => false
-    PortAccess(_) => false
+    FieldAccess(_) => false
     Instance(_) => false
     Vector(_) => false
     Spread(_) => false
     Ternary(_) => false
     Match(_) => false
     Tuple(_) => false
+    Struct(_) => false
     Replicate(_) => false
     FunCall(_) => false
   }
@@ -428,6 +434,18 @@ pub fn width(self: Type) -> Int? {
 
       Some(width)
     }
+    Struct(fields) => {
+      let mut width = 0
+
+      for expr in fields.values() {
+        match expr.width() {
+          Some(field_width) => width += field_width
+          None => return None
+        }
+      }
+
+      Some(width)
+    }
   }
 }
 
@@ -461,6 +479,7 @@ pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
       }
     }
     Tuple(elems) => Tuple(elems.map(fn(elem) { substitute(elem, params_env~) }))
+    Struct(fields) => Struct(@utils.map_values(fields, fn(expr) { substitute(expr, params_env~) }))
   }
 }
 

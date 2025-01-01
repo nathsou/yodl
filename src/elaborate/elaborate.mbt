@@ -33,6 +33,7 @@ enum Value {
   Signal(@rtlil.Signal)
   Instance(@rtlil.Cell)
   Vector(Array[Value])
+  Struct(Map[String, Value])
 }
 
 fn ctor(self: Value) -> String {
@@ -40,6 +41,7 @@ fn ctor(self: Value) -> String {
     Signal(_) => "Signal"
     Instance(_) => "Instance"
     Vector(_) => "Vector"
+    Struct(_) => "Struct"
   }
 }
 
@@ -113,17 +115,36 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
 
       Value::Vector(val)
     }
+    Struct(fields) => {
+      let val = Map::new(capacity=fields.size())
+
+      for field, ty in fields {
+        val[field] = self.default_value!(ty~, mod~, span~, name_binding=name_binding.join(".\{field}"))
+      }
+
+      Value::Struct(val)
+    }
   }
 }
 
-fn expect_signal(self: Value, span: @parse.Span) -> @rtlil.Signal!ElaboratorError {
+fn as_signal(self: Value, span: @parse.Span) -> @rtlil.Signal!ElaboratorError {
   match self {
     Signal(sig) => sig
     Vector(elems) => {
-      let signals = []
+      let signals = Array::new(capacity=elems.length())
 
       for elem in elems {
-        signals.push(elem.expect_signal!(span))
+        signals.push(elem.as_signal!(span))
+      }
+
+      @rtlil.SigConcat(signals)
+    }
+    Struct(fields) => {
+      let signals = Array::new(capacity=fields.size())
+      let sorted_keys = { let keys = fields.keys().collect(); keys.sort(); keys }
+
+      for field in sorted_keys {
+        signals.push(fields[field].unwrap().as_signal!(span))
       }
 
       @rtlil.SigConcat(signals)
@@ -334,8 +355,8 @@ fn binary_op_cell(
       "Y_WIDTH": @rtlil.ConstInteger(wy),
     }),
     connections=map_signals({
-      "A": self.elaborate_expr!(lhs, mod).expect_signal!(lhs.span()),
-      "B": self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span()),
+      "A": self.elaborate_expr!(lhs, mod).as_signal!(lhs.span()),
+      "B": self.elaborate_expr!(rhs, mod).as_signal!(rhs.span()),
       "Y": SigWire(output),
     }),
     attributes=src_attribute(span),
@@ -390,7 +411,7 @@ fn elaborate_expr(
           "Y_WIDTH": @rtlil.ConstInteger(width),
         }),
         connections=map_signals({
-          "A": self.elaborate_expr!(expr, mod).expect_signal!(expr.span()),
+          "A": self.elaborate_expr!(expr, mod).as_signal!(expr.span()),
           "Y": SigWire(output),
         }),
         attributes=src_attribute(span),
@@ -470,7 +491,7 @@ fn elaborate_expr(
           extra_ports.push(port_name)
         }
 
-        let sig = self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
+        let sig = self.elaborate_expr!(expr, mod).as_signal!(expr.span())
         inline_connections[PubId(port_name)] = sig
       }
       
@@ -559,22 +580,51 @@ fn elaborate_expr(
 
       Value::Instance(cell)
     }
-    PortAccess(expr~, port~, span~, ..) => {
+    FieldAccess(expr~, field~, span~, ..) => {
       let val = self.elaborate_expr!(expr, mod)
 
       match val {
         Instance(cell) => {
-          match mod.wires[port_wire_id(cell.name, port)] {
+          match mod.wires[port_wire_id(cell.name, field)] {
             Some(wire) => {
-              cell.accessed_ports.add(port)
+              cell.accessed_ports.add(field)
               Value::Signal(SigWire(wire))
             }
             None => {
-              raise UnknownModulePort(module_name=cell.name.inner(), port_name=port, span~)
+              raise UnknownModulePort(module_name=cell.name.inner(), port_name=field, span~)
             }
           }
         }
-        _ => raise Unsupported(message="Port access on non-instance", span~)
+        Struct(fields) => {
+          match fields[field] {
+            Some(value) => value
+            None => raise Unreachable(message="Unknown struct field", span~)
+          }
+        }
+        Signal(sig) => {
+          match expr.ty().val.or_error!(Unreachable(message="Untyped signal field access", span=expr.span())) {
+            Struct(fields) => {
+              let sorted_keys = { let keys = fields.keys().collect(); keys.sort(); keys }
+              let mut offset = sig.size() - 1
+
+              for name in sorted_keys {
+                let width = fields[field].unwrap().width().or_error!(Unreachable(message="Untyped struct field", span~))
+
+                if name == field {
+                  return Value::Signal(@rtlil.SigChunk(signal=sig, offset~, width~))
+                }
+
+                offset -= width
+              }
+
+              raise Unreachable(message="Unknown struct field: \{field}", span~)
+            }
+            _ => raise Unsupported(message="Field access on non-struct data type", span~)
+          }
+        }
+        _ => {
+          raise Unsupported(message="Invalid field access on value of type: \{val.ctor()}", span~)
+        }
       }
     }
     Indexing(expr~, index~, ..) => {
@@ -602,7 +652,7 @@ fn elaborate_expr(
       }
     }
     Slicing(expr~, msb~, lsb~, ..) => {
-      let sig = self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
+      let sig = self.elaborate_expr!(expr, mod).as_signal!(expr.span())
       let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span())
       let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span())
 
@@ -659,9 +709,9 @@ fn elaborate_expr(
           "WIDTH": @rtlil.ConstInteger(width)
         }),
         connections=map_signals({
-          "A": self.elaborate_expr!(else_, mod).expect_signal!(then.span()),
-          "B": self.elaborate_expr!(then, mod).expect_signal!(else_.span()),
-          "S": self.elaborate_expr!(cond, mod).expect_signal!(cond.span()),
+          "A": self.elaborate_expr!(else_, mod).as_signal!(then.span()),
+          "B": self.elaborate_expr!(then, mod).as_signal!(else_.span()),
+          "S": self.elaborate_expr!(cond, mod).as_signal!(cond.span()),
           "Y": SigWire(output)
         }),
         attributes=src_attribute(span),
@@ -697,7 +747,7 @@ fn elaborate_expr(
           match sigs[index] {
             Some(_) => raise DuplicateMatchCase(index~, span=lhs.span())
             None => {
-              let rhs_sig = self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span())
+              let rhs_sig = self.elaborate_expr!(rhs, mod).as_signal!(rhs.span())
               sigs[index] = Some((lhs, rhs_sig))
             }
           }
@@ -718,7 +768,7 @@ fn elaborate_expr(
                 attributes=map_attributes({"full_case": Int(1)})
               )
 
-              comparisons.push(eq_cell.expect_signal!(lhs.span()))
+              comparisons.push(eq_cell.as_signal!(lhs.span()))
               unwrapped_sigs.push(sig)
             }
             None => {
@@ -730,7 +780,7 @@ fn elaborate_expr(
         }
 
         let default_sig = match default {
-          Some(expr) => self.elaborate_expr!(expr, mod).expect_signal!(expr.span())
+          Some(expr) => self.elaborate_expr!(expr, mod).as_signal!(expr.span())
           None => SigConst(ConstValue(width~, bits=@utils.fill(width, @parse.BinaryDigit::X)))
         }
 
@@ -773,6 +823,27 @@ fn elaborate_expr(
     FunCall(span~, ..) => {
       raise FunctionCallAfterSimplification(span~)
     }
+    Struct(fields~, span~, ty=_) => {
+      let val = Map::new(capacity=fields.size())
+      let sorted_keys = { let keys = fields.keys().collect(); keys.sort(); keys }
+      let mut offset = 0
+
+      for field in sorted_keys {
+        let field_expr = fields[field].unwrap()
+        let field_ty = field_expr.ty().val.or_error!(Unreachable(message="Untyped struct field", span~))
+        let width = field_ty.width().or_error!(Unsupported(message="Unsized struct field", span~))
+
+        val[field] = self.elaborate_expr!(
+          field_expr,
+          mod,
+          name_binding=Some(name_binding.map(fn(id) { id.join(".\{field}") }).or(GenId("\{field}\{self.next_genidx()}"))),
+        )
+
+        offset += width
+      }
+
+      Value::Struct(val)
+    }
   }
 }
 
@@ -802,6 +873,10 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
             Vector(values) => {
               self.declare!(name, Value::Vector(values), span=expr.span())
             }
+            Struct(fields) => {
+              println("declaring struct \{name}: \{fields.keys()}")
+              self.declare!(name, Value::Struct(fields), span=expr.span())
+            }
           }
         }
         None => {
@@ -811,10 +886,10 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
         }
       }
     }
-    Assign(lhs~, rhs~, ..) => {
-      let sig1 = self.elaborate_expr!(lhs, mod).expect_signal!(lhs.span())
-      let sig2 = self.elaborate_expr!(rhs, mod).expect_signal!(rhs.span())
-      mod.connect!(sig1, sig2, span=lhs.span())
+    Assign(lhs~, rhs~, span~) => {
+      let sig1 = self.elaborate_expr!(lhs, mod).as_signal!(lhs.span())
+      let sig2 = self.elaborate_expr!(rhs, mod).as_signal!(rhs.span())
+      mod.connect!(sig1, sig2, span~)
     }
     For(span~, ..) => {
       raise Unreachable(message="For loop after simplification", span~)

@@ -44,15 +44,15 @@ module Segments(
     let counter = Reg<13>(clk, rst);
     counter.d = counter.q + 1;
 
-    let packed = match counter.q[12:11] {
-        2'b00 => (value[3:0], 4'b1110),
-        2'b01 => (value[7:4], 4'b1101),
-        2'b10 => (value[11:8], 4'b1011),
-        2'b11 => (value[15:12], 4'b0111),
+    let active_seg = match counter.q[12:11] {
+        2'b00 => { char: value[3:0], sel: 4'b1110 },
+        2'b01 => { char: value[7:4], sel: 4'b1101 },
+        2'b10 => { char: value[11:8], sel: 4'b1011 },
+        2'b11 => { char: value[15:12], sel: 4'b0111 },
     };
 
-    segs = not SevenSegment(char: packed.0).segs;
-    sel = packed.1;
+    sel = active_seg.sel;
+    segs = not SevenSegment(char: active_seg.char).segs;
 }
 
 module Top(

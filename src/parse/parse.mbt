@@ -15,6 +15,7 @@ pub type! ParserError {
   ExpectedRangeOperator(received~: TokenType, span~: Span)
   MultipleDefaultCases(span~: Span)
   InvalidPortOrTupleAccess(span~: Span)
+  DuplicateStructField(name~: String, span~: Span)
 } derive(Show)
 
 pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
@@ -153,7 +154,7 @@ fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
       match self.peek() {
         Identifier(port) => {
           self.advance()
-          lhs = PortAccess(expr=lhs, port~, span=self.span(start_idx), ty={ val: None })
+          lhs = FieldAccess(expr=lhs, field=port, span=self.span(start_idx), ty={ val: None })
         }
         Natural(bits~, width~, base~, ..) => {
           self.advance()
@@ -230,6 +231,7 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
     }
     Lparen => self.parse_tuple_or_paren_expr!()
     Lbracket => self.parse_vector_expr!()
+    Lbrace => self.parse_struct_expr!()
     DotDotDot => self.parse_spread_expr!()
     Match => self.parse_match_expr!()
     Dollar => self.parse_function_call_expr!()
@@ -300,6 +302,32 @@ fn parse_tuple_or_paren_expr(self: Parser) -> Expr!ParserError {
   } else {
     Tuple(elems~, span=self.span(start_idx), ty={ val: None })
   }
+}
+
+fn parse_struct_expr(self: Parser) -> Expr!ParserError {
+  let start_idx = self.index
+  self.expect!(Lbrace, start_idx)
+  let fields = {}
+
+  while not(self.matches(Rbrace)) {
+    let name = self.parse_identifier!()
+    self.expect!(Colon, start_idx)
+    let expr = self.parse_expr!()
+  
+    if fields.contains(name) {
+      raise DuplicateStructField(name~, span=self.span(start_idx))
+    }
+
+    fields[name] = expr
+
+    if not(self.consumes(Comma)) {
+      break
+    }
+  }
+
+  self.expect!(Rbrace, start_idx)
+
+  Struct(fields~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_spread_expr(self: Parser) -> Expr!ParserError {
@@ -471,6 +499,30 @@ fn parse_type(self: Parser) -> Type! {
         [elem] => elem
         _ => Tuple(elems)
       }
+    }
+    Lbrace => {
+      self.advance()
+      let fields = {}
+
+      while not(self.matches(Rbrace)) {
+        let name = self.parse_identifier!()
+        self.expect!(Colon, start_idx)
+        let ty = self.parse_type!()
+        
+        if fields.contains(name) {
+          raise DuplicateStructField(name~, span=self.span(start_idx))
+        }
+
+        fields[name] = ty
+
+        if not(self.consumes(Comma)) {
+          break
+        }
+      }
+
+      self.expect!(Rbrace, start_idx)
+
+      Struct(fields)
     }
     _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
   }
