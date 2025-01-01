@@ -1,5 +1,5 @@
 
-pub(readonly) struct Elaborator {
+pub struct Elaborator {
   mut autoidx: Int
   modules: Map[String, @rtlil.Module]
   env: Map[String, Value]

@@ -1,12 +1,12 @@
 
-pub(readonly) struct Monomorphizer {
+pub struct Monomorphizer {
   modules: Map[String, @parse.ModuleDecl]
   parameterized: Map[String, @parse.ModuleDecl]
   monomorphized: Map[String, Array[MonomorphizedModule]]
   declared_modules: Map[String, @parse.ModuleSignature]
 }
 
-pub(readonly) struct MonomorphizedModule {
+pub struct MonomorphizedModule {
   params: Array[Int]
   mod: @parse.ModuleDecl
 }
@@ -20,7 +20,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
   }
 }
 
-pub(readonly) type! MonomorphizerError {
+pub type! MonomorphizerError {
   ModuleNotFound(name~: String, span~: @parse.Span)
   InvalidModuleParameterCount(name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
   InvalidFunCallArity(name~: String, expected~: Int, actual~: Int, span~: @parse.Span)

@@ -258,6 +258,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                                 check_elem_ty!(inner_ty)
                                 len += spread_len.expect_fixed!(expr.span())
                             }
+                            Logic => {
+                                check_elem_ty!(Logic)
+                                len += 1
+                            }
                             _ => raise SpreadOnNonVector(span~)
                         }
                     }

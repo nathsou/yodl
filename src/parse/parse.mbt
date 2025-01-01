@@ -1,10 +1,10 @@
-pub(readonly) struct Parser {
+pub struct Parser {
   tokens: Array[Token]
   mut index: Int
   file: String
 }
 
-pub(readonly) type! ParserError {
+pub type! ParserError {
   UnexpectedToken(expected~: TokenType, received~: TokenType, span~: Span)
   ExpectedIdentifier(received~: TokenType, span~: Span)
   ExpectedInteger(received~: TokenType, span~: Span)
@@ -451,6 +451,26 @@ fn parse_type(self: Parser) -> Type! {
     Identifier(name) => {
       self.advance()
       Type::Name(name~, params=[])
+    }
+    Lparen => {
+      self.advance()
+      let elems = []
+
+      while not(self.matches(Rparen)) {
+        let elem = self.parse_type!()
+        elems.push(elem)
+
+        if not(self.consumes(Comma)) {
+          break
+        }
+      }
+
+      self.expect!(Rparen, start_idx)
+
+      match elems {
+        [elem] => elem
+        _ => Tuple(elems)
+      }
     }
     _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
   }

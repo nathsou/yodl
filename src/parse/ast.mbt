@@ -116,7 +116,7 @@ pub(all) enum AttributeValue {
   Int(Int)
 }
 
-pub(readonly) struct Attribute {
+pub(all) struct Attribute {
   name: String
   args: Array[AttributeValue]
   span: Span
@@ -152,7 +152,7 @@ impl Eq for VectorLen with op_equal(self, other) {
   }
 }
 
-pub(readonly) type! AstError {
+pub type! AstError {
   ExpectedFixedVectorLength(span~: Span)
   ExpectedIntegerExpression(span~: Span)
   NaturalContainsUndeterminedDigit(span~: Span)
@@ -523,4 +523,11 @@ pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> E
   }
 
   Natural(bits=Bits::from!(n, width~, span~), width~, base~, span~, ty={ val: Some(ty) })
+}
+
+pub fn is_internal(self: Decl) -> Bool {
+  match self {
+    Module({ attributes, .. }) => attributes.contains("internal")
+    ModuleDeclaration(sig) => sig.attributes.contains("internal")
+  }
 }

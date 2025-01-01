@@ -1,5 +1,5 @@
 
-pub(readonly) struct Simplifier {
+pub struct Simplifier {
   genvars: @elaborate.Scope[Int]
   names: @elaborate.Scope[UniqueName]
   name_counts: Map[String, Int]
@@ -28,7 +28,7 @@ pub fn Simplifier::new() -> Simplifier {
   }
 }
 
-pub(readonly) type! SimplificationError {
+pub type! SimplificationError {
   TupleAccessOutOfBounds(span~: @parse.Span)
 }
 

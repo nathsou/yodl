@@ -4,26 +4,6 @@
 // nextpnr-ice40 --hx8k --json output/Timer.json --pcf output/cu.pcf --package cb132 --freq 100 --asc output/Timer.asc
 // icepack output/Timer.asc output/Timer.bin
 
-@internal
-declare module Reg<N>(
-    clk: logic,
-    d: logic[N],
-    en?: logic,
-    rst?: logic,
-) -> (
-    q: logic[N],
-)
-
-@internal
-declare module RegSyncReset<N>(
-    clk: logic,
-    d: logic[N],
-    en?: logic,
-    rst?: logic,
-) -> (
-    q: logic[N],
-)
-
 // outputs a 1 for one clock cycle once every `CYCLES` clock cycles
 module Timer<CYCLES>(clk: logic) -> (q: logic) {
     let counter = Reg<$clog2(CYCLES)>(clk);

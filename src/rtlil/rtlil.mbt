@@ -1,6 +1,6 @@
 // https://yosyshq.readthedocs.io/projects/yosys/en/latest/yosys_internals/formats/rtlil_rep.html
 
-pub(readonly) type! RTLILError {
+pub type! RTLILError {
   WireAlreadyDeclared(name~: Id)
   CellAlreadyDeclared(name~: Id)
   IncompatibleWidths(width1~: Int, width2~: Int, span~: @parse.Span)

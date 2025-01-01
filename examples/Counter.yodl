@@ -1,14 +1,4 @@
 
-@internal
-declare module Reg<N>(
-    clk: logic,
-    d: logic[N],
-    en?: logic,
-    rst?: logic,
-) -> (
-    q: logic[N],
-)
-
 module Top(
     clk: logic,
     sw: logic[16],

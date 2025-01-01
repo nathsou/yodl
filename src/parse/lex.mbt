@@ -1,5 +1,5 @@
 
-pub(readonly) struct Lexer {
+pub struct Lexer {
   input: String
   mut index: Int
   mut line: Int
@@ -7,7 +7,7 @@ pub(readonly) struct Lexer {
   file: String
 }
 
-pub(readonly) type! LexerError {
+pub type! LexerError {
   UnexepectedChar(Char)
   InvalidWidthSpecifierDigit(Char)
   InvalidDigitInBase(digit~: Char, base~: Int)
