@@ -77,3 +77,14 @@ pub fn map_values[K: Eq + Hash, V](map: Map[K, V], f: (V) -> V) -> Map[K, V] {
 
   result
 }
+
+pub fn sorted_keys[K: Eq + Hash + Compare, V](map: Map[K, V]) -> Map[K, V] {
+  let sorted_keys = { let keys = map.keys().collect(); keys.sort(); keys }
+  let new_map = Map::new(capacity=map.size())
+
+  for key in sorted_keys {
+    new_map[key] = map[key].unwrap()
+  }
+
+  new_map
+}

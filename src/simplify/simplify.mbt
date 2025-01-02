@@ -47,7 +47,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 2. Replace genvars with their values
 // 3. Rewrite non-constant indexing expressions to match expressions
 // 4. Rewrite port accesses on match expressions
-// 5. Rewrite tuple indexing into slicing expressions
+// 5. Rewrite tuples with struct expressions and tuple indexing with field access
 // 6. Rewrite replication expressions into concatenation expressions
 // 7. Remove unecessary spreads
 // 8. Rewrite flat constant vectors to natural expressions
@@ -64,31 +64,30 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
           }
         }
       }
+      Tuple(elems~, span~, ty=_) => {
+        let fields = Map::new(capacity=elems.length())
+        let types = Map::new(capacity=elems.length())
+
+        for idx, elem in elems {
+          let key = idx.to_string()
+          fields[key] = elem
+          types[key] = elem.ty().val.or_error!(Failure("Untyped tuple element"))
+        }
+
+        @parse.Expr::Struct(fields=fields, span~, ty={ val: Some(Struct(types)) })
+      }
       Indexing(expr~, index~, span~, ty~) as indexing_expr => {
         match index.expect_int?() {
           Ok(idx) => {
             match expr.ty().val {
-              // Rewrite tuple indexing into slicing
-              Some(Tuple(tys)) => {
-                let total_width = expr.ty().val.unwrap().width().or_error!(Failure("Unsized tuple"))
-                let mut offset = total_width - 1
-
-                for ty_idx, ty in tys {
-                  let ty_width = ty.width().or_error!(Failure("Unsized tuple element"))
-                  if ty_idx == idx {
-                    return @parse.Expr::Slicing(
-                      expr~,
-                      lsb=@parse.nat!(offset - ty_width + 1, span=index.span()),
-                      msb=@parse.nat!(offset, span=index.span()),
-                      span~,
-                      ty={ val: Some(ty) },
-                    )
-                  }
-
-                  offset -= ty_width
+              // Rewrite tuple indexing into struct field access
+              Some(Tuple(types)) => {
+                if idx >= types.length() {
+                  raise TupleAccessOutOfBounds(span~)
                 }
 
-                raise TupleAccessOutOfBounds(span~)
+                let key = idx.to_string()
+                @parse.Expr::FieldAccess(expr=expr, field=key, span~, ty={ val: Some(types[idx]) })
               }
               _ => indexing_expr
             }

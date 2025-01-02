@@ -89,7 +89,7 @@ fn run(file: String, options: RunOptions) -> String! {
 }
 
 fn main {
-  let file = "Timer"
+  let file = "Struct"
 
   match run?("examples/\{file}.yodl", { show_monomorphized: false, show_simplified: true }) {
     Ok(rtlil) => {

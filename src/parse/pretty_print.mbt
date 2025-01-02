@@ -4,6 +4,8 @@ pub(all) struct Emitter {
   builder: StringBuilder
 }
 
+let show_instance_accessed_ports = false
+
 pub fn Emitter::new() -> Emitter {
   { indent: 0, builder: StringBuilder::new() }
 }
@@ -414,7 +416,7 @@ pub impl Show for Type with output(ty, logger) {
 
       logger.write_char(']')
     }
-    Instance(sig={ name, .. }, params~) => {
+    Instance(sig={ name, .. }, params~, accessed_ports~) => {
       logger.write_string(name)
 
       if params.size() > 0 {
@@ -423,6 +425,15 @@ pub impl Show for Type with output(ty, logger) {
           prefix="<",
           sep=", ",
           suffix=">",
+        )
+      }
+
+      if show_instance_accessed_ports && accessed_ports.size() > 0 {
+        logger.write_iter(
+          prefix=".[",
+          { let ports = accessed_ports.iter().collect(); ports.sort(); ports.iter() },
+          suffix="]",
+          sep=", ",
         )
       }
     }
@@ -535,7 +546,7 @@ fn emit_module_sig(self: Emitter, sig: ModuleSignature) -> Unit {
     self.write(">")
   }
 
-  self.emit_port_list(sig.inputs())
+  self.emit_port_list(sig.inputs() + sig.inouts())
   self.write(" -> ")
   self.emit_port_list(sig.outputs())
 }

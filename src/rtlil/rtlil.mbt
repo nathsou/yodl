@@ -88,7 +88,6 @@ pub(all) struct Cell {
   attributes: Map[Id, Constant]
   parameters: Map[Id, Constant]
   connections: Map[Id, Signal]
-  accessed_ports: Set[String]
 }
 
 pub(all) struct Module {
@@ -129,7 +128,6 @@ pub fn add_cell(
   connections~: Map[Id, Signal] = {},
   attributes~: Map[Id, Constant] = {},
   parameters~: Map[Id, Constant] = {},
-  accessed_ports~: Set[String] = Set::new(),
 ) -> Cell!RTLILError {
   if self.cells.contains(name) {
     raise CellAlreadyDeclared(name~)
@@ -141,7 +139,6 @@ pub fn add_cell(
     connections,
     attributes,
     parameters,
-    accessed_ports,
   }
 
   self.cells[name] = cell
@@ -155,4 +152,11 @@ pub fn connect(self: Module, sig1: Signal, sig2: Signal, span~: @parse.Span) -> 
   }
 
   self.connections.push((sig1, sig2))
+}
+
+pub fn ports(mod: Module) -> Iter[PortSpec] {
+  mod.wires
+    .values()
+    .filter(fn(wire) { not(wire.port.is_empty()) })
+    .map(fn(wire) { wire.port.unwrap() })
 }

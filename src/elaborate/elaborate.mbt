@@ -31,7 +31,6 @@ type! ElaboratorError {
 
 enum Value {
   Signal(@rtlil.Signal)
-  Instance(@rtlil.Cell)
   Vector(Array[Value])
   Struct(Map[String, Value])
 }
@@ -39,7 +38,6 @@ enum Value {
 fn ctor(self: Value) -> String {
   match self {
     Signal(_) => "Signal"
-    Instance(_) => "Instance"
     Vector(_) => "Vector"
     Struct(_) => "Struct"
   }
@@ -92,7 +90,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
         Value::Vector(val)
       }
     }
-    Instance(sig={ name, span, .. }, params~) => {
+    Instance(sig={ name, span, .. }, params~, accessed_ports=_) => {
       let inst: @parse.Expr = @parse.Expr::Instance(
         name~,
         params=@utils.map!(params.values().collect(), fn(p) { @parse.Expr::nat!(p, span~) }),
@@ -149,7 +147,6 @@ fn as_signal(self: Value, span: @parse.Span) -> @rtlil.Signal!ElaboratorError {
 
       @rtlil.SigConcat(signals)
     }
-    _ => raise ExpectedSignal(span~)
   }
 }
 
@@ -223,50 +220,11 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
     raise ModuleAlreadyDeclared(name=mod.name, span=mod.span)
   }
 
-  for cell in mod_def.cells.values() {
-    remove_unused_register_ports(cell~, mod=mod_def)
-  }
-
   self.modules[mod.name] = mod_def
 }
 
 fn port_wire_id(cell_name: @rtlil.Id, port_name: String) -> @rtlil.Id {
   GenId("\{cell_name.inner()}.\{port_name}")
-}
-
-// select which $dff cell to use based on the presence of the "en" and "rst" ports 
-fn remove_unused_register_ports(cell~: @rtlil.Cell, mod~: @rtlil.Module) -> Unit {
-  if cell.type_ == GenId("sdffe") || cell.type_ == GenId("adffe") {
-    let uses_rst = cell.accessed_ports.contains("rst")
-    let uses_en = cell.accessed_ports.contains("en")
-    let sync_reset = cell.type_.inner() == "sdffe"
-    cell.type_ = @rtlil.GenId(match (uses_en, uses_rst) {
-      (false, false) => "dff"
-      (false, true) => if sync_reset { "sdff" } else { "adff" }
-      (true, false) => "dffe"
-      (true, true) => if sync_reset { "sdffe" } else { "adffe" }
-    })
-
-    if not(uses_rst) {
-      if sync_reset {
-        cell.parameters.remove(PubId("SRST_POLARITY"))
-        cell.parameters.remove(PubId("SRST_VALUE"))
-        cell.connections.remove(PubId("SRST"))
-      } else {
-        cell.parameters.remove(PubId("ARST_POLARITY"))
-        cell.parameters.remove(PubId("ARST_VALUE"))
-        cell.connections.remove(PubId("ARST"))
-      }
-
-      mod.wires.remove(port_wire_id(cell.name, "rst"))
-    }
-
-    if not(uses_en) {
-      cell.connections.remove(PubId("EN"))
-      cell.parameters.remove(PubId("EN_POLARITY"))
-      mod.wires.remove(port_wire_id(cell.name, "en"))
-    }
-  }
 }
 
 fn next_genidx(self: Elaborator) -> Int {
@@ -429,7 +387,7 @@ fn elaborate_expr(
       let output_width = ty.val.unwrap().width().or_error!(Unsupported(message="Only logic types are supported", span~))
       self.binary_op_cell!(op~, lhs~, rhs~, mod~, span~, output_width=Some(output_width))
     }
-    Instance(name~, params~, ports~, span~, ty=_) => {
+    Instance(name~, params~, ports~, span~, ty=inst_ty) => {
       if params.length() > 0 && not(self.declared_modules.contains(name)) {
         raise Unreachable(message="Parameterized instance after simplification", span~)
       }
@@ -471,9 +429,13 @@ fn elaborate_expr(
 
       let connections: Map[@rtlil.Id, @rtlil.Signal] = {}
       let inline_connections: Map[@rtlil.Id, @rtlil.Signal] = {}
-      let accessed_ports = Set::from_iter(ports.keys())
+      let accessed_ports = match inst_ty.val {
+        Some(Instance(sig=_, params=_, accessed_ports~)) => accessed_ports
+        _ => raise Unreachable(message="Untyped instance", span~)
+      }
       let extra_ports = []
       let cell_name = name_binding.or(GenId("\{name}_\{self.next_genidx()}"))
+      let fields: Map[String, Value] = {}
 
       for port_name, width in port_widths {
         let wire = mod.add_wire!(
@@ -484,6 +446,10 @@ fn elaborate_expr(
         )
 
         connections[@rtlil.PubId(port_name)] = SigWire(wire)
+
+        if accessed_ports.contains(port_name) {
+          fields[port_name] = Value::Signal(SigWire(wire))
+        }
       }
 
       for port_name, expr in ports {
@@ -499,7 +465,7 @@ fn elaborate_expr(
         raise ExtraPorts(extra_ports~, span~)
       }
 
-      let cell = if attributes.contains("internal") {
+      if attributes.contains("internal") {
         fn port_wire(port_name: String) -> @rtlil.Signal! {
           match connections[@rtlil.PubId(port_name)] {
             Some(sig) => sig
@@ -511,36 +477,61 @@ fn elaborate_expr(
           "Reg" | "RegSyncReset" => {
             let width = params[0].expect_int!()
             let sync_reset = name == "RegSyncReset"
-            let cell_type = if sync_reset { "sdffe" } else { "adffe" }
+            let uses_rst = ports.contains("rst") || accessed_ports.contains("rst")
+            let uses_en = ports.contains("en") || accessed_ports.contains("en")
+            let cell_type = @rtlil.GenId(match (uses_en, uses_rst) {
+              (false, false) => "dff"
+              (false, true) => if sync_reset { "sdff" } else { "adff" }
+              (true, false) => "dffe"
+              (true, true) => if sync_reset { "sdffe" } else { "adffe" }
+            })
 
-            let cell = mod.add_cell!(
-              type_=GenId(cell_type),
+            let _ = mod.add_cell!(
+              type_=cell_type,
               name=cell_name,
-              parameters=map_parameters({
-                "CLK_POLARITY": @rtlil.ConstInteger(1),
-                "WIDTH": @rtlil.ConstInteger(width),
-                "EN_POLARITY": @rtlil.ConstInteger(1),
-              }),
-              connections=map_signals({
-                "CLK": port_wire!("clk"),
-                "D": port_wire!("d"),
-                "Q": port_wire!("q"),
-                "EN": port_wire!("en"),
-              }),
+              parameters={
+                let params = {}
+                params[@rtlil.PubId("CLK_POLARITY")] = @rtlil.ConstInteger(1)
+                params[@rtlil.PubId("WIDTH")] = @rtlil.ConstInteger(width)
+
+                if uses_en {
+                  params[@rtlil.PubId("EN_POLARITY")] = @rtlil.ConstInteger(1)
+                }
+
+                if uses_rst {
+                  if sync_reset {
+                    params[@rtlil.PubId("SRST_POLARITY")] = @rtlil.ConstInteger(1)
+                    params[@rtlil.PubId("SRST_VALUE")] = bits_from_int(0, width~)
+                  } else {
+                    params[@rtlil.PubId("ARST_POLARITY")] = @rtlil.ConstInteger(1)
+                    params[@rtlil.PubId("ARST_VALUE")] = bits_from_int(0, width~)
+                  }
+                }
+
+                params
+              },
+              connections={
+                let connections = {}
+                connections[@rtlil.PubId("CLK")] = port_wire!("clk")
+                connections[@rtlil.PubId("D")] = port_wire!("d")
+                connections[@rtlil.PubId("Q")] = port_wire!("q")
+                
+                if uses_en {
+                  connections[@rtlil.PubId("EN")] = port_wire!("en")
+                }
+
+                if uses_rst {
+                  if sync_reset {
+                    connections[@rtlil.PubId("SRST")] = port_wire!("rst")
+                  } else {
+                    connections[@rtlil.PubId("ARST")] = port_wire!("rst")
+                  }
+                }
+
+                connections
+              },
               attributes=src_attribute(span),
-              accessed_ports~,
             )
-
-            let (rst_polarity_name, rst_value_name, rst_name) = match sync_reset {
-              true => ("SRST_POLARITY", "SRST_VALUE", "SRST")
-              false => ("ARST_POLARITY", "ARST_VALUE", "ARST")
-            }
-
-            cell.parameters[@rtlil.PubId(rst_polarity_name)] = @rtlil.ConstInteger(1)
-            cell.parameters[@rtlil.PubId(rst_value_name)] = bits_from_int(0, width~)
-            cell.connections[@rtlil.PubId(rst_name)] = port_wire!("rst")
-
-            cell
           }
           _ => raise Unsupported(message="Unknown internal module \"\{name}\"", span~)
         }
@@ -556,7 +547,7 @@ fn elaborate_expr(
           _ => @rtlil.PubId(name)
         }
 
-        mod.add_cell!(
+        let _ = mod.add_cell!(
           name=cell_name,
           type_=cell_type,
           attributes=src_attribute(span),
@@ -570,7 +561,6 @@ fn elaborate_expr(
 
             parameters
           },
-          accessed_ports~,
         )
       }
 
@@ -578,40 +568,31 @@ fn elaborate_expr(
         mod.connect!(connections[wire_name].unwrap(), sig, span~)
       }
 
-      Value::Instance(cell)
+      Value::Struct(fields)
     }
     FieldAccess(expr~, field~, span~, ..) => {
       let val = self.elaborate_expr!(expr, mod)
 
       match val {
-        Instance(cell) => {
-          match mod.wires[port_wire_id(cell.name, field)] {
-            Some(wire) => {
-              cell.accessed_ports.add(field)
-              Value::Signal(SigWire(wire))
-            }
-            None => {
-              raise UnknownModulePort(module_name=cell.name.inner(), port_name=field, span~)
-            }
-          }
-        }
         Struct(fields) => {
           match fields[field] {
             Some(value) => value
             None => raise Unreachable(message="Unknown struct field", span~)
           }
         }
-        Signal(sig) => {
-          match expr.ty().val.or_error!(Unreachable(message="Untyped signal field access", span=expr.span())) {
+        Signal(signal) => {
+          let ty = expr.ty().val.or_error!(Unreachable(message="Untyped signal field access", span=expr.span()))
+
+          match ty {
             Struct(fields) => {
               let sorted_keys = { let keys = fields.keys().collect(); keys.sort(); keys }
-              let mut offset = sig.size() - 1
+              let mut offset = signal.size() - 1
 
               for name in sorted_keys {
                 let width = fields[field].unwrap().width().or_error!(Unreachable(message="Untyped struct field", span~))
 
                 if name == field {
-                  return Value::Signal(@rtlil.SigChunk(signal=sig, offset~, width~))
+                  return Value::Signal(@rtlil.SigChunk(signal=signal, offset~, width~))
                 }
 
                 offset -= width
@@ -619,7 +600,33 @@ fn elaborate_expr(
 
               raise Unreachable(message="Unknown struct field: \{field}", span~)
             }
-            _ => raise Unsupported(message="Field access on non-struct data type", span~)
+            Instance(sig~, params~, accessed_ports~) => {
+              let field_widths = {}
+              let params_env = Map::from_iter(params.iter())
+
+              for port in sig.ports {
+                if accessed_ports.contains(port.name) {
+                  let width = port.ty.substitute(params_env~).width().or_error!(Unreachable(message="Unsized instance port", span~))
+                  field_widths[port.name] = width
+                }
+              }
+
+              let sorted_keys = { let keys = field_widths.keys().collect(); keys.sort(); keys }
+              let mut offset = @utils.sum(field_widths.values()) - 1
+
+              for name in sorted_keys {
+                let width = field_widths[field].unwrap()
+
+                if name == field {
+                  return Value::Signal(@rtlil.SigChunk(signal~, offset~, width~))
+                }
+
+                offset -= width
+              }
+
+              raise Unreachable(message="Unknown instance field: \{field}", span~)
+            }
+            _ => raise Unsupported(message="Field access on non-struct type: \{ty}", span~)
           }
         }
         _ => {
@@ -823,23 +830,18 @@ fn elaborate_expr(
     FunCall(span~, ..) => {
       raise FunctionCallAfterSimplification(span~)
     }
-    Struct(fields~, span~, ty=_) => {
+    Struct(fields~, span=_, ty=_) => {
       let val = Map::new(capacity=fields.size())
       let sorted_keys = { let keys = fields.keys().collect(); keys.sort(); keys }
-      let mut offset = 0
 
       for field in sorted_keys {
         let field_expr = fields[field].unwrap()
-        let field_ty = field_expr.ty().val.or_error!(Unreachable(message="Untyped struct field", span~))
-        let width = field_ty.width().or_error!(Unsupported(message="Unsized struct field", span~))
 
         val[field] = self.elaborate_expr!(
           field_expr,
           mod,
           name_binding=Some(name_binding.map(fn(id) { id.join(".\{field}") }).or(GenId("\{field}\{self.next_genidx()}"))),
         )
-
-        offset += width
       }
 
       Value::Struct(val)
@@ -867,15 +869,11 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
               self.declare!(name, Value::Signal(SigWire(wire)), span=expr.span())
               mod.connect!(SigWire(wire), sig, span=expr.span())
             }
-            Instance(cell) => {
-              self.declare!(name, Value::Instance(cell), span=expr.span())
+            Vector(_) as val => {
+              self.declare!(name, val, span=expr.span())
             }
-            Vector(values) => {
-              self.declare!(name, Value::Vector(values), span=expr.span())
-            }
-            Struct(fields) => {
-              println("declaring struct \{name}: \{fields.keys()}")
-              self.declare!(name, Value::Struct(fields), span=expr.span())
+            Struct(_) as val => {
+              self.declare!(name, val, span=expr.span())
             }
           }
         }

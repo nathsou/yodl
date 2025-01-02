@@ -61,6 +61,20 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
             (Vector(ty=_, len=Dynamic(Identifier(_))), Vector(ty=_, len=Fixed(_))) => {
                 eqs.push((ty2, ty1))
             }
+            (Instance(sig=_, params=params1, accessed_ports=accessed_ports1), Instance(sig=_, params=params2, accessed_ports=accessed_ports2)) => {
+                if params1 == params2 {
+                    // merge accessed ports
+                    for port in accessed_ports1 {
+                        accessed_ports2.add(port)
+                    }
+
+                    for port in accessed_ports2 {
+                        accessed_ports1.add(port)
+                    }
+                } else {
+                    raise IncompatibleTypes(ty1~, ty2~, span~)
+                }
+            }
             _ => {
                 raise IncompatibleTypes(ty1~, ty2~, span~)
             }
@@ -103,7 +117,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
                         raise InvalidInstanceTypeParameterCount(module_name=name, expected=sig.params.length(), actual=params.length(), span~)
                     }
 
-                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params, params)))
+                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params, params)), accessed_ports=Set::new())
                 }
                 None => raise TypeCheckerError::UnknownModule(name~, span~)
             }
@@ -207,9 +221,12 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
         }
         FieldAccess(expr~, field=port, span~, ..) => {
             match self.check_expr!(expr, env) {
-                Instance(sig~, params~) => {
+                Instance(sig~, params~, accessed_ports~) => {
                     match sig.get_port(port) {
-                        Some(port_def) => port_def.ty.substitute(params_env=params)
+                        Some(port_def) => {
+                            accessed_ports.add(port)
+                            port_def.ty.substitute(params_env=params)
+                        }
                         None => raise UnknownModulePort(module_name=sig.name, port_name=port, span~)
                     }
                 }
@@ -226,6 +243,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             match self.modules[name] {
                 Some(sig) => {
                     let subst = {}
+                    let accessed_ports = Set::new()
 
                     for idx, param in params {
                         subst[sig.params[idx]] = param.expect_int!()
@@ -241,7 +259,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                         }
                     }
 
-                    @parse.Type::Instance(sig~, params=subst)
+                    @parse.Type::Instance(sig~, params=subst, accessed_ports~)
                 }
                 None => raise TypeCheckerError::UnknownModule(name~, span~)
             }

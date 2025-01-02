@@ -1,0 +1,7 @@
+
+module Test(clk: logic, rst: logic, src: logic[2]) -> (q: logic[16]) {
+    let regs = 8x[Reg<16>(clk, rst, d: 16'0)];
+    let reg = regs[src];
+    let regs2 = (regs[0], regs[1]);
+    q = regs2.0.q;
+}

@@ -35,7 +35,7 @@ pub(all) enum Type {
   Nat
   Logic
   Vector(ty~: Type, len~: VectorLen)
-  Instance(sig~: ModuleSignature, params~: Map[String, Int])
+  Instance(sig~: ModuleSignature, params~: Map[String, Int], accessed_ports~: Set[String])
   Name(name~: String, params~: Array[Int])
   Tuple(Array[Type])
   Struct(Map[String, Type])
@@ -420,7 +420,23 @@ pub fn width(self: Type) -> Int? {
       }
       None => None
     }
-    Instance(_) => None
+    Instance(sig~, params~, accessed_ports~) => {
+      let mut width = 0
+      let params_env = Map::from_iter(params.iter())
+
+      for port in sig.ports {
+        if accessed_ports.contains(port.name) {
+          match port.ty.substitute(params_env~).width() {
+            Some(port_width) => {
+              width += port_width
+            }
+            None => return None
+          }
+        }
+      }
+
+      Some(width)
+    }
     Name(_) => None
     Tuple(elems) => {
       let mut width = 0
@@ -460,7 +476,7 @@ pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
       })
     }
     Vector(ty~, len~) => Vector(ty=substitute(ty, params_env~), len~)
-    Instance(sig~, params~) => {
+    Instance(sig~, params~, accessed_ports~) => {
       let new_params: Map[String, Int] = {}
 
       for name, value in params {
@@ -470,7 +486,7 @@ pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
         }
       }
 
-      Instance(sig~, params=new_params)
+      Instance(sig~, params=new_params, accessed_ports~)
     }
     Name(name~, params~) => {
       match params_env[name] {
@@ -524,6 +540,10 @@ pub fn inputs(self: ModuleSignature) -> Iter[Port] {
 
 pub fn outputs(self: ModuleSignature) -> Iter[Port] {
   self.ports.iter().filter(fn(port) { port.dir == Output })
+}
+
+pub fn inouts(self: ModuleSignature) -> Iter[Port] {
+  self.ports.iter().filter(fn(port) { port.dir == Inout })
 }
 
 pub fn is_numerical(self: Type) -> Bool {
