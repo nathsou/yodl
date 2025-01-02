@@ -171,7 +171,6 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             let rhs_ty = self.check_expr!(rhs, env)
             let wa = lhs_ty.width!(lhs.span())
             let wb = rhs_ty.width!(rhs.span())
-            let _ = unify!(lhs_ty, rhs_ty, span~)
 
             if not(lhs_ty.is_numerical()) {
                 raise InvalidBinaryOpOperand(op~, ty=lhs_ty, span~)   

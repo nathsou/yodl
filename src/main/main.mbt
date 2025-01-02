@@ -89,16 +89,22 @@ fn run(file: String, options: RunOptions) -> String! {
 }
 
 fn main {
-  let file = "Struct"
+  match @sys.get_cli_args() {
+    [_, _, file] => {
+      match run?(file, { show_monomorphized: false, show_simplified: true }) {
+        Ok(rtlil) => {
+          if not(@fs.path_exists(path="output")) {
+            @fs.create_dir(path="output")
+          }
 
-  match run?("examples/\{file}.yodl", { show_monomorphized: false, show_simplified: true }) {
-    Ok(rtlil) => {
-      if not(@fs.path_exists(path="output")) {
-        @fs.create_dir(path="output")
+          let file_name = file.split("/").last().unwrap().replace(old=".yodl", new="")
+          @fs.write_string_to_file(path="output/\{file_name}.rtlil", content=rtlil)
+        }
+        Err(error) => println(error)
       }
-
-      @fs.write_string_to_file(path="output/\{file}.rtlil", content=rtlil)
     }
-    Err(error) => println(error)
+    _ => {
+      println("Usage: yodl <file>")
+    }
   }
 }

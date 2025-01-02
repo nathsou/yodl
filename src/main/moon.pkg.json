@@ -5,6 +5,7 @@
     "nathsou/yodl/elaborate",
     "nathsou/yodl/rtlil",
     "nathsou/yodl/simplify",
-    "moonbitlang/x/fs"
+    "moonbitlang/x/fs",
+    "moonbitlang/x/sys"
   ]
 }
