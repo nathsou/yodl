@@ -29,6 +29,34 @@ pub impl Show for Span with output(self, logger) {
   logger.write_string("\{self.start.0}.\{self.start.1}-\{self.end.0}.\{self.end.1}")
 }
 
+pub fn context(self: Span, window_size~: Int = 3) -> String! {
+  let contents = @fs.read_file_to_string!(path=self.file)
+  let window = StringBuilder::new(size_hint=window_size * 2)
+
+  contents.split("\n").eachi(fn(index, line) {
+    if index >= self.start.0 - window_size && index <= self.end.0 + window_size {
+      window.write_string("\{index + 1} ")
+      window.write_string(line)
+
+      if index >= (self.start.0 - 1) && index < self.end.0 {
+        window.write_string("\n")
+
+        for _ in 0..=self.start.1 {
+          window.write_char(' ')
+        }
+
+        for _ in self.start.1..<self.end.1 {
+          window.write_char('^')
+        }
+      }
+
+      window.write_char('\n')
+    }
+  })
+
+  window.to_string()
+}
+
 struct Token {
   kind: TokenType
   span: Span

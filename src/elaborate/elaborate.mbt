@@ -10,7 +10,7 @@ pub fn Elaborator::new() -> Elaborator {
   { autoidx: 0, modules: {}, env: {}, declared_modules: {} }
 }
 
-type! ElaboratorError {
+pub type! ElaboratorError {
   ModuleAlreadyDeclared(name~: String, span~: @parse.Span)
   UnknownIdentifier(name~: String, span~: @parse.Span)
   Unsupported(message~: String, span~: @parse.Span)
@@ -26,7 +26,80 @@ type! ElaboratorError {
   MissingMatchCase(index~: Int, span~: @parse.Span)
   ReplicateExprAfterSimplification(span~: @parse.Span)
   FunctionCallAfterSimplification(span~: @parse.Span)
-} derive(Show)
+}
+
+pub impl Show for ElaboratorError with output(self, logger) -> Unit {
+  match self {
+    ModuleAlreadyDeclared(name~, ..) => {
+      logger.write_string("Module '\{name}' already declared")
+    }
+    UnknownIdentifier(name~, ..) => {
+      logger.write_string("Unknown identifier '\{name}'")
+    }
+    Unsupported(message~, ..) => {
+      logger.write_string("Unsupported: \{message}")
+    }
+    NameConflict(name~, ..) => {
+      logger.write_string("Name conflict: '\{name}'")
+    }
+    ExpectedSignal(..) => {
+      logger.write_string("Expected signal")
+    }
+    UnknownModule(name~, ..) => {
+      logger.write_string("Unknown module '\{name}'")
+    }
+    ExtraPorts(extra_ports~, ..) => {
+      let extra_ports = String::concat(extra_ports, separator=", ")
+      logger.write_string("Extra ports: \{extra_ports}")
+    }
+    UntypedLet(..) => {
+      logger.write_string("Untyped let")
+    }
+    UnresolvedType(..) => {
+      logger.write_string("Unresolved type")
+    }
+    IndexOutOfBounds(index~, len~, ..) => {
+      logger.write_string("Index \{index} out of bounds (len=\{len})")
+    }
+    Unreachable(message~, ..) => {
+      logger.write_string("Unreachable: \{message}")
+    }
+    DuplicateMatchCase(index~, ..) => {
+      logger.write_string("Duplicate match case: \{index}")
+    }
+    MissingMatchCase(index~, ..) => {
+      logger.write_string("Missing match case: \{index}")
+    }
+    ReplicateExprAfterSimplification(..) => {
+      logger.write_string("Replicate expression after simplification")
+    }
+    FunctionCallAfterSimplification(..) => {
+      logger.write_string("Function call after simplification")
+    }
+  }
+
+  logger.write_string(self.show_context())
+}
+
+pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
+  match self {
+    ModuleAlreadyDeclared(span~, ..) => span
+    UnknownIdentifier(span~, ..) => span
+    Unsupported(span~, ..) => span
+    NameConflict(span~, ..) => span
+    ExpectedSignal(span~, ..) => span
+    UnknownModule(span~, ..) => span
+    ExtraPorts(span~, ..) => span
+    UntypedLet(span~, ..) => span
+    UnresolvedType(span~, ..) => span
+    IndexOutOfBounds(span~, ..) => span
+    Unreachable(span~, ..) => span
+    DuplicateMatchCase(span~, ..) => span
+    MissingMatchCase(span~, ..) => span
+    ReplicateExprAfterSimplification(span~, ..) => span
+    FunctionCallAfterSimplification(span~, ..) => span
+  }
+}
 
 enum Value {
   Signal(@rtlil.Signal)

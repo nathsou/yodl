@@ -34,7 +34,120 @@ type! TypeCheckerError {
     InvalidStructField(name~: String, span~: @parse.Span)
     InvalidUnaryOpOperand(op~: @parse.UnaryOp, ty~: @parse.Type, span~: @parse.Span)
     InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
-} derive(Show)
+    TupleAccessOutOfBounds(span~: @parse.Span)
+}
+
+pub impl Show for TypeCheckerError with output(self, logger) {
+    match self {
+        UnboundVariable(name~, ..) => {
+            logger.write_string("Unbound variable '\{name}'")
+        }
+        IncompatibleTypes(ty1~, ty2~, ..) => {
+            logger.write_string("Incompatible types '\{ty1}' and '\{ty2}'")
+        }
+        VariableRedeclared(name~, ..) => {
+            logger.write_string("Variable '\{name}' redeclared")
+        }
+        InvalidAssignmentTarget(..) => {
+            logger.write_string("Invalid assignment target")
+        }
+        IndexMustBeInteger(..) => {
+            logger.write_string("Index must be an integer")
+        }
+        IndexedExpressionMustBeVector(..) => {
+            logger.write_string("Indexed expression must be a vector")
+        }
+        UnknownModule(name~, ..) => {
+            logger.write_string("Unknown module '\{name}'")
+        }
+        UnknownModulePort(module_name~, port_name~, ..) => {
+            logger.write_string("Unknown port '\{port_name}' in module '\{module_name}'")
+        }
+        InvalidFieldAccess(field~, ..) => {
+            logger.write_string("Invalid field access '\{field}'")
+        }
+        InvalidSlicingRange(..) => {
+            logger.write_string("Invalid slicing range")
+        }
+        ExpectedConstantExpr(..) => {
+            logger.write_string("Expected constant expression")
+        }
+        InvalidPortType(ty~, ..) => {
+            logger.write_string("Invalid port type '\{ty}'")
+        }
+        LetStmtMustHaveTypeOrValue(..) => {
+            logger.write_string("Let statement must have a type or value")
+        }
+        EmptyVector(..) => {
+            logger.write_string("Empty vector")
+        }
+        SpreadOnNonVector(..) => {
+            logger.write_string("Spread on non-vector")
+        }
+        SpreadOutsideVector(..) => {
+            logger.write_string("Spread outside vector")
+        }
+        InvalidAttribute(name~, ..) => {
+            logger.write_string("Invalid attribute '\{name}'")
+        }
+        InvalidAttributeArgs(name~, args~, ..) => {
+            logger.write_string("Invalid arguments '\{args}' for attribute '\{name}'")
+        }
+        EmptyMatch(..) => {
+            logger.write_string("Empty match expression")
+        }
+        InvalidInstanceTypeParameterCount(module_name~, expected~, actual~, ..) => {
+            logger.write_string("Module '\{module_name}' expected \{expected} type parameters, got \{actual}")
+        }
+        FunCallAfterMonomorphization(..) => {
+            logger.write_string("Function call after monomorphization")
+        }
+        InvalidStructField(name~, ..) => {
+            logger.write_string("Invalid struct field '\{name}'")
+        }
+        InvalidUnaryOpOperand(op~, ty~, ..) => {
+            logger.write_string("Invalid operand '\{ty}' for unary operator '\{op}'")
+        }
+        InvalidBinaryOpOperand(op~, ty~, ..) => {
+            logger.write_string("Invalid operand '\{ty}' for binary operator '\{op}'")
+        }
+        TupleAccessOutOfBounds(..) => {
+            logger.write_string("Tuple access out of bounds")
+        }
+    }
+
+    logger.write_string(self.show_context())
+}
+
+pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
+    match self {
+        UnboundVariable(span~, ..) => span
+        IncompatibleTypes(span~, ..) => span
+        VariableRedeclared(span~, ..) => span
+        InvalidAssignmentTarget(span~, ..) => span
+        IndexMustBeInteger(span~, ..) => span
+        IndexedExpressionMustBeVector(span~, ..) => span
+        UnknownModule(span~, ..) => span
+        UnknownModulePort(span~, ..) => span
+        InvalidFieldAccess(span~, ..) => span
+        InvalidSlicingRange(span~, ..) => span
+        ExpectedConstantExpr(span~, ..) => span
+        InvalidPortType(span~, ..) => span
+        LetStmtMustHaveTypeOrValue(span~, ..) => span
+        EmptyVector(span~, ..) => span
+        SpreadOnNonVector(span~, ..) => span
+        SpreadOutsideVector(span~, ..) => span
+        InvalidAttribute(span~, ..) => span
+        InvalidAttributeArgs(span~, ..) => span
+        EmptyMatch(span~, ..) => span
+        InvalidInstanceTypeParameterCount(span~, ..) => span
+        FunCallAfterMonomorphization(span~, ..) => span
+        InvalidStructField(span~, ..) => span
+        InvalidUnaryOpOperand(span~, ..) => span
+        InvalidBinaryOpOperand(span~, ..) => span
+        TupleAccessOutOfBounds(span~, ..) => span
+    }
+}
 
 fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
     while not(eqs.is_empty()) {
@@ -198,7 +311,14 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
 
             match ty {
                 Vector(ty=inner_ty, ..) => inner_ty
-                Tuple(elems) => elems[eval_const_expr!(index)]
+                Tuple(elems) => {
+                    let idx = eval_const_expr!(index)
+                    if idx >= elems.length() {
+                        raise TupleAccessOutOfBounds(span~)
+                    }
+
+                    elems[idx]
+                }
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
@@ -533,7 +653,7 @@ fn check_attributes(attrs: Map[String, @parse.Attribute], signatures~: Map[Strin
 
 pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
     match decl {
-        Module({ name, params: _, attributes, ports, body, span } as mod) => {
+        Module({ name, params: _, attributes, ports, body, span: _ } as mod) => {
             let env = Scope::new()
 
             check_attributes!(attributes, signatures=module_attribute_signatures)
@@ -541,7 +661,7 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
             for port in ports {
                 ensure_valid_port_type!(port.ty, port.span)
                 check_attributes!(port.attributes, signatures=port_attribute_signatures)
-                declare_name!(env~, name=port.name, ty=port.ty, span~)
+                declare_name!(env~, name=port.name, ty=port.ty, span=port.span)
             }
 
             for stmt in body {

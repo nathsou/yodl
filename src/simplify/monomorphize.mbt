@@ -24,7 +24,31 @@ pub type! MonomorphizerError {
   ModuleNotFound(name~: String, span~: @parse.Span)
   InvalidModuleParameterCount(name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
   InvalidFunCallArity(name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
-} derive(Show)
+}
+
+pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
+  match self {
+    ModuleNotFound(name~, ..) => {
+      logger.write_string("Module '\{name}' not found")
+    }
+    InvalidModuleParameterCount(name~, expected~, actual~, ..) => {
+      logger.write_string("Module '\{name}' expected \{expected} parameter(s), but got \{actual}")
+    }
+    InvalidFunCallArity(name~, expected~, actual~, ..) => {
+      logger.write_string("Function '\{name}' expected \{expected} argument(s), but got \{actual}")
+    }
+  }
+
+  logger.write_string(self.show_context())
+}
+
+pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
+  match self {
+    ModuleNotFound(span~, ..) => span
+    InvalidModuleParameterCount(span~, ..) => span
+    InvalidFunCallArity(span~, ..) => span
+  }
+}
 
 fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, params_env~: @elaborate.Scope[Int]) -> @parse.Type! {
   match ty {

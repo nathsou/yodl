@@ -215,7 +215,29 @@ pub fn ty(self: Expr) -> Ref[Type?] {
   }
 }
 
-pub fn span(self: Expr) -> Span {
+pub(open) trait Spanned {
+  span(Self) -> Span
+  show_context(Self) -> String
+}
+
+impl Spanned with show_context(self) -> String {
+  let span = self.span()
+  let builder = StringBuilder::new()
+
+  builder.write_string(", \{span.to_string()}")
+  
+  match span.context?() {
+    Ok(ctx) => {
+      builder.write_string("\n\n")
+      builder.write_string(ctx)
+    }
+    Err(_) => ()
+  }
+
+  builder.to_string()
+}
+
+pub impl Spanned for Expr with span(self: Expr) -> Span {
   match self {
     Natural(span~, ..) => span
     Identifier(span~, ..) => span

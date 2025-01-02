@@ -32,6 +32,22 @@ pub type! SimplificationError {
   TupleAccessOutOfBounds(span~: @parse.Span)
 }
 
+pub impl @parse.Spanned for SimplificationError with span(self) -> @parse.Span {
+  match self {
+    TupleAccessOutOfBounds(span~) => span
+  }
+}
+
+pub impl Show for SimplificationError with output(self, logger) -> Unit {
+  match self {
+    TupleAccessOutOfBounds(_) => {
+      logger.write_string("Tuple access out of bounds")
+    }
+  }
+
+  logger.write_string(self.show_context())
+}
+
 pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
   let count = match self.name_counts[name] {
     Some(count) => count
