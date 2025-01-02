@@ -28,26 +28,6 @@ pub fn Simplifier::new() -> Simplifier {
   }
 }
 
-pub type! SimplificationError {
-  TupleAccessOutOfBounds(span~: @parse.Span)
-}
-
-pub impl @parse.Spanned for SimplificationError with span(self) -> @parse.Span {
-  match self {
-    TupleAccessOutOfBounds(span~) => span
-  }
-}
-
-pub impl Show for SimplificationError with output(self, logger) -> Unit {
-  match self {
-    TupleAccessOutOfBounds(_) => {
-      logger.write_string("Tuple access out of bounds")
-    }
-  }
-
-  logger.write_string(self.show_context())
-}
-
 pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
   let count = match self.name_counts[name] {
     Some(count) => count
@@ -63,10 +43,9 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 2. Replace genvars with their values
 // 3. Rewrite non-constant indexing expressions to match expressions
 // 4. Rewrite port accesses on match expressions
-// 5. Rewrite tuples with struct expressions and tuple indexing with field access
-// 6. Rewrite replication expressions into concatenation expressions
-// 7. Remove unecessary spreads
-// 8. Rewrite flat constant vectors to natural expressions
+// 5. Rewrite replication expressions into concatenation expressions
+// 6. Remove unecessary spreads
+// 7. Rewrite flat constant vectors to natural expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
@@ -94,20 +73,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
       }
       Indexing(expr~, index~, span~, ty~) as indexing_expr => {
         match index.expect_int?() {
-          Ok(idx) => {
-            match expr.ty().val {
-              // Rewrite tuple indexing into struct field access
-              Some(Tuple(types)) => {
-                if idx >= types.length() {
-                  raise TupleAccessOutOfBounds(span~)
-                }
-
-                let key = idx.to_string()
-                @parse.Expr::FieldAccess(expr=expr, field=key, span~, ty={ val: Some(types[idx]) })
-              }
-              _ => indexing_expr
-            }
-          }
+          Ok(_) => indexing_expr
           Err(_) => {
             // Rewrite non-constant indexing expressions to match expressions
             let s_width = index.ty().val.unwrap().width!(index.span())

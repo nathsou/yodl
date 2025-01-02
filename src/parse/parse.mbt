@@ -65,7 +65,7 @@ fn consumeIfPresent(self: Parser, token: TokenType) -> Unit {
     let _ = self.consumes(token)
 }
 
-fn parse_identifier(self: Parser) -> String!ParserError {
+fn parse_identifier(self: Parser) -> String! {
   let token = self.peek()
   let start_idx = self.index
 
@@ -97,7 +97,7 @@ fn span(self: Parser, start_idx: Int) -> Span {
   { file: self.file, start, end }
 }
 
-fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr!ParserError {
+fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr! {
   let mut lhs = self.parse_indexing_expr!()
 
   while self.index < self.tokens.length() {
@@ -134,7 +134,7 @@ fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr!ParserError {
   lhs
 }
 
-fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
+fn parse_indexing_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   let mut lhs = self.parse_replication_expr!()
 
@@ -156,10 +156,10 @@ fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
           self.advance()
           lhs = FieldAccess(expr=lhs, field=port, span=self.span(start_idx), ty={ val: None })
         }
-        Natural(bits~, width~, base~, ..) => {
+        Natural(bits~, ..) => {
           self.advance()
           let span = self.span(start_idx)
-          lhs = Indexing(expr=lhs, index=Expr::Natural(bits~, base~, width~, span~, ty={ val: None }), span~, ty={ val: None })
+          lhs = FieldAccess(expr=lhs, field=bits.as_int!().to_string(), span~, ty={ val: None })
         }
         _ => raise InvalidPortOrTupleAccess(span=self.span(start_idx))
       }
@@ -171,7 +171,7 @@ fn parse_indexing_expr(self: Parser) -> Expr!ParserError {
   lhs
 }
 
-fn parse_match_expr(self: Parser) -> Expr!ParserError {
+fn parse_match_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   self.expect!(Match, start_idx)
   let subject = self.parse_expr!()
@@ -207,7 +207,7 @@ fn parse_match_expr(self: Parser) -> Expr!ParserError {
   Match(subject~, cases~, default~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_primary_expr(self: Parser) -> Expr!ParserError {
+fn parse_primary_expr(self: Parser) -> Expr! {
   let token = self.peek()
   let start_idx = self.index
 
@@ -239,7 +239,7 @@ fn parse_primary_expr(self: Parser) -> Expr!ParserError {
   }
 }
 
-fn parse_function_call_expr(self: Parser) -> Expr!ParserError {
+fn parse_function_call_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   self.expect!(Dollar, start_idx)
   let name = self.parse_identifier!()
@@ -260,7 +260,7 @@ fn parse_function_call_expr(self: Parser) -> Expr!ParserError {
   FunCall(name="$\{name}", args~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_replication_expr(self: Parser) -> Expr!ParserError {
+fn parse_replication_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   let lhs = self.parse_primary_expr!()
 
@@ -281,7 +281,7 @@ fn parse_replication_expr(self: Parser) -> Expr!ParserError {
   }
 } 
 
-fn parse_tuple_or_paren_expr(self: Parser) -> Expr!ParserError {
+fn parse_tuple_or_paren_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   self.expect!(Lparen, start_idx)
   let elems = []
@@ -304,7 +304,7 @@ fn parse_tuple_or_paren_expr(self: Parser) -> Expr!ParserError {
   }
 }
 
-fn parse_struct_expr(self: Parser) -> Expr!ParserError {
+fn parse_struct_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   self.expect!(Lbrace, start_idx)
   let fields = {}
@@ -330,14 +330,14 @@ fn parse_struct_expr(self: Parser) -> Expr!ParserError {
   Struct(fields~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_spread_expr(self: Parser) -> Expr!ParserError {
+fn parse_spread_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   self.expect!(DotDotDot, start_idx)
   let expr = self.parse_expr!()
   Spread(expr~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_vector_expr(self: Parser) -> Expr!ParserError {
+fn parse_vector_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   self.expect!(Lbracket, start_idx)
   let elems = []
@@ -356,7 +356,7 @@ fn parse_vector_expr(self: Parser) -> Expr!ParserError {
   Vector(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_instance_expr(self: Parser, module_name~: String) -> Expr!ParserError {
+fn parse_instance_expr(self: Parser, module_name~: String) -> Expr! {
   let start_idx = self.index
   let params = self.parse_module_parameter_list!(Parser::parse_expr)
   self.expect!(Lparen, start_idx)
@@ -383,11 +383,11 @@ fn parse_instance_expr(self: Parser, module_name~: String) -> Expr!ParserError {
   Instance(name=module_name, params~, ports~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_expr(self: Parser) -> Expr!ParserError {
+fn parse_expr(self: Parser) -> Expr! {
   self.precedence_climbing!(0)
 }
 
-fn parse_assignment_stmt(self: Parser) -> Stmt!ParserError {
+fn parse_assignment_stmt(self: Parser) -> Stmt! {
   let start_idx = self.index
   let lhs = self.parse_indexing_expr!()
 
@@ -497,7 +497,15 @@ fn parse_type(self: Parser) -> Type! {
 
       match elems {
         [elem] => elem
-        _ => Tuple(elems)
+        _ => {
+          let fields = Map::new(capacity=elems.length())
+
+          for idx, elem in elems {
+            fields[idx.to_string()] = elem
+          }
+
+          Struct(fields)
+        }
       }
     }
     Lbrace => {
@@ -596,7 +604,7 @@ fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]! {
   ports
 }
 
-fn parse_module_parameter_list[T](self: Parser, parse_elem: (Parser) -> T!ParserError) -> Array[T]!ParserError {
+fn parse_module_parameter_list[T](self: Parser, parse_elem: (Parser) -> T!) -> Array[T]! {
   if self.consumes(Lchevron) {
     let start_idx = self.index
     let params = []

@@ -283,21 +283,37 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.write(")")
     }
     Struct(fields~, ..) => {
-      self.write("{\n")
-      self.indent += 1
+      let is_tuple = fields.contains("0") && fields.contains("1")
 
-      for field in fields {
-        let (name, expr) = field
+      if is_tuple {
+        self.write("(")
+
+        fields.values().eachi(fn(idx, elem) {
+          if idx > 0 {
+            self.write(", ")
+          }
+
+          self.emit_expr(elem)
+        })
+
+        self.write(")")
+      } else {
+        self.write("{\n")
+        self.indent += 1
+
+        for field in fields {
+          let (name, expr) = field
+          self.write_indent()
+          self.write(name)
+          self.write(": ")
+          self.emit_expr(expr)
+          self.write(",\n")
+        }
+
+        self.indent -= 1
         self.write_indent()
-        self.write(name)
-        self.write(": ")
-        self.emit_expr(expr)
-        self.write(",\n")
+        self.write("}")
       }
-
-      self.indent -= 1
-      self.write_indent()
-      self.write("}")
     }
   }
 }
@@ -449,24 +465,27 @@ pub impl Show for Type with output(ty, logger) {
         )
       }
     }
-    Tuple(elems) => {
-      logger.write_iter(
-        prefix="(",
-        elems.iter(),
-        sep=", ",
-        suffix=")",
-      )
-    }
     Struct(fields) => {
-      logger.write_iter(
-        prefix="{ ",
-        fields.iter().map(fn(field) {
-          let (name, ty) = field
-          { name, ty }
-        }),
-        sep=", ",
-        suffix=" }",
-      )
+      let is_tuple = fields.contains("0") && fields.contains("1")
+
+      if is_tuple {
+        logger.write_iter(
+          prefix="(",
+          fields.values(),
+          sep=", ",
+          suffix=")",
+        )
+      } else {
+        logger.write_iter(
+          prefix="{ ",
+          fields.iter().map(fn(field) {
+            let (name, ty) = field
+            { name, ty }
+          }),
+          sep=", ",
+          suffix=" }",
+        )
+      }
     }
   }
 }

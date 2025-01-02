@@ -176,15 +176,6 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
     Name(_) => {
       raise UnresolvedType(span~)
     }
-    Tuple(elems) => {
-      let val = Array::new(capacity=elems.length())
-
-      for ty in elems {
-        val.push(self.default_value!(ty~, mod~, span~, name_binding~))
-      }
-
-      Value::Vector(val)
-    }
     Struct(fields) => {
       let val = Map::new(capacity=fields.size())
 

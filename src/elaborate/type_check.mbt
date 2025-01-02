@@ -34,7 +34,6 @@ type! TypeCheckerError {
     InvalidStructField(name~: String, span~: @parse.Span)
     InvalidUnaryOpOperand(op~: @parse.UnaryOp, ty~: @parse.Type, span~: @parse.Span)
     InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
-    TupleAccessOutOfBounds(span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -111,9 +110,6 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidBinaryOpOperand(op~, ty~, ..) => {
             logger.write_string("Invalid operand '\{ty}' for binary operator '\{op}'")
         }
-        TupleAccessOutOfBounds(..) => {
-            logger.write_string("Tuple access out of bounds")
-        }
     }
 
     logger.write_string(self.show_context())
@@ -145,7 +141,6 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidStructField(span~, ..) => span
         InvalidUnaryOpOperand(span~, ..) => span
         InvalidBinaryOpOperand(span~, ..) => span
-        TupleAccessOutOfBounds(span~, ..) => span
     }
 }
 
@@ -236,15 +231,6 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
                 None => raise TypeCheckerError::UnknownModule(name~, span~)
             }
         }
-        Tuple(elems) => {
-            let elem_tys = Array::new(capacity=elems.length())
-
-            for elem in elems {
-                elem_tys.push(self.resolve_ty!(elem, span~))
-            }
-
-            Tuple(elem_tys)
-        }
         Struct(fields) => {
             let field_tys = Map::new(capacity=fields.size())
 
@@ -311,14 +297,6 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
 
             match ty {
                 Vector(ty=inner_ty, ..) => inner_ty
-                Tuple(elems) => {
-                    let idx = eval_const_expr!(index)
-                    if idx >= elems.length() {
-                        raise TupleAccessOutOfBounds(span~)
-                    }
-
-                    elems[idx]
-                }
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
@@ -492,13 +470,13 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             ret_ty.unwrap()
         }
         Tuple(elems~, ..) => {
-            let elem_tys = Array::new(capacity=elems.length())
+            let fields = Map::new(capacity=elems.length())
 
-            for elem in elems {
-                elem_tys.push(self.check_expr!(elem, env))
+            for idx, elem in elems {
+                fields[idx.to_string()] = self.check_expr!(elem, env)
             }
 
-            @parse.Type::Tuple(elem_tys)
+            @parse.Type::Struct(fields)
         }
         Replicate(expr~, count~, concat~, span~, ..) => {
             let count_ty = self.check_expr!(count, env)

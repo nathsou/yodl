@@ -37,7 +37,6 @@ pub(all) enum Type {
   Vector(ty~: Type, len~: VectorLen)
   Instance(sig~: ModuleSignature, params~: Map[String, Int], accessed_ports~: Set[String])
   Name(name~: String, params~: Array[Int])
-  Tuple(Array[Type])
   Struct(Map[String, Type])
 } derive(Eq)
 
@@ -161,7 +160,31 @@ pub type! AstError {
   ValueTooLargeForWidth(value~: Int, width~: Int, span~: Span)
   VectorLengthNotFixed(span~: Span)
   CannotGetWidthOfUnresolvedNamedType(span~: Span)
-} derive(Show)
+}
+
+pub impl Show for AstError with output(self, logger) {
+  match self {
+    ExpectedFixedVectorLength(span~) => logger.write_string("Expected a fixed vector length at \{span}")
+    ExpectedIntegerExpression(span~) => logger.write_string("Expected an integer expression at \{span}")
+    NaturalContainsUndeterminedDigit(span~) => logger.write_string("Natural contains an undetermined digit at \{span}")
+    ValueTooLargeForWidth(value~, width~, span~) => logger.write_string("Value \{value} is too large for width \{width} at \{span}")
+    VectorLengthNotFixed(span~) => logger.write_string("Vector length must be fixed at \{span}")
+    CannotGetWidthOfUnresolvedNamedType(span~) => logger.write_string("Cannot get width of unresolved named type at \{span}")
+  }
+
+  logger.write_string(self.show_context())
+}
+
+pub impl Spanned for AstError with span(self) -> Span {
+  match self {
+    ExpectedFixedVectorLength(span~) => span
+    ExpectedIntegerExpression(span~) => span
+    NaturalContainsUndeterminedDigit(span~) => span
+    ValueTooLargeForWidth(span~, ..) => span
+    VectorLengthNotFixed(span~) => span
+    CannotGetWidthOfUnresolvedNamedType(span~) => span
+  }
+}
 
 pub fn expect_fixed(self: VectorLen, span: Span) -> Int! {
   match self {
@@ -453,15 +476,6 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
       width
     }
     Name(_) => raise CannotGetWidthOfUnresolvedNamedType(span~)
-    Tuple(elems) => {
-      let mut width = 0
-
-      for elem in elems {
-        width += elem.width!(span)
-      }
-
-      width
-    }
     Struct(fields) => {
       let mut width = 0
 
@@ -503,7 +517,6 @@ pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
         None => Name(name~, params~)
       }
     }
-    Tuple(elems) => Tuple(elems.map(fn(elem) { substitute(elem, params_env~) }))
     Struct(fields) => Struct(@utils.map_values(fields, fn(expr) { substitute(expr, params_env~) }))
   }
 }
