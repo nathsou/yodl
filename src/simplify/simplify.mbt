@@ -94,7 +94,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
           }
           Err(_) => {
             // Rewrite non-constant indexing expressions to match expressions
-            let s_width = index.ty().val.unwrap().width().or_error!(Failure("Unsized index"))
+            let s_width = index.ty().val.unwrap().width!(index.span())
             let match_expr = @parse.Expr::Match(
               subject=index,
               cases={
@@ -151,8 +151,8 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
       }
       Spread(expr~, ..) as spread_expr => {
         // Remove unecessary spreads
-        match expr.ty().val.unwrap().width() {
-          Some(1) => expr
+        match expr.ty().val.unwrap().width!(expr.span()) {
+          1 => expr
           _ => spread_expr
         }
       }

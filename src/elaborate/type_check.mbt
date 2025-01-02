@@ -26,7 +26,6 @@ type! TypeCheckerError {
     EmptyVector(span~: @parse.Span)
     SpreadOnNonVector(span~: @parse.Span)
     SpreadOutsideVector(span~: @parse.Span)
-    UnsizedOperand(span~: @parse.Span)
     InvalidAttribute(name~: String, span~: @parse.Span)
     InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], span~: @parse.Span)
     EmptyMatch(span~: @parse.Span)
@@ -162,12 +161,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
         Binary(op~, lhs~, rhs~, span~, ..) => {
             let lhs_ty = self.check_expr!(lhs, env)
             let rhs_ty = self.check_expr!(rhs, env)
-
-            let wa = lhs_ty.width().or_error!(UnsizedOperand(span~))
-            let wb = rhs_ty.width().or_error!(UnsizedOperand(span~))
+            let wa = lhs_ty.width!(lhs.span())
+            let wb = rhs_ty.width!(rhs.span())
 
             let expected_width = match expected_ty {
-                Some(expected_ty) => expected_ty.width().or_error!(Failure("Expected type must have a width"))
+                Some(expected_ty) => expected_ty.width!(span)
                 None => wa
             }
 
@@ -378,7 +376,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             
             let (elem_ty, len) = match concat {
                 true => {
-                    let expr_width = expr_ty.width().or_error!(ExpectedConstantExpr(span~))
+                    let expr_width = expr_ty.width!(expr.span())
                     (@parse.Type::Logic, count * expr_width)
                 }
                 false => (expr_ty, count)

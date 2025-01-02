@@ -159,6 +159,8 @@ pub type! AstError {
   ExpectedIntegerExpression(span~: Span)
   NaturalContainsUndeterminedDigit(span~: Span)
   ValueTooLargeForWidth(value~: Int, width~: Int, span~: Span)
+  VectorLengthNotFixed(span~: Span)
+  CannotGetWidthOfUnresolvedNamedType(span~: Span)
 } derive(Show)
 
 pub fn expect_fixed(self: VectorLen, span: Span) -> Int! {
@@ -408,59 +410,44 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
   None
 }
 
-pub fn width(self: Type) -> Int? {
+pub fn width(self: Type, span: Span) -> Int! {
   match self {
-    Nat => Some(32)
-    Logic => Some(1)
-    Vector(len=Fixed(len), ..) => Some(len)
-    Vector(ty~, len~) => match ty.width() {
-      Some(width) => match len {
-        Fixed(len) => Some(width * len)
-        Dynamic(_) => None
+    Nat => 32
+    Logic => 1
+    Vector(ty~, len~) => match len {
+        Fixed(len) => ty.width!(span) * len
+        Dynamic(_) => raise VectorLengthNotFixed(span~)
       }
-      None => None
-    }
     Instance(sig~, params~, accessed_ports~) => {
       let mut width = 0
       let params_env = Map::from_iter(params.iter())
 
       for port in sig.ports {
         if accessed_ports.contains(port.name) {
-          match port.ty.substitute(params_env~).width() {
-            Some(port_width) => {
-              width += port_width
-            }
-            None => return None
-          }
+          width += port.ty.substitute(params_env~).width!(span)
         }
       }
 
-      Some(width)
+      width
     }
-    Name(_) => None
+    Name(_) => raise CannotGetWidthOfUnresolvedNamedType(span~)
     Tuple(elems) => {
       let mut width = 0
 
       for elem in elems {
-        match elem.width() {
-          Some(elem_width) => width += elem_width
-          None => return None
-        }
+        width += elem.width!(span)
       }
 
-      Some(width)
+      width
     }
     Struct(fields) => {
       let mut width = 0
 
       for expr in fields.values() {
-        match expr.width() {
-          Some(field_width) => width += field_width
-          None => return None
-        }
+        width += expr.width!(span)
       }
 
-      Some(width)
+      width
     }
   }
 }

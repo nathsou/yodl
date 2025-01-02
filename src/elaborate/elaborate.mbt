@@ -22,7 +22,6 @@ type! ElaboratorError {
   UnresolvedType(span~: @parse.Span)
   IndexOutOfBounds(index~: Int, len~: Int, span~: @parse.Span)
   Unreachable(message~: String, span~: @parse.Span)
-  MatchReturnTypeMustBeSignal(span~: @parse.Span)
   DuplicateMatchCase(index~: Int, span~: @parse.Span)
   MissingMatchCase(index~: Int, span~: @parse.Span)
   ReplicateExprAfterSimplification(span~: @parse.Span)
@@ -206,7 +205,7 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   for port_id, port in mod.ports {
     let _ = mod_def.add_wire!(
       name=PubId(port.name),
-      width=port.ty.width().or_error!(ElaboratorError::Unsupported(message="Only logic types are supported", span=mod.span)),
+      width=port.ty.width!(port.span),
       port=Some({ direction: port.dir, id: port_id }),
       attributes=src_attribute(port.span),
     )
@@ -241,10 +240,10 @@ fn declare(self: Elaborator, name: String, value: Value, span~: @parse.Span) -> 
   self.env[name] = value
 }
 
-fn expr_width(expr: @parse.Expr) -> Int?! {
+fn expr_width(expr: @parse.Expr) -> Int! {
   match expr {
-    Natural(width=Some(width), ..) => Some(width)
-    _ => expr.ty().val.or_error!(Unreachable(message="Untyped expression", span=expr.span())).width()
+    Natural(width=Some(width), ..) => width
+    _ => expr.ty().val.or_error!(Unreachable(message="Untyped expression", span=expr.span())).width!(expr.span())
   }
 }
 
@@ -258,39 +257,35 @@ fn binary_op_cell(
   output_width~: Int? = None,
   attributes~: Map[@rtlil.Id, @rtlil.Constant] = {},
 ) -> Value! {
-  let (cell_type, wa, wb, wy) = match (expr_width!(lhs), expr_width!(rhs)) {
-    (Some(wa), Some(wb)) => {
-      let cell_type = match op {
-        Add => "add"
-        Sub => "sub"
-        Mul => "mul"
-        Div => "div"
-        Mod => "mod"
-        Equ => "eq"
-        Neq => "ne"
-        Gtr => "gt"
-        Lss => "lt"
-        Geq => "ge"
-        Leq => "le"
-        Shl => "shl"
-        Shr => "shr"
-        And => "and"
-        Or => "or"
-        Xor => "xor"
-        Nand => "nand"
-        Nor => "nor"
-        Xnor => "xnor"
-        Ternary => raise Unsupported(message="Ternary operator is not a binop", span~)
-      }
+  let wa = expr_width!(lhs)
+  let wb = expr_width!(rhs)
 
-      let wy = match output_width {
-        Some(output_width) => @utils.min(op.output_width(wa, wb), output_width)
-        None => op.output_width(wa, wb)
-      }
+  let cell_type = match op {
+    Add => "add"
+    Sub => "sub"
+    Mul => "mul"
+    Div => "div"
+    Mod => "mod"
+    Equ => "eq"
+    Neq => "ne"
+    Gtr => "gt"
+    Lss => "lt"
+    Geq => "ge"
+    Leq => "le"
+    Shl => "shl"
+    Shr => "shr"
+    And => "and"
+    Or => "or"
+    Xor => "xor"
+    Nand => "nand"
+    Nor => "nor"
+    Xnor => "xnor"
+    Ternary => raise Unsupported(message="Ternary operator is not a binop", span~)
+  }
 
-      (cell_type, wa, wb, wy)
-    }
-    _ => raise Unsupported(message="Binary operator with unsupported types", span~)
+  let wy = match output_width {
+    Some(output_width) => @utils.min(op.output_width(wa, wb), output_width)
+    None => op.output_width(wa, wb)
   }
 
   let cell_name = "\{cell_type}_\{self.next_genidx()}"
@@ -351,8 +346,7 @@ fn elaborate_expr(
       }
 
       let cell_name = "\{cell_type}_\{self.next_genidx()}"
-      let width = expr_width!(expr).or_error!(Unsupported(message="Unsized unary expression operand", span=expr.span()))
-
+      let width = expr_width!(expr)
       let output = mod.add_wire!(
         name=GenId("\{cell_name}.y"),
         width~,
@@ -384,7 +378,7 @@ fn elaborate_expr(
       span~,
       ty~,
     ) => {
-      let output_width = ty.val.unwrap().width().or_error!(Unsupported(message="Only logic types are supported", span~))
+      let output_width = ty.val.unwrap().width!(span)
       self.binary_op_cell!(op~, lhs~, rhs~, mod~, span~, output_width=Some(output_width))
     }
     Instance(name~, params~, ports~, span~, ty=inst_ty) => {
@@ -418,7 +412,7 @@ fn elaborate_expr(
             }
 
             for port in sig.ports {
-              port_widths[port.name] = port.ty.substitute(params_env~).width().or_error!(Unsupported(message="Only logic types are supported", span=port.span))
+              port_widths[port.name] = port.ty.substitute(params_env~).width!(port.span)
             }
 
             (port_widths, sig.params, sig.attributes)
@@ -589,10 +583,10 @@ fn elaborate_expr(
               let mut offset = signal.size() - 1
 
               for name in sorted_keys {
-                let width = fields[field].unwrap().width().or_error!(Unreachable(message="Untyped struct field", span~))
+                let width = fields[field].unwrap().width!(span)
 
                 if name == field {
-                  return Value::Signal(@rtlil.SigChunk(signal=signal, offset~, width~))
+                  return Value::Signal(@rtlil.SigChunk(signal~, offset~, width~))
                 }
 
                 offset -= width
@@ -606,7 +600,7 @@ fn elaborate_expr(
 
               for port in sig.ports {
                 if accessed_ports.contains(port.name) {
-                  let width = port.ty.substitute(params_env~).width().or_error!(Unreachable(message="Unsized instance port", span~))
+                  let width = port.ty.substitute(params_env~).width!(span)
                   field_widths[port.name] = width
                 }
               }
@@ -700,8 +694,7 @@ fn elaborate_expr(
     Ternary(cond~, then~, else_~, span~, ..) => {
       let cell_type = "mux"
       let cell_name = "\{cell_type}_\{self.next_genidx()}"
-      let width = expr_width!(then).or_error!(Unreachable(message="Unsized ternary expression operand", span=expr.span()))
-
+      let width = expr_width!(then)
       let output = mod.add_wire!(
         name=GenId("\{cell_name}.y"),
         width~,
@@ -727,8 +720,8 @@ fn elaborate_expr(
       Value::Signal(SigWire(output))
     }
     Match(subject~, cases~, default~, span~, ty~) => {
-      let width = ty.val.unwrap().width().or_error!(MatchReturnTypeMustBeSignal(span~))
-      let s_width = expr_width!(subject).or_error!(Unreachable(message="Unsized match subject", span=subject.span()))
+      let width = ty.val.unwrap().width!(span)
+      let s_width = expr_width!(subject)
       let max_cases = @utils.pow2(s_width)
       let cell_type = "pmux"
       let cell_name = "\{cell_type}_\{self.next_genidx()}"
