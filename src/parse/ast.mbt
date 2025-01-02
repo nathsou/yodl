@@ -410,7 +410,7 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
   None
 }
 
-pub fn width(self: Type, span: Span) -> Int! {
+pub fn width(self: Type, span: Span) -> Int!AstError {
   match self {
     Nat => 32
     Logic => 1

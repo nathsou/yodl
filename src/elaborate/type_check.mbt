@@ -32,6 +32,8 @@ type! TypeCheckerError {
     InvalidInstanceTypeParameterCount(module_name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
     FunCallAfterMonomorphization(span~: @parse.Span)
     InvalidStructField(name~: String, span~: @parse.Span)
+    InvalidUnaryOpOperand(op~: @parse.UnaryOp, ty~: @parse.Type, span~: @parse.Span)
+    InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
 } derive(Show)
 
 fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
@@ -155,14 +157,25 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             Some(width) => @parse.Type::Vector(ty=@parse.Logic, len=Fixed(width))
             None => Nat
         }
-        Unary(expr~, ..) => {
-            self.check_expr!(expr, env) 
+        Unary(op~, expr~, span~, ..) => {
+            let ty = self.check_expr!(expr, env)
+
+            if not(ty.is_numerical()) {
+                raise InvalidUnaryOpOperand(op~, ty~, span~)
+            }
+            
+            ty
         }
         Binary(op~, lhs~, rhs~, span~, ..) => {
             let lhs_ty = self.check_expr!(lhs, env)
             let rhs_ty = self.check_expr!(rhs, env)
             let wa = lhs_ty.width!(lhs.span())
             let wb = rhs_ty.width!(rhs.span())
+            let _ = unify!(lhs_ty, rhs_ty, span~)
+
+            if not(lhs_ty.is_numerical()) {
+                raise InvalidBinaryOpOperand(op~, ty=lhs_ty, span~)   
+            }
 
             let expected_width = match expected_ty {
                 Some(expected_ty) => expected_ty.width!(span)
