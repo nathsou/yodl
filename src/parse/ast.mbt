@@ -199,6 +199,14 @@ pub(all) enum PortDirection {
   Input; Output; Inout
 } derive(Hash, Eq)
 
+pub impl Show for PortDirection with output(self, logger) {
+  logger.write_string(match self {
+    Input => "input"
+    Output => "output"
+    Inout => "inout"
+  })
+}
+
 pub(all) struct Port {
   name: String
   ty: Type

@@ -1,28 +1,28 @@
 
-pub(all) struct Emitter {
+pub(all) struct AstEmitter {
   mut indent: Int
   builder: StringBuilder
 }
 
 let show_instance_accessed_ports = false
 
-pub fn Emitter::new() -> Emitter {
+pub fn AstEmitter::new() -> AstEmitter {
   { indent: 0, builder: StringBuilder::new() }
 }
 
-pub impl Show for Emitter with output(self, logger) {
+pub impl Show for AstEmitter with output(self, logger) {
   logger.write_string(self.builder.to_string())
 }
 
-pub fn emit(self: Emitter, s: String) -> Unit {
+pub fn emit(self: AstEmitter, s: String) -> Unit {
   self.builder.write_string("  ".repeat(self.indent) + s + "\n")
 }
 
-pub fn write_indent(self: Emitter) -> Unit {
+pub fn write_indent(self: AstEmitter) -> Unit {
   self.builder.write_string("  ".repeat(self.indent))
 }
 
-pub fn write(self: Emitter, s: String) -> Unit {
+pub fn write(self: AstEmitter, s: String) -> Unit {
   self.builder.write_string(s)
 }
 
@@ -57,7 +57,7 @@ pub impl Show for BinaryOp with output(op, logger) {
   })
 }
 
-pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
+pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
   if indent {
     self.write_indent()
   }
@@ -318,7 +318,7 @@ pub fn emit_expr(self: Emitter, expr: Expr, indent~: Bool = false) -> Unit {
   }
 }
 
-pub fn emit_stmt(self: Emitter, stmt: Stmt) -> Unit {
+pub fn emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
   self.write_indent()
 
   match stmt {
@@ -424,7 +424,7 @@ pub impl Show for Type with output(ty, logger) {
           logger.write_string(len.to_string())
         }
         Dynamic(expr) => {
-          let emitter = Emitter::new()
+          let emitter = AstEmitter::new()
           emitter.emit_expr(expr)
           logger.write_string(emitter.to_string())
         }
@@ -507,7 +507,7 @@ pub impl Show for Port with output(port, logger) {
   logger.write_string(port.ty.to_string())
 }
 
-fn emit_port_list(self: Emitter, ports: Iter[Port]) -> Unit {
+fn emit_port_list(self: AstEmitter, ports: Iter[Port]) -> Unit {
   self.write("(\n")
   self.indent += 1
 
@@ -548,7 +548,7 @@ pub impl Show for Attribute with output(attr, logger) {
   }
 }
 
-fn emit_module_sig(self: Emitter, sig: ModuleSignature) -> Unit {
+fn emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
   if sig.attributes.size() > 0 {
     for attr in sig.attributes.values() {
       self.write(attr.to_string())
@@ -570,7 +570,7 @@ fn emit_module_sig(self: Emitter, sig: ModuleSignature) -> Unit {
   self.emit_port_list(sig.outputs())
 }
 
-pub fn emit_decl(self: Emitter, decl: Decl) -> Unit {
+pub fn emit_decl(self: AstEmitter, decl: Decl) -> Unit {
   match decl {
     Module({ body, .. } as mod) => {
       self.emit_module_sig(mod.signature())

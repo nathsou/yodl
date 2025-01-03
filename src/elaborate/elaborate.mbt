@@ -544,6 +544,14 @@ fn elaborate_expr(
               (true, true) => if sync_reset { "sdffe" } else { "adffe" }
             })
 
+            if not(uses_en) {
+              mod.wires.remove(port_wire_id(cell_name, "en"))
+            }
+
+            if not(uses_rst) {
+              mod.wires.remove(port_wire_id(cell_name, "rst"))
+            }
+
             let _ = mod.add_cell!(
               type_=cell_type,
               name=cell_name,

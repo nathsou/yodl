@@ -78,7 +78,7 @@ pub fn size(self: Signal) -> Int {
     SigConst(c) => c.size()
     SigWire(w) => w.width
     SigChunk(width~, ..) => width
-    SigConcat(signals) => @utils.sum(signals.iter().map(fn(sig) { sig.size() }))
+    SigConcat(signals) => @utils.sum(signals.iter().map(Signal::size))
   }
 }
 

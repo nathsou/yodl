@@ -12,7 +12,6 @@ struct UniqueName {
 
 impl Show for UniqueName with output(self, logger) {
   if self.id > 0 {
-    logger.write_string("%")
     logger.write_string(self.name)
     logger.write_string(self.id.to_string())
   } else {
