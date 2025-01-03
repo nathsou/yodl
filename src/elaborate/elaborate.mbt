@@ -279,6 +279,23 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
     let _ = self.elaborate_stmt!(stmt, mod_def)
   }
 
+  // make sure that output ports are on the left side of connections
+  // this seems to be necessary for the Lattice iCEcube2 flow
+  let ports = Map::from_iter(mod.ports.iter().map(fn(p) { (p.name, p.dir) }))
+  mod_def.connections.map_inplace(fn(connection) {
+    let (lhs, rhs) = connection
+
+    match rhs {
+      SigWire({ name, .. }) => {
+        match ports[name.inner()] {
+          Some(Output | Inout) => (rhs, lhs)
+          _ => connection
+        }
+      }
+      _ => connection
+    }
+  })
+
   if self.modules.contains(mod.name) {
     raise ModuleAlreadyDeclared(name=mod.name, span=mod.span)
   }

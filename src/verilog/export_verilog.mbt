@@ -2,10 +2,11 @@
 pub struct VerilogExporter {
   rtlil_modules: Array[@rtlil.Module]
   verilog_decls: Array[Decl]
+  names: Set[String]
 }
 
 pub fn VerilogExporter::new(modules: Array[@rtlil.Module]) -> VerilogExporter {
-  { rtlil_modules: modules, verilog_decls: [] }
+  { rtlil_modules: modules, verilog_decls: [], names: Set::new() }
 }
 
 pub type! VerilogExportError {
@@ -18,16 +19,18 @@ pub type! VerilogExportError {
 } derive(Show)
 
 fn show_id(id: @rtlil.Id) -> String {
-  match id {
+  let name = match id {
     PubId(name) => {
       if is_reserved_keyword(name) {
-        "_" + name
+        "_$" + name
       } else {
         name
       }
     }
-    GenId(name) => "$" + name
+    GenId(name) => name + "$"
   }
+
+  name.replace_all(old=".", new="_")
 }
 
 fn expect_identifier(self: Expr) -> String!VerilogExportError {
@@ -228,7 +231,7 @@ fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Uni
         cond=Identifier("s"),
         cases~,
         default=Some(
-          Assign(lhs=Identifier(func_name), rhs=a, kind=Blocking),
+          Assign(lhs=Identifier(func_name), rhs=Identifier("a"), kind=Blocking),
         ),
       )
 
