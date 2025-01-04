@@ -4,7 +4,7 @@ pub struct Monomorphizer {
   parameterized: Map[String, @parse.ModuleDecl]
   monomorphized: Map[String, Array[MonomorphizedModule]]
   declared_modules: Map[String, @parse.ModuleSignature]
-  top_env: Env
+  top_env: MonoEnv
 }
 
 pub struct MonomorphizedModule {
@@ -52,14 +52,14 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
   }
 }
 
-enum EnvEntry {
+enum MonoEnvEntry {
   Param(Int)
   Const(@parse.ConstDecl)
 }
 
-typealias Env = @elaborate.Scope[EnvEntry]
+typealias MonoEnv = @elaborate.Scope[MonoEnvEntry]
 
-fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: Env) -> @parse.Type! {
+fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv) -> @parse.Type! {
   match ty {
     Vector(ty~, len~) => {
       let mono_ty = self.monomorphize_type!(ty, env~)
@@ -114,7 +114,7 @@ fn register_monomorphized_module(
   mono_mod
 }
 
-fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: Env) -> @parse.Expr! {
+fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
       Identifier(name~, span~, ty=_) => {
@@ -176,7 +176,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: Env) -> @pars
   })
 }
 
-fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: Env) -> @parse.Stmt! {
+fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv) -> @parse.Stmt! {
   match stmt {
     Expr(expr~, span~) => {
       let mono_expr = self.monomorphize_expr!(expr, env~)

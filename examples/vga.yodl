@@ -1,0 +1,57 @@
+
+const H_ACTIVE = 640;
+const V_ACTIVE = 480;
+
+module VGASyncPulses(
+    clk: logic,
+) -> (
+    hsync: logic,
+    vsync: logic,
+    col: logic[10],
+    row: logic[10],
+) {
+    const H_FRONT_PORCH = 16;
+    const H_SYNC_PULSE = 96;
+    const H_BACK_PORCH = 48;
+    const H_TOTAL = H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH;
+
+    const V_FRONT_PORCH = 10;
+    const V_SYNC_PULSE = 2;
+    const V_BACK_PORCH = 33;
+    const V_TOTAL = V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE + V_BACK_PORCH;
+
+    let col_reg = Reg<10>(clk);
+    let row_reg = Reg<10>(clk);
+
+    let last_col = col_reg.q == H_TOTAL - 1;
+    let last_row = row_reg.q == V_TOTAL - 1;
+
+    col_reg.d = last_col ? 10'd0 : col_reg.q + 1;
+    row_reg.d = last_col ? (last_row ? 10'd0 : row_reg.q + 1) : row_reg.q;
+
+    hsync = (col_reg.q >= (H_ACTIVE + H_FRONT_PORCH)) and (col_reg.q < (H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE));
+    vsync = (row_reg.q >= (V_ACTIVE + V_FRONT_PORCH)) and (row_reg.q < (V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE));
+    col = col_reg.q;
+    row = row_reg.q;
+}
+
+module Top(
+    clk: logic,
+) -> (
+    led: logic[4],
+    vga_hsync: logic,
+    vga_vsync: logic,
+    vga_red: logic[3],
+    vga_green: logic[3],
+    vga_blue: logic[3],
+) {
+    let vga = VGASyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
+    let is_active_area = vga.col < H_ACTIVE and vga.row < V_ACTIVE;
+    let is_white = is_active_area and (vga.row[0] and vga.col[0]);
+    let color = is_white ? 3'b111 : 3'b000;
+
+    vga_red = color;
+    vga_green = color;
+    vga_blue = color;
+    led = 4'b0000;
+}

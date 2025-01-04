@@ -1,9 +1,6 @@
 
 pub struct Simplifier {
-  genvars: @elaborate.Scope[Int]
-  names: @elaborate.Scope[UniqueName]
   name_counts: Map[String, Int]
-  consts: @elaborate.Scope[@parse.Expr]
 }
 
 struct UniqueName {
@@ -20,13 +17,16 @@ impl Show for UniqueName with output(self, logger) {
   }
 }
 
+enum SimplifierEnvEntry {
+  GenVar(Int)
+  Name(UniqueName)
+  Const(@parse.Expr)
+}
+
+typealias SimplifierEnv = @elaborate.Scope[SimplifierEnvEntry]
+
 pub fn Simplifier::new() -> Simplifier {
-  {
-    genvars: @elaborate.Scope::new(),
-    names: @elaborate.Scope::new(),
-    name_counts: {},
-    consts: @elaborate.Scope::new(),
-  }
+  { name_counts: {} }
 }
 
 pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
@@ -48,20 +48,15 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 6. Remove unecessary spreads
 // 7. Rewrite flat constant vectors to natural expressions
 // 8. Hardcode constant references
-pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
+pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
       Identifier(name~, span~, ty~) => {
-        // Resolve identifiers to unique names
-        match self.genvars.resolve(name) {
-          Some(value) => @parse.Expr::Natural(bits=@parse.Bits::from!(value, span~), width=None, base=10, span~, ty~)
-          None => match self.names.resolve(name) {
-            Some(unique_name) => @parse.Expr::Identifier(name=unique_name.to_string(), span~, ty~)
-            None => match self.consts.resolve(name) {
-              Some(const_expr) => const_expr
-              None => expr
-            }
-          }
+        match env.resolve(name) {
+          Some(GenVar(value)) => @parse.Expr::Natural(bits=@parse.Bits::from!(value, span~), width=None, base=10, span~, ty~)
+          Some(Const(expr)) => expr
+          Some(Name(unique_name)) => @parse.Expr::Identifier(name=unique_name.to_string(), span~, ty~)
+          None => expr
         }
       }
       Tuple(elems~, span~, ty=_) => {
@@ -100,7 +95,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
               ty~,
             )
 
-            self.simplify_expr!(match_expr)
+            self.simplify_expr!(match_expr, env~)
           }
         }
       }
@@ -127,14 +122,16 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
       }
       Replicate(expr~, count~, concat~, span~, ty~) => {
         // Rewrite replication expressions into concatenation expressions
-        let repeated_expr = self.simplify_expr!(match concat {
-          true => @parse.Expr::Spread(expr~, span~, ty~)
-          false => expr
-        })
+        let repeated_expr = self.simplify_expr!(
+          match concat {
+            true => @parse.Expr::Spread(expr~, span~, ty~)
+            false => expr
+          },
+          env~
+        )
 
         let elems = @utils.fill(count.expect_int!(), repeated_expr)
-        
-        self.simplify_expr!(@parse.Expr::Vector(elems~, span~, ty~))
+        self.simplify_expr!(@parse.Expr::Vector(elems~, span~, ty~), env~)
       }
       Spread(expr~, ..) as spread_expr => {
         // Remove unecessary spreads
@@ -165,72 +162,74 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
   })
 }
 
-pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt) -> Array[@parse.Stmt]! {
+pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv) -> Array[@parse.Stmt]! {
   match stmt {
     Expr(expr~, span~) => {
-      let simplified_expr = self.simplify_expr!(expr)
+      let simplified_expr = self.simplify_expr!(expr, env~)
       [@parse.Stmt::Expr(expr=simplified_expr, span~)]
     }
     Let(name~, ty~, expr~, span~) => {
       let simplified_expr = match expr {
-        Some(expr) => Some(self.simplify_expr!(expr))
+        Some(expr) => Some(self.simplify_expr!(expr, env~))
         None => None
       }
 
       let unique_name = self.declare_unique(name)
-      self.names.declare_shadowing(name, unique_name)
+      env.declare_shadowing(name, Name(unique_name))
 
       [@parse.Stmt::Let(name=unique_name.to_string(), ty~, expr=simplified_expr, span~)]
     }
     Assign(lhs~, rhs~, span~) => {
-      let simplified_lhs = self.simplify_expr!(lhs)
-      let simplified_rhs = self.simplify_expr!(rhs)
+      let simplified_lhs = self.simplify_expr!(lhs, env~)
+      let simplified_rhs = self.simplify_expr!(rhs, env~)
       [@parse.Stmt::Assign(lhs=simplified_lhs, rhs=simplified_rhs, span~)]
     }
     For(var~, range~, body~, ..) => {
       let unrolled_stmts = []
-      let start = self.simplify_expr!(range.start).expect_int!()
-      let mut end = self.simplify_expr!(range.end).expect_int!()
+      let start = self.simplify_expr!(range.start, env~).expect_int!()
+      let mut end = self.simplify_expr!(range.end, env~).expect_int!()
 
       if range.inclusive {
         end += 1
       }
 
       for i in start..<end {
-        self.genvars.declare!(var, i)
+        env.declare!(var, GenVar(i))
 
         for stmt in body {
-          unrolled_stmts.push_iter(self.simplify_stmt!(stmt).iter())
+          unrolled_stmts.push_iter(self.simplify_stmt!(stmt, env~).iter())
         }
 
-        self.genvars.remove(var)
+        env.remove(var)
       }
 
       unrolled_stmts
     }
     Scope(body~, ..) => {
       let simplified_body = []
+      let scope_env = env.child()
 
       for stmt in body {
-        simplified_body.push_iter(self.simplify_stmt!(stmt).iter())
+        simplified_body.push_iter(self.simplify_stmt!(stmt, env=scope_env).iter())
       }
 
       simplified_body
     }
     Const(decl~, span=_) => {
-      self.consts.declare!(decl.name, decl.expr)
+      env.declare!(decl.name, Const(decl.expr))
       []
     }
   }
 }
 
-pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl?! {
+fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @parse.Decl?! {
   match decl {
     Module({ name, params, attributes, ports, body, span }) => {
       let simplified_body = []
+      let mod_env = env.child()
 
       for stmt in body {
-        simplified_body.push_iter(self.simplify_stmt!(stmt).iter())
+        simplified_body.push_iter(self.simplify_stmt!(stmt, env=mod_env).iter())
       }
 
       Some(@parse.Decl::Module({ name, params, attributes, ports, body: simplified_body, span }))
@@ -239,8 +238,25 @@ pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl?! {
       Some(@parse.Decl::ModuleDeclaration(sig))
     }
     Const(decl) => {
-      self.consts.declare!(decl.name, decl.expr)
+      env.declare!(decl.name, Const(decl.expr))
       None
     }
   }
+}
+
+pub fn simplify_decls(decls: Array[@parse.Decl]) -> Array[@parse.Decl]! {
+  let simplifier = Simplifier::new()
+  let top_env = @elaborate.Scope::new()
+  let simplified_decls = []
+
+  for decl in decls {
+    match simplifier.simplify_decl!(decl, env=top_env) {
+      Some(simplified_decl) => {
+        simplified_decls.push(simplified_decl)
+      }
+      None => ()
+    }
+  }
+
+  simplified_decls
 }

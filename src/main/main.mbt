@@ -45,20 +45,12 @@ fn run(file: String, commands: Array[Command]) -> Unit! {
   let monomorphizer = @simplify.Monomorphizer::new()
   let mono_decls = monomorphizer.monomorphize!(decls)
   let checker = @elaborate.TypeChecker::new()
-  let simplifier = @simplify.Simplifier::new()
-  let simplified_decls = []
 
   for decl in mono_decls {
     checker.check_decl!(decl)
-
-    match simplifier.simplify_decl!(decl) {
-      Some(simplified_decl) => {
-        simplified_decls.push(simplified_decl)
-      }
-      None => ()
-    }
   }
 
+  let simplified_decls = @simplify.simplify_decls!(mono_decls)
   let elaborator = @elaborate.Elaborator::new()
 
   for decl in simplified_decls {

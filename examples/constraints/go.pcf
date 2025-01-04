@@ -1,0 +1,61 @@
+# Go Board Pin Constraints File
+# Family & Device:    iCE40HX1K
+# Package:            VQ100
+
+# Main FPGA Clock
+set_io clk 15
+
+# LED Pins (defined individually for each bit in the vector):
+set_io led[0] 56
+set_io led[1] 57
+set_io led[2] 59
+set_io led[3] 60
+
+# Push-Button Switches (defined individually for each bit in the vector)
+set_io button[0] 53
+set_io button[1] 51
+set_io button[2] 54
+set_io button[3] 52
+
+# 7 Segment Outputs (defined individually for each bit in the vector)
+set_io segment1_A 3
+set_io segment1_B 4
+set_io segment1_C 93
+set_io segment1_D 91
+set_io segment1_E 90
+set_io segment1_F 1
+set_io segment1_G 2
+set_io segment2_A 100
+set_io segment2_B 99
+set_io segment2_C 97
+set_io segment2_D 95
+set_io segment2_E 94
+set_io segment2_F 8
+set_io segment2_G 96
+
+# UART Outputs
+set_io uart_rx 73
+set_io uart_tx 74
+
+# VGA Outputs (defined individually for each bit in the vectors)
+set_io vga_hsync 26
+set_io vga_vsync 27
+set_io vga_red[0] 36
+set_io vga_red[1] 37
+set_io vga_red[2] 40
+set_io vga_green[0] 29
+set_io vga_green[1] 30
+set_io vga_green[2] 33
+set_io vga_blue[0] 28
+set_io vga_blue[1] 41
+set_io vga_blue[2] 42
+
+# PMOD Signals (defined individually for each bit in the vector)
+set_io pmod[0] 65
+set_io pmod[1] 64
+set_io pmod[2] 63
+set_io pmod[3] 62
+set_io pmod[4] 78
+set_io pmod[5] 79
+set_io pmod[6] 80
+set_io pmod[7] 81

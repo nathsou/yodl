@@ -4,6 +4,8 @@
 // nextpnr-ice40 --hx8k --json output/Timer.json --pcf output/cu.pcf --package cb132 --freq 100 --asc output/Timer.asc
 // icepack output/Timer.asc output/Timer.bin
 
+const CLOCK_FREQ = 100_000_000; // 100 Mhz
+
 // outputs a 1 for one clock cycle once every `CYCLES` clock cycles
 module Timer<CYCLES>(clk: logic) -> (q: logic) {
     const width = $clog2(CYCLES);
@@ -13,7 +15,7 @@ module Timer<CYCLES>(clk: logic) -> (q: logic) {
     q = end;
 }
 
-module SevenSegment(char: logic[4]) -> (segs: logic[7]) {
+module SevenSegmentDecoder(char: logic[4]) -> (segs: logic[7]) {
     segs = match char {
         4'h0 => 7'b0111111,
         4'h1 => 7'b0000110,
@@ -53,7 +55,7 @@ module Segments(
     };
 
     sel = active_seg.sel;
-    segs = [1'b0, ...(not SevenSegment(char: active_seg.char).segs)];
+    segs = [1'b0, ...(not SevenSegmentDecoder(char: active_seg.char).segs)];
 }
 
 module Top(
@@ -65,7 +67,7 @@ module Top(
     io_an: logic[4],
 ) {
     let rst = not rst_n;
-    let timer = Timer<100_000_000>(clk); // 100 Mhz clock
+    let timer = Timer<CLOCK_FREQ>(clk);
     let seconds = Reg<16>(clk, rst);
     seconds.d = seconds.q + timer.q;
     Segments(clk, rst, value: seconds.q, segs: io_seg, sel: io_an);

@@ -1,0 +1,96 @@
+# Clock
+set_io clk P7
+# Reset
+set_io rst_n P8
+
+# Onboard LEDs, bottom to top
+set_io led[7] J11
+set_io led[6] K11
+set_io led[5] K12
+set_io led[4] K14
+set_io led[3] L12
+set_io led[2] L14
+set_io led[1] M12
+set_io led[0] N14
+
+## Alchitry IO
+
+# LEDs, right-to-left
+set_io io_led[0] G14 # BB21, IOR_141_GBIN2
+set_io io_led[1] F14 # BB20, IOR_140_GBIN3
+set_io io_led[2] E12 # BB18, IOR_147
+set_io io_led[3] E14 # BB17, IOR_148
+set_io io_led[4] D14 # BB15, IOR_152
+set_io io_led[5] C14 # BB14, IOR_154
+set_io io_led[6] B14 # BB12, IOR_161
+set_io io_led[7] A12 # BB11, IOT_170
+
+set_io io_led[8] C10 # BB9, IOT_186
+set_io io_led[9] C9 # BB8, IOT_190
+set_io io_led[10] A11 # BB6, IOT_179
+set_io io_led[11] A10 # BB5, IOT_181
+set_io io_led[12] A7 # BB3, IOT_197_GBIN1
+set_io io_led[13] A6 # BB2, IOT_198_GBIN0
+set_io io_led[14] A4 # AB24, IOT_219
+set_io io_led[15] A3 # AB23, IOT_222
+
+set_io io_led[16] A2 # AB21, IOT_223
+set_io io_led[17] A1 # AB20, IOT_225
+set_io io_led[18] C3 # AB18, IOL_4_P
+set_io io_led[19] D3 # AB17, IOL_4_N
+set_io io_led[20] B1 # AB15, IOL_2_P
+set_io io_led[21] C1 # AB14, IOL_2_N
+set_io io_led[22] D1 # AB12, IOL_5_P
+set_io io_led[23] E1 # AB11, IOL_5_N
+
+# DIP Switches Right to Left
+set_io IO_DIP[7] C11 # BB40
+set_io IO_DIP[6] C12 # BB39
+set_io IO_DIP[5] D11 # BB37
+set_io IO_DIP[4] D12 # BB36
+set_io IO_DIP[3] E11 # BB34
+set_io IO_DIP[2] F11 # BB33
+set_io IO_DIP[1] F12 # BB31
+set_io IO_DIP[0] G12 # BB30
+
+set_io IO_DIP[15] C5 # AB28
+set_io IO_DIP[14] A5 # AB27
+set_io IO_DIP[13] C6 # BB49
+set_io IO_DIP[12] C7 # BB48
+set_io IO_DIP[11] D6 # BB46
+set_io IO_DIP[10] D7 # BB45
+set_io IO_DIP[9] D9 # BB43
+set_io IO_DIP[8] D10 # BB42
+
+set_io IO_DIP[23] G4 # AB40
+set_io IO_DIP[22] H4 # AB39
+set_io IO_DIP[21] F3 # AB37
+set_io IO_DIP[20] F4 # AB36
+set_io IO_DIP[19] E4 # AB34
+set_io IO_DIP[18] D4 # AB33
+set_io IO_DIP[17] C4 # AB31
+set_io IO_DIP[16] D5 # AB30
+
+
+# Buttons
+set_io io_sw[0] G11 # BB28
+set_io io_sw[1] H11 # BB27
+set_io io_sw[2] H12 # BB23
+set_io io_sw[3] J12 # BB24
+set_io io_sw[4] P2 # CB49
+
+
+# Eight Segment Displays, right to left
+set_io io_an[3] H3 # AB43
+set_io io_an[2] H1 # AB42
+set_io io_an[1] G1 # AB8
+set_io io_an[0] G3 # AB9
+
+set_io io_seg[0] J1 # AB5
+set_io io_seg[1] J3 # AB6
+set_io io_seg[2] N1 # AB48
+set_io io_seg[3] K4 # AB46
+set_io io_seg[4] K3 # AB45
+set_io io_seg[5] L1 # AB3
+set_io io_seg[6] M1 # AB2
+set_io io_seg[7] P1 # AB49
