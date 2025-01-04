@@ -259,7 +259,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             None => Nat
         }
         Unary(op~, expr~, span~, ..) => {
-            let ty = self.check_expr!(expr, env)
+            let ty = self.check_expr!(expr, env, expected_ty~)
 
             if not(ty.is_numerical()) {
                 raise InvalidUnaryOpOperand(op~, ty~, span~)
@@ -268,8 +268,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             ty
         }
         Binary(op~, lhs~, rhs~, span~, ..) => {
-            let lhs_ty = self.check_expr!(lhs, env)
-            let rhs_ty = self.check_expr!(rhs, env)
+            let lhs_ty = self.check_expr!(lhs, env, expected_ty~)
+            let rhs_ty = self.check_expr!(rhs, env, expected_ty~)
             let wa = lhs_ty.width!(lhs.span())
             let wb = rhs_ty.width!(rhs.span())
 
@@ -277,12 +277,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                 raise InvalidBinaryOpOperand(op~, ty=lhs_ty, span~)   
             }
 
-            let expected_width = match expected_ty {
+            let wy = match expected_ty {
                 Some(expected_ty) => expected_ty.width!(span)
-                None => wa
+                None => op.output_width(wa, wb)
             }
-
-            let wy = @utils.min(op.output_width(wa, wb), expected_width)
 
             match wy {
                 1 => Logic
@@ -423,8 +421,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
         }
         Ternary(cond~, then~, else_~, span~, ..) => {
             let cond_ty = self.check_expr!(cond, env)
-            let then_ty = self.check_expr!(then, env)
-            let else_ty = self.check_expr!(else_, env)
+            let then_ty = self.check_expr!(then, env, expected_ty~)
+            let else_ty = self.check_expr!(else_, env, expected_ty~)
 
             let _ = unify!(cond_ty, @parse.Logic, span~)
             let ty = self.resolve_ty!(then_ty, span~)
@@ -456,14 +454,14 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             for case in cases {
                 let (pat, expr) = case
                 let pat_ty = self.check_expr!(pat, env)
-                let expr_ty = self.check_expr!(expr, env)
+                let expr_ty = self.check_expr!(expr, env, expected_ty~)
                 let _ = unify!(subject_ty, pat_ty, subst~, span~)
                 check_ret_ty!(expr_ty)
             }
 
             match default {
                 Some(expr) => {
-                    let expr_ty = self.check_expr!(expr, env)
+                    let expr_ty = self.check_expr!(expr, env, expected_ty~)
                     check_ret_ty!(expr_ty)
                 }
                 None => ()

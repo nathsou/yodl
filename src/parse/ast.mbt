@@ -604,7 +604,7 @@ pub fn signature(self: ModuleDecl) -> ModuleSignature {
 }
 
 pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
-  let wy = match self {
+  match self {
     Add => @utils.max(wa, wb) + 1
     Sub => @utils.max(wa, wb)
     Mul => wa + wb
@@ -626,9 +626,6 @@ pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
     Xnor => @utils.max(wa, wb)
     Ternary => @utils.max(wa, wb)
   }
-
-  println("output_width: \{wa} \{self} \{wb} -> \{wy}")
-  wy
 }
 
 pub fn inputs(self: ModuleSignature) -> Iter[Port] {
