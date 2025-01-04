@@ -10,7 +10,7 @@ enum TokenType {
   Percent; QuestionMark; At; Underscore; X // Replication operator
   Dollar
   // keywords
-  Module; Let; Logic; In; For; Declare
+  Module; Let; Logic; In; For; Declare; Const
   And; Or; Not; Xor; Nand; Nor; Xnor; Match
   // literals
   Identifier(String); Natural(bits~: Bits, width~: Int?, base~: Int)
@@ -32,10 +32,12 @@ pub impl Show for Span with output(self, logger) {
 pub fn context(self: Span, window_size~: Int = 3) -> String! {
   let contents = @fs.read_file_to_string!(path=self.file)
   let window = StringBuilder::new(size_hint=window_size * 2)
+  let max_line_number_digits = (self.end.0 + 1).to_string().length()
 
   contents.split("\n").eachi(fn(index, line) {
     if index >= self.start.0 - window_size && index <= self.end.0 + window_size {
-      window.write_string("\{index + 1} ")
+      window.write_string("\{index + 1}".pad_end(max_line_number_digits, ' '))
+      window.write_char(' ')
       window.write_string(line)
 
       if index >= (self.start.0 - 1) && index < self.end.0 {

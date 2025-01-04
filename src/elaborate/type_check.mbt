@@ -1,11 +1,13 @@
 
 struct TypeChecker {
     modules: Map[String, @parse.ModuleSignature]
+    top_env: Scope[@parse.Type]
 }
 
 pub fn TypeChecker::new() -> TypeChecker {
     {
         modules: {},
+        top_env: Scope::new(),
     }
 }
 
@@ -580,6 +582,9 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
                 self.check_stmt!(stmt, body_env)
             }
         }
+        Const(decl~, span=_) => {
+            self.check_const_decl!(decl, env)
+        }
     }
 }
 
@@ -629,10 +634,28 @@ fn check_attributes(attrs: Map[String, @parse.Attribute], signatures~: Map[Strin
     }
 }
 
+fn check_const_decl(self: TypeChecker, decl: @parse.ConstDecl, env: Scope[@parse.Type]) -> Unit! {
+    if not(decl.expr.is_constant_expr()) {
+        raise ExpectedConstantExpr(span=decl.expr.span())
+    }
+
+    let ty = self.check_expr!(decl.expr, env)
+
+    match decl.ty {
+        Some(expected_ty) => {
+            let expected_ty = self.resolve_ty!(expected_ty, span=decl.expr.span())
+            let _ = unify!(expected_ty, ty, span=decl.expr.span())
+        }
+        None => ()
+    }
+
+    declare_name!(env~, name=decl.name, ty~, span=decl.span)
+}
+
 pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
     match decl {
         Module({ name, params: _, attributes, ports, body, span: _ } as mod) => {
-            let env = Scope::new()
+            let env = self.top_env.child()
 
             check_attributes!(attributes, signatures=module_attribute_signatures)
 
@@ -657,6 +680,9 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
             }
 
             self.modules[sig.name] = sig
+        }
+        Const(decl) => {
+            self.check_const_decl!(decl, self.top_env)
         }
     }
 }

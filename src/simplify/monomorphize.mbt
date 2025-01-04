@@ -4,6 +4,7 @@ pub struct Monomorphizer {
   parameterized: Map[String, @parse.ModuleDecl]
   monomorphized: Map[String, Array[MonomorphizedModule]]
   declared_modules: Map[String, @parse.ModuleSignature]
+  top_env: Env
 }
 
 pub struct MonomorphizedModule {
@@ -17,6 +18,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
     parameterized: {},
     monomorphized: {},
     declared_modules: {},
+    top_env: @elaborate.Scope::new(),
   }
 }
 
@@ -50,13 +52,20 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
   }
 }
 
-fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, params_env~: @elaborate.Scope[Int]) -> @parse.Type! {
+enum EnvEntry {
+  Param(Int)
+  Const(@parse.ConstDecl)
+}
+
+typealias Env = @elaborate.Scope[EnvEntry]
+
+fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: Env) -> @parse.Type! {
   match ty {
     Vector(ty~, len~) => {
-      let mono_ty = self.monomorphize_type!(ty, params_env~)
+      let mono_ty = self.monomorphize_type!(ty, env~)
       let len = match len {
         Fixed(len) => @parse.VectorLen::Fixed(len)
-        Dynamic(expr) => match self.monomorphize_expr!(expr, params_env~) {
+        Dynamic(expr) => match self.monomorphize_expr!(expr, env~) {
           Natural(bits~, ..) => @parse.VectorLen::Fixed(bits.as_int!())
           expr => @parse.VectorLen::Dynamic(expr)
         }
@@ -105,12 +114,13 @@ fn register_monomorphized_module(
   mono_mod
 }
 
-fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elaborate.Scope[Int]) -> @parse.Expr! {
+fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: Env) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
       Identifier(name~, span~, ty=_) => {
-        match params_env.resolve(name) {
-          Some(value) => @parse.Expr::nat!(value, width=None, base=10, span~)
+        match env.resolve(name) {
+          Some(Param(n)) => @parse.Expr::nat!(n, width=None, base=10, span~)
+          Some(Const(decl)) => decl.expr
           None => expr
         }
       }
@@ -118,7 +128,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
         let mono_params = []
 
         for param in params {
-          mono_params.push(self.monomorphize_expr!(param, params_env~))
+          mono_params.push(self.monomorphize_expr!(param, env~))
         }
 
         let (mono_name, mono_params) = if params.length() > 0 && not(self.declared_modules.contains(name)) {
@@ -144,7 +154,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
         let mono_ports = {}
 
         for port_name, port_expr in ports {
-          mono_ports[port_name] = self.monomorphize_expr!(port_expr, params_env~)
+          mono_ports[port_name] = self.monomorphize_expr!(port_expr, env~)
         }
 
         @parse.Expr::Instance(name=mono_name, params=mono_params, ports=mono_ports, span~, ty~)
@@ -166,20 +176,20 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, params_env~: @elabo
   })
 }
 
-fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, params_env~: @elaborate.Scope[Int]) -> @parse.Stmt! {
+fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: Env) -> @parse.Stmt! {
   match stmt {
     Expr(expr~, span~) => {
-      let mono_expr = self.monomorphize_expr!(expr, params_env~)
+      let mono_expr = self.monomorphize_expr!(expr, env~)
       @parse.Stmt::Expr(expr=mono_expr, span~)
     }
     Let(name~, ty~, expr~, span~) => {
       let mono_expr = match expr {
-        Some(expr) => Some(self.monomorphize_expr!(expr, params_env~))
+        Some(expr) => Some(self.monomorphize_expr!(expr, env~))
         None => None
       }
 
       let mono_ty = match ty.val {
-        Some(ty) => Some(self.monomorphize_type!(ty, params_env~))
+        Some(ty) => Some(self.monomorphize_type!(ty, env~))
         None => None
       }
 
@@ -199,21 +209,21 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, params_env~: @elabo
       @parse.Stmt::Let(name=name, ty={ val: mono_ty }, expr=mono_expr, span~)
     }
     Assign(lhs~, rhs~, span~) => {
-      let mono_lhs = self.monomorphize_expr!(lhs, params_env~)
-      let mono_rhs = self.monomorphize_expr!(rhs, params_env~)
+      let mono_lhs = self.monomorphize_expr!(lhs, env~)
+      let mono_rhs = self.monomorphize_expr!(rhs, env~)
       @parse.Stmt::Assign(lhs=mono_lhs, rhs=mono_rhs, span~)
     }
     For(var~, range~, body~, span~) => {
       let mono_range: @parse.ForRange = {
-        start: self.monomorphize_expr!(range.start, params_env~),
-        end: self.monomorphize_expr!(range.end, params_env~),
+        start: self.monomorphize_expr!(range.start, env~),
+        end: self.monomorphize_expr!(range.end, env~),
         inclusive: range.inclusive,
       }
 
       let mono_body = []
 
       for stmt in body {
-        mono_body.push(self.monomorphize_stmt!(stmt, params_env~))
+        mono_body.push(self.monomorphize_stmt!(stmt, env~))
       }
 
       @parse.Stmt::For(var~, range=mono_range, body=mono_body, span~)
@@ -222,19 +232,30 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, params_env~: @elabo
       let mono_body = []
 
       for stmt in body {
-        mono_body.push(self.monomorphize_stmt!(stmt, params_env~))
+        mono_body.push(self.monomorphize_stmt!(stmt, env~))
       }
 
       @parse.Stmt::Scope(body=mono_body, span~)
+    }
+    Const(decl~, span~) => {
+      let mono_expr = self.monomorphize_expr!(decl.expr, env~)
+      let mono_ty = match decl.ty {
+        Some(ty) => Some(self.monomorphize_type!(ty, env~))
+        None => None
+      }
+
+      let mono_decl: @parse.ConstDecl = { name: decl.name, expr: mono_expr, ty: mono_ty, span: decl.span }
+      env.declare!(decl.name, Const(mono_decl))
+      @parse.Stmt::Const(decl=mono_decl, span~)
     }
   }
 }
 
 fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Array[Int]) -> @parse.ModuleDecl! {
-  let params_env = @elaborate.Scope::new()
+  let child_env = self.top_env.child()
 
-  for i, param in params {
-    params_env.declare!(mod.params[i], param)
+  for name, param in @utils.zip2(mod.params, params) {
+    child_env.declare!(name, Param(param))
   }
 
   let mono_ports: Array[@parse.Port] = []
@@ -242,7 +263,7 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
   for port in mod.ports {
     mono_ports.push({
       name: port.name,
-      ty: self.monomorphize_type!(port.ty, params_env~),
+      ty: self.monomorphize_type!(port.ty, env=child_env),
       dir: port.dir,
       optional: port.optional,
       span: port.span,
@@ -253,7 +274,7 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
   let mono_body = []
 
   for stmt in mod.body {
-    mono_body.push(self.monomorphize_stmt!(stmt, params_env~))
+    mono_body.push(self.monomorphize_stmt!(stmt, env=child_env))
   }
 
   {
@@ -278,27 +299,35 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
   }
 }
 
-fn collect_instances(self: Monomorphizer, decl: @parse.Decl) -> Unit! {
-  match decl {
-    Module(mod) => {
-      if mod.params.is_empty() {
-        self.modules[mod.name] = self.monomorphize_module!(mod~, params=[])
-      } else {
-        self.parameterized[mod.name] = mod
+pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@parse.Decl]! {
+  let monomorphized: Array[@parse.Decl] = []
+
+  for decl in decls {
+    match decl {
+      Module(mod) => {
+        if mod.params.is_empty() {
+          let mono_mod = self.monomorphize_module!(mod~, params=[])
+          self.modules[mod.name] = mono_mod
+        } else {
+          self.parameterized[mod.name] = mod
+        }
+      }
+      ModuleDeclaration(sig) => {
+        self.declared_modules[sig.name] = sig
+      }
+      Const(decl) => {
+        let mono_expr = self.monomorphize_expr!(decl.expr, env=self.top_env)
+        let mono_ty = match decl.ty {
+          Some(ty) => Some(self.monomorphize_type!(ty, env=self.top_env))
+          None => None
+        }
+
+        let mono_decl: @parse.ConstDecl = { name: decl.name, expr: mono_expr, ty: mono_ty, span: decl.span }
+        monomorphized.push(@parse.Decl::Const(mono_decl))
+        self.top_env.declare!(decl.name, Const(mono_decl))
       }
     }
-    ModuleDeclaration(sig) => {
-      self.declared_modules[sig.name] = sig
-    }
   }
-}
-
-pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@parse.Decl]! {
-  for decl in decls {
-    self.collect_instances!(decl)
-  }
-
-  let monomorphized = []
 
   for decl in self.declared_modules.values() {
     monomorphized.push(@parse.Decl::ModuleDeclaration(decl))

@@ -1,6 +1,7 @@
+const width = $clog2(255);
 
 module Top(clk: logic, rst: logic, en: logic) -> (q: logic[8]) {
-    let counter = Reg<8>(clk, rst, en);
+    let counter = Reg<width>(clk, rst, en);
     counter.d = counter.q + 1;
     q = counter.q;
 }

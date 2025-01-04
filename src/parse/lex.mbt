@@ -451,6 +451,7 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           "for" => For
           "declare" => Declare
           "match" => Match
+          "const" => Const
           "and" => And
           "or" => Or
           "not" => Not

@@ -2,6 +2,7 @@
 enum Command {
   WriteRTLIL(path~: String?)
   WriteVerilog(path~: String?)
+  WriteSource
   WriteMono(path~: String?)
   WriteSimplified(path~: String?)
 }
@@ -49,8 +50,13 @@ fn run(file: String, commands: Array[Command]) -> Unit! {
 
   for decl in mono_decls {
     checker.check_decl!(decl)
-    let simplified_decl = simplifier.simplify_decl!(decl)
-    simplified_decls.push(simplified_decl)
+
+    match simplifier.simplify_decl!(decl) {
+      Some(simplified_decl) => {
+        simplified_decls.push(simplified_decl)
+      }
+      None => ()
+    }
   }
 
   let elaborator = @elaborate.Elaborator::new()
@@ -61,6 +67,16 @@ fn run(file: String, commands: Array[Command]) -> Unit! {
 
   fn run_command(command: Command) -> Unit! {
     match command {
+      WriteSource => {
+        let emitter = @parse.AstEmitter::new()
+
+        for decl in decls {
+          emitter.emit_decl(decl)
+          emitter.emit("\n")
+        }
+
+        println(emitter.to_string())
+      }
       WriteMono(path~) => {
         let emitter = @parse.AstEmitter::new()
 
@@ -152,8 +168,10 @@ fn main {
 
       let file_name = path.split("/").last().unwrap().replace(old=".yodl", new="")
       let commands = [
+        // WriteSource,
+        WriteMono(path=None),
         WriteRTLIL(path=Some("output/\{file_name}.rtlil")),
-        WriteVerilog(path=None),
+        // WriteVerilog(path=None),
         WriteVerilog(path=Some("output/\{file_name}.v")),
       ]
 

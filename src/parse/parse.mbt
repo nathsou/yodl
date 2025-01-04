@@ -461,10 +461,30 @@ fn parse_stmt(self: Parser) -> Stmt! {
 
       For(var~, range={ start, end, inclusive }, body~, span=self.span(start_idx))
     }
+    Const => Stmt::Const(decl=self.parse_const_decl!(), span=self.span(start_idx))
     _ => {
       self.parse_assignment_stmt!()
     }
   }
+}
+
+fn parse_const_decl(self: Parser) -> ConstDecl! {
+  let start_idx = self.index
+  self.expect!(Const, start_idx)
+  let name = self.parse_identifier!()
+
+  let ty = if self.matches(Colon) {
+    self.advance()
+    Some(self.parse_type!())
+  } else {
+    None
+  }
+  
+  self.expect!(Equal, start_idx)
+  let expr = self.parse_expr!()
+  self.expect!(Semicolon, start_idx)
+
+  { name, ty, expr, span: self.span(start_idx) }
 }
 
 fn parse_type(self: Parser) -> Type! {
@@ -742,6 +762,7 @@ fn parse_module_def_or_decl(self: Parser) -> Decl! {
 fn parse_decl(self: Parser) -> Decl! {
   match self.peek() {
     At | Declare | Module => self.parse_module_def_or_decl!()
+    Const => Decl::Const(self.parse_const_decl!())
     token => raise ExpectedDecl(received=token, span=self.span(self.index))
   }
 }

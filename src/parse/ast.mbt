@@ -20,6 +20,7 @@ pub(all) enum Expr {
 
 pub(all) enum Stmt {
   Expr(expr~: Expr, span~: Span)
+  Const(decl~: ConstDecl, span~: Span)
   Let(name~: String, ty~: Ref[Type?], expr~: Expr?, span~: Span)
   Assign(lhs~: Expr, rhs~: Expr, span~: Span)
   For(var~: String, range~: ForRange, body~: Array[Stmt], span~: Span)
@@ -29,6 +30,7 @@ pub(all) enum Stmt {
 pub(all) enum Decl {
   Module(ModuleDecl)
   ModuleDeclaration(ModuleSignature)
+  Const(ConstDecl)
 }
 
 pub(all) enum Type {
@@ -141,6 +143,13 @@ impl Eq for ModuleSignature with op_equal(self, other) {
   self.name == other.name && self.span.file == other.span.file
 }
 
+pub(all) struct ConstDecl {
+  name: String
+  ty: Type?
+  expr: Expr
+  span: Span
+}
+
 pub(all) enum VectorLen {
   Fixed(Int)
   Dynamic(Expr)
@@ -155,7 +164,7 @@ impl Eq for VectorLen with op_equal(self, other) {
 
 pub type! AstError {
   ExpectedFixedVectorLength(span~: Span)
-  ExpectedIntegerExpression(span~: Span)
+  ExpectedIntegerExpression(expr~: Expr, span~: Span)
   NaturalContainsUndeterminedDigit(span~: Span)
   ValueTooLargeForWidth(value~: Int, width~: Int, span~: Span)
   VectorLengthNotFixed(span~: Span)
@@ -164,12 +173,12 @@ pub type! AstError {
 
 pub impl Show for AstError with output(self, logger) {
   match self {
-    ExpectedFixedVectorLength(span~) => logger.write_string("Expected a fixed vector length at \{span}")
-    ExpectedIntegerExpression(span~) => logger.write_string("Expected an integer expression at \{span}")
-    NaturalContainsUndeterminedDigit(span~) => logger.write_string("Natural contains an undetermined digit at \{span}")
-    ValueTooLargeForWidth(value~, width~, span~) => logger.write_string("Value \{value} is too large for width \{width} at \{span}")
-    VectorLengthNotFixed(span~) => logger.write_string("Vector length must be fixed at \{span}")
-    CannotGetWidthOfUnresolvedNamedType(span~) => logger.write_string("Cannot get width of unresolved named type at \{span}")
+    ExpectedFixedVectorLength(_) => logger.write_string("Expected a fixed vector length")
+    ExpectedIntegerExpression(expr~, ..) => logger.write_string("Expected an integer expression, got: \{expr.ctor()}")
+    NaturalContainsUndeterminedDigit(_) => logger.write_string("Natural contains an undetermined digit")
+    ValueTooLargeForWidth(value~, width~, ..) => logger.write_string("Value \{value} is too large for width \{width}")
+    VectorLengthNotFixed(_) => logger.write_string("Vector length must be fixed")
+    CannotGetWidthOfUnresolvedNamedType(_) => logger.write_string("Cannot get width of unresolved named type")
   }
 
   logger.write_string(self.show_context())
@@ -178,7 +187,7 @@ pub impl Show for AstError with output(self, logger) {
 pub impl Spanned for AstError with span(self) -> Span {
   match self {
     ExpectedFixedVectorLength(span~) => span
-    ExpectedIntegerExpression(span~) => span
+    ExpectedIntegerExpression(span~, ..) => span
     NaturalContainsUndeterminedDigit(span~) => span
     ValueTooLargeForWidth(span~, ..) => span
     VectorLengthNotFixed(span~) => span
@@ -418,7 +427,7 @@ pub fn Bits::new(bits: Array[BinaryDigit], value~: Int? = None, span~: Span) -> 
 }
 
 pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError {
-  let required_width = @utils.clog2(value)
+  let required_width = @utils.clog2(value + 1)
 
   match width {
     Some(width) => {
@@ -449,7 +458,7 @@ pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError
 pub fn expect_int(self: Expr) -> Int! {
   match self {
     Natural(bits~, ..) => bits.as_int!()
-    _ => raise ExpectedIntegerExpression(span=self.span())
+    _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
   }
 }
 
@@ -598,5 +607,6 @@ pub fn is_internal(self: Decl) -> Bool {
   match self {
     Module({ attributes, .. }) => attributes.contains("internal")
     ModuleDeclaration(sig) => sig.attributes.contains("internal")
+    Const(_) => false
   }
 }

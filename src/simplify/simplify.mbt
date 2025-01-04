@@ -3,6 +3,7 @@ pub struct Simplifier {
   genvars: @elaborate.Scope[Int]
   names: @elaborate.Scope[UniqueName]
   name_counts: Map[String, Int]
+  consts: @elaborate.Scope[@parse.Expr]
 }
 
 struct UniqueName {
@@ -24,6 +25,7 @@ pub fn Simplifier::new() -> Simplifier {
     genvars: @elaborate.Scope::new(),
     names: @elaborate.Scope::new(),
     name_counts: {},
+    consts: @elaborate.Scope::new(),
   }
 }
 
@@ -45,6 +47,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 5. Rewrite replication expressions into concatenation expressions
 // 6. Remove unecessary spreads
 // 7. Rewrite flat constant vectors to natural expressions
+// 8. Hardcode constant references
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
@@ -54,7 +57,10 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr) -> @parse.Expr! {
           Some(value) => @parse.Expr::Natural(bits=@parse.Bits::from!(value, span~), width=None, base=10, span~, ty~)
           None => match self.names.resolve(name) {
             Some(unique_name) => @parse.Expr::Identifier(name=unique_name.to_string(), span~, ty~)
-            None => expr
+            None => match self.consts.resolve(name) {
+              Some(const_expr) => const_expr
+              None => expr
+            }
           }
         }
       }
@@ -211,10 +217,14 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt) -> Array[@parse.Stmt]!
 
       simplified_body
     }
+    Const(decl~, span=_) => {
+      self.consts.declare!(decl.name, decl.expr)
+      []
+    }
   }
 }
 
-pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl! {
+pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl?! {
   match decl {
     Module({ name, params, attributes, ports, body, span }) => {
       let simplified_body = []
@@ -223,10 +233,14 @@ pub fn simplify_decl(self: Simplifier, decl: @parse.Decl) -> @parse.Decl! {
         simplified_body.push_iter(self.simplify_stmt!(stmt).iter())
       }
 
-      @parse.Decl::Module({ name, params, attributes, ports, body: simplified_body, span })
+      Some(@parse.Decl::Module({ name, params, attributes, ports, body: simplified_body, span }))
     }
     ModuleDeclaration(sig) => {
-      @parse.Decl::ModuleDeclaration(sig)
+      Some(@parse.Decl::ModuleDeclaration(sig))
+    }
+    Const(decl) => {
+      self.consts.declare!(decl.name, decl.expr)
+      None
     }
   }
 }

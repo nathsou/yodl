@@ -6,30 +6,31 @@
 
 // outputs a 1 for one clock cycle once every `CYCLES` clock cycles
 module Timer<CYCLES>(clk: logic) -> (q: logic) {
-    let counter = Reg<$clog2(CYCLES)>(clk);
+    const width = $clog2(CYCLES);
+    let counter = Reg<width>(clk);
     let end = counter.q == CYCLES;
-    counter.d = end ? $clog2(CYCLES)x{1'0} : counter.q + 1;
+    counter.d = end ? width x {1'0} : counter.q + 1;
     q = end;
 }
 
-module SevenSegment(char: logic[4]) -> (segs: logic[8]) {
+module SevenSegment(char: logic[4]) -> (segs: logic[7]) {
     segs = match char {
-        4'h0 => 8'b0111111,
-        4'h1 => 8'b0000110,
-        4'h2 => 8'b1011011,
-        4'h3 => 8'b1001111,
-        4'h4 => 8'b1100110,
-        4'h5 => 8'b1101101,
-        4'h6 => 8'b1111101,
-        4'h7 => 8'b0000111,
-        4'h8 => 8'b1111111,
-        4'h9 => 8'b1100111,
-        4'ha => 8'b1110111,
-        4'hb => 8'b1111100,
-        4'hc => 8'b0111001,
-        4'hd => 8'b1011110,
-        4'he => 8'b1111001,
-        4'hf => 8'b1110001,
+        4'h0 => 7'b0111111,
+        4'h1 => 7'b0000110,
+        4'h2 => 7'b1011011,
+        4'h3 => 7'b1001111,
+        4'h4 => 7'b1100110,
+        4'h5 => 7'b1101101,
+        4'h6 => 7'b1111101,
+        4'h7 => 7'b0000111,
+        4'h8 => 7'b1111111,
+        4'h9 => 7'b1100111,
+        4'ha => 7'b1110111,
+        4'hb => 7'b1111100,
+        4'hc => 7'b0111001,
+        4'hd => 7'b1011110,
+        4'he => 7'b1111001,
+        4'hf => 7'b1110001,
     };
 }
 
@@ -52,7 +53,7 @@ module Segments(
     };
 
     sel = active_seg.sel;
-    segs = not SevenSegment(char: active_seg.char).segs;
+    segs = [1'b0, ...(not SevenSegment(char: active_seg.char).segs)];
 }
 
 module Top(

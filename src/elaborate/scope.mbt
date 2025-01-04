@@ -51,3 +51,11 @@ pub fn resolve[T](self: Scope[T], name: String) -> T? {
 pub fn remove[T](self: Scope[T], name: String) -> Unit {
   self.members.remove(name)
 }
+
+pub fn members[T](self: Scope[T]) -> Iter[String] {
+  self.members.keys()
+}
+
+pub fn values[T](self: Scope[T]) -> Iter[T] {
+  self.members.values()
+}

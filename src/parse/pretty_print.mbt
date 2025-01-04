@@ -318,6 +318,23 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
   }
 }
 
+fn emit_const_decl(self: AstEmitter, decl: ConstDecl) -> Unit {
+  self.write("const ")
+  self.write(decl.name)
+
+  match decl.ty {
+    Some(ty) => {
+      self.write(": ")
+      self.write(ty.to_string())
+    }
+    None => ()
+  }
+
+  self.write(" = ")
+  self.emit_expr(decl.expr)
+  self.write(";")
+}
+
 pub fn emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
   self.write_indent()
 
@@ -392,6 +409,9 @@ pub fn emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
       self.indent -= 1
       self.write_indent()
       self.write("}")
+    }
+    Const(decl~, ..) => {
+      self.emit_const_decl(decl)
     }
   }
 }
@@ -588,6 +608,9 @@ pub fn emit_decl(self: AstEmitter, decl: Decl) -> Unit {
     ModuleDeclaration(sig) => {
       self.emit_module_sig(sig)
       self.write(";")
+    }
+    Const(decl) => {
+      self.emit_const_decl(decl)
     }
   }
 }

@@ -2,11 +2,10 @@
 pub struct VerilogExporter {
   rtlil_modules: Array[@rtlil.Module]
   verilog_decls: Array[Decl]
-  names: Set[String]
 }
 
 pub fn VerilogExporter::new(modules: Array[@rtlil.Module]) -> VerilogExporter {
-  { rtlil_modules: modules, verilog_decls: [], names: Set::new() }
+  { rtlil_modules: modules, verilog_decls: [] }
 }
 
 pub type! VerilogExportError {
@@ -101,9 +100,10 @@ fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Uni
       let { op, a, b, y, .. } = self.extract_binop_cell!(cell)
       mod.body.push(Assign(lhs=y, rhs=Binary(op~, lhs=a, rhs=b), kind=Continous))
     }
-    GenId("dff" | "adff" | "adffe" | "sdff" | "sdffe" as cell_type) => {
+    GenId("dff" | "dffe" | "adff" | "adffe" | "sdff" | "sdffe" as cell_type) => {
       let (uses_reset, uses_enable, sync_reset) = match cell_type {
         "dff" => (false, false, false)
+        "dffe" => (false, true, false)
         "adff" => (true, false, false)
         "adffe" => (true, true, false)
         "sdff" => (true, false, true)

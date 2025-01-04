@@ -26,6 +26,7 @@ pub type! ElaboratorError {
   MissingMatchCase(index~: Int, span~: @parse.Span)
   ReplicateExprAfterSimplification(span~: @parse.Span)
   FunctionCallAfterSimplification(span~: @parse.Span)
+  ConstDeclAfterSimplification(span~: @parse.Span)
 }
 
 pub impl Show for ElaboratorError with output(self, logger) -> Unit {
@@ -76,6 +77,9 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     FunctionCallAfterSimplification(..) => {
       logger.write_string("Function call after simplification")
     }
+    ConstDeclAfterSimplification(..) => {
+      logger.write_string("Const declaration after simplification")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -98,6 +102,7 @@ pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
     MissingMatchCase(span~, ..) => span
     ReplicateExprAfterSimplification(span~, ..) => span
     FunctionCallAfterSimplification(span~, ..) => span
+    ConstDeclAfterSimplification(span~, ..) => span
   }
 }
 
@@ -979,6 +984,9 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
         self.elaborate_stmt!(stmt, mod)
       }
     }
+    Const(span~, ..) => {
+      raise ConstDeclAfterSimplification(span~)
+    }
   }
 }
 
@@ -990,6 +998,9 @@ pub fn elaborate_decl(self: Elaborator, decl: @parse.Decl) -> Unit! {
     }
     ModuleDeclaration(sig) => {
       self.declared_modules[sig.name] = sig
+    }
+    Const(decl) => {
+      raise ConstDeclAfterSimplification(span=decl.span)
     }
   }
 }
