@@ -99,17 +99,13 @@ impl Show for Bits with output(self, logger) {
 
 fn precedence(self: BinaryOp) -> Int {
   match self {
-    Mul | Div | Mod => 12
-    Shl | Shr => 11
-    Add | Sub => 10
-    And => 9
-    Or => 8
-    Xor => 7
-    Nand => 6
-    Nor => 5
-    Xnor => 4
-    Equ | Neq => 3
-    Lss | Gtr | Leq | Geq => 2
+    Mul | Div | Mod => 8
+    Add | Sub => 7
+    Shl | Shr => 6
+    Lss | Gtr | Leq | Geq => 5
+    Equ | Neq => 4
+    And | Nand => 3
+    Or | Nor | Xor | Xnor => 2
     Ternary => 1
   }
 }
@@ -169,6 +165,7 @@ pub type! AstError {
   ValueTooLargeForWidth(value~: Int, width~: Int, span~: Span)
   VectorLengthNotFixed(span~: Span)
   CannotGetWidthOfUnresolvedNamedType(span~: Span)
+  InvalidFunCallArity(name~: String, expected~: Int, actual~: Int, span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -179,6 +176,7 @@ pub impl Show for AstError with output(self, logger) {
     ValueTooLargeForWidth(value~, width~, ..) => logger.write_string("Value \{value} is too large for width \{width}")
     VectorLengthNotFixed(_) => logger.write_string("Vector length must be fixed")
     CannotGetWidthOfUnresolvedNamedType(_) => logger.write_string("Cannot get width of unresolved named type")
+    InvalidFunCallArity(name~, expected~, actual~, ..) => logger.write_string("Function '\{name}' expected \{expected} argument(s), but got \{actual}")
   }
 
   logger.write_string(self.show_context())
@@ -192,6 +190,7 @@ pub impl Spanned for AstError with span(self) -> Span {
     ValueTooLargeForWidth(span~, ..) => span
     VectorLengthNotFixed(span~) => span
     CannotGetWidthOfUnresolvedNamedType(span~) => span
+    InvalidFunCallArity(span~, ..) => span
   }
 }
 
@@ -264,7 +263,10 @@ impl Spanned with show_context(self) -> String {
   let span = self.span()
   let builder = StringBuilder::new()
 
-  builder.write_string(", \{span.to_string()}")
+  builder.write_string(", ")
+  builder.write_string("\x1b[4m")
+  builder.write_string("\{span}")
+  builder.write_string("\x1b[0m")
   
   match span.context?() {
     Ok(ctx) => {
@@ -345,9 +347,15 @@ pub fn is_constant_expr(self: Expr) -> Bool {
 }
 
 // perform partial evaluation on the expression
-pub fn partial_eval(self: Expr) -> Expr! {
+pub fn partial_eval(self: Expr, params~: Map[String, Int] = {}) -> Expr! {
   rewrite_expr!(self, fn!(expr) {
     match expr {
+      Identifier(name~, ..) => {
+        match params[name] {
+          Some(value) => Natural(bits=Bits::from!(value, span=expr.span()), width=None, base=10, span=expr.span(), ty=expr.ty())
+          None => expr
+        }
+      }
       Binary(op = Add | Sub | Mul | Div | Mod as op, lhs~, rhs~, span~, ty~) => {
         match (lhs.expect_int?(), rhs.expect_int?()) {
           (Ok(lhs), Ok(rhs)) => {
@@ -387,9 +395,53 @@ pub fn partial_eval(self: Expr) -> Expr! {
           _ => expr
         }
       }
+      FunCall(name~, args~, span~, ty=_) => {
+        let fun = match builtin_functions[name] {
+          Some(fun) => fun
+          None => return expr
+        }
+
+        if args.length() != fun.arity {
+          raise InvalidFunCallArity(name~, expected=fun.arity, actual=args.length(), span~)
+        }
+
+        (fun.apply)!(args, span)
+      }
       _ => expr
     }
   })
+}
+
+struct BuiltinFunction {
+  arity: Int
+  apply: (Array[Expr], Span) -> Expr!
+}
+
+let builtin_functions: Map[String, BuiltinFunction] = {
+  "$clog2": {
+    arity: 1,
+    apply: fn(args, span) {
+      let arg = args[0].expect_int!()
+      let value = @utils.clog2(arg)
+      nat!(value, span~)
+    }
+  },
+  "$pow": {
+    arity: 2,
+    apply: fn(args, span) {
+      let base = args[0].expect_int!()
+      let exp = args[1].expect_int!()
+      nat!(@utils.pow(base, exp), span~)
+    }
+  },
+  "$cdiv": {
+    arity: 2,
+    apply: fn(args, span) {
+      let dividend = args[0].expect_int!()
+      let divisor = args[1].expect_int!()
+      nat!(@utils.cdiv(dividend, divisor), span~)
+    }
+  },
 }
 
 pub fn as_int(self: Bits) -> Int!AstError {
@@ -509,10 +561,13 @@ pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
   match self {
     Nat => Nat
     Logic => Logic
-    Vector(ty~, len=Dynamic(Identifier(name~, ..)) as len) => {
-      Vector(ty=substitute(ty, params_env~), len=match params_env[name] {
-        Some(value) => Fixed(value)
-        None => len
+    Vector(ty~, len=Dynamic(expr)) => {
+      Vector(ty=substitute(ty, params_env~), len=match expr.partial_eval?(params=params_env) {
+        Ok(Natural(bits~, ..)) => match bits.as_int?() {
+          Ok(value) => Fixed(value)
+          _ => Dynamic(expr)
+        }
+        _ => Dynamic(expr)
       })
     }
     Vector(ty~, len~) => Vector(ty=substitute(ty, params_env~), len~)
@@ -549,7 +604,7 @@ pub fn signature(self: ModuleDecl) -> ModuleSignature {
 }
 
 pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
-  match self {
+  let wy = match self {
     Add => @utils.max(wa, wb) + 1
     Sub => @utils.max(wa, wb)
     Mul => wa + wb
@@ -571,6 +626,9 @@ pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
     Xnor => @utils.max(wa, wb)
     Ternary => @utils.max(wa, wb)
   }
+
+  println("output_width: \{wa} \{self} \{wb} -> \{wy}")
+  wy
 }
 
 pub fn inputs(self: ModuleSignature) -> Iter[Port] {

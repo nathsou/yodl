@@ -429,7 +429,7 @@ impl Show for StructField with output(field, logger) {
 
 pub impl Show for Type with output(ty, logger) {
   match ty {
-    Nat => {
+    Nat(_) => {
       logger.write_string("nat")
     }
     Logic => {

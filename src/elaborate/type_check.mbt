@@ -355,15 +355,15 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                     let subst = {}
                     let accessed_ports = Set::new()
 
-                    for idx, param in params {
-                        subst[sig.params[idx]] = param.expect_int!()
+                    for name, param in @utils.zip2(sig.params, params) {
+                        subst[name] = param.expect_int!()
                     }
 
                     for port_name, expr in ports {
                         match sig.get_port(port_name) {
                             Some(port_def) => {
-                                let expr_ty = self.check_expr!(expr, env)
-                                let _ = unify!(port_def.ty, expr_ty, span~, subst~)
+                                let expr_ty = self.check_expr!(expr, env).substitute(params_env=subst)
+                                let _ = unify!(port_def.ty.substitute(params_env=subst), expr_ty, span=expr.span(), subst~)
                             }
                             None => raise UnknownModulePort(module_name=name, port_name=port_name, span~)
                         }
@@ -571,12 +571,13 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
             let start_ty = self.check_expr!(range.start, env)
             let end_ty = self.check_expr!(range.end, env)
 
-            if start_ty != @parse.Nat || end_ty != @parse.Nat {
-                raise ExpectedConstantExpr(span~)
+            match (start_ty, end_ty) {
+                (Nat(_), Nat(_)) => ()
+                _ => raise ExpectedConstantExpr(span~)
             }
 
             let body_env = env.child()
-            body_env.declare!(var, @parse.Nat)
+            body_env.declare!(var, end_ty)
 
             for stmt in body {
                 self.check_stmt!(stmt, body_env)

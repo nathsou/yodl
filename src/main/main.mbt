@@ -158,6 +158,10 @@ fn main {
         @sys.exit(1)
       }
 
+      if not(@fs.path_exists(path="output/")) {
+        @fs.create_dir(path="output/")
+      }
+
       let file_name = path.split("/").last().unwrap().replace(old=".yodl", new="")
       let commands = [
         // WriteSource,
@@ -170,7 +174,7 @@ fn main {
       match run?(path, commands) {
         Ok(_) => ()
         Err(error) => {
-          println("\x1b[1;31m\{error}")
+          println(error)
           @sys.exit(1)
         }
       }

@@ -25,7 +25,6 @@ pub fn Monomorphizer::new() -> Monomorphizer {
 pub type! MonomorphizerError {
   ModuleNotFound(name~: String, span~: @parse.Span)
   InvalidModuleParameterCount(name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
-  InvalidFunCallArity(name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
 }
 
 pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
@@ -36,9 +35,6 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     InvalidModuleParameterCount(name~, expected~, actual~, ..) => {
       logger.write_string("Module '\{name}' expected \{expected} parameter(s), but got \{actual}")
     }
-    InvalidFunCallArity(name~, expected~, actual~, ..) => {
-      logger.write_string("Function '\{name}' expected \{expected} argument(s), but got \{actual}")
-    }
   }
 
   logger.write_string(self.show_context())
@@ -48,7 +44,6 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
   match self {
     ModuleNotFound(span~, ..) => span
     InvalidModuleParameterCount(span~, ..) => span
-    InvalidFunCallArity(span~, ..) => span
   }
 }
 
@@ -158,18 +153,6 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @
         }
 
         @parse.Expr::Instance(name=mono_name, params=mono_params, ports=mono_ports, span~, ty~)
-      }
-      FunCall(name~, args~, span~, ty=_) => {
-        let fun = match builtin_functions[name] {
-          Some(fun) => fun
-          None => return expr
-        }
-
-        if args.length() != fun.arity {
-          raise InvalidFunCallArity(name~, expected=fun.arity, actual=args.length(), span~)
-        }
-
-        (fun.apply)!(args, span)
       }
       _ => expr
     }).partial_eval!()
@@ -338,36 +321,4 @@ pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@pa
   }
 
   monomorphized
-}
-
-struct BuiltinFunction {
-  arity: Int
-  apply: (Array[@parse.Expr], @parse.Span) -> @parse.Expr!
-}
-
-let builtin_functions: Map[String, BuiltinFunction] = {
-  "$clog2": {
-    arity: 1,
-    apply: fn(args, span) {
-      let arg = args[0].expect_int!()
-      let value = @utils.clog2(arg)
-      @parse.Expr::nat!(value, span~)
-    }
-  },
-  "$pow": {
-    arity: 2,
-    apply: fn(args, span) {
-      let base = args[0].expect_int!()
-      let exp = args[1].expect_int!()
-      @parse.Expr::nat!(@utils.pow(base, exp), span~)
-    }
-  },
-  "$cdiv": {
-    arity: 2,
-    apply: fn(args, span) {
-      let dividend = args[0].expect_int!()
-      let divisor = args[1].expect_int!()
-      @parse.Expr::nat!(@utils.cdiv(dividend, divisor), span~)
-    }
-  },
 }

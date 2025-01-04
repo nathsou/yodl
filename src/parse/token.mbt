@@ -47,9 +47,13 @@ pub fn context(self: Span, window_size~: Int = 3) -> String! {
           window.write_char(' ')
         }
 
+        window.write_string("\x1b[1;31m")
+
         for _ in self.start.1..<self.end.1 {
           window.write_char('^')
         }
+
+        window.write_string("\x1b[0m")
       }
 
       window.write_char('\n')

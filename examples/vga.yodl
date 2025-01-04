@@ -9,6 +9,7 @@ module VGASyncPulses(
     vsync: logic,
     col: logic[10],
     row: logic[10],
+    is_active_area: logic,
 ) {
     const H_FRONT_PORCH = 16;
     const H_SYNC_PULSE = 96;
@@ -31,6 +32,7 @@ module VGASyncPulses(
 
     hsync = (col_reg.q >= (H_ACTIVE + H_FRONT_PORCH)) and (col_reg.q < (H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE));
     vsync = (row_reg.q >= (V_ACTIVE + V_FRONT_PORCH)) and (row_reg.q < (V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE));
+    is_active_area = col_reg.q < H_ACTIVE and row_reg.q < V_ACTIVE;
     col = col_reg.q;
     row = row_reg.q;
 }
@@ -46,8 +48,7 @@ module Top(
     vga_blue: logic[3],
 ) {
     let vga = VGASyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
-    let is_active_area = vga.col < H_ACTIVE and vga.row < V_ACTIVE;
-    let is_white = is_active_area and (vga.row[0] and vga.col[0]);
+    let is_white = vga.is_active_area and (vga.row[0] and vga.col[0]);
     let color = is_white ? 3'b111 : 3'b000;
 
     vga_red = color;

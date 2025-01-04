@@ -27,6 +27,7 @@ pub type! ElaboratorError {
   ReplicateExprAfterSimplification(span~: @parse.Span)
   FunctionCallAfterSimplification(span~: @parse.Span)
   ConstDeclAfterSimplification(span~: @parse.Span)
+  UnknownModuleMarkedAsInternal(name~: String, span~: @parse.Span)
 }
 
 pub impl Show for ElaboratorError with output(self, logger) -> Unit {
@@ -80,6 +81,9 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     ConstDeclAfterSimplification(..) => {
       logger.write_string("Const declaration after simplification")
     }
+    UnknownModuleMarkedAsInternal(name~, ..) => {
+      logger.write_string("Unknown module marked as internal: '\{name}'")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -103,6 +107,7 @@ pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
     ReplicateExprAfterSimplification(span~, ..) => span
     FunctionCallAfterSimplification(span~, ..) => span
     ConstDeclAfterSimplification(span~, ..) => span
+    UnknownModuleMarkedAsInternal(span~, ..) => span
   }
 }
 
@@ -621,7 +626,7 @@ fn elaborate_expr(
               attributes=src_attribute(span),
             )
           }
-          _ => raise Unsupported(message="Unknown internal module \"\{name}\"", span~)
+          _ => raise UnknownModuleMarkedAsInternal(name~, span~)
         }
       } else {
         let cell_type = match attributes["alias"] {
