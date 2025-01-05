@@ -28,9 +28,10 @@ pub type! ElaboratorError {
   FunctionCallAfterSimplification(span~: @parse.Span)
   ConstDeclAfterSimplification(span~: @parse.Span)
   UnknownModuleMarkedAsInternal(name~: String, span~: @parse.Span)
-  InvalidMemoryInitValue(span~: @parse.Span, expected_size~: Int, actual_size~: Int)
+  InvalidMemoryInitValue(span~: @parse.Span, expected_size~: Int, actual_size~: Int?)
   StringAfterSimplification(span~: @parse.Span)
   MissingConnectionOnWriteableRAMInstance(missing_connection~: String, span~: @parse.Span)
+  UnknownModuleParameter(name~: String, span~: @parse.Span)
 }
 
 pub impl Show for ElaboratorError with output(self, logger) -> Unit {
@@ -96,6 +97,9 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     MissingConnectionOnWriteableRAMInstance(missing_connection~, ..) => {
       logger.write_string("Missing connection on writeable RAM instance: '\{missing_connection}'")
     }
+    UnknownModuleParameter(name~, ..) => {
+      logger.write_string("Unknown module parameter: '\{name}'")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -123,6 +127,7 @@ pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
     InvalidMemoryInitValue(span~, ..) => span
     StringAfterSimplification(span~, ..) => span
     MissingConnectionOnWriteableRAMInstance(span~, ..) => span
+    UnknownModuleParameter(span~, ..) => span
   }
 }
 
@@ -190,7 +195,15 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
     Instance(sig={ name, span, .. }, params~, accessed_ports=_) => {
       let inst: @parse.Expr = @parse.Expr::Instance(
         name~,
-        params=@utils.map!(params.values().collect(), fn(p) { p.as_expr!(span~) } ),
+        params={
+          let new_params: Array[@parse.InstanceParam] = Array::new(capacity=params.size())
+
+          for name, param in params {
+            new_params.push({ name: Some(name), value: param.as_expr!(span~) })
+          }
+
+          new_params
+        },
         ports={},
         span~,
         ty={ val: Some(ty) },
@@ -255,7 +268,7 @@ fn src_attribute(span: @parse.Span) -> Map[@rtlil.Id, @rtlil.Constant] {
 }
 
 fn map_attributes(attributes: Map[String, @parse.AttributeValue]) -> Map[@rtlil.Id, @rtlil.Constant] {
-  let mapped = {}
+  let mapped = Map::new(capacity=attributes.size())
 
   for name, value in attributes {
     match value {
@@ -272,7 +285,7 @@ fn map_attributes(attributes: Map[String, @parse.AttributeValue]) -> Map[@rtlil.
 }
 
 fn map_signals(signals: Map[String, @rtlil.Signal]) -> Map[@rtlil.Id, @rtlil.Signal] {
-  let mapped = {}
+  let mapped = Map::new(capacity=signals.size())
 
   for name, sig in signals {
     mapped[@rtlil.PubId(name)] = sig
@@ -282,7 +295,7 @@ fn map_signals(signals: Map[String, @rtlil.Signal]) -> Map[@rtlil.Id, @rtlil.Sig
 }
 
 fn map_parameters(parameters: Map[String, @rtlil.Constant]) -> Map[@rtlil.Id, @rtlil.Constant] {
-  let mapped = {}
+  let mapped = Map::new(capacity=parameters.size())
 
   for name, value in parameters {
     mapped[@rtlil.PubId(name)] = value
@@ -498,7 +511,7 @@ fn elaborate_expr(
         raise Unreachable(message="Parameterized instance after simplification", span~)
       }
 
-      let (port_widths, param_names, attributes) = match self.modules[name] {
+      let (port_widths, params_map, attributes) = match self.modules[name] {
         Some(mod) => {
           let port_widths = {}
 
@@ -511,14 +524,15 @@ fn elaborate_expr(
             }
           }
 
-          (port_widths, [], {})
+          (port_widths, {}, {})
         }
         None => match self.declared_modules[name] {
           Some(sig) => {
-            let port_widths = {}
-            let params_env = {}
+            let port_widths = Map::new(capacity=sig.ports.length())
+            let params_map = @parse.instance_params_to_map!(params, names=sig.params)
+            let params_env = Map::new(capacity=params_map.size())
 
-            for name, param in @utils.zip2(sig.params, params) {
+            for name, param in params_map {
               params_env[name] = param.as_param!()
             }
 
@@ -526,7 +540,7 @@ fn elaborate_expr(
               port_widths[port.name] = port.ty.substitute(params_env~).width!(port.span)
             }
 
-            (port_widths, sig.params, sig.attributes)
+            (port_widths, params_map, sig.attributes)
           }
           None => raise ElaboratorError::UnknownModule(name~, span~)
         }
@@ -582,9 +596,16 @@ fn elaborate_expr(
           ports.contains(port_name) || accessed_ports.contains(port_name)
         }
 
+        fn parameter(name: String) -> @parse.Expr! {
+          match params_map[name] {
+            Some(param) => param
+            None => raise UnknownModuleParameter(name~, span~)
+          }
+        }
+
         match name {
           "Reg" | "RegSyncReset" => {
-            let width = params[0].expect_int!()
+            let width = parameter!("Width").expect_int!()
             let sync_reset = name == "RegSyncReset"
             let uses_rst = uses_port("rst")
             let uses_en = uses_port("en")
@@ -651,17 +672,17 @@ fn elaborate_expr(
             )
           }
           "RAM" => {
-            let width = params[0].expect_int!()
-            let depth = params[1].expect_int!()
+            let width = parameter!("Width").expect_int!()
+            let depth = parameter!("Depth").expect_int!()
             let abits = @utils.clog2(depth + 1)
 
-            let init = match params.get(2) {
+            let init = match params_map["Init"] {
               Some(Natural(bits~, width=Some(init_width), ..)) => {
                 if init_width != depth * width {
                   raise InvalidMemoryInitValue(
                     span~,
                     expected_size=depth * width,
-                    actual_size=init_width,
+                    actual_size=Some(init_width),
                   )
                 }
 
@@ -670,7 +691,7 @@ fn elaborate_expr(
               _ => raise InvalidMemoryInitValue(
                 span~,
                 expected_size=depth * width,
-                actual_size=params[2].ty().val.unwrap().width!(span),
+                actual_size=None,
               )
             }
 
@@ -798,10 +819,10 @@ fn elaborate_expr(
           attributes=src_attribute(span),
           connections~,
           parameters={
-            let parameters: Map[@rtlil.Id, @rtlil.Constant] = {}
+            let parameters: Map[@rtlil.Id, @rtlil.Constant] = Map::new(capacity=params_map.size())
 
-            for idx, param in params {
-              parameters[@rtlil.PubId(param_names[idx])] = @rtlil.ConstInteger(param.expect_int!())
+            for name, param in params_map {
+              parameters[@rtlil.PubId(name)] = @rtlil.ConstInteger(param.expect_int!())
             }
 
             parameters

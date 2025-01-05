@@ -31,7 +31,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
       let new_params = Array::new(capacity=params.length())
 
       for param in params {
-        new_params.push(rewrite_expr!(param, rewrite))
+        new_params.push({ name: param.name, value: rewrite_expr!(param.value, rewrite) })
       }
 
       let new_ports = Map::new(capacity=ports.size())

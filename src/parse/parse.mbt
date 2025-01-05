@@ -93,7 +93,7 @@ fn parse_integer(self: Parser) -> ParsedInteger!ParserError {
 
 fn span(self: Parser, start_idx: Int) -> Span {
   let start = self.tokens[start_idx].span.start
-  let end = self.tokens[self.index - 1].span.end
+  let end = self.tokens[@utils.clamp(self.index - 1, min=0, max=self.tokens.length() - 1)].span.end
   { file: self.file, start, end }
 }
 
@@ -362,7 +362,25 @@ fn parse_vector_expr(self: Parser) -> Expr! {
 
 fn parse_instance_expr(self: Parser, module_name~: String) -> Expr! {
   let start_idx = self.index
-  let params = self.parse_module_parameter_list!(Parser::parse_expr)
+  let params = self.parse_module_parameters!(fn(sub_parser) {
+    let start_idx = sub_parser.index
+
+    match sub_parser.parse_identifier?() {
+      Ok(name) => {
+        if sub_parser.consumes(Colon) {
+          let param = sub_parser.parse_expr!()
+          { name: Some(name), value: param }
+        } else {
+          let param = Expr::Identifier(name~, span=sub_parser.span(start_idx), ty={ val: None })
+          { name: None, value: param }
+        }
+      }
+      _ => {
+        { name: None, value: sub_parser.parse_expr!() }
+      }
+    }
+  })
+
   self.expect!(Lparen, start_idx)
   let ports = {}
 
@@ -371,8 +389,7 @@ fn parse_instance_expr(self: Parser, module_name~: String) -> Expr! {
     let name = self.parse_identifier!()
     
     if self.consumes(Colon) {
-      let expr = self.parse_expr!()
-      ports[name] = expr
+      ports[name] = self.parse_expr!()
     } else {
       ports[name] = Identifier(name~, span=self.span(start_idx), ty={ val: None })
     }
@@ -628,7 +645,7 @@ fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]! {
   ports
 }
 
-fn parse_module_parameter_list[T](self: Parser, parse_elem: (Parser) -> T!) -> Array[T]! {
+fn parse_module_parameters[T](self: Parser, parse_elem: (Parser) -> T!) -> Array[T]! {
   if self.consumes(Lchevron) {
     let start_idx = self.index
     let params = []
@@ -728,7 +745,7 @@ fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> 
   let start_idx = self.index
   self.expect!(Module, start_idx)
   let name = self.parse_identifier!()
-  let params = self.parse_module_parameter_list!(Parser::parse_identifier)
+  let params = self.parse_module_parameters!(Parser::parse_identifier)
   let inputs = self.parse_port_list!(dir=Input)
   self.expect!(RightThinArrow, start_idx)
   let outputs = self.parse_port_list!(dir=Output)

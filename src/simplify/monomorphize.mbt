@@ -8,7 +8,7 @@ pub struct Monomorphizer {
 }
 
 pub struct MonomorphizedModule {
-  params: Array[@parse.Param]
+  params: Map[String, @parse.Param]
   mod: @parse.ModuleDecl
 }
 
@@ -75,7 +75,7 @@ fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv) -> @pa
 fn register_monomorphized_module(
   self: Monomorphizer,
   name~: String,
-  params~: Array[@parse.Param],
+  params~: Array[@parse.InstanceParam],
   span~: @parse.Span,
 ) -> @parse.ModuleDecl! {
     let mod_decl = match self.parameterized[name] {
@@ -95,14 +95,24 @@ fn register_monomorphized_module(
     None => []
   }
 
+  let params_map = {
+    let map = Map::new(capacity=params.length())
+
+    for name, expr in @parse.instance_params_to_map!(params, names=mod_decl.params) {
+      map[name] = expr.as_param!()
+    } 
+
+    map
+  }
+
   for inst in monomorphized {
-    if inst.params == params {
+    if inst.params == params_map {
       return inst.mod
     }
   }
 
-  let mono_mod = self.monomorphize_module!(mod=mod_decl, params~)
-  monomorphized.push({ params, mod: mono_mod })
+  let mono_mod = self.monomorphize_module!(mod=mod_decl, params=params_map)
+  monomorphized.push({ params: params_map, mod: mono_mod })
   self.monomorphized[name] = monomorphized
   self.modules[mono_mod.name] = mono_mod
 
@@ -121,24 +131,16 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @
         }
       }
       Instance(name~, params~, ports~, span~, ty~) => {
-        let mono_params = []
+        let mono_params: Array[@parse.InstanceParam] = Array::new(capacity=params.length())
 
         for param in params {
-          mono_params.push(self.monomorphize_expr!(param, env~))
+          mono_params.push({ name: param.name, value: self.monomorphize_expr!(param.value, env~) })
         }
 
         let (mono_name, mono_params) = if params.length() > 0 && not(self.declared_modules.contains(name)) {
           let mod = self.register_monomorphized_module!(
             name~,
-            params={
-              let params = []
-
-              for expr in mono_params {
-                params.push(expr.as_param!())
-              }
-
-              params
-            },
+            params=mono_params,
             span~,
           )
 
@@ -147,7 +149,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @
           (name, mono_params)
         }
 
-        let mono_ports = {}
+        let mono_ports = Map::new(capacity=ports.size())
 
         for port_name, port_expr in ports {
           mono_ports[port_name] = self.monomorphize_expr!(port_expr, env~)
@@ -182,7 +184,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv) -> @
           if params.length() > 0 {
             let _ = self.register_monomorphized_module!(
               name~,
-              params~,
+              params=@utils.map!(params, fn(param) { { name: None, value: param.as_expr!(span~) } }),
               span~,
             )
           }
@@ -235,10 +237,10 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv) -> @
   }
 }
 
-fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Array[@parse.Param]) -> @parse.ModuleDecl! {
+fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Map[String, @parse.Param]) -> @parse.ModuleDecl! {
   let child_env = self.top_env.child()
 
-  for name, param in @utils.zip2(mod.params, params) {
+  for name, param in params {
     child_env.declare!(name, Param(param))
   }
 
@@ -268,9 +270,15 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ar
       } else {
         let builder = StringBuilder::new()
         builder.write_string(mod.name)
-        if params.length() > 0 {
+        if params.size() > 0 {
           builder.write_char('_')
-          builder.write_string(String::concat(params.map(fn(n) { n.to_string() }), separator="_"))
+          let values = Array::new(capacity=params.size())
+
+          for param_name in mod.params {
+            values.push(params[param_name].to_string())
+          }
+
+          builder.write_string(String::concat(values, separator="_"))
         }
         builder.to_string()
       }
@@ -290,7 +298,7 @@ pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@pa
     match decl {
       Module(mod) => {
         if mod.params.is_empty() {
-          let mono_mod = self.monomorphize_module!(mod~, params=[])
+          let mono_mod = self.monomorphize_module!(mod~, params={})
           self.modules[mod.name] = mono_mod
         } else {
           self.parameterized[mod.name] = mod

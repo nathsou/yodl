@@ -37,6 +37,10 @@
         {
             "name": "entity.name.identifier.yodl",
             "match": "\\b[A-Za-z_][A-Za-z0-9_]*\\b"
+        },
+        {
+            "name": "string.quoted.double.yodl",
+            "match": "\"(?:\\\\\"|[^\"])*\""
         }
     ],
     "fileTypes": [

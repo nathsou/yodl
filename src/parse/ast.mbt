@@ -7,7 +7,7 @@ pub(all) enum Expr {
   Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
   Slicing(expr~: Expr, msb~: Expr, lsb~: Expr, span~: Span, ty~: Ref[Type?])
   FieldAccess(expr~: Expr, field~: String, span~: Span, ty~: Ref[Type?])
-  Instance(name~: String, params~: Array[Expr], ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
+  Instance(name~: String, params~: Array[InstanceParam], ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
@@ -43,6 +43,11 @@ pub(all) enum Type {
   Struct(Map[String, Type])
   String(len~: Int)
 } derive(Eq)
+
+pub(all) struct InstanceParam {
+  name: String?
+  value: Expr
+}
 
 pub(all) enum UnaryOp {
   Not
@@ -171,6 +176,8 @@ pub type! AstError {
   ExpectedStringExpression(expr~: Expr, span~: Span)
   ValueTooLargeForInt(span~: Span)
   InvalidModuleParameter(span~: Span)
+  ConflictingInstanceParameterValue(name~: String, span~: Span)
+  UnknownModuleParameter(name~: String, span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -185,6 +192,12 @@ pub impl Show for AstError with output(self, logger) {
     ExpectedStringExpression(expr~, ..) => logger.write_string("Expected a string expression, got: \{expr.ctor()}")
     ValueTooLargeForInt(..) => logger.write_string("Value is too large for an integer")
     InvalidModuleParameter(_) => logger.write_string("Invalid module parameter")
+    ConflictingInstanceParameterValue(name~, ..) => {
+      logger.write_string("Conflicting value for instance parameter '\{name}'")
+    }
+    UnknownModuleParameter(name~, ..) => {
+      logger.write_string("Unknown module parameter '\{name}'")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -202,6 +215,8 @@ pub impl Spanned for AstError with span(self) -> Span {
     ExpectedStringExpression(span~, ..) => span
     ValueTooLargeForInt(span~, ..) => span
     InvalidModuleParameter(span~) => span
+    ConflictingInstanceParameterValue(span~, ..) => span
+    UnknownModuleParameter(span~, ..) => span
   }
 }
 
@@ -234,6 +249,8 @@ pub(all) struct Port {
   optional: Bool
   attributes: Map[String, Attribute]
 }
+
+pub typealias ModuleParams = Map[String, Param]
 
 pub(all) struct ModuleDecl {
     name: String
@@ -528,18 +545,13 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Range(min=1, max=3),
     apply: fn(args, span) {
       let (path, start, end) = match args {
-        [path] => (path.expect_string!(), None, None)
-        [path, start] => (path.expect_string!(), Some(start.expect_int!()), None)
-        [path, start, end] => (path.expect_string!(), Some(start.expect_int!()), Some(end.expect_int!()))
+        [path] => (path.expect_string!(), 0, None)
+        [path, start] => (path.expect_string!(), start.expect_int!(), None)
+        [path, start, end] => (path.expect_string!(), start.expect_int!(), Some(end.expect_int!()))
         _ => raise InvalidFunCallArity(name="$readmemb", expected=Range(min=1, max=3), actual=args.length(), span~)
       }
 
-      let bits = parse_mem_file!(path, base=2)
-      let bits = match (start, end) {
-        (Some(start), None) => bits.split_at(start).1
-        (Some(start), Some(end)) => bits[start:end].iter().collect()
-        _ => bits
-      }
+      let bits = parse_mem_file!(path, base=2, start~, end~)
 
       Expr::Natural(
         bits=Bits::new(bits, span~),
@@ -605,15 +617,16 @@ pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError
   let bits = if value == 0 {
     [Zero]
   } else {
-    let bits_rev = Array::new(capacity=required_width)
-    let mut n = value
+    let bits = Array::new(capacity=required_width)
 
-    while n > 0 {
-      bits_rev.push(if (n & 1) == 0 { Zero } else { One })
-      n = n >> 1
+    for bit in @utils.bin(value, width=required_width) {
+      bits.push(match bit {
+        0 => Zero
+        _ => One
+      })
     }
 
-    bits_rev.rev()
+    bits
   }
 
   { bits, value: Some(value), span }
@@ -679,8 +692,7 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
 
 pub fn substitute(self: Type, params_env~: Map[String, Param]) -> Type {
   match self {
-    Nat => Nat
-    Logic => Logic
+    Nat | Logic | String(_) => self
     Vector(ty~, len=Dynamic(expr)) => {
       Vector(ty=substitute(ty, params_env~), len=match expr.partial_eval?(params=params_env) {
         Ok(Natural(bits~, ..)) => match bits.as_int?() {
@@ -710,7 +722,6 @@ pub fn substitute(self: Type, params_env~: Map[String, Param]) -> Type {
       }
     }
     Struct(fields) => Struct(@utils.map_values(fields, fn(expr) { substitute(expr, params_env~) }))
-    String(len~) => String(len~)
   }
 }
 
@@ -779,10 +790,35 @@ pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> E
   Natural(bits=Bits::from!(n, width~, span~), width~, base~, span~, ty={ val: Some(ty) })
 }
 
-pub fn is_internal(self: Decl) -> Bool {
-  match self {
-    Module({ attributes, .. }) => attributes.contains("internal")
-    ModuleDeclaration(sig) => sig.attributes.contains("internal")
-    Const(_) => false
+pub fn instance_params_to_map(params: Array[InstanceParam], names~: Array[String]) -> Map[String, Expr]!AstError {
+  let map = Map::new(capacity=names.length())
+
+  fn checked_set(name: String, value: Expr) -> Unit!AstError {
+    if not(names.contains(name)) {
+      raise UnknownModuleParameter(name~, span=value.span())
+    }
+
+    if map.contains(name) {
+      raise ConflictingInstanceParameterValue(name~, span=value.span())
+    } else {
+      map[name] = value
+    }
   }
+
+  for idx, param in params {
+    match param.name {
+      Some(name) => {
+        checked_set!(name, param.value)
+      }
+      None => {
+        if idx >= names.length() {
+          raise InvalidModuleParameter(span=param.value.span())
+        }
+
+        checked_set!(names[idx], param.value)
+      }
+    }
+  }
+
+  map
 }

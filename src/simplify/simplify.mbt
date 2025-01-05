@@ -159,7 +159,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
         }
       }
       String(str~, span~, ty=_) => {
-        let ascii = []
+        let ascii = Array::new(capacity=str.length() * 7)
 
         for char in str {
           for bit in @utils.bin(char.to_int(), width=7) {

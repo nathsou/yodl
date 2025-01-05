@@ -52,18 +52,25 @@ module Top(
     let x_div = vga.col[9:2];
     let y_div = vga.row[9:2];
     let cell_idx: logic[15] = y_div * 8'd160 + x_div;
-    let image = RAM<3, 19200, $readmemb("res/york.mem")>(clk, addr: cell_idx);
-    let color_idx = image.data_out;
-    let color = vga.is_active_area ? match color_idx {
-        3'd0 => { r: 3'd3, g: 3'd5, b: 3'd7 },
-        3'd1 => { r: 3'd2, g: 3'd2, b: 3'd2 },
-        3'd2 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        3'd3 => { r: 3'd1, g: 3'd1, b: 3'd0 },
-        3'd4 => { r: 3'd1, g: 3'd1, b: 3'd1 },
-        3'd5 => { r: 3'd7, g: 3'd7, b: 3'd6 },
-        3'd6 => { r: 3'd7, g: 3'd7, b: 3'd7 },
-        3'd7 => { r: 3'd3, g: 3'd3, b: 3'd3 },
-    }: { r: 3'd0, g: 3'd0, b: 3'd0 };
+    let color_idx = RAM<
+        Width: 3,
+        Depth: (H_ACTIVE / 4) * (V_ACTIVE / 4),
+        Init: $readmemb("res/york.mem"),
+    >(clk, addr: cell_idx).data_out;
+
+    let color = match vga.is_active_area {
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'b1 => match color_idx {
+            3'd0 => { r: 3'd3, g: 3'd5, b: 3'd7 },
+            3'd1 => { r: 3'd2, g: 3'd2, b: 3'd2 },
+            3'd2 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+            3'd3 => { r: 3'd1, g: 3'd1, b: 3'd0 },
+            3'd4 => { r: 3'd1, g: 3'd1, b: 3'd1 },
+            3'd5 => { r: 3'd7, g: 3'd7, b: 3'd6 },
+            3'd6 => { r: 3'd7, g: 3'd7, b: 3'd7 },
+            3'd7 => { r: 3'd3, g: 3'd3, b: 3'd3 },
+        },
+    };
 
     vga_red = color.r;
     vga_green = color.g;

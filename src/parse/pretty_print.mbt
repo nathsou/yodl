@@ -153,12 +153,20 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
             self.write(", ")
           }
 
-          match param.as_param?() {
+          match param.name {
+            Some(name) => {
+              self.write(name)
+              self.write(": ")
+            }
+            None => ()
+          }
+
+          match param.value.as_param?() {
             Ok(param) => {
               self.write(param.to_string())
             }
             _ => {
-              self.emit_expr(param)
+              self.emit_expr(expr)
             }
           }
         }

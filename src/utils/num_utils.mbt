@@ -7,6 +7,10 @@ pub fn min(a: Int, b: Int) -> Int {
   if a < b { a } else { b }
 }
 
+pub fn clamp(n: Int, min~: Int, max~: Int) -> Int {
+  if n < min { min } else if n > max { max } else { n }
+}
+
 pub fn sum(iter: Iter[Int]) -> Int {
   iter.fold(fn(a, b) { a + b }, init=0)
 }
@@ -102,14 +106,18 @@ pub fn show_nat(n: Int, base~: Int, width~: Int? = None) -> String {
   }
 }
 
-pub fn bin(n: Int, width~: Int) -> Array[Int] {
-  let bits = Array::new(capacity=width)
-  let mut n = n
+pub fn bin(n: Int, width~: Int) -> Iter[Int] {
+  let mut p = 1 << (width - 1)
 
-  for i in 0..<width {
-    bits.push(n & 1)
-    n = n >> 1
-  }
+  Iter::new(fn(visit: (Int) -> IterResult) -> IterResult {
+    for i in 0..<width {
+      if visit(if (n & p) == 0 { 0 } else { 1 }) == IterEnd {
+        break IterEnd
+      }
 
-  bits.rev()
+      p = p >> 1
+    } else {
+      IterContinue
+    }
+  })
 }

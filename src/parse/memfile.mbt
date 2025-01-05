@@ -9,16 +9,28 @@ pub type! MemFileError {
   Unreachable(String)
 } derive(Show)
 
-pub fn parse_mem_file(path: String, base~: Int) -> Array[BinaryDigit]!MemFileError {
+pub fn parse_mem_file(path: String, base~: Int, start~: Int, end~: Int?) -> Array[BinaryDigit]!MemFileError {
   let contents = match @fs.read_file_to_string?(path~) {
     Ok(contents) => contents
     Err(err) => raise IOError(err)
   }
 
+  let end = match end {
+    Some(end) => end
+    None => @int.max_value
+  }
+
+  let width_factor = match base {
+    2 => 1
+    16 => 4
+    _ => raise InvalidBase(base)
+  };
+
   fn lex() -> Array[String]!MemFileError {
     let values = []
     let mut char_idx = 0
     let mut found_value = false
+    let mut value_index = 0
     let lexeme = StringBuilder::new()
 
     while char_idx < contents.length() {
@@ -28,7 +40,19 @@ pub fn parse_mem_file(path: String, base~: Int) -> Array[BinaryDigit]!MemFileErr
         char_idx += 1
         if found_value {
           found_value = false
-          values.push(lexeme.to_string())
+
+          let value = lexeme.to_string()
+
+          if value_index >= start && value_index < end {
+            values.push(value)
+          }
+
+          value_index += 1
+
+          if value_index >= end {
+            return values
+          }
+
           lexeme.reset()
         }
 
@@ -81,16 +105,11 @@ pub fn parse_mem_file(path: String, base~: Int) -> Array[BinaryDigit]!MemFileErr
   }
 
   let values = lex!()
-  let bits = []
+  let bits = Array::new(capacity=(values.length() - start) * width_factor)
   let mut prev_width = None
-  let width_factor = match base {
-    2 => 1
-    16 => 4
-    _ => raise InvalidBase(base)
-  };
 
   for i = values.length() - 1; i >= 0; i = i - 1 {
-    let value = values[i]
+    let lexeme = values[i]
     let width = values[i].length() * width_factor
 
     match prev_width {
@@ -104,7 +123,7 @@ pub fn parse_mem_file(path: String, base~: Int) -> Array[BinaryDigit]!MemFileErr
       }
     }
 
-    let value = match @strconv.parse_int?(value, base~) {
+    let value = match @strconv.parse_int?(lexeme, base~) {
       Ok(value) => value
       Err(err) => raise StrConvError(err)
     }

@@ -10,23 +10,23 @@ enum Command {
 let builtin_decls: Array[@parse.Decl] = {
   let source =
     #|@internal
-    #|declare module Reg<N>(
+    #|declare module Reg<Width>(
     #|    clk: logic,
-    #|    d: logic[N],
+    #|    d: logic[Width],
     #|    en?: logic,
     #|    rst?: logic,
     #|) -> (
-    #|    q: logic[N],
+    #|    q: logic[Width],
     #|)
     #|
     #|@internal
-    #|declare module RegSyncReset<N>(
+    #|declare module RegSyncReset<Width>(
     #|    clk: logic,
-    #|    d: logic[N],
+    #|    d: logic[Width],
     #|    en?: logic,
     #|    rst?: logic,
     #|) -> (
-    #|    q: logic[N],
+    #|    q: logic[Width],
     #|)
     #|
     #|@internal
