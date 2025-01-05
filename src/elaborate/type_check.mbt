@@ -368,7 +368,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                     let subst = {}
                     let params_env = {}
                     let accessed_ports = Set::new()
-                    let params_map = @parse.instance_params_to_map!(params, names=sig.params)
+                    let params_map = params.as_map!(names=sig.params)
 
                     for name, param in params_map {
                         match param.expect_int?() {

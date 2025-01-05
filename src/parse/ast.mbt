@@ -7,7 +7,7 @@ pub(all) enum Expr {
   Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
   Slicing(expr~: Expr, msb~: Expr, lsb~: Expr, span~: Span, ty~: Ref[Type?])
   FieldAccess(expr~: Expr, field~: String, span~: Span, ty~: Ref[Type?])
-  Instance(name~: String, params~: Array[InstanceParam], ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
+  Instance(name~: String, params~: InstanceParams, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
@@ -47,6 +47,19 @@ pub(all) enum Type {
 pub(all) struct InstanceParam {
   name: String?
   value: Expr
+}
+
+pub type InstanceParams Array[InstanceParam]
+
+pub fn map[E: Error](self: InstanceParams, f: (Expr) -> Expr!E) -> InstanceParams!E {
+  let new_list = Array::new(capacity=self._.length())
+
+  for param in self._ {
+    let value = f!(param.value)
+    new_list.push({ name: param.name, value })
+  }
+
+  InstanceParams(new_list)
 }
 
 pub(all) enum UnaryOp {
@@ -790,7 +803,7 @@ pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> E
   Natural(bits=Bits::from!(n, width~, span~), width~, base~, span~, ty={ val: Some(ty) })
 }
 
-pub fn instance_params_to_map(params: Array[InstanceParam], names~: Array[String]) -> Map[String, Expr]!AstError {
+pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Map[String, Expr]!AstError {
   let map = Map::new(capacity=names.length())
 
   fn checked_set(name: String, value: Expr) -> Unit!AstError {
@@ -805,7 +818,7 @@ pub fn instance_params_to_map(params: Array[InstanceParam], names~: Array[String
     }
   }
 
-  for idx, param in params {
+  for idx, param in self._ {
     match param.name {
       Some(name) => {
         checked_set!(name, param.value)

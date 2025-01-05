@@ -28,12 +28,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
       FieldAccess(expr~, field=port, span~, ty~)
     }
     Instance(name~, params~, ports~, span~, ty~) => {
-      let new_params = Array::new(capacity=params.length())
-
-      for param in params {
-        new_params.push({ name: param.name, value: rewrite_expr!(param.value, rewrite) })
-      }
-
+      let new_params = params.map!(fn(expr) { rewrite_expr!(expr, rewrite) })
       let new_ports = Map::new(capacity=ports.size())
 
       for port, expr in ports {

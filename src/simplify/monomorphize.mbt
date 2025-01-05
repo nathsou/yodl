@@ -75,7 +75,7 @@ fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv) -> @pa
 fn register_monomorphized_module(
   self: Monomorphizer,
   name~: String,
-  params~: Array[@parse.InstanceParam],
+  params~: @parse.InstanceParams,
   span~: @parse.Span,
 ) -> @parse.ModuleDecl! {
     let mod_decl = match self.parameterized[name] {
@@ -86,8 +86,8 @@ fn register_monomorphized_module(
       }
     }
 
-    if mod_decl.params.length() != params.length() {
-      raise InvalidModuleParameterCount(name~, expected=mod_decl.params.length(), actual=params.length(), span~)
+    if mod_decl.params.length() != params._.length() {
+      raise InvalidModuleParameterCount(name~, expected=mod_decl.params.length(), actual=params._.length(), span~)
     }
 
   let monomorphized = match self.monomorphized[name] {
@@ -96,9 +96,9 @@ fn register_monomorphized_module(
   }
 
   let params_map = {
-    let map = Map::new(capacity=params.length())
+    let map = Map::new(capacity=params._.length())
 
-    for name, expr in @parse.instance_params_to_map!(params, names=mod_decl.params) {
+    for name, expr in params.as_map!(names=mod_decl.params) {
       map[name] = expr.as_param!()
     } 
 
@@ -131,21 +131,16 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @
         }
       }
       Instance(name~, params~, ports~, span~, ty~) => {
-        let mono_params: Array[@parse.InstanceParam] = Array::new(capacity=params.length())
-
-        for param in params {
-          mono_params.push({ name: param.name, value: self.monomorphize_expr!(param.value, env~) })
-        }
-
-        let (mono_name, mono_params) = if params.length() > 0 && not(self.declared_modules.contains(name)) {
+        let (mono_name, mono_params) = if params._.length() > 0 && not(self.declared_modules.contains(name)) {
           let mod = self.register_monomorphized_module!(
             name~,
-            params=mono_params,
+            params~,
             span~,
           )
 
-          (mod.name, [])
+          (mod.name, @parse.InstanceParams([]))
         } else {
+          let mono_params = params.map!(fn(expr) { self.monomorphize_expr!(expr, env~) })
           (name, mono_params)
         }
 
@@ -155,7 +150,13 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @
           mono_ports[port_name] = self.monomorphize_expr!(port_expr, env~)
         }
 
-        @parse.Expr::Instance(name=mono_name, params=mono_params, ports=mono_ports, span~, ty~)
+        @parse.Expr::Instance(
+          name=mono_name,
+          params=mono_params,
+          ports=mono_ports,
+          span~,
+          ty~,
+        )
       }
       _ => expr
     }).partial_eval!()
@@ -184,7 +185,9 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv) -> @
           if params.length() > 0 {
             let _ = self.register_monomorphized_module!(
               name~,
-              params=@utils.map!(params, fn(param) { { name: None, value: param.as_expr!(span~) } }),
+              params=@parse.InstanceParams(
+                @utils.map!(params, fn(param) { { name: None, value: param.as_expr!(span~) } })
+              ),
               span~,
             )
           }

@@ -145,10 +145,10 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
     Instance(name~, params~, ports~, ..) => {
       self.write(name)
 
-      if params.length() > 0 {
+      if params._.length() > 0 {
         self.write("<")
 
-        for i, param in params {
+        for i, param in params._ {
           if i > 0 {
             self.write(", ")
           }

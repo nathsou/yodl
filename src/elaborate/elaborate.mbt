@@ -202,7 +202,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
             new_params.push({ name: Some(name), value: param.as_expr!(span~) })
           }
 
-          new_params
+          @parse.InstanceParams(new_params)
         },
         ports={},
         span~,
@@ -507,7 +507,7 @@ fn elaborate_expr(
       self.binary_op_cell!(op~, lhs~, rhs~, mod~, span~, output_width=Some(output_width))
     }
     Instance(name~, params~, ports~, span~, ty=inst_ty) => {
-      if params.length() > 0 && not(self.declared_modules.contains(name)) {
+      if params._.length() > 0 && not(self.declared_modules.contains(name)) {
         raise Unreachable(message="Parameterized instance after simplification", span~)
       }
 
@@ -529,7 +529,7 @@ fn elaborate_expr(
         None => match self.declared_modules[name] {
           Some(sig) => {
             let port_widths = Map::new(capacity=sig.ports.length())
-            let params_map = @parse.instance_params_to_map!(params, names=sig.params)
+            let params_map = params.as_map!(names=sig.params)
             let params_env = Map::new(capacity=params_map.size())
 
             for name, param in params_map {

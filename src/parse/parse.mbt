@@ -401,7 +401,13 @@ fn parse_instance_expr(self: Parser, module_name~: String) -> Expr! {
 
   self.expect!(Rparen, start_idx)
 
-  Instance(name=module_name, params~, ports~, span=self.span(start_idx), ty={ val: None })
+  Instance(
+    name=module_name,
+    params=InstanceParams(params),
+    ports~,
+    span=self.span(start_idx),
+    ty={ val: None },
+  )
 }
 
 fn parse_expr(self: Parser) -> Expr! {
