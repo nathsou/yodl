@@ -8,7 +8,7 @@ pub struct Monomorphizer {
 }
 
 pub struct MonomorphizedModule {
-  params: Array[Int]
+  params: Array[@parse.Param]
   mod: @parse.ModuleDecl
 }
 
@@ -48,7 +48,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
 }
 
 enum MonoEnvEntry {
-  Param(Int)
+  Param(@parse.Param)
   Const(@parse.ConstDecl)
 }
 
@@ -75,7 +75,7 @@ fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv) -> @pa
 fn register_monomorphized_module(
   self: Monomorphizer,
   name~: String,
-  params~: Array[Int],
+  params~: Array[@parse.Param],
   span~: @parse.Span,
 ) -> @parse.ModuleDecl! {
     let mod_decl = match self.parameterized[name] {
@@ -114,7 +114,8 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @
     (match expr {
       Identifier(name~, span~, ty=_) => {
         match env.resolve(name) {
-          Some(Param(n)) => @parse.Expr::nat!(n, width=None, base=10, span~)
+          Some(Param(Int(n))) => @parse.Expr::nat!(n, width=None, base=10, span~)
+          Some(Param(Val(bits~, width~))) => @parse.Expr::Natural(bits~, width=Some(width), base=2, span~, ty={ val: None })
           Some(Const(decl)) => decl.expr
           None => expr
         }
@@ -132,8 +133,8 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @
             params={
               let params = []
 
-              for param in mono_params {
-                params.push(param.expect_int!())
+              for expr in mono_params {
+                params.push(expr.as_param!())
               }
 
               params
@@ -234,7 +235,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv) -> @
   }
 }
 
-fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Array[Int]) -> @parse.ModuleDecl! {
+fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Array[@parse.Param]) -> @parse.ModuleDecl! {
   let child_env = self.top_env.child()
 
   for name, param in @utils.zip2(mod.params, params) {

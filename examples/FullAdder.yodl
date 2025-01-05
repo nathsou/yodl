@@ -37,16 +37,6 @@ module Adder<N>(
     carry_out = carry_chain[N];
 }
 
-@internal
-declare module Reg<N>(
-    clk: logic,
-    d: logic[N],
-    en?: logic,
-    rst?: logic,
-) -> (
-    q: logic[N],
-)
-
 // Nexys A7
 module Top(
     clk: logic,

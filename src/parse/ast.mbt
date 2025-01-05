@@ -16,6 +16,7 @@ pub(all) enum Expr {
   Struct(fields~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Replicate(expr~: Expr, count~: Expr, concat~: Bool, span~: Span, ty~: Ref[Type?])
   FunCall(name~: String, args~: Array[Expr], span~: Span, ty~: Ref[Type?])
+  String(str~: String, span~: Span, ty~: Ref[Type?])
 }
 
 pub(all) enum Stmt {
@@ -37,9 +38,10 @@ pub(all) enum Type {
   Nat
   Logic
   Vector(ty~: Type, len~: VectorLen)
-  Instance(sig~: ModuleSignature, params~: Map[String, Int], accessed_ports~: Set[String])
-  Name(name~: String, params~: Array[Int])
+  Instance(sig~: ModuleSignature, params~: Map[String, Param], accessed_ports~: Set[String])
+  Name(name~: String, params~: Array[Param])
   Struct(Map[String, Type])
+  String(len~: Int)
 } derive(Eq)
 
 pub(all) enum UnaryOp {
@@ -82,11 +84,11 @@ pub(all) struct Bits {
   span: Span
 }
 
-impl Eq for Bits with op_equal(self, other) {
+pub impl Eq for Bits with op_equal(self, other) {
   self.bits == other.bits
 }
 
-impl Show for Bits with output(self, logger) {
+pub impl Show for Bits with output(self, logger) {
   match self.value {
     Some(value) => logger.write_string(value.to_string())
     None => {
@@ -165,7 +167,10 @@ pub type! AstError {
   ValueTooLargeForWidth(value~: Int, width~: Int, span~: Span)
   VectorLengthNotFixed(span~: Span)
   CannotGetWidthOfUnresolvedNamedType(span~: Span)
-  InvalidFunCallArity(name~: String, expected~: Int, actual~: Int, span~: Span)
+  InvalidFunCallArity(name~: String, expected~: Arity, actual~: Int, span~: Span)
+  ExpectedStringExpression(expr~: Expr, span~: Span)
+  ValueTooLargeForInt(span~: Span)
+  InvalidModuleParameter(span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -177,6 +182,9 @@ pub impl Show for AstError with output(self, logger) {
     VectorLengthNotFixed(_) => logger.write_string("Vector length must be fixed")
     CannotGetWidthOfUnresolvedNamedType(_) => logger.write_string("Cannot get width of unresolved named type")
     InvalidFunCallArity(name~, expected~, actual~, ..) => logger.write_string("Function '\{name}' expected \{expected} argument(s), but got \{actual}")
+    ExpectedStringExpression(expr~, ..) => logger.write_string("Expected a string expression, got: \{expr.ctor()}")
+    ValueTooLargeForInt(..) => logger.write_string("Value is too large for an integer")
+    InvalidModuleParameter(_) => logger.write_string("Invalid module parameter")
   }
 
   logger.write_string(self.show_context())
@@ -191,6 +199,9 @@ pub impl Spanned for AstError with span(self) -> Span {
     VectorLengthNotFixed(span~) => span
     CannotGetWidthOfUnresolvedNamedType(span~) => span
     InvalidFunCallArity(span~, ..) => span
+    ExpectedStringExpression(span~, ..) => span
+    ValueTooLargeForInt(span~, ..) => span
+    InvalidModuleParameter(span~) => span
   }
 }
 
@@ -251,6 +262,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Struct(ty~, ..) => ty
     Replicate(ty~, ..) => ty
     FunCall(ty~, ..) => ty
+    String(ty~, ..) => ty
   }
 }
 
@@ -297,6 +309,7 @@ pub impl Spanned for Expr with span(self: Expr) -> Span {
     Struct(span~, ..) => span
     Replicate(span~, ..) => span
     FunCall(span~, ..) => span
+    String(span~, ..) => span
   }
 }
 
@@ -318,6 +331,7 @@ pub fn ctor(self: Expr) -> String {
     Struct(_) => "Struct"
     Replicate(_) => "Replicate"
     FunCall(_) => "FunCall"
+    String(_) => "String"
   }
 }
 
@@ -329,6 +343,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
   match self {
     Natural(..) => true
     Identifier(..) => true
+    String(..) => true
     Unary(expr~, ..) => expr.is_constant_expr()
     Binary(lhs~, rhs~, ..) => lhs.is_constant_expr() && rhs.is_constant_expr()
     Indexing(_) => false
@@ -346,13 +361,59 @@ pub fn is_constant_expr(self: Expr) -> Bool {
   }
 }
 
+pub enum Param {
+  Int(Int)
+  Val(bits~: Bits, width~: Int)
+} derive(Eq)
+
+pub impl Show for Param with output(self, logger) -> Unit {
+  match self {
+    Int(n) => logger.write_string(n.to_string())
+    Val(bits~, width~) => {
+      logger.write_string("\{width}'b")
+
+      if width < 32 {
+        for bit in bits.bits {
+          logger.write_string(bit.to_string())
+        }
+      } else {
+        for i in 0..<32 {
+          logger.write_string(bits.bits[i].to_string())
+        }
+
+        logger.write_string("...")
+      }
+    }
+  }
+}
+
+pub fn as_param(self: Expr) -> Param!AstError {
+  match self {
+    Natural(bits~, width=Some(width), ..) => Val(bits~, width~)
+    Natural(bits~, width=None, ..) => Int(bits.as_int!())
+    _ => raise InvalidModuleParameter(span=self.span())
+  }
+}
+
+pub fn as_expr(self: Param, span~: Span) -> Expr!AstError {
+  match self {
+    Int(n) => Natural(bits=Bits::from!(n, span~), width=None, base=10, span=span, ty={ val: Some(Nat) })
+    Val(bits~, width~) => Natural(bits=bits, width=Some(width), base=2, span=span, ty={ val: Some(Type::Vector(ty=Logic, len=Fixed(width))) })
+  }
+}
+
 // perform partial evaluation on the expression
-pub fn partial_eval(self: Expr, params~: Map[String, Int] = {}) -> Expr! {
+pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
   rewrite_expr!(self, fn!(expr) {
     match expr {
       Identifier(name~, ..) => {
         match params[name] {
-          Some(value) => Natural(bits=Bits::from!(value, span=expr.span()), width=None, base=10, span=expr.span(), ty=expr.ty())
+          Some(Int(n)) => {
+            Natural(bits=Bits::from!(n, span=expr.span()), width=None, base=10, span=expr.span(), ty=expr.ty())
+          }
+          Some(Val(bits~, width~)) => {
+            Natural(bits~, width=Some(width), base=2, span=expr.span(), ty=expr.ty())
+          }
           None => expr
         }
       }
@@ -401,7 +462,9 @@ pub fn partial_eval(self: Expr, params~: Map[String, Int] = {}) -> Expr! {
           None => return expr
         }
 
-        if args.length() != fun.arity {
+        let (min_arity, max_arity) = fun.arity.as_range()
+
+        if args.length() < min_arity || args.length() > max_arity {
           raise InvalidFunCallArity(name~, expected=fun.arity, actual=args.length(), span~)
         }
 
@@ -412,14 +475,33 @@ pub fn partial_eval(self: Expr, params~: Map[String, Int] = {}) -> Expr! {
   })
 }
 
+enum Arity {
+  Fixed(Int)
+  Range(min~: Int, max~: Int)
+}
+
+fn as_range(self: Arity) -> (Int, Int) {
+  match self {
+    Fixed(value) => (value, value)
+    Range(min~, max~) => (min, max)
+  }
+}
+
+impl Show for Arity with output(self, logger) {
+  match self {
+    Fixed(value) => logger.write_string(value.to_string())
+    Range(min~, max~) => logger.write_string("\{min}..\{max}")
+  }
+}
+
 struct BuiltinFunction {
-  arity: Int
+  arity: Arity
   apply: (Array[Expr], Span) -> Expr!
 }
 
 let builtin_functions: Map[String, BuiltinFunction] = {
   "$clog2": {
-    arity: 1,
+    arity: Fixed(1),
     apply: fn(args, span) {
       let arg = args[0].expect_int!()
       let value = @utils.clog2(arg)
@@ -427,7 +509,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     }
   },
   "$pow": {
-    arity: 2,
+    arity: Fixed(2),
     apply: fn(args, span) {
       let base = args[0].expect_int!()
       let exp = args[1].expect_int!()
@@ -435,11 +517,37 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     }
   },
   "$cdiv": {
-    arity: 2,
+    arity: Fixed(2),
     apply: fn(args, span) {
       let dividend = args[0].expect_int!()
       let divisor = args[1].expect_int!()
       nat!(@utils.cdiv(dividend, divisor), span~)
+    }
+  },
+  "$readmemb": {
+    arity: Range(min=1, max=3),
+    apply: fn(args, span) {
+      let (path, start, end) = match args {
+        [path] => (path.expect_string!(), None, None)
+        [path, start] => (path.expect_string!(), Some(start.expect_int!()), None)
+        [path, start, end] => (path.expect_string!(), Some(start.expect_int!()), Some(end.expect_int!()))
+        _ => raise InvalidFunCallArity(name="$readmemb", expected=Range(min=1, max=3), actual=args.length(), span~)
+      }
+
+      let bits = parse_mem_file!(path, base=2)
+      let bits = match (start, end) {
+        (Some(start), None) => bits.split_at(start).1
+        (Some(start), Some(end)) => bits[start:end].iter().collect()
+        _ => bits
+      }
+
+      Expr::Natural(
+        bits=Bits::new(bits, span~),
+        width=Some(bits.length()),
+        base=2,
+        span~,
+        ty={ val: Some(Type::Vector(ty=Logic, len=Fixed(bits.length()))) }
+      )
     }
   },
 }
@@ -448,6 +556,10 @@ pub fn as_int(self: Bits) -> Int!AstError {
   match self.value {
     Some(value) => value
     None => {
+      if self.bits.length() > 32 {
+        raise ValueTooLargeForInt(span=self.span)
+      }
+      
       let value = bits_to_int!(self.bits, span=self.span)
       self.value = Some(value)
       value
@@ -514,6 +626,13 @@ pub fn expect_int(self: Expr) -> Int! {
   }
 }
 
+pub fn expect_string(self: Expr) -> String! {
+  match self {
+    String(str~, ..) => str
+    _ => raise ExpectedStringExpression(expr=self, span=self.span())
+  }
+}
+
 pub fn get_port(self: ModuleSignature, name: String) -> Port? {
   for port in self.ports {
     if port.name == name {
@@ -554,10 +673,11 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
 
       width
     }
+    String(len~) => len * 7 // ascii encoding
   }
 }
 
-pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
+pub fn substitute(self: Type, params_env~: Map[String, Param]) -> Type {
   match self {
     Nat => Nat
     Logic => Logic
@@ -572,7 +692,7 @@ pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
     }
     Vector(ty~, len~) => Vector(ty=substitute(ty, params_env~), len~)
     Instance(sig~, params~, accessed_ports~) => {
-      let new_params: Map[String, Int] = {}
+      let new_params = Map::new(capacity=params.size()) 
 
       for name, value in params {
         new_params[name] = match params_env[name] {
@@ -590,6 +710,7 @@ pub fn substitute(self: Type, params_env~: Map[String, Int]) -> Type {
       }
     }
     Struct(fields) => Struct(@utils.map_values(fields, fn(expr) { substitute(expr, params_env~) }))
+    String(len~) => String(len~)
   }
 }
 

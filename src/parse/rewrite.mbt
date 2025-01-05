@@ -111,6 +111,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
 
       Struct(fields=new_fields, span~, ty~)
     }
+    String(_) => expr
   }
 
   (rewrite)!(res)

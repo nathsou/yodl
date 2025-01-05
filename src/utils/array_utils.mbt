@@ -88,3 +88,7 @@ pub fn sorted_keys[K: Eq + Hash + Compare, V](map: Map[K, V]) -> Map[K, V] {
 
   new_map
 }
+
+pub fn is_ascii(c: Char) -> Bool {
+  c >= ' ' && c <= '~'
+}

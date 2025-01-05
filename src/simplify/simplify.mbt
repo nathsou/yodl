@@ -48,6 +48,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 6. Remove unecessary spreads
 // 7. Rewrite flat constant vectors to natural expressions
 // 8. Hardcode constant references
+// 9. Rewrite strings into vectors
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
@@ -156,6 +157,21 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
         } else {
           expr
         }
+      }
+      String(str~, span~, ty=_) => {
+        let ascii = []
+
+        for char in str {
+          for bit in @utils.bin(char.to_int(), width=7) {
+            ascii.push(@parse.nat!(bit, width=Some(1), base=2, span~))
+          }
+        }
+
+        @parse.Expr::Vector(
+          elems=ascii,
+          span~,
+          ty={ val: Some(Vector(ty=Logic, len=Fixed(ascii.length()))) },
+        )
       }
       _ => expr
     }).partial_eval!()

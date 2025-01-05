@@ -102,6 +102,11 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
     Identifier(name~, ..) => {
       self.write(name)
     }
+    String(str~, ..) => {
+      self.write("\"")
+      self.write(str)
+      self.write("\"")
+    }
     Unary(op~, expr~, ..) => {
       self.write("(")
       self.write(op.to_string())
@@ -148,7 +153,14 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
             self.write(", ")
           }
 
-          self.emit_expr(param)
+          match param.as_param?() {
+            Ok(param) => {
+              self.write(param.to_string())
+            }
+            _ => {
+              self.emit_expr(param)
+            }
+          }
         }
 
         self.write(">")
@@ -507,6 +519,9 @@ pub impl Show for Type with output(ty, logger) {
         )
       }
     }
+    String(len=_) => {
+      logger.write_string("string")
+    }
   }
 }
 
@@ -607,7 +622,6 @@ pub fn emit_decl(self: AstEmitter, decl: Decl) -> Unit {
     }
     ModuleDeclaration(sig) => {
       self.emit_module_sig(sig)
-      self.write(";")
     }
     Const(decl) => {
       self.emit_const_decl(decl)

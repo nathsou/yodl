@@ -28,6 +28,9 @@ pub type! ElaboratorError {
   FunctionCallAfterSimplification(span~: @parse.Span)
   ConstDeclAfterSimplification(span~: @parse.Span)
   UnknownModuleMarkedAsInternal(name~: String, span~: @parse.Span)
+  InvalidMemoryInitValue(span~: @parse.Span, expected_size~: Int, actual_size~: Int)
+  StringAfterSimplification(span~: @parse.Span)
+  MissingConnectionOnWriteableRAMInstance(missing_connection~: String, span~: @parse.Span)
 }
 
 pub impl Show for ElaboratorError with output(self, logger) -> Unit {
@@ -84,6 +87,15 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     UnknownModuleMarkedAsInternal(name~, ..) => {
       logger.write_string("Unknown module marked as internal: '\{name}'")
     }
+    InvalidMemoryInitValue(expected_size~, actual_size~, ..) => {
+      logger.write_string("Invalid memory init value: expected \{expected_size} bits, got \{actual_size}")
+    }
+    StringAfterSimplification(..) => {
+      logger.write_string("String after simplification")
+    }
+    MissingConnectionOnWriteableRAMInstance(missing_connection~, ..) => {
+      logger.write_string("Missing connection on writeable RAM instance: '\{missing_connection}'")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -108,6 +120,9 @@ pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
     FunctionCallAfterSimplification(span~, ..) => span
     ConstDeclAfterSimplification(span~, ..) => span
     UnknownModuleMarkedAsInternal(span~, ..) => span
+    InvalidMemoryInitValue(span~, ..) => span
+    StringAfterSimplification(span~, ..) => span
+    MissingConnectionOnWriteableRAMInstance(span~, ..) => span
   }
 }
 
@@ -175,7 +190,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
     Instance(sig={ name, span, .. }, params~, accessed_ports=_) => {
       let inst: @parse.Expr = @parse.Expr::Instance(
         name~,
-        params=@utils.map!(params.values().collect(), fn(p) { @parse.Expr::nat!(p, span~) }),
+        params=@utils.map!(params.values().collect(), fn(p) { p.as_expr!(span~) } ),
         ports={},
         span~,
         ty={ val: Some(ty) },
@@ -194,6 +209,9 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
       }
 
       Value::Struct(val)
+    }
+    String(_) => {
+      raise StringAfterSimplification(span~)
     }
   }
 }
@@ -431,6 +449,9 @@ fn elaborate_expr(
         None => Value::Signal(@rtlil.SigConst(ConstInteger(bits.as_int!())))
       }
     }
+    String(str=_, span~, ty=_) => {
+      raise StringAfterSimplification(span~)
+    }
     Unary(op~, expr~, span~, ..) => {
       let cell_type = match op {
         Not => "not"
@@ -498,8 +519,7 @@ fn elaborate_expr(
             let params_env = {}
 
             for name, param in @utils.zip2(sig.params, params) {
-              let val = param.expect_int!()
-              params_env[name] = val
+              params_env[name] = param.as_param!()
             }
 
             for port in sig.ports {
@@ -558,12 +578,16 @@ fn elaborate_expr(
           }
         }
 
+        fn uses_port(port_name: String) -> Bool {
+          ports.contains(port_name) || accessed_ports.contains(port_name)
+        }
+
         match name {
           "Reg" | "RegSyncReset" => {
             let width = params[0].expect_int!()
             let sync_reset = name == "RegSyncReset"
-            let uses_rst = ports.contains("rst") || accessed_ports.contains("rst")
-            let uses_en = ports.contains("en") || accessed_ports.contains("en")
+            let uses_rst = uses_port("rst")
+            let uses_en = uses_port("en")
             let cell_type = @rtlil.GenId(match (uses_en, uses_rst) {
               (false, false) => "dff"
               (false, true) => if sync_reset { "sdff" } else { "adff" }
@@ -624,6 +648,134 @@ fn elaborate_expr(
                 connections
               },
               attributes=src_attribute(span),
+            )
+          }
+          "RAM" => {
+            let width = params[0].expect_int!()
+            let depth = params[1].expect_int!()
+            let abits = @utils.clog2(depth + 1)
+
+            let init = match params.get(2) {
+              Some(Natural(bits~, width=Some(init_width), ..)) => {
+                if init_width != depth * width {
+                  raise InvalidMemoryInitValue(
+                    span~,
+                    expected_size=depth * width,
+                    actual_size=init_width,
+                  )
+                }
+
+                (bits, init_width)
+              }
+              _ => raise InvalidMemoryInitValue(
+                span~,
+                expected_size=depth * width,
+                actual_size=params[2].ty().val.unwrap().width!(span),
+              )
+            }
+
+            let uses_data_in = uses_port("data_in")
+            let uses_write_enable = uses_port("write_enable")
+            let is_writeable = uses_data_in || uses_write_enable
+
+            if uses_data_in != uses_write_enable {
+              let missing_connection = if not(uses_data_in) { "data_in" } else { "write_enable" }
+              raise MissingConnectionOnWriteableRAMInstance(missing_connection~, span~)
+            }
+
+            if not(is_writeable) {
+              mod.wires.remove(port_wire_id(cell_name, "data_in"))
+              mod.wires.remove(port_wire_id(cell_name, "write_enable"))
+            }
+
+            let data_reg_out_d = mod.add_wire!(
+              name=port_wire_id(cell_name, "data_out_reg_d"),
+              width~,
+              port=None,
+              attributes=src_attribute(span),
+            )
+
+            let _ = mod.add_cell!(
+              type_=@rtlil.GenId(if is_writeable { "dffe" } else { "dff" }),
+              name=GenId("\{cell_name.inner()}_data_out_reg"),
+              parameters={
+                let params = {}
+                params[@rtlil.PubId("CLK_POLARITY")] = @rtlil.ConstInteger(1)
+                params[@rtlil.PubId("WIDTH")] = @rtlil.ConstInteger(width)
+
+                if is_writeable {
+                  params[@rtlil.PubId("EN_POLARITY")] = @rtlil.ConstInteger(1)
+                }
+
+                params
+              },
+              connections={
+                let connections = {}
+                connections[@rtlil.PubId("CLK")] = port_wire!("clk")
+                connections[@rtlil.PubId("D")] = SigWire(data_reg_out_d)
+                connections[@rtlil.PubId("Q")] = port_wire!("data_out")
+
+                if is_writeable {
+                  // TODO: Check if this should be inverted to !write_enable
+                  connections[@rtlil.PubId("EN")] = port_wire!("write_enable")
+                }
+
+                connections
+              },
+            )
+
+
+            let _ = mod.add_cell!(
+              type_=GenId("mem_v2"),
+              name=cell_name,
+              parameters={
+                let params = {}
+                params[@rtlil.PubId("ABITS")] = @rtlil.ConstInteger(abits)
+                params[@rtlil.PubId("INIT")] = @rtlil.ConstValue(width=init.1, bits=init.0.bits)
+                params[@rtlil.PubId("MEMID")] = @rtlil.ConstString("$mem_\{cell_name.inner()}")
+                params[@rtlil.PubId("OFFSET")] = @rtlil.ConstInteger(0)
+                params[@rtlil.PubId("RD_ARST_VALUE")] = @rtlil.ConstValue(width~, bits=@utils.fill(width, X))
+                params[@rtlil.PubId("RD_CE_OVER_SRST")] = @rtlil.ConstValue(width=1, bits=[Zero])
+                params[@rtlil.PubId("RD_CLK_ENABLE")] = @rtlil.ConstValue(width=1, bits=[Zero])
+                params[@rtlil.PubId("RD_CLK_POLARITY")] = @rtlil.ConstValue(width=1, bits=[Zero])
+                params[@rtlil.PubId("RD_COLLISION_X_MASK")] = @rtlil.ConstValue(width=1, bits=[Zero])
+                params[@rtlil.PubId("RD_INIT_VALUE")] = @rtlil.ConstValue(width~, bits=@utils.fill(width, X))
+                params[@rtlil.PubId("RD_PORTS")] = @rtlil.ConstInteger(1)
+                params[@rtlil.PubId("RD_SRST_VALUE")] = @rtlil.ConstValue(width~, bits=@utils.fill(width, X))
+                params[@rtlil.PubId("RD_TRANSPARENCY_MASK")] = @rtlil.ConstValue(width=1, bits=[Zero])
+                params[@rtlil.PubId("RD_WIDE_CONTINUATION")] = @rtlil.ConstValue(width=1, bits=[Zero])
+                params[@rtlil.PubId("SIZE")] = @rtlil.ConstInteger(depth)
+                params[@rtlil.PubId("WIDTH")] = @rtlil.ConstInteger(width)
+                params[@rtlil.PubId("WR_CLK_ENABLE")] = @rtlil.ConstValue(width=1, bits=[One])
+                params[@rtlil.PubId("WR_CLK_POLARITY")] = @rtlil.ConstValue(width=1, bits=[One])
+                params[@rtlil.PubId("WR_PORTS")] = @rtlil.ConstInteger(if is_writeable { 1 } else { 0 })
+                params[@rtlil.PubId("WR_PRIORITY_MASK")] = @rtlil.ConstValue(width=1, bits=[Zero])
+                params[@rtlil.PubId("WR_WIDE_CONTINUATION")] = @rtlil.ConstValue(width=1, bits=[Zero])
+                params
+              },
+              connections={
+                let connections = {}
+                connections[@rtlil.PubId("RD_ADDR")] = port_wire!("addr")
+                connections[@rtlil.PubId("RD_ARST")] = @rtlil.SigConst(@rtlil.ConstValue(width=1, bits=[Zero]))
+                connections[@rtlil.PubId("RD_CLK")] = @rtlil.SigConst(@rtlil.ConstValue(width=1, bits=[X]))
+                connections[@rtlil.PubId("RD_DATA")] = SigWire(data_reg_out_d)
+                connections[@rtlil.PubId("RD_EN")] = @rtlil.SigConst(@rtlil.ConstValue(width=1, bits=[One]))
+                connections[@rtlil.PubId("RD_SRST")] = @rtlil.SigConst(@rtlil.ConstValue(width=1, bits=[Zero]))
+
+                if is_writeable {
+                  connections[@rtlil.PubId("WR_ADDR")] = port_wire!("addr")
+                  connections[@rtlil.PubId("WR_CLK")] = port_wire!("clk")
+                  connections[@rtlil.PubId("WR_DATA")] = port_wire!("data_in")
+                  connections[@rtlil.PubId("WR_EN")] = SigConcat(@utils.fill(width, port_wire!("write_enable")))
+                } else {
+                  connections[@rtlil.PubId("WR_ADDR")] = SigConcat([])
+                  connections[@rtlil.PubId("WR_CLK")] = SigConcat([])
+                  connections[@rtlil.PubId("WR_DATA")] = SigConcat([])
+                  connections[@rtlil.PubId("WR_EN")] = SigConcat([])
+                }
+
+                connections
+              },
             )
           }
           _ => raise UnknownModuleMarkedAsInternal(name~, span~)

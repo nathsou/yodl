@@ -1,0 +1,72 @@
+
+const H_ACTIVE = 640;
+const V_ACTIVE = 480;
+
+module VGASyncPulses(
+    clk: logic,
+) -> (
+    hsync: logic,
+    vsync: logic,
+    col: logic[10],
+    row: logic[10],
+    is_active_area: logic,
+) {
+    const H_FRONT_PORCH = 16;
+    const H_SYNC_PULSE = 96;
+    const H_BACK_PORCH = 48;
+    const H_TOTAL = H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH;
+
+    const V_FRONT_PORCH = 10;
+    const V_SYNC_PULSE = 2;
+    const V_BACK_PORCH = 33;
+    const V_TOTAL = V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE + V_BACK_PORCH;
+
+    let col_reg = Reg<10>(clk);
+    let row_reg = Reg<10>(clk);
+
+    let last_col = col_reg.q == H_TOTAL - 1;
+    let last_row = row_reg.q == V_TOTAL - 1;
+
+    col_reg.d = last_col ? 10'd0 : col_reg.q + 1'1;
+    row_reg.d = last_col ? (last_row ? 10'd0 : row_reg.q + 1'1) : row_reg.q;
+
+    hsync = (col_reg.q >= (H_ACTIVE + H_FRONT_PORCH)) and (col_reg.q < (H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE));
+    vsync = (row_reg.q >= (V_ACTIVE + V_FRONT_PORCH)) and (row_reg.q < (V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE));
+    is_active_area = col_reg.q < H_ACTIVE and row_reg.q < V_ACTIVE;
+    col = col_reg.q;
+    row = row_reg.q;
+}
+
+module Top(
+    clk: logic,
+) -> (
+    led: logic[4],
+    vga_hsync: logic,
+    vga_vsync: logic,
+    vga_red: logic[3],
+    vga_green: logic[3],
+    vga_blue: logic[3],
+) {
+    let vga = VGASyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
+    let is_white = vga.is_active_area and (vga.row[0] and vga.col[0]);
+    let x_div = vga.col[9:2];
+    let y_div = vga.row[9:2];
+    let cell_idx: logic[15] = y_div * 8'd160 + x_div;
+    let image = RAM<3, 19200, $readmemb("res/york.mem")>(clk, addr: cell_idx);
+    let color_idx = image.data_out;
+    let color = vga.is_active_area ? match color_idx {
+        3'd0 => { r: 3'd3, g: 3'd5, b: 3'd7 },
+        3'd1 => { r: 3'd2, g: 3'd2, b: 3'd2 },
+        3'd2 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        3'd3 => { r: 3'd1, g: 3'd1, b: 3'd0 },
+        3'd4 => { r: 3'd1, g: 3'd1, b: 3'd1 },
+        3'd5 => { r: 3'd7, g: 3'd7, b: 3'd6 },
+        3'd6 => { r: 3'd7, g: 3'd7, b: 3'd7 },
+        3'd7 => { r: 3'd3, g: 3'd3, b: 3'd3 },
+    }: { r: 3'd0, g: 3'd0, b: 3'd0 };
+
+    vga_red = color.r;
+    vga_green = color.g;
+    vga_blue = color.b;
+    led = 4'b0000;
+}

@@ -224,6 +224,10 @@ fn parse_primary_expr(self: Parser) -> Expr! {
       self.advance()
       Natural(bits~, width~, base~, span=self.span(start_idx), ty={ val: None })
     }
+    StringLiteral(str) => {
+      self.advance()
+      String(str~, span=self.span(start_idx), ty={ val: None })
+    }
     Not => {
       self.advance()
       let expr = self.parse_expr!()
@@ -489,7 +493,7 @@ fn parse_const_decl(self: Parser) -> ConstDecl! {
 
 fn parse_type(self: Parser) -> Type! {
   let start_idx = self.index
-  let params: Array[Int] = []
+  let params: Array[Param] = []
 
   let mut base_ty = match self.peek() {
     Logic => {
@@ -557,7 +561,7 @@ fn parse_type(self: Parser) -> Type! {
 
   if self.consumes(Lchevron) {
     while not(self.matches(Rchevron)) {
-      params.push(self.parse_integer!().bits.as_int!())
+      params.push(self.parse_expr!().as_param!())
 
       if not(self.consumes(Comma)) {
         break
@@ -576,7 +580,7 @@ fn parse_type(self: Parser) -> Type! {
     let expr = self.parse_expr!()
 
     let len = match expr {
-      Natural(bits~, width=_, ..) => Fixed(bits.as_int!())
+      Natural(bits~, width=_, ..) => VectorLen::Fixed(bits.as_int!())
       _ => Dynamic(expr)
     }
 

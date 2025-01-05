@@ -36,6 +36,7 @@ type! TypeCheckerError {
     InvalidStructField(name~: String, span~: @parse.Span)
     InvalidUnaryOpOperand(op~: @parse.UnaryOp, ty~: @parse.Type, span~: @parse.Span)
     InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
+    StringContainsNonAsciiChar(char~: Char, span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -112,6 +113,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidBinaryOpOperand(op~, ty~, ..) => {
             logger.write_string("Invalid operand '\{ty}' for binary operator '\{op}'")
         }
+        StringContainsNonAsciiChar(char~, ..) => {
+            logger.write_string("String contains non-ASCII character '\{char}'")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -143,6 +147,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidStructField(span~, ..) => span
         InvalidUnaryOpOperand(span~, ..) => span
         InvalidBinaryOpOperand(span~, ..) => span
+        StringContainsNonAsciiChar(span~, ..) => span
     }
 }
 
@@ -242,6 +247,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
 
             Struct(field_tys)
         }
+        String(len~) => String(len~)
     }
 }
 
@@ -257,6 +263,15 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             Some(1) => @parse.Logic
             Some(width) => @parse.Type::Vector(ty=@parse.Logic, len=Fixed(width))
             None => Nat
+        }
+        String(str~,  span~, ..) => {
+            for char in str {
+                if not(@utils.is_ascii(char)) {
+                    raise StringContainsNonAsciiChar(char~, span~)
+                }
+            }
+
+            @parse.Type::String(len=str.length())
         }
         Unary(op~, expr~, span~, ..) => {
             let ty = self.check_expr!(expr, env, expected_ty~)
@@ -351,23 +366,31 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             match self.modules[name] {
                 Some(sig) => {
                     let subst = {}
+                    let params_env = {}
                     let accessed_ports = Set::new()
 
                     for name, param in @utils.zip2(sig.params, params) {
-                        subst[name] = param.expect_int!()
+                        match param.expect_int?() {
+                            Ok(n) => {
+                                subst[name] = n
+                            }
+                            _ => ()
+                        }
+
+                        params_env[name] = param.as_param!()
                     }
 
                     for port_name, expr in ports {
                         match sig.get_port(port_name) {
                             Some(port_def) => {
-                                let expr_ty = self.check_expr!(expr, env).substitute(params_env=subst)
-                                let _ = unify!(port_def.ty.substitute(params_env=subst), expr_ty, span=expr.span(), subst~)
+                                let expr_ty = self.check_expr!(expr, env).substitute(params_env~)
+                                let _ = unify!(port_def.ty.substitute(params_env~), expr_ty, span=expr.span(), subst~)
                             }
                             None => raise UnknownModulePort(module_name=name, port_name=port_name, span~)
                         }
                     }
 
-                    @parse.Type::Instance(sig~, params=subst, accessed_ports~)
+                    @parse.Type::Instance(sig~, params=params_env, accessed_ports~)
                 }
                 None => raise TypeCheckerError::UnknownModule(name~, span~)
             }

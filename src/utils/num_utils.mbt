@@ -101,3 +101,15 @@ pub fn show_nat(n: Int, base~: Int, width~: Int? = None) -> String {
     None => res
   }
 }
+
+pub fn bin(n: Int, width~: Int) -> Array[Int] {
+  let bits = Array::new(capacity=width)
+  let mut n = n
+
+  for i in 0..<width {
+    bits.push(n & 1)
+    n = n >> 1
+  }
+
+  bits.rev()
+}

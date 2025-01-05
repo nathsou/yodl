@@ -20,7 +20,6 @@ let builtin_decls: Array[@parse.Decl] = {
     #|)
     #|
     #|@internal
-    #|
     #|declare module RegSyncReset<N>(
     #|    clk: logic,
     #|    d: logic[N],
@@ -28,6 +27,16 @@ let builtin_decls: Array[@parse.Decl] = {
     #|    rst?: logic,
     #|) -> (
     #|    q: logic[N],
+    #|)
+    #|
+    #|@internal
+    #|declare module RAM<Width, Depth, Init>(
+    #|    clk: logic,
+    #|    addr: logic[$clog2(Depth)],
+    #|    write_enable?: logic,
+    #|    data_in?: logic[Width],
+    #|) -> (
+    #|    data_out: logic[Width],
     #|)
   
   let lexer = @parse.Lexer::new(source, file="builtin.yodl")

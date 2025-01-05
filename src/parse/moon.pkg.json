@@ -1,6 +1,7 @@
 {
     "import": [
-        "nathsou/yodl/utils",
-        "moonbitlang/x/fs"
+      "nathsou/yodl/utils",
+      "moonbitlang/x/fs",
+      "moonbitlang/x/num"
     ]
 }
