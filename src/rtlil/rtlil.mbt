@@ -1,10 +1,34 @@
 // https://yosyshq.readthedocs.io/projects/yosys/en/latest/yosys_internals/formats/rtlil_rep.html
 
 pub type! RTLILError {
-  WireAlreadyDeclared(name~: Id)
-  CellAlreadyDeclared(name~: Id)
+  WireAlreadyDeclared(name~: Id, span~: @parse.Span)
+  CellAlreadyDeclared(name~: Id, span~: @parse.Span)
   IncompatibleWidths(width1~: Int, width2~: Int, span~: @parse.Span)
-} derive(Show)
+}
+
+pub impl @parse.Spanned for RTLILError with span(self) -> @parse.Span {
+  match self {
+    WireAlreadyDeclared(span~, ..) => span
+    CellAlreadyDeclared(span~, ..) => span
+    IncompatibleWidths(span~, ..) => span
+  }
+}
+
+pub impl Show for RTLILError with output(self, logger) -> Unit {
+  match self {
+    WireAlreadyDeclared(name~, ..) => {
+      logger.write_string("Wire '\{name}' already declared")
+    }
+    CellAlreadyDeclared(name~, ..) => {
+      logger.write_string("Cell '\{name}' already declared")
+    }
+    IncompatibleWidths(width1~, width2~, ..) => {
+      logger.write_string("Incompatible widths: \{width1} and \{width2}")
+    }
+  }
+
+  logger.write_string(self.show_context())
+}
 
 pub(all) enum Id {
     PubId(String) // Publically visible identifiers
@@ -63,6 +87,7 @@ pub(all) struct Wire {
   port: PortSpec?
   attributes: Map[Id, Constant]
   mod: Module
+  span: @parse.Span
 }
 
 // A signal is anything that can be applied to a cell port, i.e. a constant value, all bits or a selection of bits from a wire, or concatenations of those.
@@ -88,6 +113,7 @@ pub(all) struct Cell {
   attributes: Map[Id, Constant]
   parameters: Map[Id, Constant]
   connections: Map[Id, Signal]
+  span: @parse.Span
 }
 
 pub(all) struct Module {
@@ -103,9 +129,16 @@ pub fn Module::new(name: Id) -> Module {
   { name, wires: {}, cells: {}, attributes: {}, parameters: {}, connections: [] }
 }
 
-pub fn add_wire(self: Module, name~: Id, width~: Int, port~: PortSpec? = None, attributes~: Map[Id, Constant] = {}) -> Wire!RTLILError {
+pub fn add_wire(
+  self: Module, 
+  name~: Id,
+  width~: Int,
+  port~: PortSpec? = None,
+  attributes~: Map[Id, Constant] = {},
+  span~: @parse.Span,  
+) -> Wire!RTLILError {
   if self.wires.contains(name) {
-    raise WireAlreadyDeclared(name~)
+    raise WireAlreadyDeclared(name~, span~)
   }
 
   let wire: Wire = {
@@ -114,6 +147,7 @@ pub fn add_wire(self: Module, name~: Id, width~: Int, port~: PortSpec? = None, a
     width,
     port,
     attributes,
+    span,
   }
 
   self.wires[name] = wire
@@ -128,9 +162,10 @@ pub fn add_cell(
   connections~: Map[Id, Signal] = {},
   attributes~: Map[Id, Constant] = {},
   parameters~: Map[Id, Constant] = {},
+  span~: @parse.Span,
 ) -> Cell!RTLILError {
   if self.cells.contains(name) {
-    raise CellAlreadyDeclared(name~)
+    raise CellAlreadyDeclared(name~, span~)
   }
 
   let cell: Cell = {
@@ -139,6 +174,7 @@ pub fn add_cell(
     connections,
     attributes,
     parameters,
+    span,
   }
 
   self.cells[name] = cell

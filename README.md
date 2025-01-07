@@ -20,3 +20,4 @@ Circuit description (Yodl) -> Visualization (Digital) -> Software simulation (Yo
 - [ ] [Digital](https://github.com/hneemann/Digital) (with integrated component/wiring positioning editor?) export?
 - [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export
 - [ ] Built-in event-driven simulator?
+- [ ] Graphviz/Mermaid export

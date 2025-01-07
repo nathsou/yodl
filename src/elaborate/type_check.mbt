@@ -23,7 +23,6 @@ type! TypeCheckerError {
     InvalidFieldAccess(field~: String, span~: @parse.Span)
     InvalidSlicingRange(span~: @parse.Span)
     ExpectedConstantExpr(span~: @parse.Span)
-    InvalidPortType(ty~: @parse.Type, span~: @parse.Span)
     LetStmtMustHaveTypeOrValue(span~: @parse.Span)
     EmptyVector(span~: @parse.Span)
     SpreadOnNonVector(span~: @parse.Span)
@@ -73,9 +72,6 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         }
         ExpectedConstantExpr(..) => {
             logger.write_string("Expected constant expression")
-        }
-        InvalidPortType(ty~, ..) => {
-            logger.write_string("Invalid port type '\{ty}'")
         }
         LetStmtMustHaveTypeOrValue(..) => {
             logger.write_string("Let statement must have a type or value")
@@ -134,7 +130,6 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidFieldAccess(span~, ..) => span
         InvalidSlicingRange(span~, ..) => span
         ExpectedConstantExpr(span~, ..) => span
-        InvalidPortType(span~, ..) => span
         LetStmtMustHaveTypeOrValue(span~, ..) => span
         EmptyVector(span~, ..) => span
         SpreadOnNonVector(span~, ..) => span
@@ -615,13 +610,6 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
     }
 }
 
-fn ensure_valid_port_type(ty: @parse.Type, span: @parse.Span) -> Unit!TypeCheckerError {
-    match ty {
-        Logic | Vector(ty=Logic, len=_) => ()
-        _ => raise InvalidPortType(ty=ty, span~)
-    }
-}
-
 enum AttributeValueType {
     Str
     // Int
@@ -686,7 +674,6 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
             check_attributes!(attributes, signatures=module_attribute_signatures)
 
             for port in ports {
-                ensure_valid_port_type!(port.ty, port.span)
                 check_attributes!(port.attributes, signatures=port_attribute_signatures)
                 declare_name!(env~, name=port.name, ty=port.ty, span=port.span)
             }
@@ -701,7 +688,6 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
             check_attributes!(sig.attributes, signatures=module_attribute_signatures)
             
             for port in sig.ports {
-                ensure_valid_port_type!(port.ty, port.span)
                 check_attributes!(port.attributes, signatures=port_attribute_signatures)
             }
 

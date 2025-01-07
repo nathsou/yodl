@@ -3,3 +3,4 @@ target/
 .DS_Store
 output/
 gen_bitstream.sh
+examples/*.lab.yodl

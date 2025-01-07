@@ -111,7 +111,8 @@ fn register_monomorphized_module(
     }
   }
 
-  let mono_mod = self.monomorphize_module!(mod=mod_decl, params=params_map)
+  let name = "\{name}$\{monomorphized.length()}"
+  let mono_mod = self.monomorphize_module!(mod=mod_decl, params=params_map, name~)
   monomorphized.push({ params: params_map, mod: mono_mod })
   self.monomorphized[name] = monomorphized
   self.modules[mono_mod.name] = mono_mod
@@ -240,7 +241,12 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv) -> @
   }
 }
 
-fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Map[String, @parse.Param]) -> @parse.ModuleDecl! {
+fn monomorphize_module(
+  self: Monomorphizer,
+  mod~: @parse.ModuleDecl,
+  params~: Map[String, @parse.Param],
+  name~: String,
+) -> @parse.ModuleDecl! {
   let child_env = self.top_env.child()
 
   for name, param in params {
@@ -267,26 +273,7 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ma
   }
 
   {
-    name: {
-      if params.is_empty() {
-        mod.name
-      } else {
-        let builder = StringBuilder::new()
-        builder.write_string(mod.name)
-        builder.write_char('_')
-        let values = Array::new(capacity=params.size())
-
-        for param_name in mod.params {
-          match params[param_name] {
-            Some(param) => values.push(param.to_string())
-            None => ()
-          }
-        }
-
-        builder.write_string(String::concat(values, separator="_"))
-        builder.to_string()
-      }
-    },
+    name,
     params: [],
     attributes: mod.attributes,
     ports: mono_ports,
@@ -302,7 +289,7 @@ pub fn monomorphize(self: Monomorphizer, decls: Array[@parse.Decl]) -> Array[@pa
     match decl {
       Module(mod) => {
         if mod.params.is_empty() {
-          let mono_mod = self.monomorphize_module!(mod~, params={})
+          let mono_mod = self.monomorphize_module!(mod~, params={}, name=mod.name)
           self.modules[mod.name] = mono_mod
         } else {
           self.parameterized[mod.name] = mod

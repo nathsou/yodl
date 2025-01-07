@@ -178,6 +178,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, env~: 
           width=len.expect_fixed!(span),
           port=None,
           attributes=src_attribute(span),
+          span~,
         )
 
         Value::Signal(SigWire(wire))
@@ -314,6 +315,7 @@ fn elaborate_module(self: Elaborator, mod~: @parse.ModuleDecl, env~: ElaboratorE
       width=port.ty.width!(port.span),
       port=Some({ direction: port.dir, id: port_id }),
       attributes=src_attribute(port.span),
+      span=port.span,
     )
   }
 
@@ -419,6 +421,7 @@ fn binary_op_cell(
     width=wy,
     port=None,
     attributes=@utils.merge(src_attribute(span), attributes),
+    span~
   )
   
   let _ = mod.add_cell!(
@@ -437,6 +440,7 @@ fn binary_op_cell(
       "Y": SigWire(output),
     }),
     attributes=src_attribute(span),
+    span~,
   )
 
   Value::Signal(SigWire(output))
@@ -480,6 +484,7 @@ fn elaborate_expr(
         width~,
         port=None,
         attributes=src_attribute(span),
+        span~,
       )
       
       let _ = mod.add_cell!(
@@ -495,6 +500,7 @@ fn elaborate_expr(
           "Y": SigWire(output),
         }),
         attributes=src_attribute(span),
+        span~,
       )
 
       Value::Signal(SigWire(output))
@@ -514,24 +520,24 @@ fn elaborate_expr(
         raise Unreachable(message="Parameterized instance after simplification", span~)
       }
 
-      let (port_widths, params_map, attributes) = match self.modules[name] {
+      let (ports_sig, params_map, attributes) = match self.modules[name] {
         Some(mod) => {
-          let port_widths = {}
+          let ports_sig = {}
 
           for wire in mod.wires.values() {
             match wire.port {
               Some(_) => {
-                port_widths[wire.name.inner()] = wire.width
+                ports_sig[wire.name.inner()] = (wire.width, wire.span)
               }
               _ => ()
             }
           }
 
-          (port_widths, {}, {})
+          (ports_sig, {}, {})
         }
         None => match self.declared_modules[name] {
           Some(sig) => {
-            let port_widths = Map::new(capacity=sig.ports.length())
+            let ports_sig = Map::new(capacity=sig.ports.length())
             let params_map = params.as_map!(names=sig.params)
             let params_env = Map::new(capacity=params_map.size())
 
@@ -540,10 +546,11 @@ fn elaborate_expr(
             }
 
             for port in sig.ports {
-              port_widths[port.name] = port.ty.substitute(params_env~).width!(port.span)
+              let width = port.ty.substitute(params_env~).width!(port.span)
+              ports_sig[port.name] = (width, port.span)
             }
 
-            (port_widths, params_map, sig.attributes)
+            (ports_sig, params_map, sig.attributes)
           }
           None => raise ElaboratorError::UnknownModule(name~, span~)
         }
@@ -559,12 +566,14 @@ fn elaborate_expr(
       let cell_name = name_binding.or(GenId("\{name}_\{self.next_genidx()}"))
       let fields: Map[String, Value] = {}
 
-      for port_name, width in port_widths {
+      for port_name, port_sig in ports_sig {
+        let (width, span) = port_sig
         let wire = mod.add_wire!(
           name=port_wire_id(cell_name, port_name),
           width~,
           port=None,
           attributes=src_attribute(span),
+          span~,
         )
 
         connections[@rtlil.PubId(port_name)] = SigWire(wire)
@@ -575,7 +584,7 @@ fn elaborate_expr(
       }
 
       for port_name, expr in ports {
-        if not(port_widths.contains(port_name)) {
+        if not(ports_sig.contains(port_name)) {
           extra_ports.push(port_name)
         }
 
@@ -672,6 +681,7 @@ fn elaborate_expr(
                 connections
               },
               attributes=src_attribute(span),
+              span~,
             )
           }
           "RAM" => {
@@ -717,6 +727,7 @@ fn elaborate_expr(
               width~,
               port=None,
               attributes=src_attribute(span),
+              span~,
             )
 
             let _ = mod.add_cell!(
@@ -746,6 +757,7 @@ fn elaborate_expr(
 
                 connections
               },
+              span~,
             )
 
 
@@ -800,9 +812,10 @@ fn elaborate_expr(
 
                 connections
               },
+              span~,
             )
           }
-          _ => raise UnknownModuleMarkedAsInternal(name~, span~)
+           _ => raise UnknownModuleMarkedAsInternal(name~, span~)
         }
       } else {
         let cell_type = match attributes["alias"] {
@@ -825,11 +838,17 @@ fn elaborate_expr(
             let parameters: Map[@rtlil.Id, @rtlil.Constant] = Map::new(capacity=params_map.size())
 
             for name, param in params_map {
-              parameters[@rtlil.PubId(name)] = @rtlil.ConstInteger(param.expect_int!())
+              match param.expect_int?() {
+                Ok(n) => {
+                  parameters[@rtlil.PubId(name)] = @rtlil.ConstInteger(n)
+                }
+                _ => ()
+              }
             }
 
             parameters
           },
+          span~,
         )
       }
 
@@ -976,6 +995,7 @@ fn elaborate_expr(
         width~,
         port=None,
         attributes=src_attribute(span),
+        span~,
       )
       
       let _ = mod.add_cell!(
@@ -991,6 +1011,7 @@ fn elaborate_expr(
           "Y": SigWire(output)
         }),
         attributes=src_attribute(span),
+        span~,
       )
 
       Value::Signal(SigWire(output))
@@ -1007,6 +1028,7 @@ fn elaborate_expr(
         width~,
         port=None,
         attributes=src_attribute(span),
+        span~,
       )
 
       let (default_sig, b_sig, s_sig) = {
@@ -1081,6 +1103,7 @@ fn elaborate_expr(
           src_attribute(span),
           map_attributes({"full_case": Int(1)}),
         ),
+        span~,
       )
 
       Value::Signal(SigWire(output))
@@ -1135,6 +1158,7 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
                 width=sig.size(),
                 port=None,
                 attributes=src_attribute(span),
+                span~,
               )
 
               declare!(name, Value::Signal(SigWire(wire)), env~, span=expr.span())
