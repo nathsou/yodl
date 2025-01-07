@@ -2,13 +2,14 @@
 pub(all) struct AstEmitter {
   mut indent: Int
   builder: StringBuilder
+  show_expr_types: Bool
+}
+
+pub fn AstEmitter::new(show_expr_types~: Bool = false) -> AstEmitter {
+  { indent: 0, builder: StringBuilder::new(), show_expr_types }
 }
 
 let show_instance_accessed_ports = false
-
-pub fn AstEmitter::new() -> AstEmitter {
-  { indent: 0, builder: StringBuilder::new() }
-}
 
 pub impl Show for AstEmitter with output(self, logger) {
   logger.write_string(self.builder.to_string())
@@ -60,6 +61,10 @@ pub impl Show for BinaryOp with output(op, logger) {
 pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
   if indent {
     self.write_indent()
+  }
+
+  if self.show_expr_types && not(expr.ty().val.is_empty()) {
+    self.write("(")
   }
 
   match expr {
@@ -166,7 +171,7 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
               self.write(param.to_string())
             }
             _ => {
-              self.emit_expr(expr)
+              self.emit_expr(param.value)
             }
           }
         }
@@ -334,6 +339,13 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
         self.write_indent()
         self.write("}")
       }
+    }
+  }
+
+  if self.show_expr_types {
+    match expr.ty().val {
+      Some(ty) => self.write(": \{ty})")
+      None => ()
     }
   }
 }

@@ -1,31 +1,40 @@
 
+pub fn clone_ty(ty: Ref[Type?]) -> Ref[Type?] {
+  let new_ty = match ty.val {
+    Some(ty) => Some(ty.clone())
+    None => None
+  }
+
+  { val: new_ty }
+}
+
 pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
   let res = match expr {
-    Natural(_) => expr
-    Identifier(_) => expr
+    Natural(bits~, width~, base~, ty~, span~) => Expr::Natural(bits~, width~, base~, ty=clone_ty(ty), span~)
+    Identifier(name~, ty~, span~) => Identifier(name~, ty=clone_ty(ty), span~) 
     Unary(op~, expr~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)
-      Unary(op~, expr~, span~, ty~)
+      Unary(op~, expr~, span~, ty=clone_ty(ty))
     }
     Binary(op~, lhs~, rhs~, span~, ty~) => {
       let lhs = rewrite_expr!(lhs, rewrite)
       let rhs = rewrite_expr!(rhs, rewrite)
-      Binary(op~, lhs~, rhs~, span~, ty~)
+      Binary(op~, lhs~, rhs~, span~, ty=clone_ty(ty))
     }
     Indexing(expr~, index~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)
       let index = rewrite_expr!(index, rewrite)
-      Indexing(expr~, index~, span~, ty~)
+      Indexing(expr~, index~, span~, ty=clone_ty(ty))
     }
     Slicing(expr~, msb~, lsb~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)
       let msb = rewrite_expr!(msb, rewrite)
       let lsb = rewrite_expr!(lsb, rewrite)
-      Slicing(expr~, msb~, lsb~, span~, ty~)
+      Slicing(expr~, msb~, lsb~, span~, ty=clone_ty(ty))
     }
     FieldAccess(expr~, field=port, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)
-      FieldAccess(expr~, field=port, span~, ty~)
+      FieldAccess(expr~, field=port, span~, ty=clone_ty(ty))
     }
     Instance(name~, params~, ports~, span~, ty~) => {
       let new_params = params.map!(fn(expr) { rewrite_expr!(expr, rewrite) })
@@ -35,7 +44,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
         new_ports[port] = rewrite_expr!(expr, rewrite)
       }
 
-      Instance(name~, params=new_params, ports=new_ports, span~, ty~)
+      Instance(name~, params=new_params, ports=new_ports, span~, ty=clone_ty(ty))
     }
     Vector(elems~, span~, ty~) => {
       let new_elems = Array::new(capacity=elems.length())
@@ -44,17 +53,17 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
         new_elems.push(rewrite_expr!(elem, rewrite))
       }
 
-      Vector(elems=new_elems, span~, ty~)
+      Vector(elems=new_elems, span~, ty=clone_ty(ty))
     }
     Spread(expr~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)
-      Spread(expr~, span~, ty~)
+      Spread(expr~, span~, ty=clone_ty(ty))
     }
     Ternary(cond~, then~, else_~, span~, ty~) => {
       let cond = rewrite_expr!(cond, rewrite)
       let then = rewrite_expr!(then, rewrite)
       let else_ = rewrite_expr!(else_, rewrite)
-      Ternary(cond~, then~, else_~, span~, ty~)
+      Ternary(cond~, then~, else_~, span~, ty=clone_ty(ty))
     }
     Match(subject~, cases~, default~, span~, ty~) => {
       let new_subject = rewrite_expr!(subject, rewrite)
@@ -72,7 +81,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
         None => None
       }
 
-      Match(subject=new_subject, cases=new_cases, default=new_default, span~, ty~)
+      Match(subject=new_subject, cases=new_cases, default=new_default, span~, ty=clone_ty(ty))
     }
     Tuple(elems~, span~, ty~) => {
       let new_elems = Array::new(capacity=elems.length())
@@ -81,12 +90,12 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
         new_elems.push(rewrite_expr!(elem, rewrite))
       }
 
-      Tuple(elems=new_elems, span~, ty~)
+      Tuple(elems=new_elems, span~, ty=clone_ty(ty))
     }
     Replicate(expr~, count~, concat~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)
       let count = rewrite_expr!(count, rewrite)
-      Replicate(expr~, count~, concat~, span~, ty~)
+      Replicate(expr~, count~, concat~, span~, ty=clone_ty(ty))
     }
     FunCall(name~, args~, span~, ty~) => {
       let new_args = Array::new(capacity=args.length())
@@ -95,7 +104,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
         new_args.push(rewrite_expr!(arg, rewrite))
       }
 
-      FunCall(name~, args=new_args, span~, ty~)
+      FunCall(name~, args=new_args, span~, ty=clone_ty(ty))
     }
     Struct(fields~, span~, ty~) => {
       let new_fields = Map::new(capacity=fields.size())
@@ -104,7 +113,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
         new_fields[field] = rewrite_expr!(expr, rewrite)
       }
 
-      Struct(fields=new_fields, span~, ty~)
+      Struct(fields=new_fields, span~, ty=clone_ty(ty))
     }
     String(_) => expr
   }

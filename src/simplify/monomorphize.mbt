@@ -78,17 +78,17 @@ fn register_monomorphized_module(
   params~: @parse.InstanceParams,
   span~: @parse.Span,
 ) -> @parse.ModuleDecl! {
-    let mod_decl = match self.parameterized[name] {
+  let mod_decl = match self.parameterized[name] {
+    Some(mod_decl) => mod_decl
+    None => match self.modules[name] {
       Some(mod_decl) => mod_decl
-      None => match self.modules[name] {
-        Some(mod_decl) => mod_decl
-        None => raise MonomorphizerError::ModuleNotFound(name~, span~)
-      }
+      None => raise MonomorphizerError::ModuleNotFound(name~, span~)
     }
+  }
 
-    if mod_decl.params.length() != params._.length() {
-      raise InvalidModuleParameterCount(name~, expected=mod_decl.params.length(), actual=params._.length(), span~)
-    }
+  if mod_decl.params.length() != params._.length() {
+    raise InvalidModuleParameterCount(name~, expected=mod_decl.params.length(), actual=params._.length(), span~)
+  }
 
   let monomorphized = match self.monomorphized[name] {
     Some(monomorphized) => monomorphized
@@ -130,7 +130,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @
           None => expr
         }
       }
-      Instance(name~, params~, ports~, span~, ty~) => {
+      Instance(name~, params~, ports~, span~, ty=_) => {
         let (mono_name, mono_params) = if params._.length() > 0 && not(self.declared_modules.contains(name)) {
           let mod = self.register_monomorphized_module!(
             name~,
@@ -155,7 +155,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv) -> @
           params=mono_params,
           ports=mono_ports,
           span~,
-          ty~,
+          ty={ val: None },
         )
       }
       _ => expr
@@ -273,16 +273,17 @@ fn monomorphize_module(self: Monomorphizer, mod~: @parse.ModuleDecl, params~: Ma
       } else {
         let builder = StringBuilder::new()
         builder.write_string(mod.name)
-        if params.size() > 0 {
-          builder.write_char('_')
-          let values = Array::new(capacity=params.size())
+        builder.write_char('_')
+        let values = Array::new(capacity=params.size())
 
-          for param_name in mod.params {
-            values.push(params[param_name].to_string())
+        for param_name in mod.params {
+          match params[param_name] {
+            Some(param) => values.push(param.to_string())
+            None => ()
           }
-
-          builder.write_string(String::concat(values, separator="_"))
         }
+
+        builder.write_string(String::concat(values, separator="_"))
         builder.to_string()
       }
     },

@@ -1,0 +1,113 @@
+
+const H_ACTIVE = 640;
+const V_ACTIVE = 480;
+
+module VGASyncPulses(
+    clk: logic,
+) -> (
+    hsync: logic,
+    vsync: logic,
+    col: logic[10],
+    row: logic[10],
+    is_active_area: logic,
+    new_pixel: logic,
+) {
+    const H_FRONT_PORCH = 16;
+    const H_SYNC_PULSE = 96;
+    const H_BACK_PORCH = 48;
+    const H_TOTAL = H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE + H_BACK_PORCH;
+
+    const V_FRONT_PORCH = 10;
+    const V_SYNC_PULSE = 2;
+    const V_BACK_PORCH = 33;
+    const V_TOTAL = V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE + V_BACK_PORCH;
+
+    let col_reg = Reg<10>(clk);
+    let row_reg = Reg<10>(clk);
+
+    let last_col = col_reg.q == H_TOTAL - 1;
+    let last_row = row_reg.q == V_TOTAL - 1;
+
+    col_reg.d = last_col ? 10'd0 : col_reg.q + 1'1;
+    row_reg.d = last_col ? (last_row ? 10'd0 : row_reg.q + 1'1) : row_reg.q;
+    new_pixel = last_col nand last_row;
+
+    hsync = (col_reg.q >= (H_ACTIVE + H_FRONT_PORCH)) and (col_reg.q < (H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE));
+    vsync = (row_reg.q >= (V_ACTIVE + V_FRONT_PORCH)) and (row_reg.q < (V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE));
+    is_active_area = col_reg.q < H_ACTIVE and row_reg.q < V_ACTIVE;
+    col = col_reg.q;
+    row = row_reg.q;
+}
+
+module LFSR<NumBits>(
+    clk: logic,
+    enable: logic,
+    seed_ready: logic,
+    seed_data: logic[NumBits],
+) -> (
+    q: logic[NumBits],
+    done: logic,
+) {
+    let r_xnor = Reg<1>(clk);
+    let r_lfsr = Reg<NumBits>(clk, en: enable, q);
+    r_lfsr.d = seed_ready ? seed_data : [...r_lfsr.q[NumBits - 2:0], r_xnor.q];
+
+    // https://docs.amd.com/v/u/en-US/xapp052
+    r_xnor.d = match NumBits {
+        3 => r_lfsr.q[2] xnor r_lfsr.q[1],
+        4 => r_lfsr.q[3] xnor r_lfsr.q[2],
+        5 => r_lfsr.q[4] xnor r_lfsr.q[2],
+        6 => r_lfsr.q[5] xnor r_lfsr.q[4],
+        7 => r_lfsr.q[6] xnor r_lfsr.q[5],
+        8 => r_lfsr.q[7] xnor r_lfsr.q[5] xnor r_lfsr.q[4] xnor r_lfsr.q[3],
+        9 => r_lfsr.q[8] xnor r_lfsr.q[4],
+        10 => r_lfsr.q[9] xnor r_lfsr.q[6],
+        11 => r_lfsr.q[10] xnor r_lfsr.q[8],
+        12 => r_lfsr.q[11] xnor r_lfsr.q[5] xnor r_lfsr.q[3] xnor r_lfsr.q[0],
+        13 => r_lfsr.q[12] xnor r_lfsr.q[3] xnor r_lfsr.q[2] xnor r_lfsr.q[0],
+        14 => r_lfsr.q[13] xnor r_lfsr.q[4] xnor r_lfsr.q[2] xnor r_lfsr.q[0],
+        15 => r_lfsr.q[14] xnor r_lfsr.q[13],
+        16 => r_lfsr.q[15] xnor r_lfsr.q[14] xnor r_lfsr.q[12] xnor r_lfsr.q[3],
+        17 => r_lfsr.q[16] xnor r_lfsr.q[13],
+        18 => r_lfsr.q[17] xnor r_lfsr.q[10],
+        19 => r_lfsr.q[18] xnor r_lfsr.q[5] xnor r_lfsr.q[1] xnor r_lfsr.q[0],
+        20 => r_lfsr.q[19] xnor r_lfsr.q[16],
+        21 => r_lfsr.q[20] xnor r_lfsr.q[18],
+        22 => r_lfsr.q[21] xnor r_lfsr.q[20],
+        23 => r_lfsr.q[22] xnor r_lfsr.q[17],
+        24 => r_lfsr.q[23] xnor r_lfsr.q[22] xnor r_lfsr.q[21] xnor r_lfsr.q[16],
+        25 => r_lfsr.q[24] xnor r_lfsr.q[21],
+        26 => r_lfsr.q[25] xnor r_lfsr.q[5] xnor r_lfsr.q[1] xnor r_lfsr.q[0],
+        27 => r_lfsr.q[26] xnor r_lfsr.q[4] xnor r_lfsr.q[1] xnor r_lfsr.q[0],
+        28 => r_lfsr.q[27] xnor r_lfsr.q[24],
+        29 => r_lfsr.q[28] xnor r_lfsr.q[26],
+        30 => r_lfsr.q[29] xnor r_lfsr.q[5] xnor r_lfsr.q[3] xnor r_lfsr.q[0],
+        31 => r_lfsr.q[30] xnor r_lfsr.q[27],
+        32 => r_lfsr.q[31] xnor r_lfsr.q[21] xnor r_lfsr.q[1] xnor r_lfsr.q[0],
+    };
+
+    done = r_lfsr.q == seed_data;
+}
+
+module Top(
+    clk: logic,
+) -> (
+    led: logic[4],
+    vga_hsync: logic,
+    vga_vsync: logic,
+    vga_red: logic[3],
+    vga_green: logic[3],
+    vga_blue: logic[3],
+) {
+    let vga = VGASyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
+    let rand_color = LFSR<32>(clk, enable: vga.new_pixel, seed_ready: 1'b0, seed_data: 32'd0).q[8:0];
+    let color = match vga.is_active_area {
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'b1 => { r: rand_color[2:0], g: rand_color[5:3], b: rand_color[8:6] },
+    };
+
+    vga_red = color.r;
+    vga_green = color.g;
+    vga_blue = color.b;
+    led = 4'd0;
+}

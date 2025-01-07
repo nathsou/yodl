@@ -474,9 +474,9 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
         match subject.expect_int?() {
           Ok(subject) => {
             for case in cases {
-              let (value, _) = case
+              let (value, rhs) = case
               match value.expect_int?() {
-                Ok(case) => if subject == case { return value }
+                Ok(case) => if subject == case { return rhs }
                 _ => ()
               }
             }
@@ -834,4 +834,16 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
   }
 
   map
+}
+
+pub fn clone(self: Type) -> Type {
+  match self {
+    Nat => Nat
+    Logic => Logic
+    Vector(ty~, len~) => Vector(ty=ty.clone(), len~)
+    Instance(sig~, params~, accessed_ports~) => Instance(sig~, params~, accessed_ports~)
+    Name(name~, params~) => Name(name~, params~)
+    Struct(fields) => Struct(@utils.map_values(fields, clone))
+    String(len~) => String(len~)
+  }
 }

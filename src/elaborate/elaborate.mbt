@@ -2,12 +2,13 @@
 pub struct Elaborator {
   mut autoidx: Int
   modules: Map[String, @rtlil.Module]
-  env: Map[String, Value]
   declared_modules: Map[String, @parse.ModuleSignature]
 }
 
+typealias ElaboratorEnv = Map[String, Value]
+
 pub fn Elaborator::new() -> Elaborator {
-  { autoidx: 0, modules: {}, env: {}, declared_modules: {} }
+  { autoidx: 0, modules: {}, declared_modules: {} }
 }
 
 pub type! ElaboratorError {
@@ -135,7 +136,7 @@ enum Value {
   Signal(@rtlil.Signal)
   Vector(Array[Value])
   Struct(Map[String, Value])
-}
+} derive(Show)
 
 fn ctor(self: Value) -> String {
   match self {
@@ -166,7 +167,7 @@ fn bits_from_int(n: Int, width~: Int) -> @rtlil.Constant {
   ConstValue(width~, bits~)
 }
 
-fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value! {
+fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, env~: ElaboratorEnv, span~: @parse.Span, name_binding~: @rtlil.Id) -> Value! {
   match ty {
     Nat => Value::Signal(@rtlil.SigConst(ConstValue(bits=[Z], width=32)))
     Logic => bits([X])
@@ -186,7 +187,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
         let val = Array::new(capacity=len)
 
         for i in 0..<len {
-          val.push(self.default_value!(ty~, mod~, span~, name_binding=name_binding.join("[\{i}]")))
+          val.push(self.default_value!(ty~, mod~, env~, span~, name_binding=name_binding.join("[\{i}]")))
         }
 
         Value::Vector(val)
@@ -209,7 +210,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
         ty={ val: Some(ty) },
       )
 
-      self.elaborate_expr!(inst, mod, name_binding=Some(name_binding))
+      self.elaborate_expr!(inst, mod~, env~, name_binding=Some(name_binding))
     }
     Name(_) => {
       raise UnresolvedType(span~)
@@ -218,7 +219,7 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, span~:
       let val = Map::new(capacity=fields.size())
 
       for field, ty in fields {
-        val[field] = self.default_value!(ty~, mod~, span~, name_binding=name_binding.join(".\{field}"))
+        val[field] = self.default_value!(ty~, mod~, env~, span~, name_binding=name_binding.join(".\{field}"))
       }
 
       Value::Struct(val)
@@ -304,7 +305,7 @@ fn map_parameters(parameters: Map[String, @rtlil.Constant]) -> Map[@rtlil.Id, @r
   mapped
 }
 
-fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
+fn elaborate_module(self: Elaborator, mod~: @parse.ModuleDecl, env~: ElaboratorEnv) -> Unit! {
   let mod_def = @rtlil.Module::new(PubId(mod.name))
 
   for port_id, port in mod.ports {
@@ -317,7 +318,7 @@ fn elaborate_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   }
 
   for stmt in mod.body {
-    let _ = self.elaborate_stmt!(stmt, mod_def)
+    let _ = self.elaborate_stmt!(stmt, mod=mod_def, env~)
   }
 
   // make sure that output ports are on the left side of connections
@@ -354,12 +355,12 @@ fn next_genidx(self: Elaborator) -> Int {
   idx
 }
 
-fn declare(self: Elaborator, name: String, value: Value, span~: @parse.Span) -> Unit!ElaboratorError {
-  if self.env.contains(name) {
+fn declare(name: String, value: Value, env~: ElaboratorEnv, span~: @parse.Span) -> Unit!ElaboratorError {
+  if env.contains(name) {
     raise NameConflict(name~, span~)
   }
   
-  self.env[name] = value
+  env[name] = value
 }
 
 fn expr_width(expr: @parse.Expr) -> Int! {
@@ -375,6 +376,7 @@ fn binary_op_cell(
   lhs~: @parse.Expr,
   rhs~: @parse.Expr,
   mod~: @rtlil.Module,
+  env~: ElaboratorEnv,
   span~: @parse.Span,
   output_width~: Int? = None,
   attributes~: Map[@rtlil.Id, @rtlil.Constant] = {},
@@ -399,7 +401,7 @@ fn binary_op_cell(
     And => "and"
     Or => "or"
     Xor => "xor"
-    Nand => "nand"
+    Nand => raise Unsupported(message="Nand operator after simplification", span~)
     Nor => "nor"
     Xnor => "xnor"
     Ternary => raise Unsupported(message="Ternary operator is not a binop", span~)
@@ -430,8 +432,8 @@ fn binary_op_cell(
       "Y_WIDTH": @rtlil.ConstInteger(wy),
     }),
     connections=map_signals({
-      "A": self.elaborate_expr!(lhs, mod).as_signal!(lhs.span()),
-      "B": self.elaborate_expr!(rhs, mod).as_signal!(rhs.span()),
+      "A": self.elaborate_expr!(lhs, mod~, env~).as_signal!(lhs.span()),
+      "B": self.elaborate_expr!(rhs, mod~, env~).as_signal!(rhs.span()),
       "Y": SigWire(output),
     }),
     attributes=src_attribute(span),
@@ -443,12 +445,13 @@ fn binary_op_cell(
 fn elaborate_expr(
   self: Elaborator,
   expr: @parse.Expr,
-  mod: @rtlil.Module,
+  mod~: @rtlil.Module,
+  env~: ElaboratorEnv,
   name_binding~: @rtlil.Id? = None,
 ) -> Value! {
   match expr {
     Identifier(name~, span~, ..) => {
-      match self.env[name] {
+      match env[name] {
         Some(value) => value
         None => match mod.wires[PubId(name)] {
           Some(wire) => Value::Signal(SigWire(wire))
@@ -488,7 +491,7 @@ fn elaborate_expr(
           "Y_WIDTH": @rtlil.ConstInteger(width),
         }),
         connections=map_signals({
-          "A": self.elaborate_expr!(expr, mod).as_signal!(expr.span()),
+          "A": self.elaborate_expr!(expr, mod~, env~).as_signal!(expr.span()),
           "Y": SigWire(output),
         }),
         attributes=src_attribute(span),
@@ -504,7 +507,7 @@ fn elaborate_expr(
       ty~,
     ) => {
       let output_width = ty.val.unwrap().width!(span)
-      self.binary_op_cell!(op~, lhs~, rhs~, mod~, span~, output_width=Some(output_width))
+      self.binary_op_cell!(op~, lhs~, rhs~, mod~, env~, span~, output_width=Some(output_width))
     }
     Instance(name~, params~, ports~, span~, ty=inst_ty) => {
       if params._.length() > 0 && not(self.declared_modules.contains(name)) {
@@ -576,7 +579,7 @@ fn elaborate_expr(
           extra_ports.push(port_name)
         }
 
-        let sig = self.elaborate_expr!(expr, mod).as_signal!(expr.span())
+        let sig = self.elaborate_expr!(expr, mod~, env~).as_signal!(expr.span())
         inline_connections[PubId(port_name)] = sig
       }
       
@@ -837,7 +840,7 @@ fn elaborate_expr(
       Value::Struct(fields)
     }
     FieldAccess(expr~, field~, span~, ..) => {
-      let val = self.elaborate_expr!(expr, mod)
+      let val = self.elaborate_expr!(expr, mod~, env~)
 
       match val {
         Struct(fields) => {
@@ -901,8 +904,8 @@ fn elaborate_expr(
       }
     }
     Indexing(expr~, index~, ..) => {
-      let idx = self.elaborate_expr!(index, mod).expect_integer!(index.span())
-      let val = self.elaborate_expr!(expr, mod)
+      let idx = self.elaborate_expr!(index, mod~, env~).expect_integer!(index.span())
+      let val = self.elaborate_expr!(expr, mod~, env~)
 
       match val {
         Signal(sig) => {
@@ -925,9 +928,9 @@ fn elaborate_expr(
       }
     }
     Slicing(expr~, msb~, lsb~, ..) => {
-      let sig = self.elaborate_expr!(expr, mod).as_signal!(expr.span())
-      let msb = self.elaborate_expr!(msb, mod).expect_integer!(msb.span())
-      let lsb = self.elaborate_expr!(lsb, mod).expect_integer!(lsb.span())
+      let sig = self.elaborate_expr!(expr, mod~, env~).as_signal!(expr.span())
+      let msb = self.elaborate_expr!(msb, mod~, env~).expect_integer!(msb.span())
+      let lsb = self.elaborate_expr!(lsb, mod~, env~).expect_integer!(lsb.span())
 
       if msb < lsb {
         raise Unreachable(message="Invalid slicing range", span=expr.span())
@@ -941,7 +944,7 @@ fn elaborate_expr(
       for elem in elems {
         match elem {
           Spread(expr~, ..) => {
-            let val = self.elaborate_expr!(expr, mod)
+            let val = self.elaborate_expr!(expr, mod~, env~)
 
             match val {
               Vector(values) => {
@@ -953,7 +956,7 @@ fn elaborate_expr(
             }
           }
           _ => {
-            values.push(self.elaborate_expr!(elem, mod))
+            values.push(self.elaborate_expr!(elem, mod~, env~))
           }
         }
       }
@@ -966,6 +969,7 @@ fn elaborate_expr(
     Ternary(cond~, then~, else_~, span~, ..) => {
       let cell_type = "mux"
       let cell_name = "\{cell_type}_\{self.next_genidx()}"
+
       let width = expr_width!(then)
       let output = mod.add_wire!(
         name=GenId("\{cell_name}.y"),
@@ -981,9 +985,9 @@ fn elaborate_expr(
           "WIDTH": @rtlil.ConstInteger(width)
         }),
         connections=map_signals({
-          "A": self.elaborate_expr!(else_, mod).as_signal!(then.span()),
-          "B": self.elaborate_expr!(then, mod).as_signal!(else_.span()),
-          "S": self.elaborate_expr!(cond, mod).as_signal!(cond.span()),
+          "A": self.elaborate_expr!(else_, mod~, env~).as_signal!(then.span()),
+          "B": self.elaborate_expr!(then, mod~, env~).as_signal!(else_.span()),
+          "S": self.elaborate_expr!(cond, mod~, env~).as_signal!(cond.span()),
           "Y": SigWire(output)
         }),
         attributes=src_attribute(span),
@@ -1019,7 +1023,7 @@ fn elaborate_expr(
           match sigs[index] {
             Some(_) => raise DuplicateMatchCase(index~, span=lhs.span())
             None => {
-              let rhs_sig = self.elaborate_expr!(rhs, mod).as_signal!(rhs.span())
+              let rhs_sig = self.elaborate_expr!(rhs, mod~, env~).as_signal!(rhs.span())
               sigs[index] = Some((lhs, rhs_sig))
             }
           }
@@ -1036,6 +1040,7 @@ fn elaborate_expr(
                 lhs~,
                 rhs=subject,
                 mod~,
+                env~,
                 span~,
                 attributes=map_attributes({"full_case": Int(1)})
               )
@@ -1052,7 +1057,7 @@ fn elaborate_expr(
         }
 
         let default_sig = match default {
-          Some(expr) => self.elaborate_expr!(expr, mod).as_signal!(expr.span())
+          Some(expr) => self.elaborate_expr!(expr, mod~, env~).as_signal!(expr.span())
           None => SigConst(ConstValue(width~, bits=@utils.fill(width, @parse.BinaryDigit::X)))
         }
 
@@ -1084,7 +1089,7 @@ fn elaborate_expr(
       let values = Array::new(capacity=elems.length())
 
       for elem in elems {
-        values.push(self.elaborate_expr!(elem, mod))
+        values.push(self.elaborate_expr!(elem, mod~, env~))
       }
 
       Value::Vector(values)
@@ -1104,7 +1109,8 @@ fn elaborate_expr(
 
         val[field] = self.elaborate_expr!(
           field_expr,
-          mod,
+          mod~,
+          env~,
           name_binding=Some(name_binding.map(fn(id) { id.join(".\{field}") }).or(GenId("\{field}\{self.next_genidx()}"))),
         )
       }
@@ -1114,15 +1120,15 @@ fn elaborate_expr(
   }
 }
 
-fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Unit! {
+fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~: ElaboratorEnv) -> Unit! {
   match stmt {
     Expr(expr~, ..) => {
-      let _ = self.elaborate_expr!(expr, mod)
+      let _ = self.elaborate_expr!(expr, mod~, env~)
     }
     Let(name~, ty~, expr~, span~) => {
       match expr {
         Some(expr) => {
-          match self.elaborate_expr!(expr, mod, name_binding=Some(PubId(name))) {
+          match self.elaborate_expr!(expr, mod~, env~, name_binding=Some(PubId(name))) {
             Signal(sig) => {
               let wire = mod.add_wire!(
                 name=PubId(name),
@@ -1131,27 +1137,27 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
                 attributes=src_attribute(span),
               )
 
-              self.declare!(name, Value::Signal(SigWire(wire)), span=expr.span())
+              declare!(name, Value::Signal(SigWire(wire)), env~, span=expr.span())
               mod.connect!(SigWire(wire), sig, span=expr.span())
             }
             Vector(_) as val => {
-              self.declare!(name, val, span=expr.span())
+              declare!(name, val, env~, span=expr.span())
             }
             Struct(_) as val => {
-              self.declare!(name, val, span=expr.span())
+              declare!(name, val, env~, span=expr.span())
             }
           }
         }
         None => {
           let ty = ty.val.or_error!(UntypedLet(span~))
-          let val = self.default_value!(ty~, mod~, span~, name_binding=PubId(name))
-          self.declare!(name, val, span~)
+          let val = self.default_value!(ty~, mod~, env~, span~, name_binding=PubId(name))
+          declare!(name, val, env~, span~)
         }
       }
     }
     Assign(lhs~, rhs~, span~) => {
-      let sig1 = self.elaborate_expr!(lhs, mod).as_signal!(lhs.span())
-      let sig2 = self.elaborate_expr!(rhs, mod).as_signal!(rhs.span())
+      let sig1 = self.elaborate_expr!(lhs, mod~, env~).as_signal!(lhs.span())
+      let sig2 = self.elaborate_expr!(rhs, mod~, env~).as_signal!(rhs.span())
       mod.connect!(sig1, sig2, span~)
     }
     For(span~, ..) => {
@@ -1159,7 +1165,7 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
     }
     Scope(body~, ..) => {
       for stmt in body {
-        self.elaborate_stmt!(stmt, mod)
+        self.elaborate_stmt!(stmt, mod~, env~)
       }
     }
     Const(span~, ..) => {
@@ -1171,8 +1177,7 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod: @rtlil.Module) -> Un
 pub fn elaborate_decl(self: Elaborator, decl: @parse.Decl) -> Unit! {
   match decl {
     Module(mod) => {
-      self.env.clear()
-      self.elaborate_module!(mod)
+      self.elaborate_module!(mod~, env={})
     }
     ModuleDeclaration(sig) => {
       self.declared_modules[sig.name] = sig

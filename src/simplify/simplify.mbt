@@ -49,6 +49,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 7. Rewrite flat constant vectors to natural expressions
 // 8. Hardcode constant references
 // 9. Rewrite strings into vectors
+// 10. Rewrite nand expressions into not + and expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
@@ -59,6 +60,9 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
           Some(Name(unique_name)) => @parse.Expr::Identifier(name=unique_name.to_string(), span~, ty~)
           None => expr
         }
+      }
+      Binary(op=Nand, lhs~, rhs~, span~, ty~) => {
+        @parse.Expr::Unary(op=Not, expr=Binary(op=And, lhs~, rhs~, span~, ty~), span~, ty~)
       }
       Tuple(elems~, span~, ty=_) => {
         let fields = Map::new(capacity=elems.length())

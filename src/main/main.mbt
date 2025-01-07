@@ -4,6 +4,7 @@ enum Command {
   WriteVerilog(path~: String?)
   WriteSource
   WriteMono(path~: String?)
+  WriteTyped
   WriteSimplified(path~: String?)
 }
 
@@ -50,24 +51,10 @@ fn run(file: String, commands: Array[Command]) -> Unit! {
   let lexer = @parse.Lexer::new(source, file~)
   let tokens = lexer.lex!()
   let parser = @parse.Parser::new(tokens, file~)
-  let decls = builtin_decls + parser.parse!()
-  let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = monomorphizer.monomorphize!(decls)
-  let checker = @elaborate.TypeChecker::new()
+  let decls = parser.parse!()
 
-  for decl in mono_decls {
-    checker.check_decl!(decl)
-  }
-
-  let simplified_decls = @simplify.simplify_decls!(mono_decls)
-  let elaborator = @elaborate.Elaborator::new()
-
-  for decl in simplified_decls {
-    elaborator.elaborate_decl!(decl)
-  }
-
-  fn run_command(command: Command) -> Unit! {
-    match command {
+  for cmd in commands {
+    match cmd {
       WriteSource => {
         let emitter = @parse.AstEmitter::new()
 
@@ -78,6 +65,15 @@ fn run(file: String, commands: Array[Command]) -> Unit! {
 
         println(emitter.to_string())
       }
+      _ => ()
+    }
+  }
+
+  let monomorphizer = @simplify.Monomorphizer::new()
+  let mono_decls = monomorphizer.monomorphize!(builtin_decls + decls)
+
+  for cmd in commands {
+    match cmd {
       WriteMono(path~) => {
         let emitter = @parse.AstEmitter::new()
 
@@ -97,6 +93,36 @@ fn run(file: String, commands: Array[Command]) -> Unit! {
           }
         }
       }
+      _ => ()
+    }
+  }
+
+  let checker = @elaborate.TypeChecker::new()
+
+  for decl in mono_decls {
+    checker.check_decl!(decl)
+  }
+
+  for cmd in commands {
+    match cmd {
+      WriteTyped => {
+        let emitter = @parse.AstEmitter::new(show_expr_types=true)
+
+        for decl in mono_decls {
+          emitter.emit_decl(decl)
+          emitter.emit("\n")
+        }
+
+        println(emitter.to_string())
+      }
+      _ => ()
+    }
+  }
+
+  let simplified_decls = @simplify.simplify_decls!(mono_decls)
+
+  for cmd in commands {
+    match cmd {
       WriteSimplified(path~) => {
         let emitter = @parse.AstEmitter::new()
 
@@ -116,6 +142,18 @@ fn run(file: String, commands: Array[Command]) -> Unit! {
           }
         }
       }
+      _ => ()
+    }
+  }
+
+  let elaborator = @elaborate.Elaborator::new()
+
+  for decl in simplified_decls {
+    elaborator.elaborate_decl!(decl)
+  }
+
+  for cmd in commands {
+    match cmd {
       WriteRTLIL(path~) => {
         let rtlil = {
           let serializer = @rtlil.Serializer::new(
@@ -151,11 +189,8 @@ fn run(file: String, commands: Array[Command]) -> Unit! {
           }
         }
       }
+      _ => ()
     }
-  }
-
-  for command in commands {
-    run_command!(command)
   }
 }
 
@@ -174,9 +209,10 @@ fn main {
       let file_name = path.split("/").last().unwrap().replace(old=".yodl", new="")
       let commands = [
         // WriteSource,
-        WriteMono(path=None),
+        // WriteMono(path=None),
+        // WriteTyped,
+        WriteSimplified(path=None),
         WriteRTLIL(path=Some("output/\{file_name}.rtlil")),
-        // WriteVerilog(path=None),
         WriteVerilog(path=Some("output/\{file_name}.v")),
       ]
 

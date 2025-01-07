@@ -160,6 +160,9 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
         }
 
         match (ty1, ty2) {
+            (Vector(ty=ty1_inner, len=Fixed(1)), ty2) | (ty2, Vector(ty=ty1_inner, len=Fixed(1))) => {
+                eqs.push((ty1_inner, ty2))
+            }
             (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(name~, ..)))) => {
                 match subst[name] {
                     Some(len2) => {
@@ -320,6 +323,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             let start_ty = self.check_expr!(msb, env)
             let end_ty = self.check_expr!(lsb, env)
 
+
             if start_ty != @parse.Nat || end_ty != @parse.Nat {
                 raise InvalidSlicingRange(span~)
             }
@@ -381,11 +385,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                         params_env[name] = param.as_param!()
                     }
 
-                    for port_name, expr in ports {
+                    for port_name, port_expr in ports {
                         match sig.get_port(port_name) {
                             Some(port_def) => {
-                                let expr_ty = self.check_expr!(expr, env).substitute(params_env~)
-                                let _ = unify!(port_def.ty.substitute(params_env~), expr_ty, span=expr.span(), subst~)
+                                let expr_ty = self.check_expr!(port_expr, env).substitute(params_env~)
+                                let _ = unify!(port_def.ty.substitute(params_env~), expr_ty, span=port_expr.span(), subst~)
                             }
                             None => raise UnknownModulePort(module_name=name, port_name=port_name, span~)
                         }
@@ -444,7 +448,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
             raise SpreadOutsideVector(span~)
         }
         Ternary(cond~, then~, else_~, span~, ..) => {
-            let cond_ty = self.check_expr!(cond, env)
+            let cond_ty = self.check_expr!(cond, env, expected_ty=Some(@parse.Logic))
             let then_ty = self.check_expr!(then, env, expected_ty~)
             let else_ty = self.check_expr!(else_, env, expected_ty~)
 
@@ -679,7 +683,6 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
     match decl {
         Module({ name, params: _, attributes, ports, body, span: _ } as mod) => {
             let env = self.top_env.child()
-
             check_attributes!(attributes, signatures=module_attribute_signatures)
 
             for port in ports {
