@@ -37,7 +37,7 @@ pub impl Spanned for LexerError with span(self: LexerError) -> Span {
   }
 }
 
-fn is_whitespace(c: Char) -> Bool {
+pub fn is_whitespace(c: Char) -> Bool {
   match c {
     ' ' => true
     '\t' => true
@@ -51,7 +51,7 @@ fn is_undetermined_digit(c: Char) -> Bool {
   c == 'x' || c == 'X' || c == 'z' || c == 'Z'
 }
 
-fn is_digit(c: Char, base~: Int) -> Bool {
+pub fn is_digit(c: Char, base~: Int) -> Bool {
   match base {
     2 => c == '0' || c == '1' || is_undetermined_digit(c)
     8 => c >= '0' && c <= '7'
@@ -60,11 +60,11 @@ fn is_digit(c: Char, base~: Int) -> Bool {
   }
 }
 
-fn is_alpha(c: Char) -> Bool {
+pub fn is_alpha(c: Char) -> Bool {
   (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
 }
 
-fn is_alphanumeric(c: Char) -> Bool {
+pub fn is_alphanumeric(c: Char) -> Bool {
   is_alpha(c) || is_digit(c, base=10)
 }
 

@@ -1,13 +1,4 @@
 
-enum Command {
-  WriteRTLIL(path~: String?)
-  WriteVerilog(path~: String?)
-  WriteSource
-  WriteMono(path~: String?)
-  WriteTyped
-  WriteSimplified(path~: String?)
-}
-
 let builtin_decls: Array[@parse.Decl] = {
   let source =
     #|@internal
@@ -46,11 +37,20 @@ let builtin_decls: Array[@parse.Decl] = {
   parser.parse?().unwrap()
 }
 
-fn run(file: String, commands: Array[Command]) -> Unit! {
-  let source = @fs.read_file_to_string!(path=file)
-  let lexer = @parse.Lexer::new(source, file~)
+fn run(path~: String, commands~: Array[Command]) -> Unit! {
+  if not(path.ends_with(".yodl")) {
+    println("Input file must have a .yodl extension")
+    @sys.exit(1)
+  }
+
+  if not(@fs.path_exists(path="output/")) {
+    @fs.create_dir(path="output/")
+  }
+
+  let source = @fs.read_file_to_string!(path~)
+  let lexer = @parse.Lexer::new(source, file=path)
   let tokens = lexer.lex!()
-  let parser = @parse.Parser::new(tokens, file~)
+  let parser = @parse.Parser::new(tokens, file=path)
   let decls = parser.parse!()
 
   for cmd in commands {
@@ -197,26 +197,7 @@ fn run(file: String, commands: Array[Command]) -> Unit! {
 fn main {
   match @sys.get_cli_args() {
     [_, _, path] => {
-      if not(path.ends_with(".yodl")) {
-        println("Input file must have a .yodl extension")
-        @sys.exit(1)
-      }
-
-      if not(@fs.path_exists(path="output/")) {
-        @fs.create_dir(path="output/")
-      }
-
-      let file_name = path.split("/").last().unwrap().replace(old=".yodl", new="")
-      let commands = [
-        // WriteSource,
-        // WriteMono(path=None),
-        // WriteTyped,
-        WriteSimplified(path=None),
-        WriteRTLIL(path=Some("output/\{file_name}.rtlil")),
-        WriteVerilog(path=Some("output/\{file_name}.v")),
-      ]
-
-      match run?(path, commands) {
+      match run?(path~, commands=[WriteRTLIL(path=Some(path.replace(old=".yodl", new=".rtlil")))]) {
         Ok(_) => ()
         Err(error) => {
           println(error)
@@ -224,8 +205,25 @@ fn main {
         }
       }
     }
+    [_, _, path, cmds] => {
+      match parse_commands?(cmds) {
+        Ok(commands) => {
+          match run?(path~, commands~) {
+            Ok(_) => ()
+            Err(error) => {
+              println(error)
+              @sys.exit(1)
+            }
+          }
+        }
+        Err(error) => {
+          println(error)
+          @sys.exit(1)
+        }
+      }
+    }
     _ => {
-      println("Usage: yodl <file>")
+      println("Usage: yodl <file> [commands]")
     }
   }
 }
