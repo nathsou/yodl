@@ -50,7 +50,7 @@ module Top(
     let vga = VGASyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
     let x_div = vga.col[9:2];
     let y_div = vga.row[9:2];
-    let cell_idx: logic[15] = y_div * 8'd160 + x_div;
+    let cell_idx: logic[15] = y_div * 160 + x_div;
     let color_idx = RAM<
         Width: 3,
         Depth: (H_ACTIVE / 4) * (V_ACTIVE / 4),

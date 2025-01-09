@@ -125,8 +125,9 @@ fn precedence(self: BinaryOp) -> Int {
     Lss | Gtr | Leq | Geq => 5
     Equ | Neq => 4
     And | Nand => 3
-    Or | Nor | Xor | Xnor => 2
-    Ternary => 1
+    Xor | Xnor => 2
+    Or | Nor => 1
+    Ternary => 0
   }
 }
 
@@ -761,7 +762,7 @@ pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
     Lss => 1
     Geq => 1
     Leq => 1
-    Shl => wa
+    Shl => wa + @utils.pow2(wb)
     Shr => wa
     And => @utils.max(wa, wb)
     Or => @utils.max(wa, wb)

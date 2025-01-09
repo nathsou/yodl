@@ -50,6 +50,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // 8. Hardcode constant references
 // 9. Rewrite strings into vectors
 // 10. Rewrite nand expressions into not + and expressions
+// 11. Rewrite match expressions with two cases: 0 and 1, as ternary expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
@@ -176,6 +177,14 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
           span~,
           ty={ val: Some(Vector(ty=Logic, len=Fixed(ascii.length()))) },
         )
+      }
+      Match(subject~, cases=[(Natural(bits=bits1, ..), rhs1), (Natural(bits=bits2, ..), rhs2)], default=None, span~, ty~) => {
+        // Rewrite match expressions with two cases: 0 and 1, as ternary expression
+        match (bits1.as_int?(), bits2.as_int?()) {
+          (Ok(1), Ok(0)) => Ternary(cond=subject, then=rhs1, else_=rhs2, span~, ty~)
+          (Ok(0), Ok(1)) => Ternary(cond=subject, then=rhs2, else_=rhs1, span~, ty~)
+          _ => expr
+        }
       }
       _ => expr
     }).partial_eval!()
