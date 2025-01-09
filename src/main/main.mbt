@@ -22,13 +22,14 @@ let builtin_decls: Array[@parse.Decl] = {
     #|)
     #|
     #|@internal
-    #|declare module RAM<Width, Depth, Init>(
+    #|declare module Memory<Width, Depth, ReadPorts, WritePorts, Init>(
     #|    clk: logic,
-    #|    addr: logic[$clog2(Depth)],
-    #|    write_enable?: logic,
-    #|    data_in?: logic[Width],
+    #|    read_addr: logic[$clog2(Depth) * ReadPorts],
+    #|    write_addr: logic[$clog2(Depth) * WritePorts],
+    #|    write_enable?: logic[WritePorts],
+    #|    data_in?: logic[Width * WritePorts],
     #|) -> (
-    #|    data_out: logic[Width],
+    #|    data_out: logic[Width * ReadPorts],
     #|)
   
   let lexer = @parse.Lexer::new(source, file="builtin.yodl")

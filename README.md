@@ -10,8 +10,8 @@ Circuit description (Yodl) -> Visualization (Digital) -> Software simulation (Yo
 
 - [x] [RTLIL](https://yosyshq.readthedocs.io/projects/yosys/en/latest/yosys_internals/formats/rtlil_rep.html) export
 - [x] Verilog export
-- [ ] Single Port RAMs
-- [ ] Generic multi-port memories
+- [x] Generic multi-port memories
+- [ ] Multi-dimensional vectors (logic[16][4])
 - [ ] Optional module parameters (and register initial value)
 - [ ] Arbitrary port types
 - [ ] Implement the [check](https://github.com/YosysHQ/yosys/blob/45e31f06b4dec9e0783481d6bf03fa906e21aaa4/passes/cmds/check.cc) pass

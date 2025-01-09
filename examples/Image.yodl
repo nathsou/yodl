@@ -51,11 +51,16 @@ module Top(
     let x_div = vga.col[9:2];
     let y_div = vga.row[9:2];
     let cell_idx: logic[15] = y_div * 160 + x_div;
-    let color_idx = RAM<
+    let color_idx = Memory<
         Width: 3,
         Depth: (H_ACTIVE / 4) * (V_ACTIVE / 4),
+        ReadPorts: 1,
+        WritePorts: 0,
         Init: $readmemb("res/york.mem"),
-    >(clk, addr: cell_idx).data_out;
+    >(
+        clk,
+        read_addr: cell_idx,
+    ).data_out;
 
     let color = match vga.is_active_area {
         1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },

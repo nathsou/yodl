@@ -41,8 +41,6 @@ pub fn context(self: Span, window_size~: Int = 3) -> String! {
       window.write_string(line)
 
       if index >= (self.start.0 - 1) && index < self.end.0 {
-        window.write_string("\n")
-
         for _ in 0..=self.start.1 {
           window.write_char(' ')
         }

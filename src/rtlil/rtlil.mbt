@@ -79,6 +79,7 @@ pub fn size(self: Constant) -> Int {
 pub(all) struct PortSpec {
   id: Int
   direction: @parse.PortDirection
+  optional: Bool
 }
 
 pub(all) struct Wire {

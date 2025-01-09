@@ -351,7 +351,7 @@ fn export_module(self: VerilogExporter, mod: @rtlil.Module) -> Unit!VerilogExpor
 
   for wire in mod.wires.values() {
     match wire.port {
-      Some({ direction, id: _ }) => {
+      Some({ direction, id: _, optional: _ }) => {
         verilog_mod.ports.push({ name: show_id(wire.name), direction, width: wire.width })
       }
       None => {
