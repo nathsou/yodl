@@ -1,15 +1,12 @@
 
+typealias ParamsHash = UInt
+
 pub struct Monomorphizer {
   modules: Map[String, @parse.ModuleDecl]
   parameterized: Map[String, @parse.ModuleDecl]
-  monomorphized: Map[String, Array[MonomorphizedModule]]
+  monomorphized: Map[ParamsHash, @parse.ModuleDecl]
   declared_modules: Map[String, @parse.ModuleSignature]
   top_env: MonoEnv
-}
-
-pub struct MonomorphizedModule {
-  params: Map[String, @parse.Param]
-  mod: @parse.ModuleDecl
 }
 
 pub fn Monomorphizer::new() -> Monomorphizer {
@@ -72,6 +69,16 @@ fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv) -> @pa
   }
 }
 
+fn hash_params(params: Iter[@parse.Param]) -> UInt {
+  let hasher = Hasher::new()
+
+  for param in params {
+    hasher.combine(param)
+  }
+
+  hasher.finalize().reinterpret_as_uint()
+}
+
 fn register_monomorphized_module(
   self: Monomorphizer,
   name~: String,
@@ -90,14 +97,6 @@ fn register_monomorphized_module(
     raise InvalidModuleParameterCount(name~, expected=mod_decl.params.length(), actual=params._.length(), span~)
   }
 
-  let monomorphized = match self.monomorphized[name] {
-    Some(monomorphized) => monomorphized
-    None => {
-      let monomorphized = []
-      self.monomorphized[name] = monomorphized
-      monomorphized
-    }
-  }
 
   let params_map = {
     let map = Map::new(capacity=params._.length())
@@ -109,15 +108,16 @@ fn register_monomorphized_module(
     map
   }
 
-  for inst in monomorphized {
-    if inst.params == params_map { 
-      return inst.mod
-    }
+  let hash = hash_params(params_map.values())
+
+  match self.monomorphized[hash] {
+    Some(mod) => return mod
+    None => ()
   }
 
-  let name = "\{name}$\{monomorphized.length()}"
+  let name = "\{name}$\{self.monomorphized.size()}"
   let mono_mod = self.monomorphize_module!(mod=mod_decl, params=params_map, name~)
-  monomorphized.push({ params: params_map, mod: mono_mod })
+  self.monomorphized[hash] = mono_mod
   self.modules[mono_mod.name] = mono_mod
 
   mono_mod

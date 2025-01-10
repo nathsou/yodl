@@ -76,7 +76,7 @@ pub(all) enum BinaryOp {
 
 pub(all) enum BinaryDigit {
   Zero; One; X; Z; M; DontCare
-} derive(Eq)
+} derive(Eq, Hash)
 
 pub fn is_determined(self: BinaryDigit) -> Bool {
   match self {
@@ -100,6 +100,12 @@ pub(all) struct Bits {
   bits: Array[BinaryDigit]
   mut value: Int?
   span: Span
+}
+
+pub impl Hash for Bits with hash_combine(self, hasher) {
+  for bit in self.bits {
+    hasher.combine(bit)
+  }
 }
 
 pub impl Eq for Bits with op_equal(self, other) {
@@ -395,7 +401,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
 pub enum Param {
   Int(Int)
   Val(bits~: Bits, width~: Int)
-} derive(Eq)
+} derive(Eq, Hash)
 
 pub impl Show for Param with output(self, logger) -> Unit {
   match self {

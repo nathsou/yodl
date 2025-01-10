@@ -16,10 +16,17 @@ pub fn sum(iter: Iter[Int]) -> Int {
 }
 
 pub fn clog2(n: Int) -> Int {
-  match n {
-    0 => 1 // 1 bit is required to represent 0
-    _ => @math.ceil(@math.log2(n.to_double())).to_int()
+  let mut p = 1
+
+  for i in 0..<64 {
+    if p >= n {
+      return i
+    }
+
+    p = p << 1
   }
+
+  64
 }
 
 pub fn cdiv(dividend: Int, divisor: Int) -> Int {
