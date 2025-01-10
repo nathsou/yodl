@@ -694,7 +694,7 @@ fn elaborate_expr(
             let depth = parameter!("Depth").expect_int!()
             let read_ports = parameter!("ReadPorts").expect_int!()
             let write_ports = parameter!("WritePorts").expect_int!()
-            let clamped_write_ports = @utils.max(read_ports, 1)
+            let clamped_write_ports = @utils.max(write_ports, 1)
             let abits = @utils.clog2(depth + 1)
             let read_width = read_ports * width
 
@@ -754,17 +754,12 @@ fn elaborate_expr(
             )
 
             let _ = mod.add_cell!(
-              type_=@rtlil.GenId(if is_writeable { "dffe" } else { "dff" }),
+              type_=@rtlil.GenId("dff"),
               name=GenId("\{cell_name.inner()}_data_out_reg"),
               parameters={
                 let params = {}
                 params[@rtlil.PubId("CLK_POLARITY")] = @rtlil.ConstInteger(1)
                 params[@rtlil.PubId("WIDTH")] = @rtlil.ConstInteger(read_width)
-
-                if is_writeable {
-                  params[@rtlil.PubId("EN_POLARITY")] = @rtlil.ConstInteger(1)
-                }
-
                 params
               },
               connections={
@@ -772,12 +767,6 @@ fn elaborate_expr(
                 connections[@rtlil.PubId("CLK")] = port_wire!("clk")
                 connections[@rtlil.PubId("D")] = SigWire(data_reg_out_d)
                 connections[@rtlil.PubId("Q")] = port_wire!("data_out")
-
-                if is_writeable {
-                  // TODO: Check if this should be inverted to !write_enable
-                  connections[@rtlil.PubId("EN")] = port_wire!("write_enable")
-                }
-
                 connections
               },
               span~,
@@ -805,7 +794,7 @@ fn elaborate_expr(
                 params[@rtlil.PubId("SIZE")] = @rtlil.ConstInteger(depth)
                 params[@rtlil.PubId("WIDTH")] = @rtlil.ConstInteger(width)
                 params[@rtlil.PubId("WR_CLK_ENABLE")] = @rtlil.ConstValue(width=clamped_write_ports, bits=@utils.fill(clamped_write_ports, One))
-                params[@rtlil.PubId("WR_CLK_POLARITY")] = @rtlil.ConstValue(width=1, bits=[One])
+                params[@rtlil.PubId("WR_CLK_POLARITY")] = @rtlil.ConstValue(width=clamped_write_ports, bits=@utils.fill(clamped_write_ports, One))
                 params[@rtlil.PubId("WR_PORTS")] = @rtlil.ConstInteger(if is_writeable { write_ports } else { 0 })
                 params[@rtlil.PubId("WR_PRIORITY_MASK")] = @rtlil.ConstValue(width=clamped_write_ports * clamped_write_ports, bits={
                   let bits: Array[@parse.BinaryDigit] = Array::new(capacity=clamped_write_ports * clamped_write_ports)
@@ -837,7 +826,15 @@ fn elaborate_expr(
                   connections[@rtlil.PubId("WR_ADDR")] = port_wire!("write_addr")
                   connections[@rtlil.PubId("WR_CLK")] = SigConcat(@utils.fill(write_ports, port_wire!("clk")))
                   connections[@rtlil.PubId("WR_DATA")] = port_wire!("data_in")
-                  connections[@rtlil.PubId("WR_EN")] = SigConcat(@utils.fill(write_ports, port_wire!("write_enable")))
+                  connections[@rtlil.PubId("WR_EN")] = {
+                    let en = []
+
+                    for i in 0..<write_ports {
+                      en.push(@rtlil.Signal::SigConcat(@utils.fill(width, SigChunk(signal=port_wire!("write_enable"), offset=0, width=1))))
+                    }
+
+                    SigConcat(en)
+                  }
                 } else {
                   connections[@rtlil.PubId("WR_ADDR")] = SigConcat([])
                   connections[@rtlil.PubId("WR_CLK")] = SigConcat([])

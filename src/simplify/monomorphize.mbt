@@ -92,7 +92,11 @@ fn register_monomorphized_module(
 
   let monomorphized = match self.monomorphized[name] {
     Some(monomorphized) => monomorphized
-    None => []
+    None => {
+      let monomorphized = []
+      self.monomorphized[name] = monomorphized
+      monomorphized
+    }
   }
 
   let params_map = {
@@ -106,7 +110,7 @@ fn register_monomorphized_module(
   }
 
   for inst in monomorphized {
-    if inst.params == params_map {
+    if inst.params == params_map { 
       return inst.mod
     }
   }
@@ -114,7 +118,6 @@ fn register_monomorphized_module(
   let name = "\{name}$\{monomorphized.length()}"
   let mono_mod = self.monomorphize_module!(mod=mod_decl, params=params_map, name~)
   monomorphized.push({ params: params_map, mod: mono_mod })
-  self.monomorphized[name] = monomorphized
   self.modules[mono_mod.name] = mono_mod
 
   mono_mod
