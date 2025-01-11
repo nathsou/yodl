@@ -1060,8 +1060,7 @@ fn elaborate_expr(
     }
     Match(subject~, cases~, default~, span~, ty~) => {
       let width = ty.val.unwrap().width!(span)
-      let s_width = expr_width!(subject)
-      let max_cases = @utils.pow2(s_width)
+      let max_cases = @utils.pow2(expr_width!(subject))
       let cell_type = "pmux"
       let cell_name = "\{cell_type}_\{self.next_genidx()}"
       
@@ -1132,7 +1131,7 @@ fn elaborate_expr(
         type_=GenId(cell_type),
         name=GenId(cell_name),
         parameters=map_parameters({
-          "S_WIDTH": @rtlil.ConstInteger(@utils.pow2(s_width)),
+          "S_WIDTH": @rtlil.ConstInteger(cases.length()),
           "WIDTH": @rtlil.ConstInteger(width),
         }),
         connections=map_signals({

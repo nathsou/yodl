@@ -9,7 +9,6 @@ pub struct Lexer {
 
 pub type! LexerError {
   UnexepectedChar(char~: Char, span~: Span)
-  InvalidWidthSpecifierDigit(char~: Char, span~: Span)
   InvalidDigitInBase(digit~: Char, base~: Int, span~: Span)
 }
 
@@ -17,9 +16,6 @@ pub impl Show for LexerError with output(self, logger) -> Unit {
   match self {
     UnexepectedChar(char~, ..) => {
       logger.write_string("Unexpected character '\{char}'")
-    }
-    InvalidWidthSpecifierDigit(char~, ..) => {
-      logger.write_string("Invalid digit '\{char}' in width specifier")
     }
     InvalidDigitInBase(digit~, base~, ..) => {
       logger.write_string("Invalid digit '\{digit}' in base \{base}")
@@ -32,7 +28,6 @@ pub impl Show for LexerError with output(self, logger) -> Unit {
 pub impl Spanned for LexerError with span(self: LexerError) -> Span {
   match self {
     UnexepectedChar(span~, ..) => span
-    InvalidWidthSpecifierDigit(span~, ..) => span
     InvalidDigitInBase(span~, ..) => span
   }
 }
@@ -142,36 +137,25 @@ fn parse_identifier(self: Lexer) -> String {
   builder.to_string()
 }
 
-fn parse_digit(char: Char, span~: Span) -> Int!LexerError {
-  match char {
-    '0' => 0
-    '1' => 1
-    '2' => 2
-    '3' => 3
-    '4' => 4
-    '5' => 5
-    '6' => 6
-    '7' => 7
-    '8' => 8
-    '9' => 9
-    'a' | 'A' => 10
-    'b' | 'B' => 11
-    'c' | 'C' => 12
-    'd' | 'D' => 13
-    'e' | 'E' => 14
-    'f' | 'F' => 15
-    _ => raise InvalidWidthSpecifierDigit(char~, span~)
+fn parse_uint(s: String, base~: Int) -> BigInt {
+  match base {
+    2 => {
+      let mut n: BigInt = 0
+      let mut p: BigInt = 1
+
+      for i in 0..<s.length() {
+        if s[s.length() - i - 1] == '1' {
+          n += p
+        }
+
+        p = p << 1
+      }
+
+      n
+    }
+    16 => BigInt::from_hex(s)
+    _ => BigInt::from_string(s)
   }
-}
-
-fn parse_uint(s: String, base~: Int, span~: Span) -> Int!LexerError {
-  let mut n = 0
-
-  for c in s {
-    n = n * base + parse_digit!(c, span~)
-  }
-
-  n
 }
 
 struct ParsedInteger {
@@ -186,7 +170,6 @@ fn span(self: Lexer, start: (Int, Int)) -> Span {
 
 fn parse_integer(self: Lexer) -> ParsedInteger! {
   let builder = StringBuilder::new()
-  let start = (self.line, self.column)
   let mut base = 10
   let mut width = None
   let mut is_undetermined = false
@@ -213,7 +196,7 @@ fn parse_integer(self: Lexer) -> ParsedInteger! {
         _ => ()
       }
 
-      width = Some(parse_uint!(builder.to_string(), base=10, span=self.span(start)))
+      width = Some(parse_uint(builder.to_string(), base=10).to_int())
       builder.reset()
     } else if char == '_' {
       // ignore, used as a separator for readability
@@ -241,8 +224,15 @@ fn parse_integer(self: Lexer) -> ParsedInteger! {
 
     Bits::new(bits, span~)
   } else {
-    let value = parse_uint!(builder.to_string(), base~, span~)
-    Bits::from!(value, width~, span~)
+    let num_str = builder.to_string()
+    let max_bits = num_str.length() * (match base { 2 => 1; 8 => 3; _ => 4 })
+    let value = parse_uint(num_str, base~)
+
+    if max_bits < 32 {
+      Bits::from!(value.to_int(), width~, span~)
+    } else {
+      Bits::from_bigint!(value, width~, span~)
+    }
   }
 
   { bits, width, base }
@@ -433,7 +423,27 @@ fn next(self: Lexer) -> LexerResult[Token]! {
       self.advance()
 
       while self.peek() != '"' {
-        builder.write_char(self.peek())
+        let char = self.peek()
+
+        match char {
+          '\\' => {
+            self.advance()
+            let escaped = self.peek()
+
+            match escaped {
+              'n' => builder.write_char('\n')
+              'r' => builder.write_char('\r')
+              't' => builder.write_char('\t')
+              '\\' => builder.write_char('\\')
+              '"' => builder.write_char('"')
+              _ => builder.write_char(escaped)
+            }
+          }
+          _ => {
+            builder.write_char(char)
+          }
+        }
+
         self.advance()
       }
 

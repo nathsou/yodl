@@ -74,11 +74,11 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
           self.write(width.to_string())
           self.write("'")
 
-          let base_prefix = match base {
-            2 => 'b'
-            8 => 'o'
-            10 => 'd'
-            16 => 'h'
+          let base_prefix = match (base, bits.value.is_empty()) {
+            (2, _) | (_, true) => 'b'
+            (8, false) => 'o'
+            (10, false) => 'd'
+            (16, false) => 'h'
             _ => '?'
           }
 

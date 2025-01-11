@@ -189,6 +189,9 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
                     raise IncompatibleTypes(ty1~, ty2~, span~)
                 }
             }
+            (String(len~), ty2) | (ty2, String(len~)) => {
+                eqs.push((Vector(ty=Logic, len=Fixed(len * @parse.BITS_PER_ASCII_CHAR)), ty2))
+            }
             _ => {
                 raise IncompatibleTypes(ty1~, ty2~, span~)
             }

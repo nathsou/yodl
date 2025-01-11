@@ -36,6 +36,8 @@ pub(all) enum Decl {
   Import(ImportDecl)
 }
 
+pub const BITS_PER_ASCII_CHAR = 7
+
 pub(all) enum Type {
   Nat
   Logic
@@ -232,7 +234,7 @@ pub type! AstError {
   ExpectedFixedVectorLength(span~: Span)
   ExpectedIntegerExpression(expr~: Expr, span~: Span)
   NaturalContainsUndeterminedDigit(span~: Span)
-  ValueTooLargeForWidth(value~: Int, width~: Int, span~: Span)
+  ValueTooLargeForWidth(value~: BigInt, width~: Int, span~: Span)
   VectorLengthNotFixed(span~: Span)
   CannotGetWidthOfUnresolvedNamedType(span~: Span)
   InvalidFunCallArity(name~: String, expected~: Arity, actual~: Int, span~: Span)
@@ -671,7 +673,7 @@ pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError
   match width {
     Some(width) => {
       if width < required_width {
-        raise ValueTooLargeForWidth(value~, width~, span~)
+        raise ValueTooLargeForWidth(value=BigInt::from_int(value), width~, span~)
       }
     }
     _ => ()
@@ -693,6 +695,58 @@ pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError
   }
 
   { bits, value: Some(value), span }
+}
+
+pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bits!AstError {
+  let bytes = value.to_octets()
+
+  match width {
+    Some(width) => {
+      if bytes.length() * 8 > width + 7 {
+        raise ValueTooLargeForWidth(value~, width~, span~)
+      }
+    } 
+    None => ()
+  }
+
+  let bits: Array[BinaryDigit] = Array::new(capacity=bytes.length() * 8)
+
+  for byte in bytes {
+    for bit in @utils.bin(byte.to_int(), width=8) {
+      bits.push(match bit {
+        0 => Zero
+        _ => One
+      })
+    }
+  }
+
+  // padding
+  match width {
+    Some(width) => {
+      while bits.length() < width {
+        bits.push(Zero)
+      }
+    }
+    _ => ()
+  }
+
+  bits.rev_inplace()
+
+  // truncate
+  match width {
+    Some(width) => {
+      while bits.length() > width {
+        let _ = bits.unsafe_pop()
+      }
+    }
+    _ => {
+      while bits[bits.length() - 1] == Zero {
+        let _ = bits.unsafe_pop()
+      }
+    }
+  }
+
+  { bits, value: None, span }
 }
 
 pub fn expect_int(self: Expr) -> Int! {
@@ -749,7 +803,7 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
 
       width
     }
-    String(len~) => len * 7 // ascii encoding
+    String(len~) => len * BITS_PER_ASCII_CHAR // ascii encoding
   }
 }
 

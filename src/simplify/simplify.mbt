@@ -164,19 +164,24 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
         }
       }
       String(str~, span~, ty=_) => {
-        let ascii = Array::new(capacity=str.length() * 7)
+        let ascii = Array::new(capacity=str.length() * @parse.BITS_PER_ASCII_CHAR)
 
         for char in str {
-          for bit in @utils.bin(char.to_int(), width=7) {
-            ascii.push(@parse.nat!(bit, width=Some(1), base=2, span~))
+          for bit in @utils.bin(char.to_int(), width=@parse.BITS_PER_ASCII_CHAR) {
+            ascii.push(match bit {
+              1 => @parse.BinaryDigit::One
+              _ => @parse.BinaryDigit::Zero
+            })
           }
         }
 
-        @parse.Expr::Vector(
-          elems=ascii,
+        @parse.Expr::Natural(
+          bits=@parse.Bits::new(ascii, span~),
+          width=Some(ascii.length()),
+          base=2,
           span~,
-          ty={ val: Some(Vector(ty=Logic, len=Fixed(ascii.length()))) },
-        )
+          ty={ val: Some(Vector(ty=Logic, len=Fixed(ascii.length()))),
+        })
       }
       Match(subject~, cases=[(Natural(bits=bits1, ..), rhs1), (Natural(bits=bits2, ..), rhs2)], default=None, span~, ty~) => {
         // Rewrite match expressions with two cases: 0 and 1, as ternary expression
