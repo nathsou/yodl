@@ -1,7 +1,0 @@
-const WIDTH = $clog2(255);
-
-module Top(clk: logic, rst: logic, en: logic) -> (q: logic[WIDTH]) {
-    let counter = Reg<WIDTH>(clk, rst, en);
-    counter.d = counter.q + 1;
-    q = counter.q;
-}

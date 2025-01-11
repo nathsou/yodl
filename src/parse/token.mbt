@@ -12,7 +12,7 @@ enum TokenType {
   // keywords
   Module; Let; Logic; In; For; Declare; Const
   And; Or; Not; Xor; Nand; Nor; Xnor
-  Match; Package
+  Match; Package; Import
   // literals
   Identifier(String); Natural(bits~: Bits, width~: Int?, base~: Int)
   StringLiteral(String)

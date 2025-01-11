@@ -272,6 +272,8 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
       env.declare!(decl.path, Const(decl.expr))
       None
     }
+    Package(_) => None
+    Import(_) => None
   }
 }
 

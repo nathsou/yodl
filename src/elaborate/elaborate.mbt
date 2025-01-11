@@ -34,6 +34,7 @@ pub type! ElaboratorError {
   MissingConnectionsOnWriteableMemoryInstance(missing_connections~: Array[String], span~: @parse.Span)
   UnknownModuleParameter(name~: String, span~: @parse.Span)
   PackageDeclDuringElaboration(span~: @parse.Span)
+  ImportDuringElaboration(span~: @parse.Span)
 }
 
 pub impl Show for ElaboratorError with output(self, logger) -> Unit {
@@ -106,6 +107,9 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     PackageDeclDuringElaboration(..) => {
       logger.write_string("Package declaration during elaboration")
     }
+    ImportDuringElaboration(..) => {
+      logger.write_string("Import during elaboration")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -135,6 +139,7 @@ pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
     MissingConnectionsOnWriteableMemoryInstance(span~, ..) => span
     UnknownModuleParameter(span~, ..) => span
     PackageDeclDuringElaboration(span~, ..) => span
+    ImportDuringElaboration(span~, ..) => span
   }
 }
 
@@ -1251,6 +1256,9 @@ pub fn elaborate_decl(self: Elaborator, decl: @parse.Decl) -> Unit! {
     }
     Package(decl) => {
       raise PackageDeclDuringElaboration(span=decl.span)
+    }
+    Import(decl) => {
+      raise ImportDuringElaboration(span=decl.span)
     }
   }
 }

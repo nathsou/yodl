@@ -29,7 +29,7 @@ fn show_id(id: @rtlil.Id) -> String {
     GenId(name) => name + "$"
   }
 
-  name.replace_all(old=".", new="_")
+  name.replace_all(old=".", new="_").replace_all(old="::", new="_")
 }
 
 fn expect_identifier(self: Expr) -> String!VerilogExportError {

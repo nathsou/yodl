@@ -663,5 +663,9 @@ pub fn emit_decl(self: AstEmitter, decl: Decl) -> Unit {
     Package(decl) => {
       self.emit_package_decl(decl)
     }
+    Import({ packages, span: _ }) => {
+      self.write("import ")
+      self.write(String::concat(packages, separator="::"))
+    }
   }
 }

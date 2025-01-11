@@ -33,6 +33,7 @@ pub(all) enum Decl {
   ModuleDeclaration(ModuleSignature)
   Const(ConstDecl)
   Package(PackageDecl)
+  Import(ImportDecl)
 }
 
 pub(all) enum Type {
@@ -207,6 +208,11 @@ pub(all) struct ConstDecl {
 pub(all) struct PackageDecl {
   name: String
   body: Array[Decl]
+  span: Span
+}
+
+pub(all) struct ImportDecl {
+  packages: Array[String]
   span: Span
 }
 

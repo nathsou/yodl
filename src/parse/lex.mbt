@@ -457,6 +457,7 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           "match" => Match
           "const" => Const
           "package" => Package
+          "import" => Import
           "and" => And
           "or" => Or
           "not" => Not

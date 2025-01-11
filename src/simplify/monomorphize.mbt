@@ -49,6 +49,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
 enum MonoEnvEntry {
   Param(@parse.Param)
   Const(@parse.ConstDecl)
+  Name(packages~: Array[String])
 }
 
 typealias MonoEnv = @elaborate.Scope[@parse.Path, MonoEnvEntry]
@@ -133,54 +134,58 @@ fn register_monomorphized_module(
   mono_mod
 }
 
+fn resolve_member(env: MonoEnv, path~: @parse.Path, packages~: Array[String]) -> (MonoEnvEntry, @parse.Path)? {
+  // attempt to resolve the identifier in all the subpackages top-down
+  if path.packages.is_empty() && packages.is_empty() {
+    match env.resolve(path) {
+      Some(entry) => Some((entry, path))
+      None => None
+    }
+  } else {
+    let subpackages = packages + path.packages
+
+    while true {
+      let subpath = @parse.Path::new(subpackages, path.member)
+
+      match env.resolve(subpath) {
+        Some(entry) => {
+          break Some((entry, subpath))
+        }
+        None => ()
+      }
+
+      if subpackages.is_empty() {
+        break None
+      } else {
+        let _ = subpackages.pop()
+      }
+    } else {
+      None
+    }
+  }
+}
+
 fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, packages~: Array[String]) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
       Identifier(path~, span~, ty=_) => {
-        // attempt to resolve the identifier in all the subpackages top-down
-        let resolved = {
-          if path.packages.is_empty() && packages.is_empty() {
-            match env.resolve(path) {
-              Some(entry) => Some(entry)
-              None => None
-            }
-          } else {
-            let subpackages = packages + path.packages
-
-            while true {
-              let subpath = @parse.Path::new(subpackages, path.member)
-
-              match env.resolve(subpath) {
-                Some(entry) => {
-                  break Some(entry)
-                }
-                None => ()
-              }
-
-              if subpackages.is_empty() {
-                break None
-              } else {
-                let _ = subpackages.pop()
-              }
-            } else {
-              None
-            }
-          }
-        }
-
-        match resolved {
-          Some(Param(Int(n))) => @parse.Expr::nat!(n, width=None, base=10, span~)
-          Some(Param(Val(bits~, width~))) => @parse.Expr::Natural(bits~, width=Some(width), base=2, span~, ty={ val: None })
-          Some(Const(decl)) => decl.expr
+        match resolve_member(env, path~, packages~) {
+          Some((Param(Int(n)), _)) => @parse.Expr::nat!(n, width=None, base=10, span~)
+          Some((Param(Val(bits~, width~)), _)) => @parse.Expr::Natural(bits~, width=Some(width), base=2, span~, ty={ val: None })
+          Some((Const(decl), _)) => decl.expr
+          Some((Name(_), resolved_path)) => @parse.Expr::Identifier(path=resolved_path, span~, ty={ val: None })
           None => Identifier(path~, span~, ty={ val: None })
         }
       }
       Instance(path~, params~, ports~, span~, ty=_) => {
-        let full_path = path.prepend(packages)
+        let resolved_path = match resolve_member(env, path~, packages~) {
+          Some((Name(packages~), resolved_path)) => resolved_path.prepend(packages)
+          _ => raise ModuleNotFound(path~, span~)
+        }
 
         let (mono_path, mono_params) = if params._.length() > 0 && not(self.declared_modules.contains(path)) {
           let mod = self.register_monomorphized_module!(
-            path=full_path,
+            path=resolved_path,
             params~,
             span~,
             packages~,
@@ -189,7 +194,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
           (mod.path, @parse.InstanceParams([]))
         } else {
           let mono_params = params.map!(fn(expr) { self.monomorphize_expr!(expr, env~, packages~) })
-          (path, mono_params)
+          (resolved_path, mono_params)
         }
 
         let mono_ports = Map::new(capacity=ports.size())
@@ -218,7 +223,6 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
       @parse.Stmt::Expr(expr=mono_expr, span~)
     }
     Let(name~, ty~, expr~, span~) => {
-
       let mono_expr = match expr {
         Some(expr) => Some(self.monomorphize_expr!(expr, env~, packages~))
         None => None
@@ -244,6 +248,8 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
         }
         _ => ()
       }
+
+      env.declare!(@parse.Path::new([], name), Name(packages=[]))
 
       @parse.Stmt::Let(name~, ty={ val: mono_ty }, expr=mono_expr, span~)
     }
@@ -301,7 +307,7 @@ fn monomorphize_module(
   let full_path = path.prepend(packages)
 
   for name, param in params {
-    child_env.declare!(@parse.Path::new(full_path.packages, name), Param(param))
+    child_env.declare!(@parse.Path::new([], name), Param(param))
   }
 
   let mono_ports: Array[@parse.Port] = []
@@ -346,10 +352,13 @@ pub fn monomorphize(self: Monomorphizer, decls~: Array[@parse.Decl], packages~: 
           let mod_path = @parse.Path::new(packages + mod.path.packages, mod.path.member)
           self.parameterized[mod_path] = mod
         }
+
+        self.top_env.declare!(mod.path, Name(packages~))
       }
       ModuleDeclaration(sig) => {
         let mod_path = @parse.Path::new(packages + sig.path.packages, sig.path.member)
         self.declared_modules[mod_path] = sig
+        self.top_env.declare!(mod_path, Name(packages~))
       }
       Const(decl) => {
         let mono_expr = self.monomorphize_expr!(decl.expr, env=self.top_env, packages~)
@@ -366,6 +375,7 @@ pub fn monomorphize(self: Monomorphizer, decls~: Array[@parse.Decl], packages~: 
       Package({ name, body, span: _ }) => {
         let _ = self.monomorphize!(decls=body, packages=packages + [name])
       }
+      Import(_) => ()
     }
   }
 

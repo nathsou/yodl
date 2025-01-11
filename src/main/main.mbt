@@ -1,43 +1,4 @@
 
-let builtin_decls: Array[@parse.Decl] = {
-  let source =
-    #|@internal
-    #|declare module Reg<Width>(
-    #|    clk: logic,
-    #|    d: logic[Width],
-    #|    en?: logic,
-    #|    rst?: logic,
-    #|) -> (
-    #|    q: logic[Width],
-    #|)
-    #|
-    #|@internal
-    #|declare module RegSyncReset<Width>(
-    #|    clk: logic,
-    #|    d: logic[Width],
-    #|    en?: logic,
-    #|    rst?: logic,
-    #|) -> (
-    #|    q: logic[Width],
-    #|)
-    #|
-    #|@internal
-    #|declare module Memory<Width, Depth, ReadPorts, WritePorts, Init>(
-    #|    clk: logic,
-    #|    read_addr: logic[$clog2(Depth) * ReadPorts],
-    #|    write_addr: logic[$clog2(Depth) * WritePorts],
-    #|    write_enable?: logic[WritePorts],
-    #|    data_in?: logic[Width * WritePorts],
-    #|) -> (
-    #|    data_out: logic[Width * ReadPorts],
-    #|)
-  
-  let lexer = @parse.Lexer::new(source, file="builtin.yodl")
-  let tokens = lexer.lex?().unwrap()
-  let parser = @parse.Parser::new(tokens, file="builtin.yodl")
-  parser.parse?().unwrap()
-}
-
 fn run(path~: String, commands~: Array[Command]) -> Unit! {
   if not(path.ends_with(".yodl")) {
     println("Input file must have a .yodl extension")
@@ -48,18 +9,15 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
     @fs.create_dir(path="output/")
   }
 
-  let source = @fs.read_file_to_string!(path~)
-  let lexer = @parse.Lexer::new(source, file=path)
-  let tokens = lexer.lex!()
-  let parser = @parse.Parser::new(tokens, file=path)
-  let decls = parser.parse!()
+  let resolver = @simplify.Resolver::new!(@utils.dir_name(path))
+  let pkg = resolver.resolve!(path~, is_top_package=true)
 
   for cmd in commands {
     match cmd {
       WriteSource => {
         let emitter = @parse.AstEmitter::new()
 
-        for decl in decls {
+        for decl in pkg.body {
           emitter.emit_decl(decl)
           emitter.emit("\n")
         }
@@ -71,7 +29,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
   }
 
   let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = monomorphizer.monomorphize!(decls=builtin_decls + decls, packages=[])
+  let mono_decls = monomorphizer.monomorphize!(decls=pkg.body, packages=[])
 
   for cmd in commands {
     match cmd {

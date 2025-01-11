@@ -105,7 +105,7 @@ fn parse_string_literal(self: Parser) -> String! {
   }
 }
 
-fn span(self: Parser, start_idx: Int) -> Span {
+pub fn span(self: Parser, start_idx: Int) -> Span {
   let start = self.tokens[start_idx].span.start
   let end = self.tokens[@utils.clamp(self.index - 1, min=0, max=self.tokens.length() - 1)].span.end
   { file: self.file, start, end }
@@ -546,8 +546,19 @@ fn parse_package_decl(self: Parser) -> PackageDecl! {
   { name, body, span: self.span(start_idx) }
 }
 
-fn parse_path(self: Parser, first: String) -> Path! {
+fn parse_import_decl(self: Parser) -> ImportDecl! {
   let start_idx = self.index
+  self.expect!(Import, start_idx)
+  let packages = [self.parse_identifier!()]
+
+  while self.consumes(ColonColon) {
+    packages.push(self.parse_identifier!())
+  }
+
+  { packages, span: self.span(start_idx) }
+}
+
+fn parse_path(self: Parser, first: String) -> Path! {
   let packages = [first]
 
   while self.consumes(ColonColon) {
@@ -559,6 +570,7 @@ fn parse_path(self: Parser, first: String) -> Path! {
 
   Path::new(packages, member)
 }
+
 fn parse_type(self: Parser) -> Type! {
   let start_idx = self.index
   let params: Array[Param] = []
@@ -837,6 +849,7 @@ fn parse_decl(self: Parser) -> Decl! {
     At | Declare | Module => self.parse_module_def_or_decl!()
     Const => Decl::Const(self.parse_const_decl!())
     Package => Decl::Package(self.parse_package_decl!())
+    Import => Decl::Import(self.parse_import_decl!())
     token => raise ExpectedDecl(received=token, span=self.span(self.index))
   }
 }

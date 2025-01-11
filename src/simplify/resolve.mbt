@@ -1,0 +1,176 @@
+
+pub struct Resolver {
+  resolved_packages: Map[String, @parse.PackageDecl]
+  available_packages: Map[String, String]
+}
+
+pub type! ResolutionError {
+  PackageNotFound(name~: String)
+  IOError(Error)
+  LexerError(Error)
+  ParseError(Error)
+  CouldNotExtractPackageName(String)
+  PackageNameConflict(name~: String, path1~: String, path2~: String)
+  MultiLevelImportNotSupportedYet(packages~: Array[String])
+} derive(Show)
+
+pub fn Resolver::new(packages_dir: String) -> Resolver!ResolutionError {
+  { resolved_packages: {}, available_packages: collect_packages!(packages_dir) }
+}
+
+fn extract_package_name_from_path(path: String) -> String!ResolutionError {
+  let name = @utils.file_name(path)
+
+  if name.ends_with(".yodl") {
+    name.replace(old=".yodl", new="")
+  } else {
+    raise CouldNotExtractPackageName(path)
+  }
+}
+
+fn collect_packages(dir: String, acc~: Map[String, String] = {}) -> Map[String, String]!ResolutionError {
+  let entries = match @fs.read_dir?(path=dir) {
+    Ok(entries) => entries
+    Err(error) => raise IOError(error)
+  }
+
+  for entry in entries {
+    let path = @utils.join_paths(dir, entry)
+
+    match @fs.is_dir?(path~) {
+      Ok(true) => {
+        let _ = collect_packages!(path, acc~)
+      }
+      Ok(false) => {
+        if entry.ends_with(".yodl") {
+          let name = extract_package_name_from_path!(entry)
+          if acc.contains(name) {
+            raise PackageNameConflict(name~, path1=acc[name].unwrap(), path2=path)
+          }
+          
+          acc[name] = path
+        }
+      }
+      Err(error) => raise IOError(error)
+    }
+  }
+
+  acc
+}
+
+let builtin_decls: Array[@parse.Decl] = {
+  let source =
+    #|@internal
+    #|declare module Reg<Width>(
+    #|    clk: logic,
+    #|    d: logic[Width],
+    #|    en?: logic,
+    #|    rst?: logic,
+    #|) -> (
+    #|    q: logic[Width],
+    #|)
+    #|
+    #|@internal
+    #|declare module RegSyncReset<Width>(
+    #|    clk: logic,
+    #|    d: logic[Width],
+    #|    en?: logic,
+    #|    rst?: logic,
+    #|) -> (
+    #|    q: logic[Width],
+    #|)
+    #|
+    #|@internal
+    #|declare module Memory<Width, Depth, ReadPorts, WritePorts, Init>(
+    #|    clk: logic,
+    #|    read_addr: logic[$clog2(Depth) * ReadPorts],
+    #|    write_addr: logic[$clog2(Depth) * WritePorts],
+    #|    write_enable?: logic[WritePorts],
+    #|    data_in?: logic[Width * WritePorts],
+    #|) -> (
+    #|    data_out: logic[Width * ReadPorts],
+    #|)
+  
+  let lexer = @parse.Lexer::new(source, file="builtin.yodl")
+  let tokens = lexer.lex?().unwrap()
+  let parser = @parse.Parser::new(tokens, file="builtin.yodl")
+  parser.parse?().unwrap()
+}
+
+pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.PackageDecl!ResolutionError {
+  match self.resolved_packages[path] {
+    Some(package) => return package
+    None => ()
+  }
+
+  let source = match @fs.read_file_to_string?(path~) {
+    Ok(source) => source
+    Err(error) => raise IOError(error)
+  }
+
+  let tokens = match @parse.Lexer::new(source, file=path).lex?() {
+    Ok(tokens) => tokens
+    Err(error) => raise LexerError(error)
+  }
+
+  let parser = @parse.Parser::new(tokens, file=path)
+
+  let decls = match parser.parse?() {
+    Ok(decls) => {
+      let resolved_decl = Array::new(capacity=decls.length())
+
+      for decl in decls {
+        resolved_decl.push(self.resolve_decl!(decl))
+      }
+
+      resolved_decl 
+    }
+    Err(error) => raise ParseError(error)
+  }
+
+  let pkg_name = if is_top_package {
+    "Main"
+  } else {
+    extract_package_name_from_path!(path)
+  }
+
+  let pkg: @parse.PackageDecl = {
+    name: pkg_name,
+    body: if is_top_package { builtin_decls + decls } else { decls },
+    span: parser.span(0),
+  }
+
+  if not(is_top_package) {
+    self.resolved_packages[path] = pkg
+  }
+
+  pkg
+}
+
+pub fn resolve_decl(self: Resolver, decl: @parse.Decl) -> @parse.Decl!ResolutionError {
+  match decl {
+    Import({ packages, span: _ }) => {
+      let pkg = match packages {
+        [pkg] => pkg
+        _ => raise MultiLevelImportNotSupportedYet(packages~)
+      }
+
+      let path = match self.available_packages[pkg] {
+        Some(path) => path
+        None => raise PackageNotFound(name=pkg)
+      }
+
+      @parse.Decl::Package(self.resolve!(path~, is_top_package=false))
+    }
+    Package(pkg) => {
+      let resolved_body = Array::new(capacity=pkg.body.length())
+
+      for decl in pkg.body {
+        resolved_body.push(self.resolve_decl!(decl))
+      }
+
+      @parse.Decl::Package({ name: pkg.name, body: resolved_body, span: pkg.span })
+    }
+    decl => decl
+  }
+}

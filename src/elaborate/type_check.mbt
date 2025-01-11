@@ -700,5 +700,7 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
         Const(decl) => {
             self.check_const_decl!(decl, self.top_env)
         }
+        Package(_) => ()
+        Import(_) => ()
     }
 }

@@ -6,6 +6,7 @@
         "value": []
       },
       "nathsou/yodl/elaborate",
-      "nathsou/yodl/utils"
+      "nathsou/yodl/utils",
+      "moonbitlang/x/fs"
     ]
 }

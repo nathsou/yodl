@@ -1,0 +1,9 @@
+
+// outputs a 1 for one clock cycle once every `CYCLES` clock cycles
+module Timer<CYCLES>(clk: logic) -> (q: logic) {
+    const width = $clog2(CYCLES);
+    let counter = Reg<width>(clk);
+    let end = counter.q == CYCLES;
+    counter.d = end ? width x {1'0} : counter.q + 1;
+    q = end;
+}
