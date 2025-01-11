@@ -1,7 +1,7 @@
 
 struct TypeChecker {
-    modules: Map[String, @parse.ModuleSignature]
-    top_env: Scope[@parse.Type]
+    modules: Map[@parse.Path, @parse.ModuleSignature]
+    top_env: Scope[@parse.Path, @parse.Type]
 }
 
 pub fn TypeChecker::new() -> TypeChecker {
@@ -12,14 +12,14 @@ pub fn TypeChecker::new() -> TypeChecker {
 }
 
 type! TypeCheckerError {
-    UnboundVariable(name~: String, span~: @parse.Span)
+    UnboundVariable(path~: @parse.Path, span~: @parse.Span)
     IncompatibleTypes(ty1~: @parse.Type, ty2~: @parse.Type, span~: @parse.Span)
-    VariableRedeclared(name~: String, span~: @parse.Span)
+    VariableRedeclared(path~: @parse.Path, span~: @parse.Span)
     InvalidAssignmentTarget(span~: @parse.Span)
     IndexMustBeInteger(span~: @parse.Span)
     IndexedExpressionMustBeVector(span~: @parse.Span)
-    UnknownModule(name~: String, span~: @parse.Span)
-    UnknownModulePort(module_name~: String, port_name~: String, span~: @parse.Span)
+    UnknownModule(path~: @parse.Path, span~: @parse.Span)
+    UnknownModulePort(module_path~: @parse.Path, port_name~: String, span~: @parse.Span)
     InvalidFieldAccess(field~: String, span~: @parse.Span)
     InvalidSlicingRange(span~: @parse.Span)
     ExpectedConstantExpr(span~: @parse.Span)
@@ -30,7 +30,7 @@ type! TypeCheckerError {
     InvalidAttribute(name~: String, span~: @parse.Span)
     InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], span~: @parse.Span)
     EmptyMatch(span~: @parse.Span)
-    InvalidInstanceTypeParameterCount(module_name~: String, expected~: Int, actual~: Int, span~: @parse.Span)
+    InvalidInstanceTypeParameterCount(module_path~: @parse.Path, expected~: Int, actual~: Int, span~: @parse.Span)
     FunCallAfterMonomorphization(span~: @parse.Span)
     InvalidStructField(name~: String, span~: @parse.Span)
     InvalidUnaryOpOperand(op~: @parse.UnaryOp, ty~: @parse.Type, span~: @parse.Span)
@@ -40,14 +40,14 @@ type! TypeCheckerError {
 
 pub impl Show for TypeCheckerError with output(self, logger) {
     match self {
-        UnboundVariable(name~, ..) => {
-            logger.write_string("Unbound variable '\{name}'")
+        UnboundVariable(path~, ..) => {
+            logger.write_string("Unbound variable '\{path}'")
         }
         IncompatibleTypes(ty1~, ty2~, ..) => {
             logger.write_string("Incompatible types '\{ty1}' and '\{ty2}'")
         }
-        VariableRedeclared(name~, ..) => {
-            logger.write_string("Variable '\{name}' redeclared")
+        VariableRedeclared(path~, ..) => {
+            logger.write_string("Variable '\{path}' redeclared")
         }
         InvalidAssignmentTarget(..) => {
             logger.write_string("Invalid assignment target")
@@ -58,11 +58,11 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         IndexedExpressionMustBeVector(..) => {
             logger.write_string("Indexed expression must be a vector")
         }
-        UnknownModule(name~, ..) => {
-            logger.write_string("Unknown module '\{name}'")
+        UnknownModule(path~, ..) => {
+            logger.write_string("Unknown module '\{path}'")
         }
-        UnknownModulePort(module_name~, port_name~, ..) => {
-            logger.write_string("Unknown port '\{port_name}' in module '\{module_name}'")
+        UnknownModulePort(module_path~, port_name~, ..) => {
+            logger.write_string("Unknown port '\{port_name}' in module '\{module_path}'")
         }
         InvalidFieldAccess(field~, ..) => {
             logger.write_string("Invalid field access '\{field}'")
@@ -94,8 +94,8 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         EmptyMatch(..) => {
             logger.write_string("Empty match expression")
         }
-        InvalidInstanceTypeParameterCount(module_name~, expected~, actual~, ..) => {
-            logger.write_string("Module '\{module_name}' expected \{expected} type parameters, got \{actual}")
+        InvalidInstanceTypeParameterCount(module_path~, expected~, actual~, ..) => {
+            logger.write_string("Module '\{module_path}' expected \{expected} type parameters, got \{actual}")
         }
         FunCallAfterMonomorphization(..) => {
             logger.write_string("Function call after monomorphization")
@@ -158,15 +158,15 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
             (Vector(ty=ty1_inner, len=Fixed(1)), ty2) | (ty2, Vector(ty=ty1_inner, len=Fixed(1))) => {
                 eqs.push((ty1_inner, ty2))
             }
-            (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(name~, ..)))) => {
-                match subst[name] {
+            (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(path={ packages: [], member }, ..)))) => {
+                match subst[member] {
                     Some(len2) => {
                         if len != len2 {
                             raise IncompatibleTypes(ty1~, ty2~, span~)
                         }
                     }
                     None => {
-                        subst[name] = len
+                        subst[member] = len
                     }
                 }
 
@@ -202,10 +202,10 @@ fn unify(ty1: @parse.Type, ty2: @parse.Type, span~: @parse.Span, subst~: Map[Str
     unify_aux!([(ty1, ty2)], span~, subst~)
 }
 
-fn declare_name(env~: Scope[@parse.Type], name~: String, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
-    match env.declare?(name, ty) {
+fn declare_name(env~: Scope[@parse.Path, @parse.Type], path~: @parse.Path, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
+    match env.declare?(path, ty) {
         Ok(_) => ()
-        Err(MemberAlreadyDeclared) => raise VariableRedeclared(name~, span~)
+        Err(MemberAlreadyDeclared) => raise VariableRedeclared(path~, span~)
     }
 }
 
@@ -224,16 +224,16 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
         Nat => Nat
         Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty!(inner_ty, span~), len~)
         Instance(_) => ty
-        Name(name~, params~) => {
-            match self.modules[name] {
+        Name(path~, params~) => {
+            match self.modules[path] {
                 Some(sig) => {
                     if sig.params.length() != params.length() {
-                        raise InvalidInstanceTypeParameterCount(module_name=name, expected=sig.params.length(), actual=params.length(), span~)
+                        raise InvalidInstanceTypeParameterCount(module_path=path, expected=sig.params.length(), actual=params.length(), span~)
                     }
 
                     Instance(sig~, params=Map::from_iter(@utils.zip(sig.params, params)), accessed_ports=Set::new())
                 }
-                None => raise TypeCheckerError::UnknownModule(name~, span~)
+                None => raise TypeCheckerError::UnknownModule(path~, span~)
             }
         }
         Struct(fields) => {
@@ -249,12 +249,14 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
     }
 }
 
-fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], expected_ty~: @parse.Type? = None) -> @parse.Type! {
+fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @parse.Type], expected_ty~: @parse.Type? = None) -> @parse.Type! {
     let ty = match expr {
-        Identifier(name~, span~, ..) => {
-            match env.resolve(name) {
+        Identifier(path~, span~, ..) => {
+            match env.resolve(path) {
                 Some(ty) => ty
-                None => raise UnboundVariable(name~, span~)
+                None => {
+                    raise UnboundVariable(path~, span~)
+                }
             }
         }
         Natural(width~, ..) => match width {
@@ -349,7 +351,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                             accessed_ports.add(port)
                             port_def.ty.substitute(params_env=params)
                         }
-                        None => raise UnknownModulePort(module_name=sig.name, port_name=port, span~)
+                        None => raise UnknownModulePort(module_path=sig.path, port_name=port, span~)
                     }
                 }
                 Struct(fields) => {
@@ -361,8 +363,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                 _ => raise InvalidFieldAccess(field=port, span~)
             }
         }
-        Instance(name~, params~, ports~, span~, ..) => {
-            match self.modules[name] {
+        Instance(path~, params~, ports~, span~, ..) => {
+            match self.modules[path] {
                 Some(sig) => {
                     let subst = {}
                     let params_env = {}
@@ -386,13 +388,13 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
                                 let expr_ty = self.check_expr!(port_expr, env).substitute(params_env~)
                                 let _ = unify!(port_def.ty.substitute(params_env~), expr_ty, span=port_expr.span(), subst~)
                             }
-                            None => raise UnknownModulePort(module_name=name, port_name=port_name, span~)
+                            None => raise UnknownModulePort(module_path=path, port_name=port_name, span~)
                         }
                     }
 
                     @parse.Type::Instance(sig~, params=params_env, accessed_ports~)
                 }
-                None => raise TypeCheckerError::UnknownModule(name~, span~)
+                None => raise TypeCheckerError::UnknownModule(path~, span~)
             }
         }
         Vector(elems~, span~, ..) => {
@@ -536,16 +538,18 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Type], exp
     ty
 }
 
-fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> Unit! {
+fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @parse.Type]) -> Unit! {
     match stmt {
         Expr(expr~, ..) => {
             let _ = self.check_expr!(expr, env)
         }
         Let(name~, ty~, expr~, span~, ..) => {
+            let path = @parse.Path::new([], name)
+
             ty.val = Some(match (ty.val, expr) {
                 (Some(ty), Some(expr)) => {
                     let ty = self.resolve_ty!(ty, span~)
-                    declare_name!(env~, name~, ty~, span~)
+                    declare_name!(env~, path~, ty~, span~)
                     let expr_ty = self.check_expr!(expr, env, expected_ty=Some(ty))
                     let _ = unify!(ty, expr_ty, span~)
 
@@ -553,12 +557,12 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
                 }
                 (Some(ty), None) => {
                     let ty = self.resolve_ty!(ty, span~)
-                    declare_name!(env~, name~, ty~, span~)
+                    declare_name!(env~, path~, ty~, span~)
                     ty
                 }
                 (None, Some(expr)) => {
                     let ty = self.check_expr!(expr, env)
-                    declare_name!(env~, name~, ty~, span~)
+                    declare_name!(env~, path~, ty~, span~)
 
                     ty
                 }
@@ -598,7 +602,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Type]) -> 
             }
 
             let body_env = env.child()
-            body_env.declare!(var, end_ty)
+            body_env.declare!(@parse.Path::new([], var), end_ty)
 
             for stmt in body {
                 self.check_stmt!(stmt, body_env)
@@ -649,7 +653,7 @@ fn check_attributes(attrs: Map[String, @parse.Attribute], signatures~: Map[Strin
     }
 }
 
-fn check_const_decl(self: TypeChecker, decl: @parse.ConstDecl, env: Scope[@parse.Type]) -> Unit! {
+fn check_const_decl(self: TypeChecker, decl: @parse.ConstDecl, env: Scope[@parse.Path, @parse.Type]) -> Unit! {
     if not(decl.expr.is_constant_expr()) {
         raise ExpectedConstantExpr(span=decl.expr.span())
     }
@@ -664,25 +668,25 @@ fn check_const_decl(self: TypeChecker, decl: @parse.ConstDecl, env: Scope[@parse
         None => ()
     }
 
-    declare_name!(env~, name=decl.name, ty~, span=decl.span)
+    declare_name!(env~, path=decl.path, ty~, span=decl.span)
 }
 
 pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
     match decl {
-        Module({ name, params: _, attributes, ports, body, span: _ } as mod) => {
+        Module({ path, params: _, attributes, ports, body, span: _ } as mod) => {
             let env = self.top_env.child()
             check_attributes!(attributes, signatures=module_attribute_signatures)
 
             for port in ports {
                 check_attributes!(port.attributes, signatures=port_attribute_signatures)
-                declare_name!(env~, name=port.name, ty=port.ty, span=port.span)
+                declare_name!(env~, path=@parse.Path::new([], port.name), ty=port.ty, span=port.span)
             }
 
             for stmt in body {
                 self.check_stmt!(stmt, env)
             }
 
-            self.modules[name] = mod.signature()
+            self.modules[path] = mod.signature()
         }
         ModuleDeclaration(sig) => {
             check_attributes!(sig.attributes, signatures=module_attribute_signatures)
@@ -691,7 +695,7 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
                 check_attributes!(port.attributes, signatures=port_attribute_signatures)
             }
 
-            self.modules[sig.name] = sig
+            self.modules[sig.path] = sig
         }
         Const(decl) => {
             self.check_const_decl!(decl, self.top_env)

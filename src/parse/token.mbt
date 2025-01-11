@@ -8,10 +8,11 @@ enum TokenType {
   LchevronEqual; RchevronEqual; LchevronLchevron; RchevronRchevron
   DotDotLeftChevron; DotDotEqual; DotDotDot
   Percent; QuestionMark; At; Underscore; X // Replication operator
-  Dollar
+  Dollar; ColonColon
   // keywords
   Module; Let; Logic; In; For; Declare; Const
-  And; Or; Not; Xor; Nand; Nor; Xnor; Match
+  And; Or; Not; Xor; Nand; Nor; Xnor
+  Match; Package
   // literals
   Identifier(String); Natural(bits~: Bits, width~: Int?, base~: Int)
   StringLiteral(String)

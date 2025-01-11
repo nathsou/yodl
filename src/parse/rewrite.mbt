@@ -10,8 +10,8 @@ pub fn clone_ty(ty: Ref[Type?]) -> Ref[Type?] {
 
 pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
   let res = match expr {
-    Natural(bits~, width~, base~, ty~, span~) => Expr::Natural(bits~, width~, base~, ty=clone_ty(ty), span~)
-    Identifier(name~, ty~, span~) => Identifier(name~, ty=clone_ty(ty), span~) 
+    Natural(bits~, width~, base~, span~, ty~) => Expr::Natural(bits~, width~, base~, span~, ty=clone_ty(ty))
+    Identifier(path~, span~, ty~) => Identifier(path~, span~, ty=clone_ty(ty)) 
     Unary(op~, expr~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)
       Unary(op~, expr~, span~, ty=clone_ty(ty))
@@ -36,7 +36,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
       let expr = rewrite_expr!(expr, rewrite)
       FieldAccess(expr~, field=port, span~, ty=clone_ty(ty))
     }
-    Instance(name~, params~, ports~, span~, ty~) => {
+    Instance(path~, params~, ports~, span~, ty~) => {
       let new_params = params.map!(fn(expr) { rewrite_expr!(expr, rewrite) })
       let new_ports = Map::new(capacity=ports.size())
 
@@ -44,7 +44,7 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
         new_ports[port] = rewrite_expr!(expr, rewrite)
       }
 
-      Instance(name~, params=new_params, ports=new_ports, span~, ty=clone_ty(ty))
+      Instance(path~, params=new_params, ports=new_ports, span~, ty=clone_ty(ty))
     }
     Vector(elems~, span~, ty~) => {
       let new_elems = Array::new(capacity=elems.length())

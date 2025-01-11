@@ -11,6 +11,7 @@ Circuit description (Yodl) -> Visualization (Digital) -> Software simulation (Yo
 - [x] [RTLIL](https://yosyshq.readthedocs.io/projects/yosys/en/latest/yosys_internals/formats/rtlil_rep.html) export
 - [x] Verilog export
 - [x] Generic multi-port memories
+- [ ] Imports
 - [ ] Multi-dimensional vectors (logic[16][4])
 - [ ] Optional module parameters (and register initial value)
 - [ ] Arbitrary port types
@@ -21,3 +22,4 @@ Circuit description (Yodl) -> Visualization (Digital) -> Software simulation (Yo
 - [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export
 - [ ] Built-in event-driven simulator?
 - [ ] Graphviz/Mermaid export
+- [ ] Web tour/playground

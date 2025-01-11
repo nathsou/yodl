@@ -8,7 +8,7 @@
         },
         {
             "name": "keyword.control.yodl",
-            "match": "\\b(declare|module|let|match|for|in|const)\\b"
+            "match": "\\b(declare|module|let|match|for|in|const|package)\\b"
         },
         {
             "name": "storage.type.yodl",

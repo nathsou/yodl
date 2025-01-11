@@ -1,61 +1,68 @@
-struct Scope[T] {
-  members: Map[String, T]
-  parent: Scope[T]?
+struct Scope[K, T] {
+  members: Map[K, T]
+  parent: Scope[K, T]?
 }
 
 type! ScopeError {
   MemberAlreadyDeclared
 }
 
-pub fn Scope::new[T]() -> Scope[T] {
+pub fn Scope::new[K: Eq + Hash, T]() -> Scope[K, T] {
   { members: {}, parent: None }
 }
 
-pub fn child[T](self: Scope[T]) -> Scope[T] {
+pub fn child[K: Eq + Hash, T](self: Scope[K, T]) -> Scope[K, T] {
   { members: {}, parent: Some(self) }
 }
 
-pub fn declare[T](self: Scope[T], name: String, value: T) -> Unit!ScopeError {
-  if self.members.contains(name) {
+pub fn declare[K: Eq + Hash, T](self: Scope[K, T], key: K, value: T) -> Unit!ScopeError {
+  if self.members.contains(key) {
     raise MemberAlreadyDeclared
   }
 
-  self.members[name] = value
+  self.members[key] = value
 }
 
-pub fn declare_shadowing[T](self: Scope[T], name: String, value: T) -> Unit {
-  self.members[name] = value
+pub fn declare_shadowing[K: Eq + Hash, T](self: Scope[K, T], key: K, value: T) -> Unit {
+  self.members[key] = value
 }
 
-pub fn contains[T](self: Scope[T], name: String) -> Bool {
-  self.members.contains(name) || (match self.parent {
-    Some(parent) => parent.contains(name)
+pub fn contains[K: Eq + Hash, T](self: Scope[K, T], key: K) -> Bool {
+  self.members.contains(key) || (match self.parent {
+    Some(parent) => parent.contains(key)
     None => false
   })
 }
 
-pub fn contains_local[T](self: Scope[T], name: String) -> Bool {
-  self.members.contains(name)
+pub fn contains_local[K: Eq + Hash, T](self: Scope[K, T], key: K) -> Bool {
+  self.members.contains(key)
 }
 
-pub fn resolve[T](self: Scope[T], name: String) -> T? {
-  match self.members.get(name) {
+pub fn resolve[K: Eq + Hash, T](self: Scope[K, T], key: K) -> T? {
+  match self.members.get(key) {
     Some(value) => Some(value)
     None => match self.parent {
-      Some(parent) => parent.resolve(name)
+      Some(parent) => parent.resolve(key)
       None => None
     }
   }
 }
 
-pub fn remove[T](self: Scope[T], name: String) -> Unit {
-  self.members.remove(name)
+pub fn remove[K: Eq + Hash, T](self: Scope[K, T], key: K) -> Unit {
+  self.members.remove(key)
 }
 
-pub fn members[T](self: Scope[T]) -> Iter[String] {
+pub fn members[K, T](self: Scope[K, T]) -> Iter[K] {
   self.members.keys()
 }
 
-pub fn values[T](self: Scope[T]) -> Iter[T] {
+pub fn members_rec[K, T](self: Scope[K, T]) -> Iter[K] {
+  self.members.keys() + (match self.parent {
+    Some(parent) => parent.members_rec()
+    None => Iter::empty()
+  })
+}
+
+pub fn values[K, T](self: Scope[K, T]) -> Iter[T] {
   self.members.values()
 }

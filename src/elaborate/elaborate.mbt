@@ -1,23 +1,23 @@
 
 pub struct Elaborator {
   mut autoidx: Int
-  modules: Map[String, @rtlil.Module]
-  declared_modules: Map[String, @parse.ModuleSignature]
+  modules: Map[@parse.Path, @rtlil.Module]
+  declared_modules: Map[@parse.Path, @parse.ModuleSignature]
 }
 
-typealias ElaboratorEnv = Map[String, Value]
+typealias ElaboratorEnv = Map[@parse.Path, Value]
 
 pub fn Elaborator::new() -> Elaborator {
   { autoidx: 0, modules: {}, declared_modules: {} }
 }
 
 pub type! ElaboratorError {
-  ModuleAlreadyDeclared(name~: String, span~: @parse.Span)
-  UnknownIdentifier(name~: String, span~: @parse.Span)
+  ModuleAlreadyDeclared(path~: @parse.Path, span~: @parse.Span)
+  UnknownIdentifier(path~: @parse.Path, span~: @parse.Span)
   Unsupported(message~: String, span~: @parse.Span)
-  NameConflict(name~: String, span~: @parse.Span)
+  NameConflict(path~: @parse.Path, span~: @parse.Span)
   ExpectedSignal(span~: @parse.Span)
-  UnknownModule(name~: String, span~: @parse.Span)
+  UnknownModule(path~: @parse.Path, span~: @parse.Span)
   ExtraPorts(extra_ports~: Array[String], span~: @parse.Span)
   UntypedLet(span~: @parse.Span)
   UnresolvedType(span~: @parse.Span)
@@ -28,32 +28,33 @@ pub type! ElaboratorError {
   ReplicateExprAfterSimplification(span~: @parse.Span)
   FunctionCallAfterSimplification(span~: @parse.Span)
   ConstDeclAfterSimplification(span~: @parse.Span)
-  UnknownModuleMarkedAsInternal(name~: String, span~: @parse.Span)
+  UnknownModuleMarkedAsInternal(path~: @parse.Path, span~: @parse.Span)
   InvalidMemoryInitValue(span~: @parse.Span, expected_size~: Int, actual_size~: Int?)
   StringAfterSimplification(span~: @parse.Span)
   MissingConnectionsOnWriteableMemoryInstance(missing_connections~: Array[String], span~: @parse.Span)
   UnknownModuleParameter(name~: String, span~: @parse.Span)
+  PackageDeclDuringElaboration(span~: @parse.Span)
 }
 
 pub impl Show for ElaboratorError with output(self, logger) -> Unit {
   match self {
-    ModuleAlreadyDeclared(name~, ..) => {
-      logger.write_string("Module '\{name}' already declared")
+    ModuleAlreadyDeclared(path~, ..) => {
+      logger.write_string("Module '\{path}' already declared")
     }
-    UnknownIdentifier(name~, ..) => {
-      logger.write_string("Unknown identifier '\{name}'")
+    UnknownIdentifier(path~, ..) => {
+      logger.write_string("Unknown identifier '\{path}'")
     }
     Unsupported(message~, ..) => {
       logger.write_string("Unsupported: \{message}")
     }
-    NameConflict(name~, ..) => {
-      logger.write_string("Name conflict: '\{name}'")
+    NameConflict(path~, ..) => {
+      logger.write_string("Name conflict: '\{path}'")
     }
     ExpectedSignal(..) => {
       logger.write_string("Expected signal")
     }
-    UnknownModule(name~, ..) => {
-      logger.write_string("Unknown module '\{name}'")
+    UnknownModule(path~, ..) => {
+      logger.write_string("Unknown module '\{path}'")
     }
     ExtraPorts(extra_ports~, ..) => {
       let extra_ports = String::concat(extra_ports, separator=", ")
@@ -86,8 +87,8 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     ConstDeclAfterSimplification(..) => {
       logger.write_string("Const declaration after simplification")
     }
-    UnknownModuleMarkedAsInternal(name~, ..) => {
-      logger.write_string("Unknown module marked as internal: '\{name}'")
+    UnknownModuleMarkedAsInternal(path~, ..) => {
+      logger.write_string("Unknown module marked as internal: '\{path}'")
     }
     InvalidMemoryInitValue(expected_size~, actual_size~, ..) => {
       logger.write_string("Invalid memory init value: expected \{expected_size} bits, got \{actual_size}")
@@ -101,6 +102,9 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     }
     UnknownModuleParameter(name~, ..) => {
       logger.write_string("Unknown module parameter: '\{name}'")
+    }
+    PackageDeclDuringElaboration(..) => {
+      logger.write_string("Package declaration during elaboration")
     }
   }
 
@@ -130,6 +134,7 @@ pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
     StringAfterSimplification(span~, ..) => span
     MissingConnectionsOnWriteableMemoryInstance(span~, ..) => span
     UnknownModuleParameter(span~, ..) => span
+    PackageDeclDuringElaboration(span~, ..) => span
   }
 }
 
@@ -195,9 +200,9 @@ fn default_value(self: Elaborator, ty~: @parse.Type, mod~: @rtlil.Module, env~: 
         Value::Vector(val)
       }
     }
-    Instance(sig={ name, span, .. }, params~, accessed_ports=_) => {
+    Instance(sig={ path, span, .. }, params~, accessed_ports=_) => {
       let inst: @parse.Expr = @parse.Expr::Instance(
-        name~,
+        path~,
         params={
           let new_params: Array[@parse.InstanceParam] = Array::new(capacity=params.size())
 
@@ -308,7 +313,7 @@ fn map_parameters(parameters: Map[String, @rtlil.Constant]) -> Map[@rtlil.Id, @r
 }
 
 fn elaborate_module(self: Elaborator, mod~: @parse.ModuleDecl, env~: ElaboratorEnv) -> Unit! {
-  let mod_def = @rtlil.Module::new(PubId(mod.name))
+  let mod_def = @rtlil.Module::new(PubId(mod.path.to_string()))
 
   for port_id, port in mod.ports {
     let _ = mod_def.add_wire!(
@@ -341,11 +346,11 @@ fn elaborate_module(self: Elaborator, mod~: @parse.ModuleDecl, env~: ElaboratorE
     }
   })
 
-  if self.modules.contains(mod.name) {
-    raise ModuleAlreadyDeclared(name=mod.name, span=mod.span)
+  if self.modules.contains(mod.path) {
+    raise ModuleAlreadyDeclared(path=mod.path, span=mod.span)
   }
 
-  self.modules[mod.name] = mod_def
+  self.modules[mod.path] = mod_def
 }
 
 fn port_wire_id(cell_name: @rtlil.Id, port_name: String) -> @rtlil.Id {
@@ -358,12 +363,12 @@ fn next_genidx(self: Elaborator) -> Int {
   idx
 }
 
-fn declare(name: String, value: Value, env~: ElaboratorEnv, span~: @parse.Span) -> Unit!ElaboratorError {
-  if env.contains(name) {
-    raise NameConflict(name~, span~)
+fn declare(path: @parse.Path, value: Value, env~: ElaboratorEnv, span~: @parse.Span) -> Unit!ElaboratorError {
+  if env.contains(path) {
+    raise NameConflict(path~, span~)
   }
   
-  env[name] = value
+  env[path] = value
 }
 
 fn expr_width(expr: @parse.Expr) -> Int! {
@@ -455,12 +460,12 @@ fn elaborate_expr(
   name_binding~: @rtlil.Id? = None,
 ) -> Value! {
   match expr {
-    Identifier(name~, span~, ..) => {
-      match env[name] {
+    Identifier(path~, span~, ..) => {
+      match env[path] {
         Some(value) => value
-        None => match mod.wires[PubId(name)] {
+        None => match mod.wires[PubId(path.to_string())] {
           Some(wire) => Value::Signal(SigWire(wire))
-          None => raise UnknownIdentifier(name~, span~)
+          None => raise UnknownIdentifier(path~, span~)
         }
       }
     }
@@ -516,12 +521,12 @@ fn elaborate_expr(
       let output_width = ty.val.unwrap().width!(span)
       self.binary_op_cell!(op~, lhs~, rhs~, mod~, env~, span~, output_width=Some(output_width))
     }
-    Instance(name~, params~, ports~, span~, ty=inst_ty) => {
-      if params._.length() > 0 && not(self.declared_modules.contains(name)) {
+    Instance(path~, params~, ports~, span~, ty=inst_ty) => {
+      if params._.length() > 0 && not(self.declared_modules.contains(path)) {
         raise Unreachable(message="Parameterized instance after simplification", span~)
       }
 
-      let (ports_sig, params_map, attributes) = match self.modules[name] {
+      let (ports_sig, params_map, attributes) = match self.modules[path] {
         Some(mod) => {
           let ports_sig = {}
 
@@ -536,7 +541,7 @@ fn elaborate_expr(
 
           (ports_sig, {}, {})
         }
-        None => match self.declared_modules[name] {
+        None => match self.declared_modules[path] {
           Some(sig) => {
             let ports_sig = Map::new(capacity=sig.ports.length())
             let params_map = params.as_map!(names=sig.params)
@@ -553,7 +558,7 @@ fn elaborate_expr(
 
             (ports_sig, params_map, sig.attributes)
           }
-          None => raise ElaboratorError::UnknownModule(name~, span~)
+          None => raise ElaboratorError::UnknownModule(path~, span~)
         }
       }
 
@@ -564,7 +569,7 @@ fn elaborate_expr(
         _ => raise Unreachable(message="Untyped instance", span~)
       }
       let extra_ports = []
-      let cell_name = name_binding.or(GenId("\{name}_\{self.next_genidx()}"))
+      let cell_name = name_binding.or(GenId("\{path}_\{self.next_genidx()}"))
       let fields: Map[String, Value] = {}
 
       fn uses_port(port_name: String) -> Bool {
@@ -609,7 +614,7 @@ fn elaborate_expr(
         fn port_wire(port_name: String) -> @rtlil.Signal! {
           match connections[@rtlil.PubId(port_name)] {
             Some(sig) => sig
-            None => raise UnknownModulePort(module_name=name, port_name~, span~)
+            None => raise UnknownModulePort(module_path=path, port_name~, span~)
           }
         }
 
@@ -620,10 +625,10 @@ fn elaborate_expr(
           }
         }
 
-        match name {
-          "Reg" | "RegSyncReset" => {
+        match path {
+          { packages: [], member: "Reg" | "RegSyncReset" as internal_module_name } => {
             let width = parameter!("Width").expect_int!()
-            let sync_reset = name == "RegSyncReset"
+            let sync_reset = internal_module_name == "RegSyncReset"
             let uses_rst = uses_port("rst")
             let uses_en = uses_port("en")
             let cell_type = @rtlil.GenId(match (uses_en, uses_rst) {
@@ -689,7 +694,7 @@ fn elaborate_expr(
               span~,
             )
           }
-          "Memory" => {
+          { packages: [], member: "Memory" } => {
             let width = parameter!("Width").expect_int!()
             let depth = parameter!("Depth").expect_int!()
             let read_ports = parameter!("ReadPorts").expect_int!()
@@ -847,7 +852,7 @@ fn elaborate_expr(
               span~,
             )
           }
-           _ => raise UnknownModuleMarkedAsInternal(name~, span~)
+           _ => raise UnknownModuleMarkedAsInternal(path~, span~)
         }
       } else {
         let cell_type = match attributes["alias"] {
@@ -858,7 +863,7 @@ fn elaborate_expr(
               @rtlil.PubId(alias_name)
             }
           }
-          _ => @rtlil.PubId(name)
+          _ => @rtlil.PubId(path.to_string())
         }
 
         let _ = mod.add_cell!(
@@ -1181,8 +1186,11 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
       let _ = self.elaborate_expr!(expr, mod~, env~)
     }
     Let(name~, ty~, expr~, span~) => {
+      let path = @parse.Path::new([], name)
+          
       match expr {
         Some(expr) => {
+
           match self.elaborate_expr!(expr, mod~, env~, name_binding=Some(PubId(name))) {
             Signal(sig) => {
               let wire = mod.add_wire!(
@@ -1193,21 +1201,21 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
                 span~,
               )
 
-              declare!(name, Value::Signal(SigWire(wire)), env~, span=expr.span())
+              declare!(path, Value::Signal(SigWire(wire)), env~, span=expr.span())
               mod.connect!(SigWire(wire), sig, span=expr.span())
             }
             Vector(_) as val => {
-              declare!(name, val, env~, span=expr.span())
+              declare!(path, val, env~, span=expr.span())
             }
             Struct(_) as val => {
-              declare!(name, val, env~, span=expr.span())
+              declare!(path, val, env~, span=expr.span())
             }
           }
         }
         None => {
           let ty = ty.val.or_error!(UntypedLet(span~))
           let val = self.default_value!(ty~, mod~, env~, span~, name_binding=PubId(name))
-          declare!(name, val, env~, span~)
+          declare!(path, val, env~, span~)
         }
       }
     }
@@ -1236,10 +1244,13 @@ pub fn elaborate_decl(self: Elaborator, decl: @parse.Decl) -> Unit! {
       self.elaborate_module!(mod~, env={})
     }
     ModuleDeclaration(sig) => {
-      self.declared_modules[sig.name] = sig
+      self.declared_modules[sig.path] = sig
     }
     Const(decl) => {
       raise ConstDeclAfterSimplification(span=decl.span)
+    }
+    Package(decl) => {
+      raise PackageDeclDuringElaboration(span=decl.span)
     }
   }
 }

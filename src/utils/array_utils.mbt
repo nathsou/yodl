@@ -78,6 +78,16 @@ pub fn map_values[K: Eq + Hash, V](map: Map[K, V], f: (V) -> V) -> Map[K, V] {
   result
 }
 
+pub fn map_keys[K1: Eq + Hash, K2: Eq + Hash, V](map: Map[K1, V], f: (K1) -> K2) -> Map[K2, V] {
+  let result = Map::new(capacity=map.size())
+
+  for key, value in map {
+    result[f(key)] = value
+  }
+
+  result
+}
+
 pub fn sorted_keys[K: Eq + Hash + Compare, V](map: Map[K, V]) -> Map[K, V] {
   let sorted_keys = { let keys = map.keys().collect(); keys.sort(); keys }
   let new_map = Map::new(capacity=map.size())

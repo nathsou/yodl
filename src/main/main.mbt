@@ -71,7 +71,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
   }
 
   let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = monomorphizer.monomorphize!(builtin_decls + decls)
+  let mono_decls = monomorphizer.monomorphize!(decls=builtin_decls + decls, packages=[])
 
   for cmd in commands {
     match cmd {
@@ -159,7 +159,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
         let rtlil = {
           let serializer = @rtlil.Serializer::new(
             autoidx=elaborator.autoidx,
-            modules=elaborator.modules,
+            modules=@utils.map_keys(elaborator.modules, Show::to_string),
           )
 
           serializer.to_string()

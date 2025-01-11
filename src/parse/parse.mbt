@@ -8,6 +8,7 @@ pub type! ParserError {
   UnexpectedToken(expected~: TokenType, received~: TokenType, span~: Span)
   ExpectedIdentifier(received~: TokenType, span~: Span)
   ExpectedInteger(received~: TokenType, span~: Span)
+  ExpectedStringLiteral(received~: TokenType, span~: Span)
   ExpectedExpr(received~: TokenType, span~: Span)
   ExpectedStmt(received~: TokenType, span~: Span)
   ExpectedType(received~: TokenType, span~: Span)
@@ -88,6 +89,19 @@ fn parse_integer(self: Parser) -> ParsedInteger!ParserError {
       { bits, width, base }
     }
     _ => raise ExpectedInteger(received=token, span=self.span(start_idx))
+  }
+}
+
+fn parse_string_literal(self: Parser) -> String! {
+  let token = self.peek()
+  let start_idx = self.index
+
+  match token {
+    StringLiteral(str) => {
+      self.advance()
+      str
+    }
+    _ => raise ExpectedStringLiteral(received=token, span=self.span(start_idx))
   }
 }
 
@@ -214,10 +228,12 @@ fn parse_primary_expr(self: Parser) -> Expr! {
   match token {
     Identifier(name) => {
       self.advance()
+      let path = self.parse_path!(name)
+
       if self.matches(Lparen) || self.matches(Lchevron) {
-        self.parse_instance_expr!(module_name=name)
+        self.parse_instance_expr!(path~)
       } else {
-        Identifier(name~, span=self.span(start_idx), ty={ val: None })
+        Identifier(path~, span=self.span(start_idx), ty={ val: None })
       }
     }
     Natural(bits~, width~, base~) => {
@@ -360,7 +376,7 @@ fn parse_vector_expr(self: Parser) -> Expr! {
   Vector(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_instance_expr(self: Parser, module_name~: String) -> Expr! {
+fn parse_instance_expr(self: Parser, path~: Path) -> Expr! {
   let start_idx = self.index
   let params = self.parse_module_parameters!(fn(sub_parser) {
     let start_idx = sub_parser.index
@@ -371,7 +387,7 @@ fn parse_instance_expr(self: Parser, module_name~: String) -> Expr! {
           let param = sub_parser.parse_expr!()
           { name: Some(name), value: param }
         } else {
-          let param = Expr::Identifier(name~, span=sub_parser.span(start_idx), ty={ val: None })
+          let param = Expr::Identifier(path=Path::new([], name), span=sub_parser.span(start_idx), ty={ val: None })
           { name: None, value: param }
         }
       }
@@ -391,7 +407,7 @@ fn parse_instance_expr(self: Parser, module_name~: String) -> Expr! {
     if self.consumes(Colon) {
       ports[name] = self.parse_expr!()
     } else {
-      ports[name] = Identifier(name~, span=self.span(start_idx), ty={ val: None })
+      ports[name] = Identifier(path=Path::new([], name), span=self.span(start_idx), ty={ val: None })
     }
 
     if not(self.consumes(Comma)) {
@@ -402,7 +418,7 @@ fn parse_instance_expr(self: Parser, module_name~: String) -> Expr! {
   self.expect!(Rparen, start_idx)
 
   Instance(
-    name=module_name,
+    path~,
     params=InstanceParams(params),
     ports~,
     span=self.span(start_idx),
@@ -511,9 +527,38 @@ fn parse_const_decl(self: Parser) -> ConstDecl! {
   let expr = self.parse_expr!()
   self.expect!(Semicolon, start_idx)
 
-  { name, ty, expr, span: self.span(start_idx) }
+  { path: Path::new([], name), ty, expr, span: self.span(start_idx) }
 }
 
+fn parse_package_decl(self: Parser) -> PackageDecl! {
+  let start_idx = self.index
+  self.expect!(Package, start_idx)
+  let name = self.parse_identifier!()
+  let body = []
+
+  self.expect!(Lbrace, start_idx)
+
+  while not(self.consumes(Rbrace)) {
+    let decl = self.parse_decl!()
+    body.push(decl)
+  }
+
+  { name, body, span: self.span(start_idx) }
+}
+
+fn parse_path(self: Parser, first: String) -> Path! {
+  let start_idx = self.index
+  let packages = [first]
+
+  while self.consumes(ColonColon) {
+    let name = self.parse_identifier!()
+    packages.push(name)
+  }
+
+  let member = packages.unsafe_pop()
+
+  Path::new(packages, member)
+}
 fn parse_type(self: Parser) -> Type! {
   let start_idx = self.index
   let params: Array[Param] = []
@@ -525,7 +570,8 @@ fn parse_type(self: Parser) -> Type! {
     }
     Identifier(name) => {
       self.advance()
-      Type::Name(name~, params=[])
+      let path = parse_path!(self, name)
+      Type::Name(path~, params=[])
     }
     Lparen => {
       self.advance()
@@ -594,7 +640,7 @@ fn parse_type(self: Parser) -> Type! {
     self.expect!(Rchevron, start_idx)
 
     base_ty = match base_ty {
-      Type::Name(name~, params=_) => Type::Name(name~, params~)
+      Type::Name(path~, params=_) => Type::Name(path~, params~)
       _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
     }
   }
@@ -757,12 +803,12 @@ fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> 
   let outputs = self.parse_port_list!(dir=Output)
   let ports = @utils.concat(inputs, outputs)
 
-  { name, params, attributes, ports, span: self.span(start_idx) }
+  { path: Path::new([], name), params, attributes, ports, span: self.span(start_idx) }
 }
 
 fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl! {
   let start_idx = self.index
-  let { name, params, attributes, ports, .. } = sig
+  let { path, params, attributes, ports, .. } = sig
   self.expect!(Lbrace, start_idx)
   let body = []
 
@@ -771,7 +817,7 @@ fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl! {
     body.push(stmt)
   }
 
-  { name, params, attributes, ports, body, span: self.span(start_idx) }
+  { path, params, attributes, ports, body, span: self.span(start_idx) }
 }
 
 fn parse_module_def_or_decl(self: Parser) -> Decl! {
@@ -790,6 +836,7 @@ fn parse_decl(self: Parser) -> Decl! {
   match self.peek() {
     At | Declare | Module => self.parse_module_def_or_decl!()
     Const => Decl::Const(self.parse_const_decl!())
+    Package => Decl::Package(self.parse_package_decl!())
     token => raise ExpectedDecl(received=token, span=self.span(self.index))
   }
 }

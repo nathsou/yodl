@@ -1,13 +1,13 @@
 
 pub(all) enum Expr {
   Natural(bits~: Bits, width~: Int?, base~: Int, span~: Span, ty~: Ref[Type?])
-  Identifier(name~: String, span~: Span, ty~: Ref[Type?])
+  Identifier(path~: Path, span~: Span, ty~: Ref[Type?])
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
   Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
   Slicing(expr~: Expr, msb~: Expr, lsb~: Expr, span~: Span, ty~: Ref[Type?])
   FieldAccess(expr~: Expr, field~: String, span~: Span, ty~: Ref[Type?])
-  Instance(name~: String, params~: InstanceParams, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
+  Instance(path~: Path, params~: InstanceParams, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
@@ -32,6 +32,7 @@ pub(all) enum Decl {
   Module(ModuleDecl)
   ModuleDeclaration(ModuleSignature)
   Const(ConstDecl)
+  Package(PackageDecl)
 }
 
 pub(all) enum Type {
@@ -39,7 +40,7 @@ pub(all) enum Type {
   Logic
   Vector(ty~: Type, len~: VectorLen)
   Instance(sig~: ModuleSignature, params~: Map[String, Param], accessed_ports~: Set[String])
-  Name(name~: String, params~: Array[Param])
+  Name(path~: Path, params~: Array[Param])
   Struct(Map[String, Type])
   String(len~: Int)
 } derive(Eq)
@@ -50,6 +51,36 @@ pub(all) struct InstanceParam {
 }
 
 pub type InstanceParams Array[InstanceParam]
+
+pub(all) struct Path {
+  packages: Array[String]
+  member: String
+} derive(Eq)
+
+pub impl Hash for Path with hash_combine(self, hasher) {
+  for package in self.packages {
+    hasher.combine(package)
+  }
+
+  hasher.combine(self.member)
+}
+
+pub impl Show for Path with output(self, logger) {
+  for package in self.packages {
+    logger.write_string(package)
+    logger.write_string("::")
+  }
+
+  logger.write_string(self.member)
+}
+
+pub fn Path::new(packages: Array[String], member: String) -> Path {
+  { packages, member }
+}
+
+pub fn prepend(self: Path, packages: Array[String]) -> Path {
+  Path::new(packages + self.packages, self.member)
+}
 
 pub fn map[E: Error](self: InstanceParams, f: (Expr) -> Expr!E) -> InstanceParams!E {
   let new_list = Array::new(capacity=self._.length())
@@ -155,7 +186,7 @@ pub(all) struct ForRange {
 }
 
 pub(all) struct ModuleSignature {
-    name: String
+    path: Path
     params: Array[String]
     attributes: Map[String, Attribute]
     ports: Array[Port]
@@ -163,13 +194,19 @@ pub(all) struct ModuleSignature {
 }
 
 impl Eq for ModuleSignature with op_equal(self, other) {
-  self.name == other.name && self.span.file == other.span.file
+  self.path == other.path && self.span.file == other.span.file
 }
 
 pub(all) struct ConstDecl {
-  name: String
+  path: Path
   ty: Type?
   expr: Expr
+  span: Span
+}
+
+pub(all) struct PackageDecl {
+  name: String
+  body: Array[Decl]
   span: Span
 }
 
@@ -273,7 +310,7 @@ pub(all) struct Port {
 pub typealias ModuleParams = Map[String, Param]
 
 pub(all) struct ModuleDecl {
-    name: String
+    path: Path
     params: Array[String]
     attributes: Map[String, Attribute]
     ports: Array[Port]
@@ -443,8 +480,8 @@ pub fn as_expr(self: Param, span~: Span) -> Expr!AstError {
 pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
   rewrite_expr!(self, fn!(expr) {
     match expr {
-      Identifier(name~, ..) => {
-        match params[name] {
+      Identifier(path={ packages: [], member }, ..) => {
+        match params[member] {
           Some(Int(n)) => {
             Natural(bits=Bits::from!(n, span=expr.span()), width=None, base=10, span=expr.span(), ty=expr.ty())
           }
@@ -735,10 +772,13 @@ pub fn substitute(self: Type, params_env~: Map[String, Param]) -> Type {
 
       Instance(sig~, params=new_params, accessed_ports~)
     }
-    Name(name~, params~) => {
-      match params_env[name] {
-        Some(_) => Nat
-        None => Name(name~, params~)
+    Name(path~, params~) => {
+      match path.packages {
+        [] => match params_env[path.member] {
+          Some(_) => Nat
+          None => Name(path~, params~)
+        }
+        _ => Name(path~, params~)
       }
     }
     Struct(fields) => Struct(@utils.map_values(fields, fn(expr) { substitute(expr, params_env~) }))
@@ -747,7 +787,7 @@ pub fn substitute(self: Type, params_env~: Map[String, Param]) -> Type {
 
 pub fn signature(self: ModuleDecl) -> ModuleSignature {
   {
-    name: self.name,
+    path: self.path,
     params: self.params,
     attributes: self.attributes,
     ports: self.ports,
@@ -849,7 +889,7 @@ pub fn clone(self: Type) -> Type {
     Logic => Logic
     Vector(ty~, len~) => Vector(ty=ty.clone(), len~)
     Instance(sig~, params~, accessed_ports~) => Instance(sig~, params~, accessed_ports~)
-    Name(name~, params~) => Name(name~, params~)
+    Name(path~, params~) => Name(path~, params~)
     Struct(fields) => Struct(@utils.map_values(fields, clone))
     String(len~) => String(len~)
   }

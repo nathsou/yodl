@@ -303,7 +303,11 @@ fn next(self: Lexer) -> LexerResult[Token]! {
     }
     ':' => {
       self.advance()
-      Ok(Colon)
+      if self.consumes(':') {
+        Ok(ColonColon)
+      } else {
+        Ok(Colon)
+      }
     }
     '+' => {
       self.advance()
@@ -452,6 +456,7 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           "declare" => Declare
           "match" => Match
           "const" => Const
+          "package" => Package
           "and" => And
           "or" => Or
           "not" => Not
