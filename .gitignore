@@ -4,3 +4,4 @@ target/
 output/
 gen_bitstream.sh
 examples/*.lab.yodl
+examples/*.rtlil
