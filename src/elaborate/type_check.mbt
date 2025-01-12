@@ -21,7 +21,7 @@ type! TypeCheckerError {
     UnknownModule(path~: @parse.Path, span~: @parse.Span)
     UnknownModulePort(module_path~: @parse.Path, port_name~: String, span~: @parse.Span)
     InvalidFieldAccess(field~: String, span~: @parse.Span)
-    InvalidSlicingRange(span~: @parse.Span)
+    InvalidSlicingRange(reason~: String, span~: @parse.Span)
     ExpectedConstantExpr(span~: @parse.Span)
     LetStmtMustHaveTypeOrValue(span~: @parse.Span)
     EmptyVector(span~: @parse.Span)
@@ -67,8 +67,8 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidFieldAccess(field~, ..) => {
             logger.write_string("Invalid field access '\{field}'")
         }
-        InvalidSlicingRange(..) => {
-            logger.write_string("Invalid slicing range")
+        InvalidSlicingRange(reason~, ..) => {
+            logger.write_string("Invalid slicing range: \{reason}")
         }
         ExpectedConstantExpr(..) => {
             logger.write_string("Expected constant expression")
@@ -323,9 +323,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let start_ty = self.check_expr!(msb, env)
             let end_ty = self.check_expr!(lsb, env)
 
-
             if start_ty != @parse.Nat || end_ty != @parse.Nat {
-                raise InvalidSlicingRange(span~)
+                raise InvalidSlicingRange(reason="start and end must be natural numbers", span~)
             }
 
             let msb = eval_const_expr!(msb)
@@ -333,12 +332,13 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             match ty {
                 Vector(ty=inner_ty, len~) => {
-                    if msb >= len.expect_fixed!(span) {
-                        raise InvalidSlicingRange(span~)
+                    let len = len.expect_fixed!(expr.span())
+                    if msb >= len {
+                        raise InvalidSlicingRange(reason="start index out of bounds: msb: \{msb}, len: \{len}", span~)
                     }
 
                     if lsb >= msb {
-                        raise InvalidSlicingRange(span~)
+                        raise InvalidSlicingRange(reason="end index must be less than start index", span~)
                     }
 
                     @parse.Type::Vector(ty=inner_ty, len=Fixed((msb - lsb) + 1))
@@ -431,6 +431,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                             Logic => {
                                 check_elem_ty!(Logic)
                                 len += 1
+                            }
+                            String(len=str_len) => {
+                                check_elem_ty!(Logic)
+                                len += str_len * @parse.BITS_PER_ASCII_CHAR
                             }
                             _ => raise SpreadOnNonVector(span~)
                         }

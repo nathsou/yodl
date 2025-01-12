@@ -111,7 +111,7 @@ module CharAt<Length, IndexWidth>(
     is_out_of_bounds: logic,
 ) {
     is_out_of_bounds = index >= Length;
-    char = is_out_of_bounds ? " " : (str >> ((Length - 1 - index) * 7))[$clog2(Length) - 1:0];
+    char = is_out_of_bounds ? " " : (str >> ((Length - 1 - index) * 7))[6:0];
 }
 
 const Rows = VGA::V_ACTIVE / 8;
@@ -183,46 +183,4 @@ module TextDynamicPosition<StrLength>(
     vga_red = text_color.r;
     vga_green = text_color.g;
     vga_blue = text_color.b;
-}
-
-module Top(
-    clk: logic,
-) -> (
-    led: logic[4],
-    vga_hsync: logic,
-    vga_vsync: logic,
-    vga_red: logic[3],
-    vga_green: logic[3],
-    vga_blue: logic[3],
-) {
-    const MsgLen = 69;
-    let timer = Timing::Timer<100_000_000>(clk);
-    let timer2 = Timing::Timer<5_000_000>(clk);
-    let messages = [
-        "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!",
-        "Visit https://github.com/nathsou/yodl for more information :)        ",
-    ];
-
-    let msg_index = Timing::Counter<1>(clk, en: timer.q, rst: 1'b0).q;
-    let rand_color = LFSR::LFSR<32>(clk, enable: timer.q, seed_ready: 1'b0, seed_data: 32'd1998).q[8:0];
-    let y = Timing::Counter<6>(clk, en: timer2.q);
-    y.rst = y.q >= (Cols - 1);
-
-    let text = TextDynamicPosition<MsgLen>(
-        clk,
-        text: messages[msg_index],
-        x_offset: 7'd5,
-        y_offset: y.q,
-        color: rand_color,
-        vga_hsync: vga_hsync,
-        vga_vsync: vga_vsync,
-        vga_red: vga_red,
-        vga_green: vga_green,
-        vga_blue: vga_blue,
-    );
-
-    vga_red = text.vga_red;
-    vga_green = text.vga_green;
-    vga_blue = text.vga_blue;
-    led = 4'd0;
 }

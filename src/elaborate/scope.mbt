@@ -15,7 +15,7 @@ pub fn child[K: Eq + Hash, T](self: Scope[K, T]) -> Scope[K, T] {
   { members: {}, parent: Some(self) }
 }
 
-pub fn declare[K: Eq + Hash, T](self: Scope[K, T], key: K, value: T) -> Unit!ScopeError {
+pub fn declare[K: Eq + Hash + Show, T](self: Scope[K, T], key: K, value: T) -> Unit!ScopeError {
   if self.members.contains(key) {
     raise MemberAlreadyDeclared
   }

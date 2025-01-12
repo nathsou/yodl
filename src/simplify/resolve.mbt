@@ -2,6 +2,7 @@
 pub struct Resolver {
   resolved_packages: Map[String, @parse.PackageDecl]
   available_packages: Map[String, String]
+  imports: Set[String]
 }
 
 pub type! ResolutionError {
@@ -15,7 +16,7 @@ pub type! ResolutionError {
 } derive(Show)
 
 pub fn Resolver::new(packages_dir: String) -> Resolver!ResolutionError {
-  { resolved_packages: {}, available_packages: collect_packages!(packages_dir) }
+  { resolved_packages: {}, available_packages: collect_packages!(packages_dir), imports: Set::new() }
 }
 
 fn extract_package_name_from_path(path: String) -> String!ResolutionError {
@@ -120,7 +121,10 @@ pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.P
       let resolved_decl = Array::new(capacity=decls.length())
 
       for decl in decls {
-        resolved_decl.push(self.resolve_decl!(decl))
+        match self.resolve_decl!(decl) {
+          Some(decl) => resolved_decl.push(decl)
+          None => ()
+        }
       }
 
       resolved_decl 
@@ -136,7 +140,15 @@ pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.P
 
   let pkg: @parse.PackageDecl = {
     name: pkg_name,
-    body: if is_top_package { builtin_decls + decls } else { decls },
+    body: if is_top_package {
+        let imports = self.imports.iter().map(fn(p) {
+          @parse.Decl::Package(self.resolved_packages[p].unwrap())
+        }).collect()
+
+        builtin_decls + imports + decls
+      } else {
+        decls
+      },
     span: parser.span(0),
   }
 
@@ -147,7 +159,7 @@ pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.P
   pkg
 }
 
-pub fn resolve_decl(self: Resolver, decl: @parse.Decl) -> @parse.Decl!ResolutionError {
+pub fn resolve_decl(self: Resolver, decl: @parse.Decl) -> @parse.Decl?!ResolutionError {
   match decl {
     Import({ packages, span: _ }) => {
       let pkg = match packages {
@@ -160,17 +172,23 @@ pub fn resolve_decl(self: Resolver, decl: @parse.Decl) -> @parse.Decl!Resolution
         None => raise PackageNotFound(name=pkg)
       }
 
-      @parse.Decl::Package(self.resolve!(path~, is_top_package=false))
+      let _ = self.resolve!(path~, is_top_package=false)
+      self.imports.add(path)
+      
+      None
     }
     Package(pkg) => {
       let resolved_body = Array::new(capacity=pkg.body.length())
 
       for decl in pkg.body {
-        resolved_body.push(self.resolve_decl!(decl))
+        match self.resolve_decl!(decl) {
+          Some(decl) => resolved_body.push(decl)
+          None => ()
+        }
       }
 
-      @parse.Decl::Package({ name: pkg.name, body: resolved_body, span: pkg.span })
+      Some(@parse.Decl::Package({ name: pkg.name, body: resolved_body, span: pkg.span }))
     }
-    decl => decl
+    decl => Some(decl)
   }
 }

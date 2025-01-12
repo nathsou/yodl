@@ -18,7 +18,6 @@ impl Show for UniqueName with output(self, logger) {
 }
 
 enum SimplifierEnvEntry {
-  GenVar(Int)
   Name(UniqueName)
   Const(@parse.Expr)
 }
@@ -40,23 +39,21 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
   { name, id: count }
 }
 
-// 1. Resolve identifiers to unique names
-// 2. Replace genvars with their values
-// 3. Rewrite non-constant indexing expressions to match expressions
-// 4. Rewrite port accesses on match expressions
-// 5. Rewrite replication expressions into concatenation expressions
-// 6. Remove unecessary spreads
-// 7. Rewrite flat constant vectors to natural expressions
-// 8. Hardcode constant references
-// 9. Rewrite strings into vectors
-// 10. Rewrite nand expressions into not + and expressions
-// 11. Rewrite match expressions with two cases: 0 and 1, as ternary expressions
+// - Resolve identifiers to unique names
+// - Rewrite non-constant indexing expressions to match expressions
+// - Rewrite port accesses on match expressions
+// - Rewrite replication expressions into concatenation expressions
+// - Remove unecessary spreads
+// - Rewrite flat constant vectors to natural expressions
+// - Hardcode constant references
+// - Rewrite strings into vectors
+// - Rewrite nand expressions into not + and expressions
+// - Rewrite match expressions with two cases: 0 and 1, as ternary expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
       Identifier(path~, span~, ty~) => {
         match env.resolve(path) {
-          Some(GenVar(value)) => @parse.Expr::Natural(bits=@parse.Bits::from!(value, span~), width=None, base=10, span~, ty~)
           Some(Const(expr)) => expr
           Some(Name(unique_name)) => @parse.Expr::Identifier(path=@parse.Path::new(path.packages, unique_name.to_string()), span~, ty~)
           None => expr
@@ -218,28 +215,8 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv) -
       let simplified_rhs = self.simplify_expr!(rhs, env~)
       [@parse.Stmt::Assign(lhs=simplified_lhs, rhs=simplified_rhs, span~)]
     }
-    For(var~, range~, body~, ..) => {
-      let unrolled_stmts = []
-      let start = self.simplify_expr!(range.start, env~).as_int!()
-      let mut end = self.simplify_expr!(range.end, env~).as_int!()
-
-      if range.inclusive {
-        end += 1
-      }
-
-      let var_path = @parse.Path::new([], var)
-
-      for i in start..<end {
-        env.declare!(var_path, GenVar(i))
-
-        for stmt in body {
-          unrolled_stmts.push_iter(self.simplify_stmt!(stmt, env~).iter())
-        }
-
-        env.remove(var_path)
-      }
-
-      unrolled_stmts
+    For(_) => {
+      raise Failure("For stmt after monomorphization")
     }
     Scope(body~, ..) => {
       let simplified_body = []

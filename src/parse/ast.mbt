@@ -82,7 +82,9 @@ pub fn Path::new(packages: Array[String], member: String) -> Path {
 }
 
 pub fn prepend(self: Path, packages: Array[String]) -> Path {
-  Path::new(packages + self.packages, self.member)
+  let joined = packages + self.packages
+  joined.dedup()
+  Path::new(joined, self.member)
 }
 
 pub fn map[E: Error](self: InstanceParams, f: (Expr) -> Expr!E) -> InstanceParams!E {
@@ -209,7 +211,7 @@ pub(all) struct ConstDecl {
 
 pub(all) struct PackageDecl {
   name: String
-  body: Array[Decl]
+  mut body: Array[Decl]
   span: Span
 }
 
@@ -503,7 +505,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
         }
       }
       Binary(op = Add | Sub | Mul | Div | Mod as op, lhs~, rhs~, span~, ty~) => {
-        match (lhs.as_int?(), rhs.as_int?()) {
+        match (lhs.as_bigint?(), rhs.as_bigint?()) {
           (Ok(lhs), Ok(rhs)) => {
             let value = match op {
               Add => lhs + rhs
@@ -511,12 +513,12 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
               Mul => lhs * rhs
               Div => lhs / rhs
               Mod => lhs % rhs
-              Shl => lhs << rhs
-              Shr => lhs >> rhs
+              Shl => lhs << rhs.to_int()
+              Shr => lhs >> rhs.to_int()
               _ => raise Failure("Invalid arithmetical binary operator")
             }
 
-            Natural(bits=Bits::from!(value, span~), width=None, base=10, span~, ty~)
+            Natural(bits=Bits::from_bigint!(value, span~), width=None, base=10, span~, ty~)
           }
           _ => expr
         }
@@ -555,10 +557,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
           raise InvalidFunCallArity(name~, expected=fun.arity, actual=args.length(), span~)
         }
 
-        match (fun.apply)!(args, span) {
-          Some(result) => result
-          None => expr
-        }
+        (fun.apply)!(args, span)
       }
       _ => expr
     }
@@ -586,7 +585,7 @@ impl Show for Arity with output(self, logger) {
 
 struct BuiltinFunction {
   arity: Arity
-  apply: (Array[Expr], Span) -> Expr?!
+  apply: (Array[Expr], Span) -> Expr!
 }
 
 let builtin_functions: Map[String, BuiltinFunction] = {
@@ -595,7 +594,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let arg = args[0].as_int!()
       let value = @utils.clog2(arg)
-      Some(nat!(value, span~))
+      nat!(value, span~)
     }
   },
   "$pow": {
@@ -603,7 +602,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let base = args[0].as_int!()
       let exp = args[1].as_int!()
-      Some(nat!(@utils.pow(base, exp), span~))
+      nat!(@utils.pow(base, exp), span~)
     }
   },
   "$cdiv": {
@@ -611,7 +610,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let dividend = args[0].as_int!()
       let divisor = args[1].as_int!()
-      Some(nat!(@utils.cdiv(dividend, divisor), span~))
+      nat!(@utils.cdiv(dividend, divisor), span~)
     }
   },
   "$readmemb": {
@@ -626,22 +625,13 @@ let builtin_functions: Map[String, BuiltinFunction] = {
 
       let bits = parse_mem_file!(path, base=2, start~, end~)
 
-      Some(Expr::Natural(
+      Expr::Natural(
         bits=Bits::new(bits, span~),
         width=Some(bits.length()),
         base=2,
         span~,
         ty={ val: Some(Type::Vector(ty=Logic, len=Fixed(bits.length()))) }
-      ))
-    }
-  },
-  "$width": {
-    arity: Fixed(1),
-    apply: fn(args, span) {
-      match args[0].ty().val {
-        Some(ty) => Some(nat!(ty.width!(span), span~))
-        None => None
-      }
+      )
     }
   },
 }
@@ -778,6 +768,10 @@ pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bit
     }
   }
 
+  if value == 0 {
+    bits.push(Zero)
+  }
+
   // padding
   match width {
     Some(width) => {
@@ -798,8 +792,10 @@ pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bit
       }
     }
     _ => {
-      while bits[bits.length() - 1] == Zero {
-        let _ = bits.unsafe_pop()
+      if value > 0 {
+        while bits[bits.length() - 1] == Zero {
+          let _ = bits.unsafe_pop()
+        }
       }
     }
   }
@@ -810,13 +806,15 @@ pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bit
 pub fn as_int(self: Expr) -> Int! {
   match self {
     Natural(bits~, ..) => bits.as_int!()
-    _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
+    _ => {
+      raise ExpectedIntegerExpression(expr=self, span=self.span())
+    }
   }
 }
 
-pub fn as_bigint(self: Expr) -> Int! {
+pub fn as_bigint(self: Expr) -> BigInt! {
   match self {
-    Natural(bits~, ..) => bits.as_int!()
+    Natural(bits~, ..) => bits.as_bigint!()
     _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
   }
 }

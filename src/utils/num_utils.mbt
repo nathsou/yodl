@@ -55,7 +55,15 @@ pub fn pow(n: Int, exp: Int) -> Int {
 }
 
 pub fn log_n(n: Double, base: Double) -> Double {
-  @math.log10(n) / @math.log10(base)
+  let d = match base {
+    2 => 1.0
+    8 => 3.0
+    10 => 3.321928094887362
+    16 => 4.0
+    _ => @math.log2(base)
+  }
+
+  @math.log2(n) / d
 }
 
 pub fn show_digit(digit: BigInt) -> Char {
@@ -84,11 +92,21 @@ pub fn abs(n: BigInt) -> BigInt {
   if n < 0 { -n } else { n }
 }
 
+pub fn log_b_2(base: Int) -> Double {
+  match base {
+    2 => 1.0
+    8 => 0.3333333333333333
+    10 => 0.3010299956639812
+    16 => 0.25
+    _ => 1.0 / @math.log2(base.to_double())
+  }
+}
+
 pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
   let builder = StringBuilder::new()
   let is_neg = n < 0
   let n = abs(n)
-  let base_bn = BigInt::from_int(base)
+  let base_b = BigInt::from_int(base)
 
   if n == 0 {
     builder.write_char('0')
@@ -96,8 +114,8 @@ pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
     let mut n = n
 
     while n > 0 {
-      let digit = n % base_bn
-      n /= base_bn
+      let digit = n % base_b
+      n /= base_b
       builder.write_char(show_digit(digit))
     }
   }
@@ -107,7 +125,7 @@ pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
   
   match width {
     Some(width) => {
-      let required_digits = @math.ceil(width.to_double() * log_n(2.0, base.to_double())).to_int()
+      let required_digits = @math.ceil(log_b_2(base) * width.to_double()).to_int()
       res.pad_start(required_digits, '0')
     }
     None => res
