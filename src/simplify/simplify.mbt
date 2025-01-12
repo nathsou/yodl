@@ -78,7 +78,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
         @parse.Expr::Struct(fields=fields, span~, ty={ val: Some(Struct(types)) })
       }
       Indexing(expr~, index~, span~, ty~) as indexing_expr => {
-        match index.expect_int?() {
+        match index.as_int?() {
           Ok(_) => indexing_expr
           Err(_) => {
             // Rewrite non-constant indexing expressions to match expressions
@@ -136,7 +136,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
           env~
         )
 
-        let elems = @utils.fill(count.expect_int!(), repeated_expr)
+        let elems = @utils.fill(count.as_int!(), repeated_expr)
         self.simplify_expr!(@parse.Expr::Vector(elems~, span~, ty~), env~)
       }
       Spread(expr~, ..) as spread_expr => {
@@ -220,8 +220,8 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv) -
     }
     For(var~, range~, body~, ..) => {
       let unrolled_stmts = []
-      let start = self.simplify_expr!(range.start, env~).expect_int!()
-      let mut end = self.simplify_expr!(range.end, env~).expect_int!()
+      let start = self.simplify_expr!(range.start, env~).as_int!()
+      let mut end = self.simplify_expr!(range.end, env~).as_int!()
 
       if range.inclusive {
         end += 1

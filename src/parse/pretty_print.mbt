@@ -553,8 +553,8 @@ pub impl Show for Type with output(ty, logger) {
         )
       }
     }
-    String(len=_) => {
-      logger.write_string("string")
+    String(len~) => {
+      logger.write_string("string<\{len}>")
     }
   }
 }

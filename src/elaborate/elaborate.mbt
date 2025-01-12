@@ -632,7 +632,7 @@ fn elaborate_expr(
 
         match path {
           { packages: [], member: "Reg" | "RegSyncReset" as internal_module_name } => {
-            let width = parameter!("Width").expect_int!()
+            let width = parameter!("Width").as_int!()
             let sync_reset = internal_module_name == "RegSyncReset"
             let uses_rst = uses_port("rst")
             let uses_en = uses_port("en")
@@ -700,10 +700,10 @@ fn elaborate_expr(
             )
           }
           { packages: [], member: "Memory" } => {
-            let width = parameter!("Width").expect_int!()
-            let depth = parameter!("Depth").expect_int!()
-            let read_ports = parameter!("ReadPorts").expect_int!()
-            let write_ports = parameter!("WritePorts").expect_int!()
+            let width = parameter!("Width").as_int!()
+            let depth = parameter!("Depth").as_int!()
+            let read_ports = parameter!("ReadPorts").as_int!()
+            let write_ports = parameter!("WritePorts").as_int!()
             let clamped_write_ports = @utils.max(write_ports, 1)
             let abits = @utils.clog2(depth + 1)
             let read_width = read_ports * width
@@ -880,7 +880,7 @@ fn elaborate_expr(
             let parameters: Map[@rtlil.Id, @rtlil.Constant] = Map::new(capacity=params_map.size())
 
             for name, param in params_map {
-              match param.expect_int?() {
+              match param.as_int?() {
                 Ok(n) => {
                   parameters[@rtlil.PubId(name)] = @rtlil.ConstInteger(n)
                 }
@@ -1077,7 +1077,7 @@ fn elaborate_expr(
 
         for case in cases {
           let (lhs, rhs) = case
-          let index = lhs.expect_int!()
+          let index = lhs.as_int!()
 
           if index >= max_cases {
             raise IndexOutOfBounds(index~, len=max_cases, span=lhs.span())

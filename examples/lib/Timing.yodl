@@ -1,0 +1,16 @@
+
+// outputs a 1 on `q` for one clock cycle once every `Cycles` clock cycles
+module Timer<Cycles>(clk: logic) -> (q: logic, dffs: logic[$clog2(Cycles)]) {
+    const Width = $clog2(Cycles);
+    let counter = Reg<Width>(clk);
+    let end = counter.q == Cycles;
+    counter.d = end ? Width x {1'0} : counter.q + 1;
+    q = end;
+    dffs = counter.q;
+}
+
+module Counter<Width>(clk: logic, en: logic, rst: logic) -> (q: logic[Width]) {
+    let counter = Reg<Width>(clk, en, rst);
+    counter.d = counter.q + 1'1;
+    q = counter.q;
+}

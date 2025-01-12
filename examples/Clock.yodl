@@ -5,7 +5,7 @@
 // icepack output/Timer.asc output/Timer.bin
 
 import Segments
-import Timer
+import Timing
 
 const CLOCK_FREQ = 100_000_000; // 100 Mhz
 
@@ -18,7 +18,7 @@ module Top(
     io_an: logic[4],
 ) {
     let rst = not rst_n;
-    let timer = Timer::Timer<CLOCK_FREQ>(clk);
+    let timer = Timing::Timer<CLOCK_FREQ>(clk);
     let seconds = Reg<16>(clk, rst);
     seconds.d = seconds.q + timer.q;
     Segments::Multi(clk, rst, value: seconds.q, segs: io_seg, sel: io_an);

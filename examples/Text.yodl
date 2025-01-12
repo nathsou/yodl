@@ -1,6 +1,6 @@
 import VGA
 import LFSR
-import Timer
+import Timing
 
 module AsciiTable(char: logic[7]) -> (q: logic[64]) {
     q = match char {
@@ -103,13 +103,86 @@ module AsciiTable(char: logic[7]) -> (q: logic[64]) {
     };
 }
 
-module CharAt<Length>(
+module CharAt<Length, IndexWidth>(
     str: logic[Length * 7],
-    index: logic[$clog2(Length)],
+    index: logic[IndexWidth],
 ) -> (
     char: logic[7],
+    is_out_of_bounds: logic,
 ) {
-    char = (str >> ((Length - 1 - index) * 7))[6:0];
+    is_out_of_bounds = index >= Length;
+    char = is_out_of_bounds ? " " : (str >> ((Length - 1 - index) * 7))[$clog2(Length) - 1:0];
+}
+
+const Rows = VGA::V_ACTIVE / 8;
+const Cols = VGA::H_ACTIVE / 8;
+
+module Text<StrLength, X, Y>(
+    clk: logic,
+    text: logic[StrLength * 7],
+    color: logic[9],
+) -> (
+    vga_hsync: logic,
+    vga_vsync: logic,
+    vga_red: logic[3],
+    vga_green: logic[3],
+    vga_blue: logic[3],
+) {
+    const StartIdx = Y * Cols + X;
+    let vga = VGA::SyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
+    let x_div = vga.col[9:3];
+    let y_div = vga.row[9:3];
+    let x = vga.col[2:0];
+    let y = vga.row[2:0];
+    let cell_idx: logic[13] = y_div * Cols + x_div;
+    let diff: logic[13] = cell_idx - StartIdx;
+    let char = cell_idx >= StartIdx ? CharAt<Length: StrLength, IndexWidth: 13>(str: text, index: diff).char : " ";
+    let bitmap = AsciiTable(char).q;
+    let pixel_idx: logic[6] = y * 8 + x;
+    let pixel = bitmap[pixel_idx];
+    let text_color = match vga.is_active_area and pixel {
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'b1 => { r: color[2:0], g: color[5:3], b: color[8:6] },
+    };
+
+    vga_red = text_color.r;
+    vga_green = text_color.g;
+    vga_blue = text_color.b;
+}
+
+module TextDynamicPosition<StrLength>(
+    clk: logic,
+    text: logic[StrLength * 7],
+    color: logic[9],
+    x_offset: logic[$clog2(Cols)],
+    y_offset: logic[$clog2(Rows)],
+) -> (
+    vga_hsync: logic,
+    vga_vsync: logic,
+    vga_red: logic[3],
+    vga_green: logic[3],
+    vga_blue: logic[3],
+) {
+    let vga = VGA::SyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
+    let x_div = vga.col[9:3];
+    let y_div = vga.row[9:3];
+    let x = vga.col[2:0];
+    let y = vga.row[2:0];
+    let start_idx: logic[13] = y_offset * Cols + x_offset;
+    let cell_idx: logic[13] = y_div * Cols + x_div;
+    let diff: logic[13] = cell_idx - start_idx;
+    let char = cell_idx >= start_idx ? CharAt<Length: StrLength, IndexWidth: 13>(str: text, index: diff).char : " ";
+    let bitmap = AsciiTable(char).q;
+    let pixel_idx: logic[6] = y * 8 + x;
+    let pixel = bitmap[pixel_idx];
+    let text_color = match vga.is_active_area and pixel {
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'b1 => { r: color[2:0], g: color[5:3], b: color[8:6] },
+    };
+
+    vga_red = text_color.r;
+    vga_green = text_color.g;
+    vga_blue = text_color.b;
 }
 
 module Top(
@@ -122,29 +195,34 @@ module Top(
     vga_green: logic[3],
     vga_blue: logic[3],
 ) {
-    const Rows = VGA::V_ACTIVE / 8;
-    const Cols = VGA::H_ACTIVE / 8;
+    const MsgLen = 69;
+    let timer = Timing::Timer<100_000_000>(clk);
+    let timer2 = Timing::Timer<5_000_000>(clk);
+    let messages = [
+        "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!",
+        "Visit https://github.com/nathsou/yodl for more information :)        ",
+    ];
 
-    let vga = VGA::SyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
-    let x_div = vga.col[9:3];
-    let y_div = vga.row[9:3];
-    let x = vga.col[2:0];
-    let y = vga.row[2:0];
-    let cell_idx: logic[13] = y_div * Cols + x_div;
-    let message = " YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!";
-    let char = CharAt<Length: 70>(str: message, index: cell_idx[6:0]).char;
-    let bitmap = AsciiTable(char).q;
-    let pixel_idx: logic[6] = y * 8 + x;
-    let pixel = bitmap[pixel_idx];
-    let timer = Timer::Timer<25_000_000>(clk);
-    let rand_color = LFSR::LFSR<32>(clk, enable: timer.q, seed_ready: 1'b0, seed_data: 32'd0).q[8:0];
-    let color = match vga.is_active_area and pixel {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => { r: rand_color[2:0], g: rand_color[5:3], b: rand_color[8:6] },
-    };
+    let msg_index = Timing::Counter<1>(clk, en: timer.q, rst: 1'b0).q;
+    let rand_color = LFSR::LFSR<32>(clk, enable: timer.q, seed_ready: 1'b0, seed_data: 32'd1998).q[8:0];
+    let y = Timing::Counter<6>(clk, en: timer2.q);
+    y.rst = y.q >= (Cols - 1);
 
-    vga_red = color.r;
-    vga_green = color.g;
-    vga_blue = color.b;
+    let text = TextDynamicPosition<MsgLen>(
+        clk,
+        text: messages[msg_index],
+        x_offset: 7'd5,
+        y_offset: y.q,
+        color: rand_color,
+        vga_hsync: vga_hsync,
+        vga_vsync: vga_vsync,
+        vga_red: vga_red,
+        vga_green: vga_green,
+        vga_blue: vga_blue,
+    );
+
+    vga_red = text.vga_red;
+    vga_green = text.vga_green;
+    vga_blue = text.vga_blue;
     led = 4'd0;
 }

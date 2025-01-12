@@ -132,7 +132,7 @@ pub impl Show for BinaryDigit with output(self, logger) {
 
 pub(all) struct Bits {
   bits: Array[BinaryDigit]
-  mut value: Int?
+  mut value: BigInt?
   span: Span
 }
 
@@ -240,6 +240,7 @@ pub type! AstError {
   InvalidFunCallArity(name~: String, expected~: Arity, actual~: Int, span~: Span)
   ExpectedStringExpression(expr~: Expr, span~: Span)
   ValueTooLargeForInt(span~: Span)
+  BitsTooWideForBigIntConversion(span~: Span)
   InvalidModuleParameter(span~: Span)
   ConflictingInstanceParameterValue(name~: String, span~: Span)
   UnknownModuleParameter(name~: String, span~: Span)
@@ -263,6 +264,7 @@ pub impl Show for AstError with output(self, logger) {
     UnknownModuleParameter(name~, ..) => {
       logger.write_string("Unknown module parameter '\{name}'")
     }
+    BitsTooWideForBigIntConversion(_) => logger.write_string("Bits are too wide for BigInt conversion")
   }
 
   logger.write_string(self.show_context())
@@ -282,6 +284,7 @@ pub impl Spanned for AstError with span(self) -> Span {
     InvalidModuleParameter(span~) => span
     ConflictingInstanceParameterValue(span~, ..) => span
     UnknownModuleParameter(span~, ..) => span
+    BitsTooWideForBigIntConversion(span~) => span
   }
 }
 
@@ -500,7 +503,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
         }
       }
       Binary(op = Add | Sub | Mul | Div | Mod as op, lhs~, rhs~, span~, ty~) => {
-        match (lhs.expect_int?(), rhs.expect_int?()) {
+        match (lhs.as_int?(), rhs.as_int?()) {
           (Ok(lhs), Ok(rhs)) => {
             let value = match op {
               Add => lhs + rhs
@@ -508,6 +511,8 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
               Mul => lhs * rhs
               Div => lhs / rhs
               Mod => lhs % rhs
+              Shl => lhs << rhs
+              Shr => lhs >> rhs
               _ => raise Failure("Invalid arithmetical binary operator")
             }
 
@@ -517,17 +522,17 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
         }
       }
       Ternary(cond~, then~, else_~, ..) => {
-        match cond.expect_int?() {
+        match cond.as_int?() {
           Ok(cond) => if cond != 0 { then } else { else_ }
           _ => expr
         }
       }
       Match(subject~, cases~, ..) => {
-        match subject.expect_int?() {
+        match subject.as_int?() {
           Ok(subject) => {
             for case in cases {
               let (value, rhs) = case
-              match value.expect_int?() {
+              match value.as_int?() {
                 Ok(case) => if subject == case { return rhs }
                 _ => ()
               }
@@ -550,7 +555,10 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
           raise InvalidFunCallArity(name~, expected=fun.arity, actual=args.length(), span~)
         }
 
-        (fun.apply)!(args, span)
+        match (fun.apply)!(args, span) {
+          Some(result) => result
+          None => expr
+        }
       }
       _ => expr
     }
@@ -578,32 +586,32 @@ impl Show for Arity with output(self, logger) {
 
 struct BuiltinFunction {
   arity: Arity
-  apply: (Array[Expr], Span) -> Expr!
+  apply: (Array[Expr], Span) -> Expr?!
 }
 
 let builtin_functions: Map[String, BuiltinFunction] = {
   "$clog2": {
     arity: Fixed(1),
     apply: fn(args, span) {
-      let arg = args[0].expect_int!()
+      let arg = args[0].as_int!()
       let value = @utils.clog2(arg)
-      nat!(value, span~)
+      Some(nat!(value, span~))
     }
   },
   "$pow": {
     arity: Fixed(2),
     apply: fn(args, span) {
-      let base = args[0].expect_int!()
-      let exp = args[1].expect_int!()
-      nat!(@utils.pow(base, exp), span~)
+      let base = args[0].as_int!()
+      let exp = args[1].as_int!()
+      Some(nat!(@utils.pow(base, exp), span~))
     }
   },
   "$cdiv": {
     arity: Fixed(2),
     apply: fn(args, span) {
-      let dividend = args[0].expect_int!()
-      let divisor = args[1].expect_int!()
-      nat!(@utils.cdiv(dividend, divisor), span~)
+      let dividend = args[0].as_int!()
+      let divisor = args[1].as_int!()
+      Some(nat!(@utils.cdiv(dividend, divisor), span~))
     }
   },
   "$readmemb": {
@@ -611,33 +619,53 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let (path, start, end) = match args {
         [path] => (path.expect_string!(), 0, None)
-        [path, start] => (path.expect_string!(), start.expect_int!(), None)
-        [path, start, end] => (path.expect_string!(), start.expect_int!(), Some(end.expect_int!()))
+        [path, start] => (path.expect_string!(), start.as_int!(), None)
+        [path, start, end] => (path.expect_string!(), start.as_int!(), Some(end.as_int!()))
         _ => raise InvalidFunCallArity(name="$readmemb", expected=Range(min=1, max=3), actual=args.length(), span~)
       }
 
       let bits = parse_mem_file!(path, base=2, start~, end~)
 
-      Expr::Natural(
+      Some(Expr::Natural(
         bits=Bits::new(bits, span~),
         width=Some(bits.length()),
         base=2,
         span~,
         ty={ val: Some(Type::Vector(ty=Logic, len=Fixed(bits.length()))) }
-      )
+      ))
+    }
+  },
+  "$width": {
+    arity: Fixed(1),
+    apply: fn(args, span) {
+      match args[0].ty().val {
+        Some(ty) => Some(nat!(ty.width!(span), span~))
+        None => None
+      }
     }
   },
 }
 
 pub fn as_int(self: Bits) -> Int!AstError {
   match self.value {
-    Some(value) => value
+    Some(value) => value.to_int()
     None => {
-      if self.bits.length() > 32 {
+      if self.bits.length() > 16 {
         raise ValueTooLargeForInt(span=self.span)
       }
       
       let value = bits_to_int!(self.bits, span=self.span)
+      self.value = Some(BigInt::from_int(value))
+      value
+    }
+  }
+}
+
+pub fn as_bigint(self: Bits) -> BigInt!AstError {
+  match self.value {
+    Some(value) => value
+    None => {
+      let value = bits_to_bigint!(self.bits, span=self.span)
       self.value = Some(value)
       value
     }
@@ -648,6 +676,10 @@ pub fn as_int(self: Bits) -> Int!AstError {
 /// attempts to interpret the bits as a binary integer
 /// returns an error if any bit is undetermined (not a 0 or a 1)
 fn bits_to_int(bits: Array[BinaryDigit], span~: Span) -> Int!AstError {
+  if bits.length() >= 16 {
+    raise ValueTooLargeForInt(span~)
+  }
+
   let mut value = 0
 
   for i in 0..<bits.length() {
@@ -663,7 +695,33 @@ fn bits_to_int(bits: Array[BinaryDigit], span~: Span) -> Int!AstError {
   value
 }
 
-pub fn Bits::new(bits: Array[BinaryDigit], value~: Int? = None, span~: Span) -> Bits {
+fn bits_to_bigint(bits: Array[BinaryDigit], span~: Span) -> BigInt!AstError {
+  let mut value: BigInt = 0
+
+  // prevent very wide integers from being converted to BigInt
+  if bits.length() > 512 {
+    raise BitsTooWideForBigIntConversion(span~)
+  }
+
+  for i in 0..<bits.length() {
+    let bit = bits[bits.length() - i - 1]
+
+    match bit {
+      Zero => {
+        value = value << 1
+      }
+      One => {
+        value = value << 1
+        value += 1
+      }
+      _ => raise NaturalContainsUndeterminedDigit(span~)
+    }
+  }
+
+  value
+}
+
+pub fn Bits::new(bits: Array[BinaryDigit], value~: BigInt? = None, span~: Span) -> Bits {
   { bits, value, span }
 }
 
@@ -694,7 +752,7 @@ pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError
     bits
   }
 
-  { bits, value: Some(value), span }
+  { bits, value: Some(BigInt::from_int(value)), span }
 }
 
 pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bits!AstError {
@@ -746,10 +804,17 @@ pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bit
     }
   }
 
-  { bits, value: None, span }
+  { bits, value: Some(value), span }
 }
 
-pub fn expect_int(self: Expr) -> Int! {
+pub fn as_int(self: Expr) -> Int! {
+  match self {
+    Natural(bits~, ..) => bits.as_int!()
+    _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
+  }
+}
+
+pub fn as_bigint(self: Expr) -> Int! {
   match self {
     Natural(bits~, ..) => bits.as_int!()
     _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
@@ -781,13 +846,12 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
         Fixed(len) => ty.width!(span) * len
         Dynamic(_) => raise VectorLengthNotFixed(span~)
       }
-    Instance(sig~, params~, accessed_ports~) => {
+    Instance(sig~, params=_, accessed_ports~) => {
       let mut width = 0
-      let params_env = Map::from_iter(params.iter())
 
       for port in sig.ports {
         if accessed_ports.contains(port.name) {
-          width += port.ty.substitute(params_env~).width!(span)
+          width += port.ty.width!(span)
         }
       }
 

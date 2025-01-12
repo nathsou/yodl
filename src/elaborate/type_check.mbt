@@ -375,7 +375,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                     let params_map = params.as_map!(names=sig.params)
 
                     for name, param in params_map {
-                        match param.expect_int?() {
+                        match param.as_int?() {
                             Ok(n) => {
                                 subst[name] = n
                             }

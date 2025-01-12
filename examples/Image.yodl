@@ -1,6 +1,6 @@
 import VGA
 import LFSR
-import Timer
+import Timing
 
 module Top(
     clk: logic,
@@ -17,7 +17,7 @@ module Top(
     let x_div = vga.col[9:2];
     let y_div = vga.row[9:2];
     let cell_idx: logic[15] = y_div * 160 + x_div;
-    let timer = Timer::Timer<100_000>(clk);
+    let timer = Timing::Timer<100_000>(clk);
     let rand_cell = LFSR::LFSR<15>(clk, enable: timer.q, seed_ready: 1'b0, seed_data: 15'0).q;
     let rand_color = LFSR::LFSR<3>(clk, enable: timer.q, seed_ready: 1'b0, seed_data: 3'0).q;
     let add_noise = button[0] or button[1] or button[2] or button[3];
