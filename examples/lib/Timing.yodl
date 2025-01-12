@@ -4,7 +4,7 @@ module Timer<Cycles>(clk: logic) -> (q: logic, dffs: logic[$clog2(Cycles)]) {
     const Width = $clog2(Cycles);
     let counter = Reg<Width>(clk);
     let end = counter.q == Cycles;
-    counter.d = end ? Width x {1'0} : counter.q + 1;
+    counter.d = end ? Width * {1'0} : counter.q + 1;
     q = end;
     dffs = counter.q;
 }

@@ -6,11 +6,10 @@ module Euler1(clk: logic, rst: logic) -> (q: logic[18], is_ready: logic) {
     let counter = Reg<CounterWidth>(clk, rst);
     let is_active = counter.q <= N - 1;
     counter.d = counter.q + is_active;
-    let sum = Reg<18>(clk, en: is_active, rst);
+    let sum = Reg<18>(clk, en: is_active, rst, q);
     let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0;
-    sum.d = sum.q + (is_divisible ? counter.q : CounterWidth x {1'0});
+    sum.d = sum.q + (is_divisible ? counter.q : CounterWidth * {1'0});
     is_ready = not is_active;
-    q = sum.q;
 }
 
 module Hex<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 7]) {
@@ -64,5 +63,5 @@ module Top(
     vga_red = text.vga_red;
     vga_green = text.vga_green;
     vga_blue = text.vga_blue;
-    led = 4x{euler1.is_ready};
+    led = 4*{euler1.is_ready};
 }

@@ -24,7 +24,7 @@ module RegisterFile<WIDTH, DEPTH>(
     reg1_data: logic[WIDTH],
     read_data: logic[WIDTH],
 ) {
-    let regs = (DEPTH)x[Reg<WIDTH>(clk, rst, d: write_data)];
+    let regs = DEPTH * [Reg<WIDTH>(clk, rst, d: write_data)];
 
     for i in 0..<DEPTH {
         regs[i].en = write_enable and (write_dest == i);
@@ -32,7 +32,7 @@ module RegisterFile<WIDTH, DEPTH>(
 
     reg0_data = regs[0].q;
     reg1_data = regs[1].q;
-    read_data = data_out ? regs[read_src].q : WIDTH x {1'bZ};
+    read_data = data_out ? regs[read_src].q : WIDTH * {1'bZ};
 }
 
 module Top(clk: logic, rst_n: logic) -> () {

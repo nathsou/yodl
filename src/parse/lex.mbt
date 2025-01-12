@@ -313,7 +313,11 @@ fn next(self: Lexer) -> LexerResult[Token]! {
     }
     '*' => {
       self.advance()
-      Ok(Star)
+
+      match self.next_non_whitespace() {
+        Some('{' | '[') => Ok(X) // replication operator
+        _ => Ok(Star)
+      }
     }
     '/' => {
       self.advance()
@@ -475,12 +479,6 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           "nand" => Nand
           "nor" => Nor
           "xnor" => Xnor
-          "x" => {
-            match self.next_non_whitespace() {
-              Some('{' | '[') => X
-              _ => Identifier("x")
-            }
-          }
           _ => Identifier(identifier)
         })
       } else {

@@ -287,10 +287,8 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.write(")")
     }
     Replicate(expr~, count~, concat~, ..) => {
-      self.write("(")
       self.emit_expr(count)
-      self.write(")")
-      self.write("x")
+      self.write("*")
       self.write(if concat { "{" } else { "[" })
       self.emit_expr(expr)
       self.write(if concat { "}" } else { "]" })
