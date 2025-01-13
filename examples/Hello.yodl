@@ -38,8 +38,5 @@ module Top(
         vga_blue,
     );
 
-    vga_red = text.vga_red;
-    vga_green = text.vga_green;
-    vga_blue = text.vga_blue;
     led = 4'd0;
 }

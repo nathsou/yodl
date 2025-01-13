@@ -2,11 +2,13 @@
 
 Yet anOther (hardware) Description Language
 
-## Goals
-Automate schematic generation from a textual description.
+## Usage
+- Install [https://www.moonbitlang.com/](Moonbit)
+- ```$ git clone https://github.com/nathsou/yodl.git yodl```
+- ```$ cd yodl```
+- ```$ moon run src/main Mod.yodl "write_rtlil Mod.rtlil; write_verilog Mod.v"```
 
-## Pipeline
-Circuit description (Yodl) -> Visualization (Digital) -> Software simulation (Yodl/Verilog simulator) -> FPGA synthesis (Yosys/Vivado, ...) -> Schematic & PCB (KiCad) -> Manufacturing (gerber)
+## Checklist
 
 - [x] [RTLIL](https://yosyshq.readthedocs.io/projects/yosys/en/latest/yosys_internals/formats/rtlil_rep.html) export
 - [x] Verilog export

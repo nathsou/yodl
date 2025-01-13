@@ -1,10 +1,11 @@
+// TODO: Support Windows paths
 
 pub fn file_name(path: String) -> String {
     path.split("/").last().or(path)
 }
 
 pub fn file_extension(path: String) -> String? {
-      match path.last_index_of(".") {
+    match path.last_index_of(".") {
       -1 => None
       i => Some(path.substring(start=i))
     }

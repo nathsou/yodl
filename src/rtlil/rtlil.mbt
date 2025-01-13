@@ -192,8 +192,5 @@ pub fn connect(self: Module, sig1: Signal, sig2: Signal, span~: @parse.Span) -> 
 }
 
 pub fn ports(mod: Module) -> Iter[PortSpec] {
-  mod.wires
-    .values()
-    .filter(fn(wire) { not(wire.port.is_empty()) })
-    .map(fn(wire) { wire.port.unwrap() })
+  @utils.filter_map(mod.wires.values(), fn(wire) { wire.port })
 }

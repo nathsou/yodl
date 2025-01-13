@@ -102,3 +102,20 @@ pub fn sorted_keys[K: Eq + Hash + Compare, V](map: Map[K, V]) -> Map[K, V] {
 pub fn is_ascii(c: Char) -> Bool {
   c >= ' ' && c <= '~'
 }
+
+pub fn filter_map[A, B](elems: Iter[A], f: (A) -> B?) -> Iter[B] {
+  Iter::new(fn(visit: ((B) -> IterResult)) -> IterResult {
+    for elem in elems {
+      match f(elem) {
+        Some(mapped) => {
+          if visit(mapped) == IterEnd {
+            break IterEnd
+          }
+        }
+        None => ()
+      }
+    } else {
+      IterContinue
+    }
+  })
+}

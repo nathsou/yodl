@@ -634,6 +634,16 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       )
     }
   },
+  "$flat": {
+    arity: Range(min=0, max=@int.max_value),
+    apply: fn(args, span) {
+      let flattened = args.map(fn(expr) {
+        Spread(expr~, span=expr.span(), ty={ val: None })
+      })
+      
+      Vector(elems=flattened, span~, ty={ val: None })
+    }
+  },
 }
 
 pub fn as_int(self: Bits) -> Int!AstError {

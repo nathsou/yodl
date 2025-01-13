@@ -251,7 +251,7 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     }
     Lparen => self.parse_tuple_or_paren_expr!()
     Lbracket => self.parse_vector_expr!()
-    Lbrace => self.parse_struct_expr!()
+    Lbrace => self.parse_struct_or_concat_expr!()
     DotDotDot => self.parse_spread_expr!()
     Match => self.parse_match_expr!()
     Dollar => self.parse_function_call_expr!()
@@ -324,30 +324,66 @@ fn parse_tuple_or_paren_expr(self: Parser) -> Expr! {
   }
 }
 
-fn parse_struct_expr(self: Parser) -> Expr! {
-  let start_idx = self.index
-  self.expect!(Lbrace, start_idx)
-  let fields = {}
+fn parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) -> Expr! {
+  let elems = [first_expr]
 
-  while not(self.matches(Rbrace)) {
-    let name = self.parse_identifier!()
-    self.expect!(Colon, start_idx)
-    let expr = self.parse_expr!()
-  
-    if fields.contains(name) {
-      raise DuplicateStructField(name~, span=self.span(start_idx))
-    }
+  if self.consumes(Comma) {
+    while not(self.matches(Rbrace)) {
+      let expr = self.parse_expr!()
+      elems.push(expr)
 
-    fields[name] = expr
-
-    if not(self.consumes(Comma)) {
-      break
+      if not(self.consumes(Comma)) {
+        break
+      }
     }
   }
 
   self.expect!(Rbrace, start_idx)
 
-  Struct(fields~, span=self.span(start_idx), ty={ val: None })
+  FunCall(name="$flat", args=elems, span=self.span(start_idx), ty={ val: None })
+}
+
+fn parse_struct_or_concat_expr(self: Parser) -> Expr! {
+  let start_idx = self.index
+  self.expect!(Lbrace, start_idx)
+
+  if self.consumes(Rbrace) {
+    return Vector(elems=[], span=self.span(start_idx), ty={ val: None })
+  }
+
+  match self.parse_expr!() {
+    Identifier(path={ packages: [], member }, ..) as first_expr => {
+      if self.consumes(Colon) {
+        let fields = {}
+        fields[member] = self.parse_expr!()
+        
+        if self.consumes(Comma) {
+          while not(self.matches(Rbrace)) {
+            let name = self.parse_identifier!()
+            self.expect!(Colon, start_idx)
+            let expr = self.parse_expr!()
+          
+            if fields.contains(name) {
+              raise DuplicateStructField(name~, span=self.span(start_idx))
+            }
+
+            fields[name] = expr
+
+            if not(self.consumes(Comma)) {
+              break
+            }
+          }
+        }
+
+        self.expect!(Rbrace, start_idx)
+
+        Struct(fields~, span=self.span(start_idx), ty={ val: None })
+      } else {
+        self.parse_concat_expr!(first_expr, start_idx~)
+      }
+    }
+    first_expr => self.parse_concat_expr!(first_expr, start_idx~)
+  }
 }
 
 fn parse_spread_expr(self: Parser) -> Expr! {

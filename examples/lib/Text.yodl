@@ -117,9 +117,9 @@ module CharAt<Length, IndexWidth>(
 const Rows = VGA::V_ACTIVE / 8;
 const Cols = VGA::H_ACTIVE / 8;
 
-module Text<StrLength, X, Y>(
+module Text<Length, X, Y>(
     clk: logic,
-    text: logic[StrLength * 7],
+    text: logic[Length * 7],
     color: logic[9],
 ) -> (
     vga_hsync: logic,
@@ -136,7 +136,7 @@ module Text<StrLength, X, Y>(
     let y = vga.row[2:0];
     let cell_idx: logic[13] = y_div * Cols + x_div;
     let diff: logic[13] = cell_idx - StartIdx;
-    let char = cell_idx >= StartIdx ? CharAt<Length: StrLength, IndexWidth: 13>(str: text, index: diff).char : " ";
+    let char = cell_idx >= StartIdx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " ";
     let bitmap = AsciiTable(char).q;
     let pixel_idx: logic[6] = y * 8 + x;
     let pixel = bitmap[pixel_idx];
@@ -150,9 +150,9 @@ module Text<StrLength, X, Y>(
     vga_blue = text_color.b;
 }
 
-module TextDynamicPosition<StrLength>(
+module TextDynamicPosition<Length>(
     clk: logic,
-    text: logic[StrLength * 7],
+    text: logic[Length * 7],
     color: logic[9],
     x_offset: logic[$clog2(Cols)],
     y_offset: logic[$clog2(Rows)],
@@ -171,7 +171,7 @@ module TextDynamicPosition<StrLength>(
     let start_idx: logic[13] = y_offset * Cols + x_offset;
     let cell_idx: logic[13] = y_div * Cols + x_div;
     let diff: logic[13] = cell_idx - start_idx;
-    let char = cell_idx >= start_idx ? CharAt<Length: StrLength, IndexWidth: 13>(str: text, index: diff).char : " ";
+    let char = cell_idx >= start_idx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " ";
     let bitmap = AsciiTable(char).q;
     let pixel_idx: logic[6] = y * 8 + x;
     let pixel = bitmap[pixel_idx];
@@ -183,4 +183,27 @@ module TextDynamicPosition<StrLength>(
     vga_red = text_color.r;
     vga_green = text_color.g;
     vga_blue = text_color.b;
+}
+
+module Hex<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 7]) {
+    for i in 0..<$cdiv(Bits, 4) {
+        chars[(i + 1) * 7 - 1:i * 7] = match n[(i + 1) * 4 - 1:i * 4] {
+            4'h0 => "0",
+            4'h1 => "1",
+            4'h2 => "2",
+            4'h3 => "3",
+            4'h4 => "4",
+            4'h5 => "5",
+            4'h6 => "6",
+            4'h7 => "7",
+            4'h8 => "8",
+            4'h9 => "9",
+            4'hA => "A",
+            4'hB => "B",
+            4'hC => "C",
+            4'hD => "D",
+            4'hE => "E",
+            4'hF => "F",
+        };
+    }
 }

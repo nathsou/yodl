@@ -12,29 +12,6 @@ module Euler1(clk: logic, rst: logic) -> (q: logic[18], is_ready: logic) {
     is_ready = not is_active;
 }
 
-module Hex<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 7]) {
-    for i in 0..<$cdiv(Bits, 4) {
-        chars[(i + 1) * 7 - 1:i * 7] = match n[(i + 1) * 4 - 1:i * 4] {
-            4'h0 => "0",
-            4'h1 => "1",
-            4'h2 => "2",
-            4'h3 => "3",
-            4'h4 => "4",
-            4'h5 => "5",
-            4'h6 => "6",
-            4'h7 => "7",
-            4'h8 => "8",
-            4'h9 => "9",
-            4'hA => "A",
-            4'hB => "B",
-            4'hC => "C",
-            4'hD => "D",
-            4'hE => "E",
-            4'hF => "F",
-        };
-    }
-}
-
 module Top(
     clk: logic,
     button: logic[4],
@@ -48,11 +25,11 @@ module Top(
 ) {
     let rst = button[0] or button[1] or button[2] or button[3];
     let euler1 = Euler1(clk, rst);
-    let hex = Hex<20>(n: [...2'b00, ...euler1.q]);
-    let text = Text::Text<40, X: 20, Y: 30>(
+    let hex = Text::Hex<20>(n: {2'b00, euler1.q});
+    let text = Text::Text<Length: 40, X: 20, Y: 30>(
         clk,
-        text: [..."The solution to Project Euler 1 is ", ...hex.chars],
-        color: [...3'd1, ...3'd5, ...3'd6],
+        text: {"The solution to Project Euler 1 is ", hex.chars},
+        color: {3'd1, 3'd5, 3'd6},
         vga_hsync,
         vga_vsync,
         vga_red,
@@ -60,8 +37,5 @@ module Top(
         vga_blue,
     );
 
-    vga_red = text.vga_red;
-    vga_green = text.vga_green;
-    vga_blue = text.vga_blue;
     led = 4*{euler1.is_ready};
 }
