@@ -26,11 +26,11 @@ pub fn rewrite_expr(expr: Expr, rewrite: (Expr) -> Expr!) -> Expr! {
       let index = rewrite_expr!(index, rewrite)
       Indexing(expr~, index~, span~, ty=clone_ty(ty))
     }
-    Slicing(expr~, msb~, lsb~, span~, ty~) => {
+    Slicing(expr~, msb~, lsb~, kind~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)
       let msb = rewrite_expr!(msb, rewrite)
       let lsb = rewrite_expr!(lsb, rewrite)
-      Slicing(expr~, msb~, lsb~, span~, ty=clone_ty(ty))
+      Slicing(expr~, msb~, lsb~, kind~, span~, ty=clone_ty(ty))
     }
     FieldAccess(expr~, field=port, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewrite)

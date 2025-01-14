@@ -15,7 +15,7 @@ module Top(
     let rand_color = LFSR::LFSR<32>(clk, enable: vga.new_pixel, seed_ready: 1'b0, seed_data: 32'd0).q[8:0];
     let color = match vga.is_active_area {
         1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => { r: rand_color[2:0], g: rand_color[5:3], b: rand_color[8:6] },
+        1'b1 => { r: rand_color[2-:3], g: rand_color[5-:3], b: rand_color[8-:3] },
     };
 
     vga_red = color.r;

@@ -307,6 +307,8 @@ fn next(self: Lexer) -> LexerResult[Token]! {
       self.advance()
       if self.consumes('>') {
         Ok(RightThinArrow)
+      } else if self.consumes(':') {
+        Ok(MinusColon)
       } else {
         Ok(Minus)
       }

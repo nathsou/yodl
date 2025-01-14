@@ -20,7 +20,7 @@
         },
         {
             "name": "punctuation.separator.parameters.yodl",
-            "match": "[(),;]"
+            "match": "[(),;:]"
         },
         {
             "name": "entity.name.function.yodl",

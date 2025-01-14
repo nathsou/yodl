@@ -156,13 +156,23 @@ fn parse_indexing_expr(self: Parser) -> Expr! {
     if self.consumes(Lbracket) {
       let index = self.parse_expr!()
 
-      if self.consumes(Colon) {
-        let lsb = self.parse_expr!()
-        self.expect!(Rbracket, start_idx)
-        lhs = Slicing(expr=lhs, msb=index, lsb~, span=self.span(start_idx), ty={ val: None })
-      } else {
-        self.expect!(Rbracket, start_idx)
-        lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
+      match self.peek() {
+        Colon | MinusColon as op => {
+          self.advance()
+          
+          let kind = match op {
+            Colon => PartSelect::Absolute
+            _ => PartSelect::Width
+          }
+
+          let lsb = self.parse_expr!()
+          self.expect!(Rbracket, start_idx)
+          lhs = Slicing(expr=lhs, msb=index, lsb~, kind~, span=self.span(start_idx), ty={ val: None })
+        }
+        _ => {
+          self.expect!(Rbracket, start_idx)
+          lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
+        }
       }
     } else if self.consumes(Dot) {
       match self.peek() {

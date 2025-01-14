@@ -318,7 +318,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
-        Slicing(expr~, msb~, lsb~, span~, ..) => {
+        Slicing(expr~, msb~, lsb~, kind~, span~, ..) => {
             let ty = self.check_expr!(expr, env)
             let start_ty = self.check_expr!(msb, env)
             let end_ty = self.check_expr!(lsb, env)
@@ -328,7 +328,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
 
             let msb = eval_const_expr!(msb)
-            let lsb = eval_const_expr!(lsb)
+            let lsb = match (kind, eval_const_expr!(lsb)) {
+                (Absolute, lsb) => lsb
+                (Width, width) => msb - width + 1
+            }
 
             match ty {
                 Vector(ty=inner_ty, len~) => {

@@ -8,5 +8,5 @@ module Top(
 ) {
     let counter = Reg<32>(clk, rst: btn_c);
     counter.d = counter.q + sw;
-    led = counter.q[31:16];
+    led = counter.q[31-:16];
 }

@@ -49,6 +49,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // - Rewrite strings into vectors
 // - Rewrite nand expressions into not + and expressions
 // - Rewrite match expressions with two cases: 0 and 1, as ternary expressions
+// - Rewrite slicing expressions using width and offset to absolute slicing expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -> @parse.Expr! {
   @parse.rewrite_expr!(expr, fn(expr) {
     (match expr {
@@ -187,6 +188,10 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
           (Ok(0), Ok(1)) => Ternary(cond=subject, then=rhs2, else_=rhs1, span~, ty~)
           _ => expr
         }
+      }
+      Slicing(expr~, msb~, lsb=width, kind=Width, span~, ty~) => {
+        let lsb = msb.as_int!() - width.as_int!() + 1
+        @parse.Expr::Slicing(expr~, msb~, lsb=@parse.nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
       }
       _ => expr
     }).partial_eval!()
