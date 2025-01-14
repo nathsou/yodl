@@ -22,5 +22,5 @@ module Top(
     let seconds = Reg<16>(clk, rst);
     seconds.d = seconds.q + timer.q;
     Segments::Multi(clk, rst, value: seconds.q, segs: io_seg, sel: io_an);
-    io_led = [...8'0, ...seconds.q];
+    io_led = {8'0, seconds.q};
 }

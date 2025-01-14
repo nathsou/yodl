@@ -246,6 +246,7 @@ pub type! AstError {
   InvalidModuleParameter(span~: Span)
   ConflictingInstanceParameterValue(name~: String, span~: Span)
   UnknownModuleParameter(name~: String, span~: Span)
+  NegativeIntegersNotSupported(span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -267,6 +268,7 @@ pub impl Show for AstError with output(self, logger) {
       logger.write_string("Unknown module parameter '\{name}'")
     }
     BitsTooWideForBigIntConversion(_) => logger.write_string("Bits are too wide for BigInt conversion")
+    NegativeIntegersNotSupported(_) => logger.write_string("Negative integers are not supported")
   }
 
   logger.write_string(self.show_context())
@@ -287,6 +289,7 @@ pub impl Spanned for AstError with span(self) -> Span {
     ConflictingInstanceParameterValue(span~, ..) => span
     UnknownModuleParameter(span~, ..) => span
     BitsTooWideForBigIntConversion(span~) => span
+    NegativeIntegersNotSupported(span~) => span
   }
 }
 
@@ -726,6 +729,10 @@ pub fn Bits::new(bits: Array[BinaryDigit], value~: BigInt? = None, span~: Span) 
 }
 
 pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError {
+  if value < 0 {
+    raise NegativeIntegersNotSupported(span~)
+  }
+
   let required_width = @utils.clog2(value + 1)
 
   match width {
@@ -756,6 +763,10 @@ pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError
 }
 
 pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bits!AstError {
+  if value < 0 {
+    raise NegativeIntegersNotSupported(span~)
+  }
+
   let bytes = value.to_octets()
 
   match width {

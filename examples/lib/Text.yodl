@@ -207,3 +207,20 @@ module Hex<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 7]) {
         };
     }
 }
+
+module Dec<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 7]) {
+    for i in 0..<$cdiv(Bits, 4) {
+        chars[(i + 1) * 7 - 1:i * 7] = match n[(i + 1) * 4 - 1:i * 4] {
+            4'h0 => "0",
+            4'h1 => "1",
+            4'h2 => "2",
+            4'h3 => "3",
+            4'h4 => "4",
+            4'h5 => "5",
+            4'h6 => "6",
+            4'h7 => "7",
+            4'h8 => "8",
+            _ => "9",
+        };
+    }
+}
