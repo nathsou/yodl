@@ -28,6 +28,27 @@ pub fn Simplifier::new() -> Simplifier {
   { name_counts: {} }
 }
 
+pub type! SimplifierError {
+  InvalidCharacterInString(char~: Char, span~: @parse.Span)
+}
+
+pub impl @parse.Spanned for SimplifierError with span(self) {
+  match self {
+    InvalidCharacterInString(span~, ..) => span
+  }
+}
+
+pub impl Show for SimplifierError with output(self, logger) {
+  match self {
+    InvalidCharacterInString(char~, span=_) => {
+      logger.write_string("Character '\{char}'' is not part of the ISO/IEC 8859-1 standard and cannot be used in a string literal ")
+      logger.write_char(char)
+    }
+  }
+
+  logger.write_string(self.show_context())
+}
+
 pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
   let count = match self.name_counts[name] {
     Some(count) => count
@@ -162,11 +183,17 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
         }
       }
       String(str~, span~, ty=_) => {
-        let ascii = Array::new(capacity=str.length() * @parse.BITS_PER_ASCII_CHAR)
+        let encoded = Array::new(capacity=str.length() * @parse.BITS_PER_ASCII_CHAR)
 
         for char in str {
-          for bit in @utils.bin(char.to_int(), width=@parse.BITS_PER_ASCII_CHAR) {
-            ascii.push(match bit {
+          let char_latin1 = char.to_int()
+
+          if char_latin1 < 0 || char_latin1 > 255 {
+            raise InvalidCharacterInString(char~, span~)
+          }
+
+          for bit in @utils.bin(char_latin1, width=@parse.BITS_PER_ASCII_CHAR) {
+            encoded.push(match bit {
               1 => @parse.BinaryDigit::One
               _ => @parse.BinaryDigit::Zero
             })
@@ -174,11 +201,11 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
         }
 
         @parse.Expr::Natural(
-          bits=@parse.Bits::new(ascii, span~),
-          width=Some(ascii.length()),
+          bits=@parse.Bits::new(encoded, span~),
+          width=Some(encoded.length()),
           base=2,
           span~,
-          ty={ val: Some(Vector(ty=Logic, len=Fixed(ascii.length()))),
+          ty={ val: Some(Vector(ty=Logic, len=Fixed(encoded.length()))),
         })
       }
       Match(subject~, cases=[(Natural(bits=bits1, ..), rhs1), (Natural(bits=bits2, ..), rhs2)], default=None, span~, ty~) => {

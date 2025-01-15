@@ -36,7 +36,7 @@ pub(all) enum Decl {
   Import(ImportDecl)
 }
 
-pub const BITS_PER_ASCII_CHAR = 7
+pub const BITS_PER_ASCII_CHAR = 8
 
 pub(all) enum Type {
   Nat
