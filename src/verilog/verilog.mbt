@@ -2,18 +2,18 @@
 pub enum Expr {
   Identifier(String)
   BitSelect(expr~: Expr, offset~: Int)
-  PartSelect(expr~: Expr, offset~: Int, width~: Int)
+  PartSelect(expr~: Expr, offset~: Expr, width~: Int)
   Concat(Array[Expr])
   Const(@rtlil.Constant)
   Unary(op~: @parse.UnaryOp, expr~: Expr)
   Binary(op~: @parse.BinaryOp, lhs~: Expr, rhs~: Expr)
   Ternary(cond~: Expr, then~: Expr, else_~: Expr)
   FunctionCall(name~: String, args~: Array[Expr])
-}
+} derive(Eq)
 
 pub enum Stmt {
   WireDecl(name~: String, msb~: Int, lsb~: Int, init~: Expr?)
-  RegDecl(name~: String, msb~: Int, lsb~: Int, init~: Expr?)
+  RegDecl(name~: String, msb~: Int, lsb~: Int, width~: Int, init~: Expr?)
   FunctionDecl(name~: String, output_width~: Int, args~: Array[FunctionArgument], body~: Stmt)
   Assign(lhs~: Expr, rhs~: Expr, kind~: AssignmentKind)
   If(cond~: Expr, then~: Stmt, else_~: Stmt?)
@@ -21,6 +21,7 @@ pub enum Stmt {
   Instance(mod~: String, name~: String, parameters~: Array[(String, @rtlil.Constant)], ports~: Array[(String, Expr)])
   Block(Array[Stmt])
   Always(sensitivity_list~: Array[SensitivityListItem], body~: Stmt)
+  Initial(body~: Stmt)
 }
 
 pub struct SensitivityListItem {

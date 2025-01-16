@@ -36,7 +36,7 @@ pub(all) enum Decl {
   Import(ImportDecl)
 }
 
-pub const BITS_PER_ASCII_CHAR = 8
+pub const BITS_PER_CHAR = 8
 
 pub(all) enum Type {
   Nat
@@ -100,7 +100,7 @@ pub fn map[E: Error](self: InstanceParams, f: (Expr) -> Expr!E) -> InstanceParam
 
 pub(all) enum UnaryOp {
   Not
-}
+} derive(Eq)
 
 pub(all) enum BinaryOp {
   And; Or; Xor; Nand; Nor; Xnor
@@ -108,7 +108,7 @@ pub(all) enum BinaryOp {
   Equ; Neq; Lss; Gtr; Leq; Geq
   Shl; Shr
   Ternary // hack for precedence climbing
-}
+} derive(Eq)
 
 pub(all) enum BinaryDigit {
   Zero; One; X; Z; M; DontCare
@@ -130,6 +130,13 @@ pub impl Show for BinaryDigit with output(self, logger) {
     M => 'm'
     DontCare => '-'
   })
+}
+
+pub fn BinaryDigit::from(value: Int) -> BinaryDigit {
+  match value {
+    0 => Zero
+    _ => One
+  }
 }
 
 pub(all) struct Bits {
@@ -890,7 +897,7 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
 
       width
     }
-    String(len~) => len * BITS_PER_ASCII_CHAR // ascii encoding
+    String(len~) => len * BITS_PER_CHAR // ascii encoding
   }
 }
 

@@ -15,6 +15,7 @@ pub type! VerilogExportError {
   InvalidBinopCellType(cell_type~: @rtlil.Id)
   ExpectedIdentifier(expr~: Expr)
   Unreachable(msg~: String)
+  UnsupportedMemV2Instance(id~: @rtlil.Id, reason~: String)
 } derive(Show)
 
 fn show_id(id: @rtlil.Id) -> String {
@@ -39,10 +40,10 @@ fn expect_identifier(self: Expr) -> String!VerilogExportError {
   }
 }
 
-fn expect_concat(self: Expr) -> Array[Expr]!VerilogExportError {
+fn as_concat(self: Expr) -> Array[Expr] {
   match self {
     Concat(elems) => elems
-    _ => raise Unreachable(msg="Expected concat expr")
+    expr => [expr]
   }
 }
 
@@ -55,7 +56,7 @@ fn export_signal(self: VerilogExporter, signal: @rtlil.Signal) -> Expr {
 
       match width {
         1 => BitSelect(expr~, offset~)
-        _ => PartSelect(expr~, offset~, width~)
+        _ => PartSelect(expr~, offset=Const(ConstInteger(offset)), width~)
       }
     }
     SigConcat(signals) => {
@@ -131,7 +132,7 @@ fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Uni
       }
 
       mod.remove_wire_decl(q)
-      mod.body.push(RegDecl(name=q, msb=width - 1, lsb=0, init=None))
+      mod.body.push(RegDecl(name=q, msb=width - 1, lsb=0, width=1, init=None))
 
       let mut body = Block([
         Assign(lhs=Identifier(q), rhs=Identifier(d), kind=NonBlocking)
@@ -222,7 +223,7 @@ fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Uni
         let bits = @utils.fill(s_width, @parse.BinaryDigit::DontCare)
         bits[s_width - idx - 1] = @parse.BinaryDigit::One
         let pattern = Const(@rtlil.Constant::ConstValue(width=s_width, bits~))
-        let slice = PartSelect(expr=Identifier("b"), offset=offset + width - 1, width~)
+        let slice = PartSelect(expr=Identifier("b"), offset=Const(ConstInteger(offset + width - 1)), width~)
         cases.push((pattern, Assign(lhs=Identifier(func_name), rhs=slice, kind=Blocking)))
         offset += width
       }
@@ -252,6 +253,135 @@ fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Uni
         rhs=FunctionCall(name=func_name, args=[a, b, s]),
         kind=Continous,
       ))
+    }
+    GenId("mem_v2") => {
+      // TODO: Validate unused parameters and connections
+      let abits = get_int_parameter!(cell, PubId("ABITS"))
+      let init = get_parameter!(cell, PubId("INIT"))
+      let offset = get_int_parameter!(cell, PubId("OFFSET"))
+      let size = get_int_parameter!(cell, PubId("SIZE"))
+      let width = get_int_parameter!(cell, PubId("WIDTH"))
+      let read_ports = get_int_parameter!(cell, PubId("RD_PORTS"))
+      let write_ports = get_int_parameter!(cell, PubId("WR_PORTS"))
+
+      let read_addr = self.get_connection!(cell, "RD_ADDR")
+      let read_data = self.get_connection!(cell, "RD_DATA").expect_identifier!()
+      let read_enable = self.get_connection!(cell, "RD_EN").as_concat()
+      let write_addr = self.get_connection!(cell, "WR_ADDR").as_concat()
+      let write_clk = self.get_connection!(cell, "WR_CLK").as_concat()
+      let write_data = self.get_connection!(cell, "WR_DATA")
+      let write_enable = self.get_connection!(cell, "WR_EN").as_concat()
+
+      if read_enable.length() != read_ports {
+        raise UnsupportedMemV2Instance(id=cell.name, reason="Inconsistent RD_EN width")
+      }
+
+      if (
+        write_addr.length() != write_ports ||
+        write_enable.length() != write_ports ||
+        write_clk.length() != write_ports
+      ) {
+        raise UnsupportedMemV2Instance(id=cell.name, reason="Inconsistent WR_ADDR, WR_EN, or WR_CLK width")
+      }
+
+      if offset != 0 {
+        raise UnsupportedMemV2Instance(id=cell.name, reason="Non-zero OFFSET")
+      }
+
+      if init.size() != width * size {
+        raise UnsupportedMemV2Instance(id=cell.name, reason="Invalid INIT width, expected \{width * size}, got \{init.size()}")
+      }
+
+      let mem_reg_name = show_id(cell.name)
+      mod.body.push(RegDecl(name=mem_reg_name, msb=size - 1, lsb=0, width~, init=None))
+
+      mod.body.push(Initial(
+        body=Block({
+          let bits = match init.as_bits?(span=cell.span) {
+            Ok(bits) => bits
+            Err(_) => raise Unreachable(msg="Invalid bits in INIT parameter")
+          }
+
+          let assignments = Array::new(capacity=size)
+          let mut i = 0
+
+          for chunk in @utils.chunk(bits, width) {
+            assignments.push(Assign(
+              lhs=BitSelect(
+                expr=Identifier(mem_reg_name),
+                offset=(size - 1) - i,
+              ),
+              rhs=Const(ConstValue(width~, bits=chunk)),
+              kind=Blocking,
+            ))
+
+            i += 1
+          }
+
+          { assignments.rev_inplace(); assignments }
+        }),
+      ))
+
+      for i in 0..<read_ports {
+        let lhs = PartSelect(
+          expr=Identifier(read_data),
+          offset=Const(ConstInteger((i + 1) * width - 1)),
+          width=width,
+        )
+
+        let rhs = PartSelect(
+          expr=Identifier(mem_reg_name),
+          offset=PartSelect(
+            expr=read_addr,
+            offset=Const(ConstInteger((i + 1) * abits - 1)),
+            width=abits,
+          ),
+          width=1,
+        )
+
+        mod.body.push(Assign(lhs~, rhs~, kind=Continous))
+      }
+
+      for i in 0..<write_ports {
+        let always_block_body = []
+
+        // check that all the bits are enabled or disabled uniformly
+        let write_enable_i = write_enable[i].as_concat()
+        if not(@utils.all_eq(write_enable_i)) {
+          raise UnsupportedMemV2Instance(id=cell.name, reason="Non-uniform write enable signals for port \{i}")
+        }
+
+        always_block_body.push(If(
+          cond=write_enable_i[0],
+          then=Block([
+            Assign(
+              lhs=PartSelect(
+                expr=Identifier(mem_reg_name),
+                offset=PartSelect(
+                  expr=write_addr[i],
+                  offset=Const(ConstInteger(abits - 1)),
+                  width=abits,
+                ),
+                width=1,
+              ),
+              rhs=PartSelect(
+                expr=write_data,
+                offset=Const(ConstInteger((i + 1) * width - 1)),
+                width=width,
+              ),
+              kind=NonBlocking,
+            )
+          ]),
+          else_=None,
+        ))
+
+        mod.body.push(Always(
+          sensitivity_list=[
+            { polarity: Some(Posedge), signal: write_clk[i].expect_identifier!() },
+          ],
+          body=Block(always_block_body),
+        ))
+      }
     }
     _ => {
       let parameters = []
@@ -299,6 +429,13 @@ fn get_connection(self: VerilogExporter, cell: @rtlil.Cell, name: String) -> Exp
 
 fn get_parameter(cell: @rtlil.Cell, id: @rtlil.Id) -> @rtlil.Constant!VerilogExportError {
   cell.parameters[id].or_error!(UnknownParameter(id~))
+}
+
+fn get_int_parameter(cell: @rtlil.Cell, id: @rtlil.Id) -> Int!VerilogExportError {
+  match get_parameter!(cell, id) {
+    ConstInteger(value) => value
+    _ => raise Unreachable(msg="Expected integer parameter")
+  }
 }
 
 fn extract_unop_cell(self: VerilogExporter, cell: @rtlil.Cell) -> UnopCell!VerilogExportError {

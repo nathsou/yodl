@@ -111,7 +111,19 @@ fn show_expr(expr: Expr, logger: &Logger, is_case_expr~: Bool = false) -> Unit {
       logger.write_string("\{expr}[\{offset}]")
     }
     PartSelect(expr~, offset~, width~) => {
-      logger.write_string("\{expr}[\{offset}:\{(offset + 1) - width}]")
+      match offset {
+        Const(ConstInteger(offset)) => {
+          logger.write_string("\{expr}[\{offset}:\{(offset + 1) - width}]")
+        }
+        _ => {
+          match width {
+            1 => logger.write_string("\{expr}[\{offset}]")
+            _ => {
+              logger.write_string("\{expr}[\{offset} +: \{width}]")
+            }
+          }
+        }
+      }
     }
     Concat(exprs) => {
       logger.write_iter(exprs.iter(), prefix="{", suffix="}", sep=", ")
@@ -195,14 +207,20 @@ fn emit_expr(self: VerilogEmitter, expr: Expr) -> Unit {
 
 fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
   match stmt {
-    WireDecl(name~, msb~, lsb~, init~) | RegDecl(name~, msb~, lsb~, init~) => {
+    WireDecl(name~, msb~, lsb~, init~) | RegDecl(name~, msb~, lsb~, width=_, init~) => {
       let decl_type = match stmt { WireDecl(_) => "wire"; _ => "reg" }
       self.write_indent()
 
-      if msb == lsb {
-        self.write("\{decl_type} \{name}")
-      } else {
-        self.write("\{decl_type} [\{msb}:\{lsb}] \{name}")
+      let width = match stmt {
+        RegDecl(width~, ..) => width
+        _ => 1
+      }
+
+      match (width, msb == lsb) {
+        (1, true) => self.write("\{decl_type} \{name}")
+        (1, false) => self.write("\{decl_type} [\{msb}:\{lsb}] \{name}")
+        (_, true) => self.write("\{decl_type} [\{width - 1}:0] \{name}")
+        (_, false) => self.write("\{decl_type} [\{width - 1}:0] \{name} [\{msb}:\{lsb}]")
       }
 
       match init {
@@ -230,7 +248,7 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
           self.emit_expr(lhs)
           self.write(if kind == Blocking { " = " } else { " <= " })
           self.emit_expr(rhs)
-          self.write(";")
+          self.write(";\n")
         }
       }
     }
@@ -317,7 +335,6 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
       }
 
       self.indent -= 1
-      self.write("\n")
       self.emit("end")
     }
     Always(sensitivity_list~, body~) => {
@@ -341,6 +358,11 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
       self.indent -= 1
       self.write_indent()
       self.write("endfunction\n")
+    }
+    Initial(body~) => {
+      self.write_indent()
+      self.write("initial ")
+      self.emit_stmt(body)
     }
   }
 }

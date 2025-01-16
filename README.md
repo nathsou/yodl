@@ -3,7 +3,7 @@
 Yet anOther (hardware) Description Language
 
 ## Usage
-- Install [https://www.moonbitlang.com/](Moonbit)
+- Install (https://www.moonbitlang.com/)[Moonbit]
 - ```$ git clone https://github.com/nathsou/yodl.git yodl```
 - ```$ cd yodl```
 - ```$ moon run src/main Mod.yodl "write_rtlil Mod.rtlil; write_verilog Mod.v"```

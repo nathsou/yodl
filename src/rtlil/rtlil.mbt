@@ -4,6 +4,7 @@ pub type! RTLILError {
   WireAlreadyDeclared(name~: Id, span~: @parse.Span)
   CellAlreadyDeclared(name~: Id, span~: @parse.Span)
   IncompatibleWidths(width1~: Int, width2~: Int, span~: @parse.Span)
+  CannotGetStringBits(span~: @parse.Span)
 }
 
 pub impl @parse.Spanned for RTLILError with span(self) -> @parse.Span {
@@ -11,6 +12,7 @@ pub impl @parse.Spanned for RTLILError with span(self) -> @parse.Span {
     WireAlreadyDeclared(span~, ..) => span
     CellAlreadyDeclared(span~, ..) => span
     IncompatibleWidths(span~, ..) => span
+    CannotGetStringBits(span~) => span
   }
 }
 
@@ -24,6 +26,9 @@ pub impl Show for RTLILError with output(self, logger) -> Unit {
     }
     IncompatibleWidths(width1~, width2~, ..) => {
       logger.write_string("Incompatible widths: \{width1} and \{width2}")
+    }
+    CannotGetStringBits(..) => {
+      logger.write_string("Cannot get bits from string")
     }
   }
 
@@ -66,7 +71,7 @@ pub(all) enum Constant {
   ConstValue(width~: Int, bits~: Array[@parse.BinaryDigit])
   ConstInteger(Int)
   ConstString(String)
-}
+} derive(Eq)
 
 pub fn size(self: Constant) -> Int {
   match self {
@@ -99,7 +104,7 @@ pub(all) enum Signal {
   SigConcat(Array[Signal])
 }
 
-pub fn size(self: Signal) -> Int {
+pub fn Signal::size(self: Signal) -> Int {
   match self {
     SigConst(c) => c.size()
     SigWire(w) => w.width
@@ -193,4 +198,12 @@ pub fn connect(self: Module, sig1: Signal, sig2: Signal, span~: @parse.Span) -> 
 
 pub fn ports(mod: Module) -> Iter[PortSpec] {
   @utils.filter_map(mod.wires.values(), fn(wire) { wire.port })
+}
+
+pub fn as_bits(self: Constant, span~: @parse.Span) -> Iter[@parse.BinaryDigit]!RTLILError {
+  match self {
+    ConstValue(bits~, ..) => bits.iter()
+    ConstInteger(n) => @utils.bin(n, width=32).map(@parse.BinaryDigit::from)
+    ConstString(_) => raise CannotGetStringBits(span~)
+  }
 }

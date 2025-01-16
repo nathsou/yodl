@@ -119,3 +119,43 @@ pub fn filter_map[A, B](elems: Iter[A], f: (A) -> B?) -> Iter[B] {
     }
   })
 }
+
+pub fn chunk[T](elems: Iter[T], size: Int) -> Iter[Array[T]] {
+  Iter::new(fn(visit: ((Array[T]) -> IterResult)) -> IterResult {
+    let mut chunk = Array::new(capacity=size)
+
+    for elem in elems {
+      chunk.push(elem)
+
+      if chunk.length() == size {
+        if visit(chunk) == IterEnd {
+          break IterEnd
+        }
+
+        chunk = Array::new(capacity=size)
+      }
+    } else {
+      if chunk.length() > 0 {
+        visit(chunk)
+      } else {
+        IterContinue
+      }
+    }
+  })
+}
+
+pub fn all_eq[T: Eq](elems: Array[T]) -> Bool {
+  if elems.length() == 0 {
+    true
+  } else {
+    let first = elems[0]
+
+    for i in 1..<elems.length() {
+      if elems[i] != first {
+        return false
+      }
+    }
+
+    true
+  }
+}

@@ -183,7 +183,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
         }
       }
       String(str~, span~, ty=_) => {
-        let encoded = Array::new(capacity=str.length() * @parse.BITS_PER_ASCII_CHAR)
+        let encoded = Array::new(capacity=str.length() * @parse.BITS_PER_CHAR)
 
         for char in str {
           let char_latin1 = char.to_int()
@@ -192,7 +192,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
             raise InvalidCharacterInString(char~, span~)
           }
 
-          for bit in @utils.bin(char_latin1, width=@parse.BITS_PER_ASCII_CHAR) {
+          for bit in @utils.bin(char_latin1, width=@parse.BITS_PER_CHAR) {
             encoded.push(match bit {
               1 => @parse.BinaryDigit::One
               _ => @parse.BinaryDigit::Zero

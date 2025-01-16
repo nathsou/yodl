@@ -190,7 +190,7 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
                 }
             }
             (String(len~), ty2) | (ty2, String(len~)) => {
-                eqs.push((Vector(ty=Logic, len=Fixed(len * @parse.BITS_PER_ASCII_CHAR)), ty2))
+                eqs.push((Vector(ty=Logic, len=Fixed(len * @parse.BITS_PER_CHAR)), ty2))
             }
             _ => {
                 raise IncompatibleTypes(ty1~, ty2~, span~)
@@ -437,7 +437,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                             }
                             String(len=str_len) => {
                                 check_elem_ty!(Logic)
-                                len += str_len * @parse.BITS_PER_ASCII_CHAR
+                                len += str_len * @parse.BITS_PER_CHAR
                             }
                             _ => raise SpreadOnNonVector(span~)
                         }
