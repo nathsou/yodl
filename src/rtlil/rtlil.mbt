@@ -47,14 +47,14 @@ pub impl Show for Id with output(self, logger) {
     }
 }
 
-pub fn inner(self: Id) -> String {
+pub fn Id::inner(self: Id) -> String {
   match self {
     PubId(id) => id
     GenId(id) => id
   }
 }
 
-pub fn join(self: Id, suffix: String) -> Id {
+pub fn Id::join(self: Id, suffix: String) -> Id {
   match self {
     PubId(id) => PubId(id + suffix)
     GenId(id) => GenId(id + suffix)
@@ -88,7 +88,7 @@ pub(all) struct PortSpec {
 }
 
 pub(all) struct Wire {
-  name: Id
+  mut name: Id
   width: Int
   port: PortSpec?
   attributes: Map[Id, Constant]

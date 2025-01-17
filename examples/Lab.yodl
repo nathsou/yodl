@@ -1,0 +1,15 @@
+
+module A(a: logic, b: logic) -> (q: logic) {
+    q = a and b;
+}
+
+module B(a: logic, b: logic) -> (q: logic) {
+    let inst = A();
+    inst.a = a;
+    inst.b = b;
+    q = not inst.q;
+}
+
+module C(a: logic, b: logic) -> (q: logic) {
+    q = A(a, b).q or A(b, a).q and B(a, b).q;
+}

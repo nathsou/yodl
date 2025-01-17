@@ -78,11 +78,11 @@ pub fn map_values[K: Eq + Hash, V](map: Map[K, V], f: (V) -> V) -> Map[K, V] {
   result
 }
 
-pub fn map_keys[K1: Eq + Hash, K2: Eq + Hash, V](map: Map[K1, V], f: (K1) -> K2) -> Map[K2, V] {
+pub fn map_keys[K1: Eq + Hash, K2: Eq + Hash, V](map: Map[K1, V], f: (K1, V) -> K2) -> Map[K2, V] {
   let result = Map::new(capacity=map.size())
 
   for key, value in map {
-    result[f(key)] = value
+    result[f(key, value)] = value
   }
 
   result

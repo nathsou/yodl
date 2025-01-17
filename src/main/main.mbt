@@ -111,13 +111,15 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
     elaborator.elaborate_decl!(decl)
   }
 
+  let mut design = @utils.map_keys(elaborator.modules, fn(_, mod) { mod.name })
+
   for cmd in commands {
     match cmd {
       WriteRTLIL(path~) => {
         let rtlil = {
           let serializer = @rtlil.Serializer::new(
             autoidx=elaborator.autoidx,
-            modules=@utils.map_keys(elaborator.modules, Show::to_string),
+            modules=@utils.map_keys(design, fn(id, _) { id.to_string() }),
           )
 
           serializer.to_string()
@@ -133,7 +135,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
         }
       }
       WriteVerilog(path~) => {
-        let exporter = @verilog.VerilogExporter::new(elaborator.modules.values().collect())
+        let exporter = @verilog.VerilogExporter::new(design.values().collect())
         let verilog_decls = exporter.export!()
         let emitter = @verilog.VerilogEmitter::new()
         emitter.emit_decls(verilog_decls)
@@ -147,6 +149,9 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
             println(verilog)
           }
         }
+      }
+      Flatten => {
+        design = @rtlil.FlattenPass::new(design).run()
       }
       _ => ()
     }

@@ -6,6 +6,7 @@ enum Command {
   WriteMono(path~: String?)
   WriteTyped
   WriteSimplified(path~: String?)
+  Flatten
 } derive(Show)
 
 struct ParsedCommand {
@@ -191,6 +192,14 @@ fn parse_commands(source: String) -> Array[Command]!CommandParserError {
         }
 
         WriteVerilog(path~)
+      }
+      "flatten" => {
+        match cmd.args.length() {
+          0 => ()
+          _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
+        }
+
+        Flatten
       }
       _ => raise UnknownCommand(name=cmd.name)
     }
