@@ -218,7 +218,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
       }
       Slicing(expr~, msb~, lsb=width, kind=Width, span~, ty~) => {
         let lsb = msb.as_int!() - width.as_int!() + 1
-        @parse.Expr::Slicing(expr~, msb~, lsb=@parse.nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
+        @parse.Expr::Slicing(expr~, msb~, lsb=@parse.Expr::nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
       }
       _ => expr
     }).partial_eval!()
