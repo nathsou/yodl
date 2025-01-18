@@ -3,7 +3,7 @@ const H_ACTIVE = 640;
 const V_ACTIVE = 480;
 
 module SyncPulses(
-    clk: logic,
+    pixel_clk: logic, // a roughly 25.2 MHz clock
 ) -> (
     hsync: logic,
     vsync: logic,
@@ -22,8 +22,8 @@ module SyncPulses(
     const V_BACK_PORCH = 33;
     const V_TOTAL = V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE + V_BACK_PORCH;
 
-    let col_reg = Reg<10>(clk);
-    let row_reg = Reg<10>(clk);
+    let col_reg = Reg<10>(clk: pixel_clk, q: col);
+    let row_reg = Reg<10>(clk: pixel_clk, q: row);
 
     let last_col = col_reg.q == H_TOTAL - 1;
     let last_row = row_reg.q == V_TOTAL - 1;
@@ -35,6 +35,4 @@ module SyncPulses(
     hsync = (col_reg.q >= (H_ACTIVE + H_FRONT_PORCH)) and (col_reg.q < (H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE));
     vsync = (row_reg.q >= (V_ACTIVE + V_FRONT_PORCH)) and (row_reg.q < (V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE));
     is_active_area = col_reg.q < H_ACTIVE and row_reg.q < V_ACTIVE;
-    col = col_reg.q;
-    row = row_reg.q;
 }

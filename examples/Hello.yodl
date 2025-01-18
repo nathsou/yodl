@@ -12,6 +12,12 @@ module Top(
     vga_green: logic[3],
     vga_blue: logic[3],
 ) {
+    let vga = VGA::SyncPulses(
+        pixel_clk: clk,
+        hsync: vga_hsync,
+        vsync: vga_vsync,
+    );
+
     const MsgLen = 69;
     let timer = Timing::Timer<100_000_000>(clk);
     let timer2 = Timing::Timer<5_000_000>(clk);
@@ -26,17 +32,20 @@ module Top(
     y.rst = y.q >= (Text::Cols - 1);
 
     let text = Text::TextDynamicPosition<MsgLen>(
-        clk,
         text: messages[msg_index],
         x_offset: 7'd5,
         y_offset: y.q,
-        color: rand_color,
-        vga_hsync,
-        vga_vsync,
-        vga_red,
-        vga_green,
-        vga_blue,
+        screen_x: vga.col,
+        screen_y: vga.row,
     );
 
+    let color = match vga.is_active_area and text.is_active {
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'b1 => { r: rand_color[2:0], g: rand_color[5:3], b: rand_color[8:6] },
+    };
+
+    vga_red = color.r;
+    vga_green = color.g;
+    vga_blue = color.b;
     led = 4'd0;
 }

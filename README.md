@@ -14,7 +14,8 @@ Yet anOther (hardware) Description Language
 - [x] Verilog export
 - [x] Generic multi-port memories
 - [x] Imports (TODO: unqualified imports)
-- [ ] Implement the [flatten](https://github.com/YosysHQ/yosys/blob/45e31f06b4dec9e0783481d6bf03fa906e21aaa4/passes/techmap/flatten.cc#L282) pass
+- [x] Implement the [flatten](https://github.com/YosysHQ/yosys/blob/45e31f06b4dec9e0783481d6bf03fa906e21aaa4/passes/techmap/flatten.cc#L282) pass
+- [x] Verilator + SDL graphics simulation example
 - [ ] Built-in event-driven simulator?
 - [ ] Multi-dimensional vectors (logic[16][4])
 - [ ] Optional module parameters (and register initial value)

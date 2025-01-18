@@ -48,18 +48,28 @@ module TicTac<Max>(clk: logic, en: logic, rst: logic) -> (tick: logic, count: lo
     tick = counter.q == Max - 1;
 }
 
-module Top(
+module ScreenClock(
     clk: logic,
-    button: logic[4],
+    pixel_clk: logic,
+    rst: logic,
 ) -> (
-    led: logic[4],
+    is_active_area: logic,
+    screen_x: logic[10],
+    screen_y: logic[10],
     vga_hsync: logic,
     vga_vsync: logic,
     vga_red: logic[3],
     vga_green: logic[3],
     vga_blue: logic[3],
 ) {
-    let rst = button[0] or button[1] or button[2] or button[3];
+    VGA::SyncPulses(
+        pixel_clk,
+        hsync: vga_hsync,
+        vsync: vga_vsync,
+        col: screen_x,
+        row: screen_y,
+        is_active_area,
+    );
 
     let milliseconds = TicTac<CLOCK_FREQ / 1000>(clk, en: 1'b1, rst);
     let seconds = TicTac<60>(clk, en: milliseconds.tick, rst);
@@ -71,9 +81,36 @@ module Top(
     let hours_dec = Text::Dec<8>(n: BCD2(bin: {1'b0, hours.count}).q).chars;
 
     let text = Text::Text<Length: 8, X: 36, Y: 30>(
-        clk,
         text: {hours_dec, ":", minutes_dec, ":", seconds_dec},
-        color: {3'd5, 3'd3, 3'd1},
+        screen_x,
+        screen_y,
+    );
+
+    let color = match is_active_area and text.is_active {
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'b1 => { r: 3'd5, g: 3'd3, b: 3'd1 },
+    };
+
+    vga_red = color.r;
+    vga_green = color.g;
+    vga_blue = color.b;
+}
+
+module Top(
+    clk: logic,
+    button: logic[4],
+) -> (
+    led: logic[4],
+    vga_hsync: logic,
+    vga_vsync: logic,
+    vga_red: logic[3],
+    vga_green: logic[3],
+    vga_blue: logic[3],
+) {
+    ScreenClock(
+        clk,
+        pixel_clk: clk,
+        rst: button[0] or button[1] or button[2] or button[3],
         vga_hsync,
         vga_vsync,
         vga_red,

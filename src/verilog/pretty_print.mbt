@@ -216,11 +216,15 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
         _ => 1
       }
 
+      fn pos(n: Int) -> Int {
+        @math.maximum(n, 0)
+      }
+
       match (width, msb == lsb) {
         (1, true) => self.write("\{decl_type} \{name}")
-        (1, false) => self.write("\{decl_type} [\{msb}:\{lsb}] \{name}")
-        (_, true) => self.write("\{decl_type} [\{width - 1}:0] \{name}")
-        (_, false) => self.write("\{decl_type} [\{width - 1}:0] \{name} [\{msb}:\{lsb}]")
+        (1, false) => self.write("\{decl_type} [\{pos(msb)}:\{lsb}] \{name}")
+        (_, true) => self.write("\{decl_type} [\{pos(width - 1)}:0] \{name}")
+        (_, false) => self.write("\{decl_type} [\{pos(width - 1)}:0] \{name} [\{msb}:\{lsb}]")
       }
 
       match init {

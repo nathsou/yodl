@@ -11,7 +11,7 @@ module Top(
     vga_green: logic[3],
     vga_blue: logic[3],
 ) {
-    let vga = VGA::SyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
+    let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync);
     let rand_color = LFSR::LFSR<32>(clk, enable: vga.new_pixel, seed_ready: 1'b0, seed_data: 32'd0).q[8:0];
     let color = match vga.is_active_area {
         1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },

@@ -13,7 +13,7 @@ module Top(
     vga_green: logic[3],
     vga_blue: logic[3],
 ) {
-    let vga = VGA::SyncPulses(clk, hsync: vga_hsync, vsync: vga_vsync);
+    let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync);
     let x_div = vga.col[9:2];
     let y_div = vga.row[9:2];
     let cell_idx: logic[15] = y_div * 160 + x_div;
