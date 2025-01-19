@@ -52,7 +52,7 @@ pub fn context(self: Span, window_size~: Int = 3) -> String! {
         if not(is_blank) {
           window.write_char('\n')
 
-          for _ in 0..<(line_nb.length() + 1) {
+          for _ in 0..<line_nb.length() {
             window.write_char(' ')
           }
 
@@ -66,7 +66,7 @@ pub fn context(self: Span, window_size~: Int = 3) -> String! {
               }
             }
 
-            @utils.max(col, line_start)
+            @utils.max(col + 1, line_start)
           }
 
           for _ in 0..<first_non_whitespace_col {
@@ -81,7 +81,7 @@ pub fn context(self: Span, window_size~: Int = 3) -> String! {
               }
             }
 
-            @utils.min(col, line_end)
+            @utils.min(col + 1, line_end)
           }
 
           window.write_string("\x1b[1;31m")

@@ -122,17 +122,76 @@ pub(all) struct Cell {
   span: @parse.Span
 }
 
+pub(all) struct ProcessAssignment {
+  lhs: Signal
+  rhs: Signal
+  span: @parse.Span
+}
+
+pub(all) enum ProcessCaseStmt {
+  Assign(ProcessAssignment)
+  Switch(ProcessSwitch)
+}
+
+pub(all) struct ProcessCase {
+  conditions: Array[Signal]
+  body: Array[ProcessCaseStmt]
+  span: @parse.Span
+}
+
+pub(all) struct ProcessSwitch {
+  attributes: Map[Id, Constant]
+  subject: Signal
+  cases: Array[ProcessCase]
+  span: @parse.Span
+}
+
+pub(all) enum ProcessSyncType {
+  Low; High; Posedge; Negedge; Edge
+} derive(Eq)
+
+pub(all) struct ProcessSyncUpdate {
+  dst: Signal
+  src: Signal
+}
+
+pub(all) enum ProcessStmt {
+  Assign(ProcessAssignment)
+  Switch(ProcessSwitch)
+  Sync(ProcessSync)
+}
+
+pub(all) enum SyncStmtType {
+  Event(ty~: ProcessSyncType, signal~: Signal)
+  Global
+  Init
+  Always
+}
+
+pub(all) struct ProcessSync {
+  ty: SyncStmtType
+  updates: Array[ProcessSyncUpdate]
+}
+
+pub(all) struct Process {
+  name: Id
+  attributes: Map[Id, Constant]
+  body: Array[ProcessStmt]
+  span: @parse.Span
+}
+
 pub(all) struct Module {
   name: Id
   wires: Map[Id, Wire]
   cells: Map[Id, Cell]
+  procs: Map[Id, Process]
   attributes: Map[Id, Constant]
   parameters: Map[Id, Constant]
   connections: Array[(Signal, Signal)]
 }
 
 pub fn Module::new(name: Id) -> Module {
-  { name, wires: {}, cells: {}, attributes: {}, parameters: {}, connections: [] }
+  { name, wires: {}, cells: {}, procs: {}, attributes: {}, parameters: {}, connections: [] }
 }
 
 pub fn add_wire(

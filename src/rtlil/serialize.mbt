@@ -103,6 +103,97 @@ fn emit_cell(self: Serializer, cell: Cell) -> Unit {
   self.write("end\n")
 }
 
+fn emit_proc_assignment(self: Serializer, assign: ProcessAssignment) -> Unit {
+  self.write("assign \{assign.lhs} \{assign.rhs}\n")
+}
+
+fn emit_proc_switch(self: Serializer, switch: ProcessSwitch) -> Unit {
+  self.write("switch \{switch.subject}\n")
+  self.indent += 1
+
+  for case in switch.cases {
+    let conditions = String::concat(case.conditions.map(Signal::to_string), separator=", ")
+    self.write("case \{conditions}\n")
+    self.indent += 1
+
+    for stmt in case.body {
+      match stmt {
+        ProcessCaseStmt::Assign(assign) => self.emit_proc_assignment(assign)
+        ProcessCaseStmt::Switch(switch) => self.emit_proc_switch(switch)
+      }
+    }
+
+    self.indent -= 1
+    self.write("end\n")
+  }
+
+  self.indent -= 1
+  self.write("end\n")
+}
+
+pub impl Show for ProcessSyncType with output(self, logger) {
+  logger.write_string(match self {
+    Low => "low"
+    High => "high"
+    Posedge => "posedge"
+    Negedge => "negedge"
+    Edge => "edge"
+  })
+}
+
+fn emit_proc_sync(self: Serializer, sync: ProcessSync) -> Unit {
+  self.write("sync ")
+
+  match sync.ty {
+    Event(ty~, signal~) => {
+      self.write("\{ty} \{signal}\n")
+    }
+    Global => {
+      self.write("global\n")
+    }
+    Init => {
+      self.write("init\n")
+    }
+    Always => {
+      self.write("always\n")
+    }
+  }
+
+  self.indent += 1
+
+  for update in sync.updates {
+    self.write("update \{update.dst} \{update.src}\n")
+  }
+
+  self.indent -= 1
+}
+
+fn emit_process(self: Serializer, proc: Process) -> Unit {
+  for attrib in proc.attributes {
+    self.write(show_attribute(attrib.0, attrib.1) + "\n")
+  }
+
+  self.write("process \{proc.name}\n")
+  self.indent += 1
+
+  for stmt in proc.body {
+    match stmt {
+      ProcessStmt::Assign(assignment) => {
+        self.emit_proc_assignment(assignment)
+      }
+      ProcessStmt::Switch(switch) => {
+        self.emit_proc_switch(switch)
+      }
+      ProcessStmt::Sync(sync) => {
+        self.emit_proc_sync(sync)
+      }
+    }
+  }
+
+  self.indent -= 1
+  self.write("end\n")
+}
+
 fn emit_module(self: Serializer, mod: Module) -> Unit {
   for attrib in mod.attributes {
     self.write(show_attribute(attrib.0, attrib.1) + "\n")

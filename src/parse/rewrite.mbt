@@ -138,7 +138,7 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
   }
 }
 
-fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt) -> Iter[Stmt]!) -> Iter[Stmt]! {
+pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt) -> Iter[Stmt]!) -> Iter[Stmt]! {
   let res = match stmt {
     Expr(expr~, span~) => {
       let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)

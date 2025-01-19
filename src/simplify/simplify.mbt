@@ -291,7 +291,7 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, s
       let scope_env = env.child()
 
       for stmt in body {
-        simplified_body.push_iter(self.simplify_stmt!(stmt, env=scope_env, scope~).iter())
+        simplified_body.push_iter(self.simplify_stmt!(stmt, env=scope_env, scope~))
       }
 
       simplified_body.iter()
@@ -305,7 +305,7 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, s
       let scope_env = env.child()
 
       for stmt in body {
-        simplified_body.push_iter(self.simplify_stmt!(stmt, env=scope_env, scope~).iter())
+        simplified_body.push_iter(self.simplify_stmt!(stmt, env=scope_env, scope~))
       }
 
       Iter::singleton(@parse.Stmt::Procedural(body=simplified_body, span~))
