@@ -608,7 +608,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let arg = args[0].as_int!()
       let value = @utils.clog2(arg)
-      nat!(value, span~)
+      Expr::nat!(value, span~)
     }
   },
   "$pow": {
@@ -616,7 +616,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let base = args[0].as_int!()
       let exp = args[1].as_int!()
-      nat!(@utils.pow(base, exp), span~)
+      Expr::nat!(@utils.pow(base, exp), span~)
     }
   },
   "$cdiv": {
@@ -624,7 +624,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let dividend = args[0].as_int!()
       let divisor = args[1].as_int!()
-      nat!(@utils.cdiv(dividend, divisor), span~)
+      Expr::nat!(@utils.cdiv(dividend, divisor), span~)
     }
   },
   "$readmemb": {
@@ -835,7 +835,7 @@ pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bit
   { bits, value: Some(value), span }
 }
 
-pub fn as_int(self: Expr) -> Int! {
+pub fn Expr::as_int(self: Expr) -> Int! {
   match self {
     Natural(bits~, ..) => bits.as_int!()
     _ => {
@@ -844,7 +844,7 @@ pub fn as_int(self: Expr) -> Int! {
   }
 }
 
-pub fn as_bigint(self: Expr) -> BigInt! {
+pub fn Expr::as_bigint(self: Expr) -> BigInt! {
   match self {
     Natural(bits~, ..) => bits.as_bigint!()
     _ => raise ExpectedIntegerExpression(expr=self, span=self.span())

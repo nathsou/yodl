@@ -23,15 +23,15 @@ pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
   { tokens, index: 0, file }
 }
 
-fn peek(self: Parser) -> TokenType {
+fn Parser::peek(self: Parser) -> TokenType {
   self.tokens[self.index].kind
 }
 
-fn lookahead(self: Parser, n: Int) -> Token {
+fn Parser::lookahead(self: Parser, n: Int) -> Token {
   self.tokens[self.index + n]
 }
 
-fn advance(self: Parser) -> Unit {
+fn Parser::advance(self: Parser) -> Unit {
   self.index += 1
 }
 
@@ -45,7 +45,7 @@ fn expect(self: Parser, expected: TokenType, span_start_idx: Int) -> Unit!Parser
   }
 }
 
-fn matches(self: Parser, token: TokenType) -> Bool {
+fn Parser::matches(self: Parser, token: TokenType) -> Bool {
   self.index < self.tokens.length() && self.peek() == token
 }
 
@@ -53,7 +53,7 @@ fn matches_predicate(self: Parser, predicate: (TokenType) -> Bool) -> Bool {
   predicate(self.peek())
 }
 
-fn consumes(self: Parser, token: TokenType) -> Bool {
+fn Parser::consumes(self: Parser, token: TokenType) -> Bool {
   if self.matches(token) {
     self.advance()
     true
@@ -66,7 +66,7 @@ fn consumeIfPresent(self: Parser, token: TokenType) -> Unit {
     let _ = self.consumes(token)
 }
 
-fn parse_identifier(self: Parser) -> String! {
+fn Parser::parse_identifier(self: Parser) -> String! {
   let token = self.peek()
   let start_idx = self.index
 
@@ -79,7 +79,7 @@ fn parse_identifier(self: Parser) -> String! {
   }
 }
 
-fn parse_integer(self: Parser) -> ParsedInteger!ParserError {
+fn Parser::parse_integer(self: Parser) -> ParsedInteger!ParserError {
   let token = self.peek()
   let start_idx = self.index
 
@@ -105,7 +105,7 @@ fn parse_string_literal(self: Parser) -> String! {
   }
 }
 
-pub fn span(self: Parser, start_idx: Int) -> Span {
+pub fn Parser::span(self: Parser, start_idx: Int) -> Span {
   let start = self.tokens[start_idx].span.start
   let end = self.tokens[@utils.clamp(self.index - 1, min=0, max=self.tokens.length() - 1)].span.end
   { file: self.file, start, end }
