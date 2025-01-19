@@ -18,7 +18,8 @@ Yet anOther (hardware) Description Language
 - [x] Imports (TODO: unqualified imports)
 - [x] Implement the [flatten](https://github.com/YosysHQ/yosys/blob/45e31f06b4dec9e0783481d6bf03fa906e21aaa4/passes/techmap/flatten.cc#L282) pass
 - [x] Verilator + SDL graphics simulation example
-- [ ] Sequential (always_ff/process) blocks
+- [ ] Procedural (always_comb) blocks
+- [ ] Implement the [proc_mux](https://yosyshq.readthedocs.io/projects/yosys/en/stable/cmd/proc_mux.html) pass
 - [ ] Built-in event-driven simulator?
 - [ ] Multi-dimensional vectors (logic[16][4])
 - [ ] Optional module parameters (and register initial value)

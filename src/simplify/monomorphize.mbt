@@ -319,6 +319,15 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
       env.declare!(decl.path, Const(mono_decl))
       @parse.Stmt::Const(decl=mono_decl, span~)
     }
+    Procedural(body~, span~) => {
+      let mono_body = []
+
+      for stmt in body {
+        mono_body.push(self.monomorphize_stmt!(stmt, env~, packages~))
+      }
+
+      @parse.Stmt::Procedural(body=mono_body, span~)
+    }
   }
 }
 

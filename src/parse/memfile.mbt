@@ -36,7 +36,7 @@ pub fn parse_mem_file(path: String, base~: Int, start~: Int, end~: Int?) -> Arra
     while char_idx < contents.length() {
       let mut char = contents[char_idx]
       
-      while is_whitespace(char) {
+      while @utils.is_whitespace(char) {
         char_idx += 1
         if found_value {
           found_value = false

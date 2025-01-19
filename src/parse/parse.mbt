@@ -581,6 +581,11 @@ fn parse_stmt(self: Parser) -> Stmt! {
       For(var~, range={ start, end, inclusive }, body~, span=self.span(start_idx))
     }
     Const => Stmt::Const(decl=self.parse_const_decl!(), span=self.span(start_idx))
+    Procedural => {
+      self.advance()
+      let body = self.parse_block!()
+      Procedural(body~, span=self.span(start_idx))
+    }
     _ => {
       self.parse_assignment_stmt!()
     }

@@ -1,15 +1,55 @@
 
-module A(a: logic, b: logic) -> (q: logic) {
-    q = a and b;
+package State {
+    const IDLE = 2'd0;
+    const INCR = 2'd1;
+    const DONE = 2'd2;
 }
 
-module B(a: logic, b: logic) -> (q: logic) {
-    let inst = A();
-    inst.a = a;
-    inst.b = b;
-    q = not inst.q;
-}
+module Top(clk: logic) -> (rdy: logic) {
+    let ready = Reg<1>(clk, q: rdy);
+    let state = Reg<2>(clk);
+    let counter = Reg<10>(clk);
 
-module C(a: logic, b: logic) -> (q: logic) {
-    q = A(a, b).q or A(b, a).q and B(a, b).q;
+    procedural {
+        match state.q {
+            State::IDLE => {
+                state.d = State::INCR;
+                ready.d = 1'b0;
+            },
+            State::INCR => {
+                state.d = State::DONE;
+                counter.d = counter.q + 1;
+            },
+            State::DONE => {
+                state.d = State::IDLE;
+                ready.d = 1'b1;
+            },
+            _ => {},
+        };
+
+        // match counter.q {
+        //     10'd1000 => {
+        //         counter.d = 10'd0;
+        //     },
+        //     _ => {},
+        // };
+    }
+
+    // state.d = match state.q {
+    //     State::IDLE => State::INCR,
+    //     State::INCR => State::DONE,
+    //     State::DONE => State::IDLE,
+    //     _ => state.q,
+    // };
+
+    // ready.d = match state.q {
+    //     State::IDLE => 1'b0,
+    //     State::DONE => 1'b1,
+    //     _ => ready.q,
+    // };
+
+    // counter.d = match state.q {
+    //     State::INCR => counter.q + 1,
+    //     _ => counter.q,
+    // };
 }

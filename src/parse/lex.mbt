@@ -32,37 +32,6 @@ pub impl Spanned for LexerError with span(self: LexerError) -> Span {
   }
 }
 
-pub fn is_whitespace(c: Char) -> Bool {
-  match c {
-    ' ' => true
-    '\t' => true
-    '\n' => true
-    '\r' => true
-    _ => false
-  }
-}
-
-fn is_undetermined_digit(c: Char) -> Bool {
-  c == 'x' || c == 'X' || c == 'z' || c == 'Z'
-}
-
-pub fn is_digit(c: Char, base~: Int) -> Bool {
-  match base {
-    2 => c == '0' || c == '1' || is_undetermined_digit(c)
-    8 => c >= '0' && c <= '7'
-    16 => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') // TODO: support x z in hex
-    _ => c >= '0' && c <= '9'
-  }
-}
-
-pub fn is_alpha(c: Char) -> Bool {
-  (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'
-}
-
-pub fn is_alphanumeric(c: Char) -> Bool {
-  is_alpha(c) || is_digit(c, base=10)
-}
-
 pub fn Lexer::new(input: String, file~: String) -> Lexer {
   { input, index: 0, line: 1, column: 1, file }
 }
@@ -81,7 +50,7 @@ fn next_non_whitespace(self: Lexer) -> Char? {
   while i < self.input.length() {
     let char = self.input[i]
 
-    if not(is_whitespace(char)) {
+    if not(@utils.is_whitespace(char)) {
       return Some(char)
     }
 
@@ -115,7 +84,7 @@ fn consumes(self: Lexer, char: Char) -> Bool {
 }
 
 fn skip_whitespaces(self: Lexer) -> Unit {
-  while self.index < self.input.length() && is_whitespace(self.peek()) {
+  while self.index < self.input.length() && @utils.is_whitespace(self.peek()) {
     self.advance()
   }
 }
@@ -126,7 +95,7 @@ fn parse_identifier(self: Lexer) -> String {
   for i in self.index..<self.input.length() {
     let char = self.input[i]
 
-    if is_alphanumeric(char) || char == '_' {
+    if @utils.is_alphanumeric(char) || char == '_' {
       builder.write_char(char)
       self.advance()
     } else {
@@ -178,11 +147,11 @@ fn parse_integer(self: Lexer) -> ParsedInteger! {
   while self.index < self.input.length() {
     let char = self.peek()
 
-    if is_digit(char, base~) {
+    if @utils.is_digit(char, base~) {
       builder.write_char(char)
 
       if not(is_undetermined) {
-        is_undetermined = is_undetermined_digit(char)
+        is_undetermined = @utils.is_undetermined_digit(char)
       }
       self.advance()
     } else if char == '\'' {
@@ -457,10 +426,10 @@ fn next(self: Lexer) -> LexerResult[Token]! {
       Ok(StringLiteral(builder.to_string()))
     }
     _ => {
-      if is_digit(char, base=10) {
+      if @utils.is_digit(char, base=10) {
         let { bits, width, base } = self.parse_integer!()
         Ok(Natural(bits~, width~, base~))
-      } else if is_alpha(char) || char == '_' {
+      } else if @utils.is_alpha(char) || char == '_' {
         let identifier = self.parse_identifier()
 
         Ok(match identifier {
@@ -474,6 +443,7 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           "const" => Const
           "package" => Package
           "import" => Import
+          "procedural" => Procedural
           "and" => And
           "or" => Or
           "not" => Not

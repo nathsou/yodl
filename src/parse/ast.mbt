@@ -27,6 +27,7 @@ pub(all) enum Stmt {
   Assign(lhs~: Expr, rhs~: Expr, span~: Span)
   For(var~: String, range~: ForRange, body~: Array[Stmt], span~: Span)
   Scope(body~: Array[Stmt], span~: Span)
+  Procedural(body~: Array[Stmt], span~: Span)
 }
 
 pub(all) enum Decl {

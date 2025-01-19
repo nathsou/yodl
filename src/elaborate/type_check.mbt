@@ -2,12 +2,16 @@
 struct TypeChecker {
     modules: Map[@parse.Path, @parse.ModuleSignature]
     top_env: Scope[@parse.Path, @parse.Type]
+    mut is_inside_condition: Bool
+    mut is_inside_procedural_block: Bool
 }
 
 pub fn TypeChecker::new() -> TypeChecker {
     {
         modules: {},
         top_env: Scope::new(),
+        is_inside_condition: false,
+        is_inside_procedural_block: false,
     }
 }
 
@@ -24,7 +28,6 @@ type! TypeCheckerError {
     InvalidSlicingRange(reason~: String, span~: @parse.Span)
     ExpectedConstantExpr(span~: @parse.Span)
     LetStmtMustHaveTypeOrValue(span~: @parse.Span)
-    EmptyVector(span~: @parse.Span)
     SpreadOnNonVector(span~: @parse.Span)
     SpreadOutsideVector(span~: @parse.Span)
     InvalidAttribute(name~: String, span~: @parse.Span)
@@ -36,6 +39,7 @@ type! TypeCheckerError {
     InvalidUnaryOpOperand(op~: @parse.UnaryOp, ty~: @parse.Type, span~: @parse.Span)
     InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
     StringContainsNonAsciiChar(char~: Char, span~: @parse.Span)
+    ConditionalAssignmentOutsideProceduralBlock(span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -76,9 +80,6 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         LetStmtMustHaveTypeOrValue(..) => {
             logger.write_string("Let statement must have a type or value")
         }
-        EmptyVector(..) => {
-            logger.write_string("Empty vector")
-        }
         SpreadOnNonVector(..) => {
             logger.write_string("Spread on non-vector")
         }
@@ -112,6 +113,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         StringContainsNonAsciiChar(char~, ..) => {
             logger.write_string("String contains non-ASCII character '\{char}'")
         }
+        ConditionalAssignmentOutsideProceduralBlock(..) => {
+            logger.write_string("Conditional assignment outside procedural block")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -131,7 +135,6 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidSlicingRange(span~, ..) => span
         ExpectedConstantExpr(span~, ..) => span
         LetStmtMustHaveTypeOrValue(span~, ..) => span
-        EmptyVector(span~, ..) => span
         SpreadOnNonVector(span~, ..) => span
         SpreadOutsideVector(span~, ..) => span
         InvalidAttribute(span~, ..) => span
@@ -143,6 +146,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidUnaryOpOperand(span~, ..) => span
         InvalidBinaryOpOperand(span~, ..) => span
         StringContainsNonAsciiChar(span~, ..) => span
+        ConditionalAssignmentOutsideProceduralBlock(span~, ..) => span
     }
 }
 
@@ -405,7 +409,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Vector(elems~, span~, ..) => {
             if elems.is_empty() {
-                raise EmptyVector(span~)
+                return Vector(ty=Logic, len=Fixed(0))
             }
 
             let mut elem_ty = None
@@ -456,8 +460,12 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Ternary(cond~, then~, else_~, span~, ..) => {
             let cond_ty = self.check_expr!(cond, env, expected_ty=Some(@parse.Logic))
+            let prev_is_inside_condition = self.is_inside_condition
+
+            self.is_inside_condition = true
             let then_ty = self.check_expr!(then, env, expected_ty~)
             let else_ty = self.check_expr!(else_, env, expected_ty~)
+            self.is_inside_condition = prev_is_inside_condition
 
             let _ = unify!(cond_ty, @parse.Logic, span~)
             let ty = self.resolve_ty!(then_ty, span~)
@@ -486,6 +494,9 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 }
             }
 
+            let prev_is_inside_condition = self.is_inside_condition
+            self.is_inside_condition = true
+
             for case in cases {
                 let (pat, expr) = case
                 let pat_ty = self.check_expr!(pat, env)
@@ -501,6 +512,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 }
                 None => ()
             }
+
+            self.is_inside_condition = prev_is_inside_condition
 
             ret_ty.unwrap()
         }
@@ -605,6 +618,10 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
                 raise InvalidAssignmentTarget(span~)
             }
 
+            if self.is_inside_condition && not(self.is_inside_procedural_block) {
+                raise ConditionalAssignmentOutsideProceduralBlock(span~)
+            }
+
             let lhs_ty = self.check_expr!(lhs, env)
             let rhs_ty = self.check_expr!(rhs, env, expected_ty=Some(lhs_ty))
             let _ = unify!(lhs_ty, rhs_ty, span~)
@@ -634,6 +651,17 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
         }
         Const(decl~, span=_) => {
             self.check_const_decl!(decl, env)
+        }
+        Procedural(body~, span=_) => {
+            let new_env = env.child()
+            let prev_is_inside_procedural_block = self.is_inside_procedural_block
+            self.is_inside_procedural_block = true
+
+            for stmt in body {
+                self.check_stmt!(stmt, new_env)
+            }
+
+            self.is_inside_procedural_block = prev_is_inside_procedural_block
         }
     }
 }

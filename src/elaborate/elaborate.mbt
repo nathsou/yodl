@@ -36,6 +36,7 @@ pub type! ElaboratorError {
   PackageDeclDuringElaboration(span~: @parse.Span)
   ImportDuringElaboration(span~: @parse.Span)
   BlockExprDuringElaboration(span~: @parse.Span)
+  ProceduralBlockNotSupportedYet(span~: @parse.Span)
 }
 
 pub impl Show for ElaboratorError with output(self, logger) -> Unit {
@@ -114,6 +115,9 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     BlockExprDuringElaboration(..) => {
       logger.write_string("Block expression during elaboration")
     }
+    ProceduralBlockNotSupportedYet(..) => {
+      logger.write_string("Procedural block not supported yet")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -145,6 +149,7 @@ pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
     PackageDeclDuringElaboration(span~, ..) => span
     ImportDuringElaboration(span~, ..) => span
     BlockExprDuringElaboration(span~, ..) => span
+    ProceduralBlockNotSupportedYet(span~, ..) => span
   }
 }
 
@@ -1246,6 +1251,9 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
     }
     Const(span~, ..) => {
       raise ConstDeclAfterSimplification(span~)
+    }
+    Procedural(span~, ..) => {
+      raise ProceduralBlockNotSupportedYet(span~)
     }
   }
 }

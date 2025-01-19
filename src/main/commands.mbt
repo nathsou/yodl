@@ -31,7 +31,7 @@ enum CommandToken {
 fn is_valid_literal_char(char: Char) -> Bool {
   match char {
     ';' => false
-    _ => not(@parse.is_whitespace(char))
+    _ => not(@utils.is_whitespace(char))
   }
 }
 
@@ -42,7 +42,7 @@ fn lex_commands(source: String) -> Array[CommandToken]!CommandParserError {
   while idx < source.length() {
     let mut char = source[idx]
 
-    while idx < source.length() && @parse.is_whitespace(char) {
+    while idx < source.length() && @utils.is_whitespace(char) {
       idx += 1
       char = source[idx]
     }

@@ -191,6 +191,15 @@ fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt) -> 
 
       Scope(body~, span~)
     }
+    Procedural(body~, span~) => {
+      let body = Array::new(capacity=body.length())
+
+      for stmt in body {
+        body.push_iter(rewr_stmt!(stmt))
+      }
+
+      Procedural(body~, span~)
+    }
   }
 
   (rewr_stmt)!(res)
