@@ -1278,7 +1278,13 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
       raise ConstDeclAfterSimplification(span~)
     }
     Procedural(body~, span~) => {
-      let switches: Array[@rtlil.ProcessSwitch] = []
+      let proc: @rtlil.Process = {
+        name: @rtlil.GenId("proc\{mod.procs.size()}"),
+        attributes: {},
+        body: [],
+        span,
+      }
+
       let switch_stack: Array[@rtlil.ProcessSwitch] = []
 
       fn visit_expr(expr: @parse.Expr) -> Bool! {
@@ -1295,13 +1301,13 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
               Some(parent) => {
                 match parent.cases.last() {
                   Some(parent_case) => {
-                    parent_case.body.push(@rtlil.ProcessCaseStmt::Switch(switch))
+                    parent_case.body.push(Switch(switch))
                   }
                   None => ()
                 }
               }
               None => {
-                switches.push(switch)
+                proc.body.push(Switch(switch))
               }
             }
 
@@ -1373,7 +1379,11 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
                 }
               }
               None => {
-                raise AssignmentOutsideProceduralBlock(span~)
+                proc.body.push(Assign({
+                  lhs: self.elaborate_expr!(lhs, mod~, env~).as_signal!(lhs.span()),
+                  rhs: self.elaborate_expr!(rhs, mod~, env~).as_signal!(rhs.span()),
+                  span,
+                }))
               }
             }
           }
@@ -1385,21 +1395,6 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
 
       for stmt in body {
         @parse.visit_stmt!(stmt, on_expr=visit_expr, on_stmt=visit_stmt)
-      }
-
-      let proc: @rtlil.Process = {
-        name: @rtlil.GenId("proc\{mod.procs.size()}"),
-        attributes: {},
-        body: {
-          let body = []
-
-          for switch in switches {
-            body.push(@rtlil.ProcessStmt::Switch(switch))
-          }
-
-          body
-        },
-        span,
       }
 
       mod.procs[proc.name] = proc
