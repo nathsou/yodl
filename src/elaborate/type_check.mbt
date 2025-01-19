@@ -40,6 +40,7 @@ type! TypeCheckerError {
     InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
     StringContainsNonAsciiChar(char~: Char, span~: @parse.Span)
     ConditionalAssignmentOutsideProceduralBlock(span~: @parse.Span)
+    CannotNestProceduralBlocks(span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -116,6 +117,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         ConditionalAssignmentOutsideProceduralBlock(..) => {
             logger.write_string("Conditional assignment outside procedural block")
         }
+        CannotNestProceduralBlocks(..) => {
+            logger.write_string("Cannot nest procedural blocks")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -147,6 +151,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidBinaryOpOperand(span~, ..) => span
         StringContainsNonAsciiChar(span~, ..) => span
         ConditionalAssignmentOutsideProceduralBlock(span~, ..) => span
+        CannotNestProceduralBlocks(span~, ..) => span
     }
 }
 
@@ -652,16 +657,18 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
         Const(decl~, span=_) => {
             self.check_const_decl!(decl, env)
         }
-        Procedural(body~, span=_) => {
+        Procedural(body~, span~) => {
             let new_env = env.child()
-            let prev_is_inside_procedural_block = self.is_inside_procedural_block
+
+            if self.is_inside_procedural_block {
+                raise CannotNestProceduralBlocks(span~) 
+            }
+
             self.is_inside_procedural_block = true
 
             for stmt in body {
                 self.check_stmt!(stmt, new_env)
             }
-
-            self.is_inside_procedural_block = prev_is_inside_procedural_block
         }
     }
 }

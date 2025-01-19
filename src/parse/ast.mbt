@@ -1002,6 +1002,21 @@ pub fn is_numerical(self: Type) -> Bool {
   }
 }
 
+pub fn has_zero_width(self: Type) -> Bool {
+  match self {
+    Nat => false
+    Logic => false
+    Vector(ty~, len~) => match len {
+      Fixed(0) => true
+      _ => ty.has_zero_width()
+    }
+    Instance(sig~, ..) => sig.ports.is_empty()
+    Name(_) => false
+    Struct(fields) => fields.values().all(fn(ty) { ty.has_zero_width() })
+    String(len~) => len == 0
+  }
+}
+
 pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr!AstError {
   let ty = match width {
     Some(width) => Type::Vector(ty=Logic, len=Fixed(width))

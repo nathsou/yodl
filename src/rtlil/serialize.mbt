@@ -124,7 +124,6 @@ fn emit_proc_switch(self: Serializer, switch: ProcessSwitch) -> Unit {
     }
 
     self.indent -= 1
-    self.write("end\n")
   }
 
   self.indent -= 1
@@ -213,6 +212,10 @@ fn emit_module(self: Serializer, mod: Module) -> Unit {
 
   for cell in mod.cells.values() {
     self.emit_cell(cell)
+  }
+
+  for proc in mod.procs.values() {
+    self.emit_process(proc)
   }
 
   for conn in mod.connections {

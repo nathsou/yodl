@@ -36,7 +36,8 @@ pub type! ElaboratorError {
   PackageDeclDuringElaboration(span~: @parse.Span)
   ImportDuringElaboration(span~: @parse.Span)
   BlockExprDuringElaboration(span~: @parse.Span)
-  ProceduralBlocksNotSupportedYet(span~: @parse.Span)
+  AssignmentOutsideProceduralBlock(span~: @parse.Span)
+  TernaryExprAfterSimplification(span~: @parse.Span)
 }
 
 pub impl Show for ElaboratorError with output(self, logger) -> Unit {
@@ -115,8 +116,11 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     BlockExprDuringElaboration(..) => {
       logger.write_string("Block expression during elaboration")
     }
-    ProceduralBlocksNotSupportedYet(..) => {
-      logger.write_string("Procedural blocks not supported yet")
+    AssignmentOutsideProceduralBlock(..) => {
+      logger.write_string("Assignment outside procedural block")
+    }
+    TernaryExprAfterSimplification(..) => {
+      logger.write_string("Ternary expression after simplification")
     }
   }
 
@@ -149,7 +153,8 @@ pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
     PackageDeclDuringElaboration(span~, ..) => span
     ImportDuringElaboration(span~, ..) => span
     BlockExprDuringElaboration(span~, ..) => span
-    ProceduralBlocksNotSupportedYet(span~, ..) => span
+    AssignmentOutsideProceduralBlock(span~, ..) => span
+    TernaryExprAfterSimplification(span~, ..) => span
   }
 }
 
@@ -1037,39 +1042,59 @@ fn elaborate_expr(
     Spread(span~, ..) => {
       raise Unreachable(message="Spread operator outside Vector", span~)
     }
-    Ternary(cond~, then~, else_~, span~, ..) => {
-      let cell_type = "mux"
-      let cell_name = "\{cell_type}_\{self.next_genidx()}"
-
-      let width = expr_width!(then)
-      let output = mod.add_wire!(
-        name=GenId("\{cell_name}.y"),
-        width~,
-        port=None,
-        attributes=src_attribute(span),
-        span~,
-      )
-      
-      let _ = mod.add_cell!(
-        type_=GenId(cell_type),
-        name=GenId(cell_name),
-        parameters=map_parameters({
-          "WIDTH": @rtlil.ConstInteger(width)
-        }),
-        connections=map_signals({
-          "A": self.elaborate_expr!(else_, mod~, env~).as_signal!(then.span()),
-          "B": self.elaborate_expr!(then, mod~, env~).as_signal!(else_.span()),
-          "S": self.elaborate_expr!(cond, mod~, env~).as_signal!(cond.span()),
-          "Y": SigWire(output)
-        }),
-        attributes=src_attribute(span),
-        span~,
-      )
-
-      Value::Signal(SigWire(output))
+    Ternary(span~, ..) => {
+      raise TernaryExprAfterSimplification(span~)
     }
     Match(subject~, cases~, default~, span~, ty~) => {
       let width = ty.val.unwrap().width!(span)
+
+      match (cases, default) {
+        ([(Natural(bits=bits1, ..), rhs1), (Natural(bits=bits2, ..), rhs2)], None) => {
+          let then_else = match (bits1.as_int?(), bits2.as_int?()) {
+            (Ok(1), Ok(0)) => Some((rhs1, rhs2))
+            (Ok(0), Ok(1)) => Some((rhs2, rhs1))
+            _ => None
+          }
+
+          match then_else {
+            Some((then, else_)) => {
+              // Use a $mux cell instead of a $pmux cell
+              let cell_type = "mux"
+              let cell_name = "\{cell_type}_\{self.next_genidx()}"
+
+              let width = expr_width!(then)
+              let output = mod.add_wire!(
+                name=GenId("\{cell_name}.y"),
+                width~,
+                port=None,
+                attributes=src_attribute(span),
+                span~,
+              )
+              
+              let _ = mod.add_cell!(
+                type_=GenId(cell_type),
+                name=GenId(cell_name),
+                parameters=map_parameters({
+                  "WIDTH": @rtlil.ConstInteger(width)
+                }),
+                connections=map_signals({
+                  "A": self.elaborate_expr!(else_, mod~, env~).as_signal!(then.span()),
+                  "B": self.elaborate_expr!(then, mod~, env~).as_signal!(else_.span()),
+                  "S": self.elaborate_expr!(subject, mod~, env~).as_signal!(subject.span()),
+                  "Y": SigWire(output)
+                }),
+                attributes=src_attribute(span),
+                span~,
+              )
+
+              return Value::Signal(SigWire(output))
+            }
+            None => ()
+          }
+        }
+        _ => ()
+      }
+
       let max_cases = @utils.pow2(expr_width!(subject))
       let cell_type = "pmux"
       let cell_name = "\{cell_type}_\{self.next_genidx()}"
@@ -1252,8 +1277,132 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
     Const(span~, ..) => {
       raise ConstDeclAfterSimplification(span~)
     }
-    Procedural(span~, ..) => {
-      raise ProceduralBlocksNotSupportedYet(span~)
+    Procedural(body~, span~) => {
+      let switches: Array[@rtlil.ProcessSwitch] = []
+      let switch_stack: Array[@rtlil.ProcessSwitch] = []
+
+      fn visit_expr(expr: @parse.Expr) -> Bool! {
+        match expr {
+          Match(subject~, cases~, default~, span~, ty=_) => {
+            let switch: @rtlil.ProcessSwitch = {
+              attributes: {},
+              subject: self.elaborate_expr!(subject, mod~, env~).as_signal!(subject.span()),
+              cases: [],
+              span,
+            }
+
+            match switch_stack.last() {
+              Some(parent) => {
+                match parent.cases.last() {
+                  Some(parent_case) => {
+                    parent_case.body.push(@rtlil.ProcessCaseStmt::Switch(switch))
+                  }
+                  None => ()
+                }
+              }
+              None => {
+                switches.push(switch)
+              }
+            }
+
+            switch_stack.push(switch)
+
+            for case in cases {
+              let (condition, rhs) = case
+              let switch_case: @rtlil.ProcessCase = {
+                conditions: [self.elaborate_expr!(condition, mod~, env~).as_signal!(condition.span())],
+                body: [],
+                span,
+              }
+
+              switch.cases.push(switch_case)
+              let _ = visit_expr!(rhs)
+            }
+
+            match default {
+              Some(default) => {
+                let switch_case: @rtlil.ProcessCase = {
+                  conditions: [],
+                  body: [],
+                  span,
+                }
+
+                switch.cases.push(switch_case)
+                let _ = @parse.visit_expr!(default, on_expr=visit_expr, on_stmt=visit_stmt)
+              }
+              None => ()
+            }
+
+            let _ = switch_stack.unsafe_pop()
+
+            false // do not visit sub-expressions
+          }
+          Block(body~, last~, span=_, ty=_) => {
+            for stmt in body {
+              let _ = @parse.visit_stmt!(stmt, on_expr=visit_expr, on_stmt=visit_stmt)
+            }
+
+            match last {
+              Some(last) => {
+                let _ = @parse.visit_expr!(last, on_expr=visit_expr, on_stmt=visit_stmt)
+              }
+              None => ()
+            }
+
+            false // do not visit sub-expressions / sub-statements
+          }
+          _ => true
+        }
+      }
+
+      fn visit_stmt(stmt: @parse.Stmt) -> Bool! {
+        match stmt {
+          Assign(lhs~, rhs~, span~) => {
+            match switch_stack.last() {
+              Some(switch) => {
+                let sig1 = self.elaborate_expr!(lhs, mod~, env~).as_signal!(lhs.span())
+                let sig2 = self.elaborate_expr!(rhs, mod~, env~).as_signal!(rhs.span())
+
+                match switch.cases.last() {
+                  Some(switch_case) => {
+                    switch_case.body.push(@rtlil.ProcessCaseStmt::Assign({ lhs: sig1, rhs: sig2, span }))
+                  }
+                  None => {
+                    raise AssignmentOutsideProceduralBlock(span~)
+                  }
+                }
+              }
+              None => {
+                raise AssignmentOutsideProceduralBlock(span~)
+              }
+            }
+          }
+          _ => ()
+        }
+
+        true
+      }
+
+      for stmt in body {
+        @parse.visit_stmt!(stmt, on_expr=visit_expr, on_stmt=visit_stmt)
+      }
+
+      let proc: @rtlil.Process = {
+        name: @rtlil.GenId("proc\{mod.procs.size()}"),
+        attributes: {},
+        body: {
+          let body = []
+
+          for switch in switches {
+            body.push(@rtlil.ProcessStmt::Switch(switch))
+          }
+
+          body
+        },
+        span,
+      }
+
+      mod.procs[proc.name] = proc
     }
   }
 }

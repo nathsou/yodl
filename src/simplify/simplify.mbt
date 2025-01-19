@@ -70,7 +70,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // - Hardcode constant references
 // - Rewrite strings into vectors
 // - Rewrite nand expressions into not + and expressions
-// - Rewrite match expressions with two cases: 0 and 1, as ternary expressions
+// - Rewrite ternary expressions into match expressions
 // - Rewrite slicing expressions using width and offset to absolute slicing expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr! {
   let rewr_stmt = fn!(stmt) { self.simplify_stmt!(stmt, env~, scope~) }
@@ -219,13 +219,20 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
           ty={ val: Some(Vector(ty=Logic, len=Fixed(encoded.length()))),
         })
       })
-      Match(subject~, cases=[(Natural(bits=bits1, ..), rhs1), (Natural(bits=bits2, ..), rhs2)], default=None, span~, ty~) => {
-        // Rewrite match expressions with two cases: 0 and 1, as ternary expression
-        match (bits1.as_int?(), bits2.as_int?()) {
-          (Ok(1), Ok(0)) => Some(Ternary(cond=subject, then=rhs1, else_=rhs2, span~, ty~))
-          (Ok(0), Ok(1)) => Some(Ternary(cond=subject, then=rhs2, else_=rhs1, span~, ty~))
-          _ => None
-        }
+      Ternary(cond~, then~, else_~, span~, ty~) => {
+        // Rewrite ternary expressions into match expressions
+        let match_expr = @parse.Expr::Match(
+          subject=cond,
+          cases=[
+            (@parse.Expr::nat!(0, width=Some(1), span~), else_),
+            (@parse.Expr::nat!(1, width=Some(1), span~), then),
+          ],
+          default=None,
+          span~,
+          ty~,
+        )
+
+        Some(self.simplify_expr!(match_expr, env~, scope~))
       }
       Slicing(expr~, msb~, lsb=width, kind=Width, span~, ty~) => Some({
         let lsb = msb.as_int!() - width.as_int!() + 1

@@ -18,38 +18,25 @@ module Top(clk: logic) -> (rdy: logic) {
             },
             State::INCR => {
                 state.d = State::DONE;
-                counter.d = counter.q + 1;
+                match counter.q {
+                    10'd1000 => {
+                        counter.d = 10'd0;
+                    },
+                    _ => {
+                        counter.d = counter.q + 10'd1;
+                    },
+                };
             },
             State::DONE => {
                 state.d = State::IDLE;
                 ready.d = 1'b1;
             },
-            _ => {},
         };
 
-        // match counter.q {
-        //     10'd1000 => {
-        //         counter.d = 10'd0;
-        //     },
-        //     _ => {},
-        // };
+        match counter.q {
+            10'd211 => {
+                counter.d = 10'300;
+            },
+        };
     }
-
-    // state.d = match state.q {
-    //     State::IDLE => State::INCR,
-    //     State::INCR => State::DONE,
-    //     State::DONE => State::IDLE,
-    //     _ => state.q,
-    // };
-
-    // ready.d = match state.q {
-    //     State::IDLE => 1'b0,
-    //     State::DONE => 1'b1,
-    //     _ => ready.q,
-    // };
-
-    // counter.d = match state.q {
-    //     State::INCR => counter.q + 1,
-    //     _ => counter.q,
-    // };
 }

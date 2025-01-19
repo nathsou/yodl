@@ -204,3 +204,132 @@ pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
 
   (rewr_stmt)!(res)
 }
+
+// top-down traversal
+pub fn visit_expr(expr: Expr, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Bool!) -> Unit! {
+  let should_visit = (on_expr)!(expr)
+
+  if should_visit {
+    match expr {
+      Natural(_) => ()
+      Identifier(_) => ()
+      Unary(expr~, op=_, span=_, ty=_) => visit_expr!(expr, on_expr~, on_stmt~)
+      Binary(lhs~, rhs~, op=_, span=_, ty=_) => {
+        visit_expr!(lhs, on_expr~, on_stmt~)
+        visit_expr!(rhs, on_expr~, on_stmt~)
+      }
+      Indexing(expr~, index~, span=_, ty=_) => {
+        visit_expr!(expr, on_expr~, on_stmt~)
+        visit_expr!(index, on_expr~, on_stmt~)
+      }
+      Slicing(expr~, msb~, lsb~, kind=_, span=_, ty=_) => {
+        visit_expr!(expr, on_expr~, on_stmt~)
+        visit_expr!(msb, on_expr~, on_stmt~)
+        visit_expr!(lsb, on_expr~, on_stmt~)
+      }
+      FieldAccess(expr~, field=_, span=_, ty=_) => visit_expr!(expr, on_expr~, on_stmt~)
+      Instance(path=_, params~, ports~, span=_, ty=_) => {
+        for param in params._ {
+          visit_expr!(param.value, on_expr~, on_stmt~)
+        }
+
+        for _, expr in ports {
+          visit_expr!(expr, on_expr~, on_stmt~)
+        }
+      }
+      Vector(elems~, span=_, ty=_) => {
+        for elem in elems {
+          visit_expr!(elem, on_expr~, on_stmt~)
+        }
+      }
+      Spread(expr~, span=_, ty=_) => visit_expr!(expr, on_expr~, on_stmt~)
+      Ternary(cond~, then~, else_~, span=_, ty=_) => {
+        visit_expr!(cond, on_expr~, on_stmt~)
+        visit_expr!(then, on_expr~, on_stmt~)
+        visit_expr!(else_, on_expr~, on_stmt~)
+      }
+      Match(subject~, cases~, default~, span=_, ty=_) => {
+        visit_expr!(subject, on_expr~, on_stmt~)
+
+        for case in cases {
+          visit_expr!(case.0, on_expr~, on_stmt~)
+          visit_expr!(case.1, on_expr~, on_stmt~)
+        }
+
+        match default {
+          Some(expr) => visit_expr!(expr, on_expr~, on_stmt~)
+          None => ()
+        }
+      }
+      Tuple(elems~, span=_, ty=_) => {
+        for elem in elems {
+          visit_expr!(elem, on_expr~, on_stmt~)
+        }
+      }
+      Replicate(expr~, count~, concat=_, span=_, ty=_) => {
+        visit_expr!(expr, on_expr~, on_stmt~)
+        visit_expr!(count, on_expr~, on_stmt~)
+      }
+      FunCall(name=_, args~, span=_, ty=_) => {
+        for arg in args {
+          visit_expr!(arg, on_expr~, on_stmt~)
+        }
+      }
+      Struct(fields~, span=_, ty=_) => {
+        for _, expr in fields {
+          visit_expr!(expr, on_expr~, on_stmt~)
+        }
+      }
+      String(_) => ()
+      Block(body~, last~, span=_, ty=_) => {
+        for stmt in body {
+          visit_stmt!(stmt, on_expr~, on_stmt~)
+        }
+
+        match last {
+          Some(expr) => visit_expr!(expr, on_expr~, on_stmt~)
+          None => ()
+        }
+      }
+    }
+  }
+}
+
+pub fn visit_stmt(stmt: Stmt, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Bool!) -> Unit! {
+  let should_visit = (on_stmt)!(stmt)
+
+  if should_visit {
+    match stmt {
+      Expr(expr~, span=_) => visit_expr!(expr, on_expr~, on_stmt~)
+      Const(decl=_, span=_) => ()
+      Let(name=_, ty=_, expr~, span=_) => {
+        match expr {
+          Some(expr) => visit_expr!(expr, on_expr~, on_stmt~)
+          None => ()
+        }
+      }
+      Assign(lhs~, rhs~, span=_) => {
+        visit_expr!(lhs, on_expr~, on_stmt~)
+        visit_expr!(rhs, on_expr~, on_stmt~)
+      }
+      For(var=_, range~, body~, span=_) => {
+        visit_expr!(range.start, on_expr~, on_stmt~)
+        visit_expr!(range.end, on_expr~, on_stmt~)
+
+        for stmt in body {
+          visit_stmt!(stmt, on_expr~, on_stmt~)
+        }
+      }
+      Scope(body~, span=_) => {
+        for stmt in body {
+          visit_stmt!(stmt, on_expr~, on_stmt~)
+        }
+      }
+      Procedural(body~, span=_) => {
+        for stmt in body {
+          visit_stmt!(stmt, on_expr~, on_stmt~)
+        }
+      }
+    }
+  }
+}
