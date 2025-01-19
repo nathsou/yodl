@@ -17,6 +17,7 @@ pub(all) enum Expr {
   Replicate(expr~: Expr, count~: Expr, concat~: Bool, span~: Span, ty~: Ref[Type?])
   FunCall(name~: String, args~: Array[Expr], span~: Span, ty~: Ref[Type?])
   String(str~: String, span~: Span, ty~: Ref[Type?])
+  Block(body~: Array[Stmt], last~: Expr?, span~: Span, ty~: Ref[Type?])
 }
 
 pub(all) enum Stmt {
@@ -364,6 +365,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Replicate(ty~, ..) => ty
     FunCall(ty~, ..) => ty
     String(ty~, ..) => ty
+    Block(ty~, ..) => ty
   }
 }
 
@@ -411,6 +413,7 @@ pub impl Spanned for Expr with span(self: Expr) -> Span {
     Replicate(span~, ..) => span
     FunCall(span~, ..) => span
     String(span~, ..) => span
+    Block(span~, ..) => span
   }
 }
 
@@ -433,6 +436,7 @@ pub fn ctor(self: Expr) -> String {
     Replicate(_) => "Replicate"
     FunCall(_) => "FunCall"
     String(_) => "String"
+    Block(_) => "Block"
   }
 }
 
@@ -459,6 +463,8 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Struct(_) => false
     Replicate(_) => false
     FunCall(_) => false
+    Block(body=[], last=Some(last), ..) => last.is_constant_expr()
+    Block(..) => false
   }
 }
 
@@ -505,9 +511,9 @@ pub fn as_expr(self: Param, span~: Span) -> Expr!AstError {
 
 // perform partial evaluation on the expression
 pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
-  rewrite_expr!(self, fn!(expr) {
+  rewrite_expr!(self, rewr_stmt=fn(stmt) { Iter::singleton(stmt) }, rewr_expr=fn!(expr) {
     match expr {
-      Identifier(path={ packages: [], member }, ..) => {
+      Identifier(path={ packages: [], member }, ..) => Some({
         match params[member] {
           Some(Int(n)) => {
             Natural(bits=Bits::from!(n, span=expr.span()), width=None, base=10, span=expr.span(), ty=expr.ty())
@@ -517,7 +523,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
           }
           None => expr
         }
-      }
+      })
       Binary(op = Add | Sub | Mul | Div | Mod as op, lhs~, rhs~, span~, ty~) => {
         match (lhs.as_bigint?(), rhs.as_bigint?()) {
           (Ok(lhs), Ok(rhs)) => {
@@ -532,15 +538,15 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
               _ => raise Failure("Invalid arithmetical binary operator")
             }
 
-            Natural(bits=Bits::from_bigint!(value, span~), width=None, base=10, span~, ty~)
+            Some(Natural(bits=Bits::from_bigint!(value, span~), width=None, base=10, span~, ty~))
           }
-          _ => expr
+          _ => None
         }
       }
       Ternary(cond~, then~, else_~, ..) => {
         match cond.as_int?() {
-          Ok(cond) => if cond != 0 { then } else { else_ }
-          _ => expr
+          Ok(cond) => Some(if cond != 0 { then } else { else_ })
+          _ => None
         }
       }
       Match(subject~, cases~, ..) => {
@@ -549,20 +555,20 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
             for case in cases {
               let (value, rhs) = case
               match value.as_int?() {
-                Ok(case) => if subject == case { return rhs }
+                Ok(case) => if subject == case { return Some(rhs) }
                 _ => ()
               }
             }
 
-            expr
+            None
           }
-          _ => expr
+          _ => None
         }
       }
       FunCall(name~, args~, span~, ty=_) => {
         let fun = match builtin_functions[name] {
           Some(fun) => fun
-          None => return expr
+          None => return Some(expr)
         }
 
         let (min_arity, max_arity) = fun.arity.as_range()
@@ -571,9 +577,9 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
           raise InvalidFunCallArity(name~, expected=fun.arity, actual=args.length(), span~)
         }
 
-        (fun.apply)!(args, span)
+        Some((fun.apply)!(args, span))
       }
-      _ => expr
+      _ => None
     }
   })
 }

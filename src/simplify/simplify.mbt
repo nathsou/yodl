@@ -71,20 +71,24 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // - Rewrite nand expressions into not + and expressions
 // - Rewrite match expressions with two cases: 0 and 1, as ternary expressions
 // - Rewrite slicing expressions using width and offset to absolute slicing expressions
-pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -> @parse.Expr! {
-  @parse.rewrite_expr!(expr, fn(expr) {
+pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr! {
+  let rewr_stmt = fn!(stmt) { self.simplify_stmt!(stmt, env~, scope~) }
+
+  @parse.rewrite_expr!(expr, rewr_stmt~, rewr_expr=fn(expr) {
     (match expr {
       Identifier(path~, span~, ty~) => {
         match env.resolve(path) {
-          Some(Const(expr)) => expr
-          Some(Name(unique_name)) => @parse.Expr::Identifier(path=@parse.Path::new(path.packages, unique_name.to_string()), span~, ty~)
-          None => expr
+          Some(Const(expr)) => Some(expr)
+          Some(Name(unique_name)) => Some(
+            @parse.Expr::Identifier(path=@parse.Path::new(path.packages, unique_name.to_string()), span~, ty~)
+          )
+          None => None
         }
       }
-      Binary(op=Nand, lhs~, rhs~, span~, ty~) => {
+      Binary(op=Nand, lhs~, rhs~, span~, ty~) => Some(
         @parse.Expr::Unary(op=Not, expr=Binary(op=And, lhs~, rhs~, span~, ty~), span~, ty~)
-      }
-      Tuple(elems~, span~, ty=_) => {
+      )
+      Tuple(elems~, span~, ty=_) => Some({
         let fields = Map::new(capacity=elems.length())
         let types = Map::new(capacity=elems.length())
 
@@ -95,8 +99,8 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
         }
 
         @parse.Expr::Struct(fields=fields, span~, ty={ val: Some(Struct(types)) })
-      }
-      Indexing(expr~, index~, span~, ty~) as indexing_expr => {
+      })
+      Indexing(expr~, index~, span~, ty~) as indexing_expr => Some({
         match index.as_int?() {
           Ok(_) => indexing_expr
           Err(_) => {
@@ -120,11 +124,11 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
               ty~,
             )
 
-            self.simplify_expr!(match_expr, env~)
+            self.simplify_expr!(match_expr, env~, scope~)
           }
         }
-      }
-      FieldAccess(expr~, field=port, span=port_acc_span, ty=port_acc_ty) as port_access_expr => {
+      })
+      FieldAccess(expr~, field=port, span=port_acc_span, ty=port_acc_ty) => {
         // Rewrite port accesses on match expressions
         match expr {
           Match(subject~, cases~, default~, span~, ty=_) => {
@@ -140,31 +144,32 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
               new_cases.push((value, new_expr))
             }
 
-            @parse.Expr::Match(subject=subject, cases=new_cases, default=new_default, span~, ty=port_acc_ty)
+            Some(@parse.Expr::Match(subject=subject, cases=new_cases, default=new_default, span~, ty=port_acc_ty))
           }
-          _ => port_access_expr
+          _ => None
         }
       }
-      Replicate(expr~, count~, concat~, span~, ty~) => {
+      Replicate(expr~, count~, concat~, span~, ty~) => Some({
         // Rewrite replication expressions into concatenation expressions
         let repeated_expr = self.simplify_expr!(
           match concat {
             true => @parse.Expr::Spread(expr~, span~, ty~)
             false => expr
           },
-          env~
+          env~,
+          scope~,
         )
 
         let elems = @utils.fill(count.as_int!(), repeated_expr)
-        self.simplify_expr!(@parse.Expr::Vector(elems~, span~, ty~), env~)
-      }
-      Spread(expr~, ..) as spread_expr => {
+        self.simplify_expr!(@parse.Expr::Vector(elems~, span~, ty~), env~, scope~)
+      })
+      Spread(expr~, ..) as spread_expr => Some({
         // Remove unecessary spreads
         match expr.ty().val.unwrap().width!(expr.span()) {
           1 => expr
           _ => spread_expr
         }
-      }
+      })
       Vector(elems~, span~, ty={ val: Some(Vector(ty=Logic, len=Fixed(len))) } as ty) => {
         // Rewrite flat constant vectors to natural expressions
         if elems.iter().all(fn(elem) { match elem { Natural(_) => true; _ => false } }) {
@@ -177,12 +182,12 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
             })
           }
 
-          @parse.Expr::Natural(bits=@parse.Bits::new(bits, span~), width=Some(len), base=2, span~, ty~)
+          Some(@parse.Expr::Natural(bits=@parse.Bits::new(bits, span~), width=Some(len), base=2, span~, ty~))
         } else {
-          expr
+          None
         }
       }
-      String(str~, span~, ty=_) => {
+      String(str~, span~, ty=_) => Some({
         let encoded = Array::new(capacity=str.length() * @parse.BITS_PER_CHAR)
 
         for char in str {
@@ -207,45 +212,62 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv) -
           span~,
           ty={ val: Some(Vector(ty=Logic, len=Fixed(encoded.length()))),
         })
-      }
+      })
       Match(subject~, cases=[(Natural(bits=bits1, ..), rhs1), (Natural(bits=bits2, ..), rhs2)], default=None, span~, ty~) => {
         // Rewrite match expressions with two cases: 0 and 1, as ternary expression
         match (bits1.as_int?(), bits2.as_int?()) {
-          (Ok(1), Ok(0)) => Ternary(cond=subject, then=rhs1, else_=rhs2, span~, ty~)
-          (Ok(0), Ok(1)) => Ternary(cond=subject, then=rhs2, else_=rhs1, span~, ty~)
-          _ => expr
+          (Ok(1), Ok(0)) => Some(Ternary(cond=subject, then=rhs1, else_=rhs2, span~, ty~))
+          (Ok(0), Ok(1)) => Some(Ternary(cond=subject, then=rhs2, else_=rhs1, span~, ty~))
+          _ => None
         }
       }
-      Slicing(expr~, msb~, lsb=width, kind=Width, span~, ty~) => {
+      Slicing(expr~, msb~, lsb=width, kind=Width, span~, ty~) => Some({
         let lsb = msb.as_int!() - width.as_int!() + 1
         @parse.Expr::Slicing(expr~, msb~, lsb=@parse.Expr::nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
+      })
+      Block(body~, last~, span~, ty~) => {
+        let block_env = env.child()
+
+        for stmt in body {
+          scope.push_iter(self.simplify_stmt!(stmt, env=block_env, scope~))
+        }
+
+        Some(match last {
+          Some(last) => {
+            self.simplify_expr!(last, env=block_env, scope~)
+          }
+          None => {
+            @parse.Expr::Vector(elems=[], span~, ty~)
+          }
+        })
       }
-      _ => expr
-    }).partial_eval!()
+      _ => None
+    })
   })
 }
 
-pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv) -> Array[@parse.Stmt]! {
+pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> Iter[@parse.Stmt]! {
   match stmt {
     Expr(expr~, span~) => {
-      let simplified_expr = self.simplify_expr!(expr, env~)
-      [@parse.Stmt::Expr(expr=simplified_expr, span~)]
+      let simplified_expr = self.simplify_expr!(expr, env~, scope~)
+      Iter::singleton(@parse.Stmt::Expr(expr=simplified_expr, span~))
     }
     Let(name~, ty~, expr~, span~) => {
       let simplified_expr = match expr {
-        Some(expr) => Some(self.simplify_expr!(expr, env~))
+        Some(expr) => Some(self.simplify_expr!(expr, env~, scope~))
         None => None
       }
 
+      // references to this name from now on until the next redefinition will resolve to this unique name
       let unique_name = self.declare_unique(name)
       env.declare_shadowing(@parse.Path::new([], name), Name(unique_name))
 
-      [@parse.Stmt::Let(name=unique_name.to_string(), ty~, expr=simplified_expr, span~)]
+      Iter::singleton(@parse.Stmt::Let(name=unique_name.to_string(), ty~, expr=simplified_expr, span~))
     }
     Assign(lhs~, rhs~, span~) => {
-      let simplified_lhs = self.simplify_expr!(lhs, env~)
-      let simplified_rhs = self.simplify_expr!(rhs, env~)
-      [@parse.Stmt::Assign(lhs=simplified_lhs, rhs=simplified_rhs, span~)]
+      let simplified_lhs = self.simplify_expr!(lhs, env~, scope~)
+      let simplified_rhs = self.simplify_expr!(rhs, env~, scope~)
+      Iter::singleton(@parse.Stmt::Assign(lhs=simplified_lhs, rhs=simplified_rhs, span~))
     }
     For(_) => {
       raise Failure("For stmt after monomorphization")
@@ -255,14 +277,14 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv) -
       let scope_env = env.child()
 
       for stmt in body {
-        simplified_body.push_iter(self.simplify_stmt!(stmt, env=scope_env).iter())
+        simplified_body.push_iter(self.simplify_stmt!(stmt, env=scope_env, scope~).iter())
       }
 
-      simplified_body
+      simplified_body.iter()
     }
     Const(decl~, span=_) => {
       env.declare!(decl.path, Const(decl.expr))
-      []
+      Iter::empty()
     }
   }
 }
@@ -274,7 +296,14 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
       let mod_env = env.child()
 
       for stmt in body {
-        simplified_body.push_iter(self.simplify_stmt!(stmt, env=mod_env).iter())
+        let scope = []
+        let stmts = self.simplify_stmt!(stmt, env=mod_env, scope~)
+
+        for stmt in stmts {
+          scope.push(stmt)
+        }
+
+        simplified_body.push_iter(scope.iter())
       }
 
       Some(@parse.Decl::Module({ path, params, attributes, ports, body: simplified_body, span }))

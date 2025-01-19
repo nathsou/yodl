@@ -4,8 +4,8 @@ struct Scope[K, T] {
 }
 
 type! ScopeError {
-  MemberAlreadyDeclared
-}
+  MemberAlreadyDeclared(name~: String)
+} derive(Show)
 
 pub fn Scope::new[K: Eq + Hash, T]() -> Scope[K, T] {
   { members: {}, parent: None }
@@ -15,9 +15,9 @@ pub fn child[K: Eq + Hash, T](self: Scope[K, T]) -> Scope[K, T] {
   { members: {}, parent: Some(self) }
 }
 
-pub fn Scope::declare[K: Eq + Hash, T](self: Scope[K, T], key: K, value: T) -> Unit!ScopeError {
+pub fn Scope::declare[K: Eq + Hash + Show, T](self: Scope[K, T], key: K, value: T) -> Unit!ScopeError {
   if self.members.contains(key) {
-    raise MemberAlreadyDeclared
+    raise MemberAlreadyDeclared(name=key.to_string())
   }
 
   self.members[key] = value

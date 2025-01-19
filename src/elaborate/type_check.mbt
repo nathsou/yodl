@@ -208,7 +208,7 @@ fn unify(ty1: @parse.Type, ty2: @parse.Type, span~: @parse.Span, subst~: Map[Str
 fn declare_name(env~: Scope[@parse.Path, @parse.Type], path~: @parse.Path, ty~: @parse.Type, span~: @parse.Span) -> Unit!TypeCheckerError {
     match env.declare?(path, ty) {
         Ok(_) => ()
-        Err(MemberAlreadyDeclared) => raise VariableRedeclared(path~, span~)
+        Err(MemberAlreadyDeclared(_)) => raise VariableRedeclared(path~, span~)
     }
 }
 
@@ -540,6 +540,20 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
 
             @parse.Type::Struct(field_tys)
+        }
+        Block(body~, last~, span=_, ty=_) => {
+            let new_env = env.child()
+
+            for stmt in body {
+                self.check_stmt!(stmt, new_env)
+            }
+
+            match last {
+                Some(last) => {
+                    self.check_expr!(last, new_env, expected_ty~)
+                }
+                _ => Vector(ty=Logic, len=Fixed(0))
+            }
         }
     }
 

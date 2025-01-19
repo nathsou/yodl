@@ -174,9 +174,11 @@ fn resolve_member(env: MonoEnv, path~: @parse.Path, packages~: Array[String]) ->
 }
 
 fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, packages~: Array[String]) -> @parse.Expr! {
-  @parse.rewrite_expr!(expr, fn(expr) {
+  let rewr_stmt = fn!(stmt) { Iter::singleton(self.monomorphize_stmt!(stmt, env~, packages~)) }
+
+  let res = @parse.rewrite_expr!(expr, rewr_stmt~, rewr_expr=fn(expr) {
     (match expr {
-      Identifier(path~, span~, ty=_) => {
+      Identifier(path~, span~, ty=_) => Some({
         match resolve_member(env, path~, packages~) {
           Some((Param(Int(n)) | GenVar(n), _)) => @parse.Expr::nat!(n, width=None, base=10, span~)
           Some((Param(Val(bits~, width~)), _)) => @parse.Expr::Natural(bits~, width=Some(width), base=2, span~, ty={ val: None })
@@ -184,11 +186,22 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
           Some((Name(_), resolved_path)) => @parse.Expr::Identifier(path=resolved_path, span~, ty={ val: None })
           None => Identifier(path~, span~, ty={ val: None })
         }
-      }
-      Instance(path~, params~, ports~, span~, ty=_) => {
+      })
+      Instance(path~, params~, ports~, span~, ty=_) as inst => {
         let resolved_path = match resolve_member(env, path~, packages~) {
           Some((Name(packages~), resolved_path)) => resolved_path.prepend(packages)
-          _ => raise ModuleNotFound(path~, span~)
+          _ => {
+            // check if this module has already been monomorphized
+            for mods in self.monomorphized.values() {
+              for mod in mods.values() {
+                if mod.path == path {
+                  return Some(inst)
+                }
+              }
+            }
+
+            raise ModuleNotFound(path~, span~)
+          }
         }
 
         let (mono_path, mono_params) = if params._.length() > 0 && not(self.declared_modules.contains(path)) {
@@ -205,23 +218,19 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
           (resolved_path, mono_params)
         }
 
-        let mono_ports = Map::new(capacity=ports.size())
-
-        for port_name, port_expr in ports {
-          mono_ports[port_name] = self.monomorphize_expr!(port_expr, env~, packages~)
-        }
-
-        @parse.Expr::Instance(
+        Some(@parse.Expr::Instance(
           path=mono_path,
           params=mono_params,
-          ports=mono_ports,
+          ports~,
           span~,
           ty={ val: None },
-        )
+        ))
       }
-      _ => expr
-    }).partial_eval!()
+      _ => None
+    })
   })
+
+  res.partial_eval!()
 }
 
 fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, packages~: Array[String]) -> @parse.Stmt! {
@@ -257,7 +266,8 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
         _ => ()
       }
 
-      env.declare!(@parse.Path::new([], name), Name(packages=[]))
+      // ignore duplicate declarations as these will be caught by the type checker
+      env.declare_shadowing(@parse.Path::new([], name), Name(packages=[]))
 
       @parse.Stmt::Let(name~, ty={ val: mono_ty }, expr=mono_expr, span~)
     }

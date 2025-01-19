@@ -35,6 +35,7 @@ pub type! ElaboratorError {
   UnknownModuleParameter(name~: String, span~: @parse.Span)
   PackageDeclDuringElaboration(span~: @parse.Span)
   ImportDuringElaboration(span~: @parse.Span)
+  BlockExprDuringElaboration(span~: @parse.Span)
 }
 
 pub impl Show for ElaboratorError with output(self, logger) -> Unit {
@@ -110,6 +111,9 @@ pub impl Show for ElaboratorError with output(self, logger) -> Unit {
     ImportDuringElaboration(..) => {
       logger.write_string("Import during elaboration")
     }
+    BlockExprDuringElaboration(..) => {
+      logger.write_string("Block expression during elaboration")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -140,6 +144,7 @@ pub impl @parse.Spanned for ElaboratorError with span(self) -> @parse.Span {
     UnknownModuleParameter(span~, ..) => span
     PackageDeclDuringElaboration(span~, ..) => span
     ImportDuringElaboration(span~, ..) => span
+    BlockExprDuringElaboration(span~, ..) => span
   }
 }
 
@@ -1180,6 +1185,9 @@ fn elaborate_expr(
       }
 
       Value::Struct(val)
+    }
+    Block(span~, ..) => {
+      raise BlockExprDuringElaboration(span~)
     }
   }
 }

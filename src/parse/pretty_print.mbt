@@ -340,6 +340,28 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
         self.write("}")
       }
     }
+    Block(body~, last~, ..) => {
+      self.write("{\n")
+      self.indent += 1
+
+      for stmt in body {
+        self.emit_stmt(stmt)
+        self.write("\n")
+      }
+
+      match last {
+        Some(expr) => {
+          self.write_indent()
+          self.emit_expr(expr)
+          self.write(";\n")
+        }
+        None => ()
+      }
+
+      self.indent -= 1
+      self.write_indent()
+      self.write("}")
+    }
   }
 
   if self.show_expr_types {

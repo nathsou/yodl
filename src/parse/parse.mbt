@@ -261,7 +261,7 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     }
     Lparen => self.parse_tuple_or_paren_expr!()
     Lbracket => self.parse_vector_expr!()
-    Lbrace => self.parse_struct_or_concat_expr!()
+    Lbrace => self.parse_struct_or_concat_or_block_expr!()
     DotDotDot => self.parse_spread_expr!()
     Match => self.parse_match_expr!()
     Dollar => self.parse_function_call_expr!()
@@ -353,7 +353,7 @@ fn parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) -> Expr! {
   FunCall(name="$flat", args=elems, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_struct_or_concat_expr(self: Parser) -> Expr! {
+fn parse_struct_or_concat_or_block_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   self.expect!(Lbrace, start_idx)
 
@@ -361,38 +361,69 @@ fn parse_struct_or_concat_expr(self: Parser) -> Expr! {
     return Vector(elems=[], span=self.span(start_idx), ty={ val: None })
   }
 
-  match self.parse_expr!() {
-    Identifier(path={ packages: [], member }, ..) as first_expr => {
-      if self.consumes(Colon) {
-        let fields = {}
-        fields[member] = self.parse_expr!()
-        
-        if self.consumes(Comma) {
-          while not(self.matches(Rbrace)) {
-            let name = self.parse_identifier!()
-            self.expect!(Colon, start_idx)
-            let expr = self.parse_expr!()
-          
-            if fields.contains(name) {
-              raise DuplicateStructField(name~, span=self.span(start_idx))
+  // first try to parse a block expr containing at least one stmt
+  // singleton concat expressions are equivalent to blocks containing a single expr
+  let backtracking_index = self.index
+
+  match self.parse_stmt?() {
+    Ok(stmt) => {
+      let body = [stmt]
+
+      while not(self.matches(Rbrace)) {
+        let stmt = self.parse_stmt!()
+        body.push(stmt)
+      }
+
+      self.expect!(Rbrace, start_idx)
+
+      let last = match body.last() {
+        Some(Stmt::Expr(expr~, span=_)) => {
+          let _ = body.unsafe_pop()
+          Some(expr)
+        }
+        _ => None
+      }
+
+      Block(body~, last~, span=self.span(start_idx), ty={ val: None })
+    }
+    Err(_) => {
+      // if we failed to parse a block, backtrack and try to parse a struct or concat expression
+      self.index = backtracking_index
+
+      match self.parse_expr!() {
+        Identifier(path={ packages: [], member }, ..) as first_expr => {
+          if self.consumes(Colon) {
+            let fields = {}
+            fields[member] = self.parse_expr!()
+            
+            if self.consumes(Comma) {
+              while not(self.matches(Rbrace)) {
+                let name = self.parse_identifier!()
+                self.expect!(Colon, start_idx)
+                let expr = self.parse_expr!()
+              
+                if fields.contains(name) {
+                  raise DuplicateStructField(name~, span=self.span(start_idx))
+                }
+
+                fields[name] = expr
+
+                if not(self.consumes(Comma)) {
+                  break
+                }
+              }
             }
 
-            fields[name] = expr
+            self.expect!(Rbrace, start_idx)
 
-            if not(self.consumes(Comma)) {
-              break
-            }
+            Struct(fields~, span=self.span(start_idx), ty={ val: None })
+          } else {
+            self.parse_concat_expr!(first_expr, start_idx~)
           }
         }
-
-        self.expect!(Rbrace, start_idx)
-
-        Struct(fields~, span=self.span(start_idx), ty={ val: None })
-      } else {
-        self.parse_concat_expr!(first_expr, start_idx~)
+        first_expr => self.parse_concat_expr!(first_expr, start_idx~)
       }
     }
-    first_expr => self.parse_concat_expr!(first_expr, start_idx~)
   }
 }
 
@@ -545,7 +576,6 @@ fn parse_stmt(self: Parser) -> Stmt! {
       }
 
       let end = self.parse_expr!()
-
       let body = self.parse_block!()
 
       For(var~, range={ start, end, inclusive }, body~, span=self.span(start_idx))

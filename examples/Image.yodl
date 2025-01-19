@@ -14,9 +14,8 @@ module Top(
     vga_blue: logic[3],
 ) {
     let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync);
-    let x_div = vga.col[9:2];
-    let y_div = vga.row[9:2];
-    let cell_idx: logic[15] = y_div * 160 + x_div;
+    let div = { x: vga.col[9:2], y: vga.row[9:2] };
+    let cell_idx: logic[15] = div.y * 160 + div.x;
     let timer = Timing::Timer<100_000>(clk);
     let rand_cell = LFSR::LFSR<15>(clk, enable: timer.q, seed_ready: 1'b0, seed_data: 15'0).q;
     let rand_color = LFSR::LFSR<3>(clk, enable: timer.q, seed_ready: 1'b0, seed_data: 3'0).q;
