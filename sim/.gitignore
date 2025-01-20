@@ -1,3 +1,4 @@
 output/
 obj_dir/
-Sim.v
+*.v
+*.rtlil

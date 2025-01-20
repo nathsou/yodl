@@ -175,7 +175,7 @@ pub impl Show for Expr with output(self, logger) {
   show_expr(self, logger, is_case_expr=false)
 }
 
-pub impl Show for SensitivityListItem with output(self, logger) {
+pub impl Show for SensitivityListEvent with output(self, logger) {
   match self.polarity {
     Some(Posedge) => logger.write_string("posedge ")
     Some(Negedge) => logger.write_string("negedge ")
@@ -278,10 +278,9 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
         let (case_cond, case_body) = case
         self.write_indent()
         show_expr(case_cond, self, is_case_expr=true)
-        self.write(":\n")
+        self.write(": ")
         self.indent += 1
         self.emit_stmt(case_body)
-        self.write("\n")
         self.indent -= 1
       }
 
@@ -296,7 +295,6 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
       }
 
       self.indent -= 1
-      self.write("\n")
       self.emit("endcase")
     }
     Instance(mod~, name~, parameters~, ports~) => {
@@ -344,7 +342,12 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
     Always(sensitivity_list~, body~) => {
       self.write_indent()
       self.write("always @")
-      self.write_iter(sensitivity_list.iter(), prefix="(", suffix=") ", sep=", ")
+      
+      match sensitivity_list {
+        All => self.write("(*) ")
+        Events(events) => self.write_iter(events.iter(), prefix="(", suffix=") ", sep=" or ")
+      }
+
       self.emit_stmt(body)
     }
     FunctionDecl(name~, output_width~, args~, body~) => {

@@ -2,10 +2,15 @@
 pub struct VerilogExporter {
   rtlil_modules: Array[@rtlil.Module]
   verilog_decls: Array[Decl]
+  wires_assigned_in_processes: Set[@rtlil.Id]
 }
 
 pub fn VerilogExporter::new(modules: Array[@rtlil.Module]) -> VerilogExporter {
-  { rtlil_modules: modules, verilog_decls: [] }
+  {
+    rtlil_modules: modules,
+    verilog_decls: [],
+    wires_assigned_in_processes: collect_wires_assigned_in_processes(modules),
+  }
 }
 
 pub type! VerilogExportError {
@@ -16,6 +21,8 @@ pub type! VerilogExportError {
   ExpectedIdentifier(expr~: Expr)
   Unreachable(msg~: String)
   UnsupportedMemV2Instance(id~: @rtlil.Id, reason~: String)
+  ProcessSwitchWithMultipleCasesNotSupported(span~: @parse.Span)
+  ProcessSyncNotSupportedYet
 } derive(Show)
 
 fn show_id(id: @rtlil.Id) -> String {
@@ -122,7 +129,7 @@ fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Uni
         _ => raise Unreachable(msg="Invalid CLK_POLARITY parameter in \{cell_type} cell")
       }
 
-      let sensitivity_list: Array[SensitivityListItem] = [
+      let sensitivity_list: Array[SensitivityListEvent] = [
         { polarity: Some(clk_polarity), signal: clk },
       ]
 
@@ -185,7 +192,7 @@ fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Uni
         ])
       }
 
-      mod.body.push(Always(sensitivity_list~, body~))
+      mod.body.push(Always(sensitivity_list=Events(sensitivity_list), body~))
     }
     GenId("mux") => {
       let a = self.get_connection!(cell, "A")
@@ -376,9 +383,9 @@ fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Uni
         ))
 
         mod.body.push(Always(
-          sensitivity_list=[
+          sensitivity_list=Events([
             { polarity: Some(Posedge), signal: write_clk[i].expect_identifier!() },
-          ],
+          ]),
           body=Block(always_block_body),
         ))
       }
@@ -407,6 +414,119 @@ fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Uni
       mod.body.push(inst)
     }
   }
+}
+
+fn export_process_case_stmt(self: VerilogExporter, case_stmt: @rtlil.ProcessCaseStmt) -> Stmt!VerilogExportError {
+  match case_stmt {
+    @rtlil.ProcessCaseStmt::Assign({ lhs, rhs, span: _ }) => {
+      Assign(lhs=self.export_signal(lhs), rhs=self.export_signal(rhs), kind=Blocking)
+    }
+    @rtlil.ProcessCaseStmt::Switch(switch) => {
+      self.export_proc_switch!(switch)
+    }
+  }
+}
+
+fn export_process_stmt(self: VerilogExporter, stmt: @rtlil.ProcessStmt) -> Stmt!VerilogExportError {
+  match stmt {
+    @rtlil.ProcessStmt::Assign({ lhs, rhs, span: _ }) => {
+      Assign(lhs=self.export_signal(lhs), rhs=self.export_signal(rhs), kind=Blocking)
+    }
+    @rtlil.ProcessStmt::Switch(switch) => {
+      self.export_proc_switch!(switch)
+    }
+    @rtlil.ProcessStmt::Sync(_) => {
+      raise ProcessSyncNotSupportedYet
+    }
+  }
+}
+
+fn export_proc_switch(self: VerilogExporter, switch: @rtlil.ProcessSwitch) -> Stmt!VerilogExportError {
+  let cases: Array[(Expr, Stmt)] = Array::new(capacity=switch.cases.length())
+  let cond = self.export_signal(switch.subject)
+  let mut default = None
+
+  for case in switch.cases {
+    let stmts = Array::new(capacity=case.body.length())
+
+    for case_stmt in case.body {
+      stmts.push(self.export_process_case_stmt!(case_stmt))
+    }
+
+    match case.conditions {
+      [] => {
+        default = Some(Block(stmts))
+      }
+      [cond] => {
+        cases.push((self.export_signal(cond), Block(stmts)))
+      }
+      _ => raise ProcessSwitchWithMultipleCasesNotSupported(span=switch.span)
+    }
+  }
+
+  Casez(cond~, cases~, default~)
+}
+
+fn export_process(self: VerilogExporter, proc: @rtlil.Process, mod: ModuleDecl) -> Unit!VerilogExportError {
+  let body = Array::new(capacity=proc.body.length())
+
+  for stmt in proc.body {
+    body.push(self.export_process_stmt!(stmt))
+  }
+
+  let always_block = Always(sensitivity_list=All, body=Block(body))
+  mod.body.push(always_block)
+}
+
+fn collect_wires_assigned_in_switch(switch: @rtlil.ProcessSwitch, acc~: Set[@rtlil.Id]) -> Unit {
+  for case in switch.cases {
+    for stmt in case.body {
+      match stmt {
+        Assign({ lhs, .. }) => {
+          for wire in lhs.wires() {
+            acc.add(wire.name)
+          }
+        }
+        Switch(switch) => {
+          collect_wires_assigned_in_switch(switch, acc~)
+        }
+      }
+    }
+  }
+}
+
+fn collect_wires_assigned_in_process(proc: @rtlil.Process, acc~: Set[@rtlil.Id]) -> Unit {
+  for stmt in proc.body {
+    match stmt {
+      Assign({ lhs, .. }) => {
+        for wire in lhs.wires() {
+          acc.add(wire.name)
+        }
+      }
+      Switch(switch) => {
+        collect_wires_assigned_in_switch(switch, acc~)
+      }
+      Sync(sync) => {
+        for update in sync.updates {
+          for wire in update.dst.wires() {
+            acc.add(wire.name)
+          }
+        }
+      }
+    }
+  }
+}
+
+fn collect_wires_assigned_in_processes(modules: Array[@rtlil.Module]) -> Set[@rtlil.Id] {
+  let wires_assigned_in_processes = Set::new()
+
+  for mod in modules {
+    for proc in mod.procs.values() {
+      collect_wires_assigned_in_process(proc, acc=wires_assigned_in_processes)
+    }
+  }
+
+  wires_assigned_in_processes
 }
 
 struct UnopCell {
@@ -492,13 +612,23 @@ fn export_module(self: VerilogExporter, mod: @rtlil.Module) -> Unit!VerilogExpor
         verilog_mod.ports.push({ name: show_id(wire.name), direction, width: wire.width })
       }
       None => {
-        verilog_mod.body.push(WireDecl(name=show_id(wire.name), msb=wire.width - 1, lsb=0, init=None))
+        if self.wires_assigned_in_processes.contains(wire.name) {
+          // Note: A reg declaration in Verilog does not imply a register
+          // as it can also represent combinational logic, like here
+          verilog_mod.body.push(RegDecl(name=show_id(wire.name), msb=wire.width - 1, lsb=0, width=1, init=None))
+        } else {
+          verilog_mod.body.push(WireDecl(name=show_id(wire.name), msb=wire.width - 1, lsb=0, init=None))
+        }
       }
     }
   }
 
   for cell in mod.cells.values() {
     self.export_cell!(cell, verilog_mod)
+  }
+
+  for proc in mod.procs.values() {
+    self.export_process!(proc, verilog_mod) 
   }
 
   for conn in mod.connections {

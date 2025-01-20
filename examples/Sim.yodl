@@ -1,64 +1,15 @@
 import VGA
-import LFSR
-import Timing
-import Text
 
-module TopSim(
-    sim_clk: logic,
-    sim_rst: logic,
-) -> (
-    is_active_area: logic,
-    screen_x: logic[10],
-    screen_y: logic[10],
-    r: logic[3],
-    g: logic[3],
-    b: logic[3],
-) {
-    let vga = VGA::SyncPulses(
-        pixel_clk: sim_clk,
-        col: screen_x,
-        row: screen_y,
-        is_active_area,
-    );
-
-    let x_div = vga.col[9:2];
-    let y_div = vga.row[9:2];
-    let cell_idx: logic[15] = y_div * 160 + x_div;
-    let timer = Timing::Timer<100_000>(clk: sim_clk);
-
-    let color_idx = Memory<
-        Width: 3,
-        Depth: (VGA::H_ACTIVE / 4) * (VGA::V_ACTIVE / 4),
-        ReadPorts: 1,
-        WritePorts: 0,
-        Init: $readmemb("res/york.mem"),
-    >(
-        clk: sim_clk,
-        read_addr: cell_idx,
-    ).data_out;
-
-    let color = match vga.is_active_area {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => match color_idx {
-            3'd0 => { r: 3'd3, g: 3'd5, b: 3'd7 },
-            3'd1 => { r: 3'd2, g: 3'd2, b: 3'd2 },
-            3'd2 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-            3'd3 => { r: 3'd1, g: 3'd1, b: 3'd0 },
-            3'd4 => { r: 3'd1, g: 3'd1, b: 3'd1 },
-            3'd5 => { r: 3'd7, g: 3'd7, b: 3'd6 },
-            3'd6 => { r: 3'd7, g: 3'd7, b: 3'd7 },
-            3'd7 => { r: 3'd3, g: 3'd3, b: 3'd3 },
-        },
-    };
-
-    r = color.r;
-    g = color.g;
-    b = color.b;
+package State {
+    const RED = 2'b00;
+    const GREEN = 2'b01;
+    const BLUE = 2'b10;
+    const PINK = 2'b11;
 }
 
-module TextSim(
-    sim_clk: logic,
-    sim_rst: logic,
+module TopSim(
+    clk: logic,
+    rst: logic,
 ) -> (
     is_active_area: logic,
     screen_x: logic[10],
@@ -67,34 +18,65 @@ module TextSim(
     g: logic[3],
     b: logic[3],
 ) {
-    let vga = VGA::SyncPulses(
-        pixel_clk: sim_clk,
-        is_active_area,
-    );
+    let state = Reg<2>(clk, rst);
+    let counter = Reg<25>(clk);
+    let vga = VGA::SyncPulses(pixel_clk: clk, col: screen_x, row: screen_y, is_active_area);
+    let color: logic[9];
 
-    const MsgLen = 69;
-    let timer = Timing::Timer<100_000_000>(clk: sim_clk);
-    let timer2 = Timing::Timer<5_000_000>(clk: sim_clk);
-    let messages = [
-        "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!",
-        "Visit https://github.com/nathsou/yodl for more information :)        ",
-    ];
+    procedural {
+        counter.d = counter.q + 1'd1;
 
-    let msg_index = Timing::Counter<1>(clk: sim_clk, en: timer.q, rst: 1'b0).q;
-    let text = Text::Text<MsgLen, X: 5, Y: 30>(
-        text: messages[msg_index],
-        screen_x: vga.col,
-        screen_y: vga.row,
-    );
+        match vga.is_active_area {
+            1'b0 => {
+                color = 9'd0;
+            },
+            1'b1 => {
+                match state.q {
+                    State::RED => {
+                        color = {3'd7, 3'd0, 3'd0};
+                        match counter.q {
+                            25*{1'b1} => {
+                                state.d = State::GREEN;
+                                counter.d = 25'd0;
+                            },
+                        };
+                    },
+                    State::GREEN => {
+                        color = {3'd0, 3'd7, 3'd0};
 
-    let color = match vga.is_active_area and text.is_active {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => { r: 3'd2, g: 3'd7, b: 3'd5 },
-    };
+                        match counter.q {
+                            25'd16777215 => {
+                                state.d = State::BLUE;
+                                counter.d = 25'd0;
+                            },
+                        };
+                    },
+                    State::BLUE => {
+                        color = {3'd0, 3'd0, 3'd7};
 
-    r = color.r;
-    g = color.g;
-    b = color.b;
-    screen_x = vga.col;
-    screen_y = vga.row;
+                        match counter.q {
+                            25'd11184810 => {
+                                state.d = State::PINK;
+                                counter.d = 25'd0;
+                            },
+                        };
+                    },
+                    State::PINK => {
+                        color = {3'd7, 3'd0, 3'd7};
+
+                        match counter.q {
+                            25'd8388608 => {
+                                state.d = State::RED;
+                                counter.d = 25'd0;
+                            },
+                        };
+                    },
+                };
+            },
+        };
+    }
+
+    r = color[8-:3];
+    g = color[5-:3];
+    b = color[2-:3];
 }

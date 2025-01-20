@@ -24,7 +24,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    Pixel screenbuffer[H_RES*V_RES];
+    Pixel screenbuffer[H_RES * V_RES];
 
     SDL_Window*   sdl_window   = NULL;
     SDL_Renderer* sdl_renderer = NULL;
@@ -60,13 +60,13 @@ int main(int argc, char* argv[]) {
     VTopSim* top = new VTopSim();
 
     // reset
-    top->sim_rst = 1;
-    top->sim_clk = 0;
+    top->rst = 1;
+    top->clk = 0;
     top->eval();
-    top->sim_clk = 1;
+    top->clk = 1;
     top->eval();
-    top->sim_rst = 0;
-    top->sim_clk = 0;
+    top->rst = 0;
+    top->clk = 0;
     top->eval();
 
     // initialize frame rate
@@ -74,11 +74,11 @@ int main(int argc, char* argv[]) {
     uint64_t frame_count = 0;
 
     // main loop
-    while (1) {
+    while (true) {
         // cycle the clock
-        top->sim_clk = 1;
+        top->clk = 1;
         top->eval();
-        top->sim_clk = 0;
+        top->clk = 0;
         top->eval();
 
         // update pixel if not in blanking interval
@@ -122,5 +122,6 @@ int main(int argc, char* argv[]) {
     SDL_DestroyRenderer(sdl_renderer);
     SDL_DestroyWindow(sdl_window);
     SDL_Quit();
+
     return 0;
 }

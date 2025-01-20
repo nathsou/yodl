@@ -266,3 +266,12 @@ pub fn as_bits(self: Constant, span~: @parse.Span) -> Iter[@parse.BinaryDigit]!R
     ConstString(_) => raise CannotGetStringBits(span~)
   }
 }
+
+pub fn Signal::wires(self: Signal) -> Iter[Wire] {
+  match self {
+    SigConst(_) => Iter::empty()
+    SigWire(wire) => Iter::singleton(wire)
+    SigChunk(signal~, ..) => signal.wires()
+    SigConcat(signals) => signals.iter().flat_map(Signal::wires)
+  }
+}

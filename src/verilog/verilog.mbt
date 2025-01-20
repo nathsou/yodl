@@ -20,11 +20,16 @@ pub enum Stmt {
   Casez(cond~: Expr, cases~: Array[(Expr, Stmt)], default~: Stmt?)
   Instance(mod~: String, name~: String, parameters~: Array[(String, @rtlil.Constant)], ports~: Array[(String, Expr)])
   Block(Array[Stmt])
-  Always(sensitivity_list~: Array[SensitivityListItem], body~: Stmt)
+  Always(sensitivity_list~: SensitivityList, body~: Stmt)
   Initial(body~: Stmt)
 }
 
-pub struct SensitivityListItem {
+pub enum SensitivityList {
+  All // always @(*)
+  Events(Array[SensitivityListEvent]) // always @(posedge clk or negedge reset ...)
+}
+
+pub struct SensitivityListEvent {
   polarity: Polarity?
   signal: String
 }
