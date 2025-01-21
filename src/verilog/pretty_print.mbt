@@ -185,10 +185,17 @@ pub impl Show for SensitivityListEvent with output(self, logger) {
   logger.write_string(self.signal)
 }
 
+pub impl Show for PortType with output(self, logger) {
+  match self {
+    Wire => logger.write_string("wire")
+    Reg => logger.write_string("reg")
+  }
+}
+
 pub impl Show for Port with output(self, logger) {
   match self.width {
-    1 => logger.write_string("\{self.direction} \{self.name}")
-    _ => logger.write_string("\{self.direction} [\{self.width - 1}:0] \{self.name}")
+    1 => logger.write_string("\{self.direction} \{self.type_} \{self.name}")
+    _ => logger.write_string("\{self.direction} \{self.type_} [\{self.width - 1}:0] \{self.name}")
   }
 }
 

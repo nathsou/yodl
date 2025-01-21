@@ -159,7 +159,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
 }
 
 fn main {
-  match @sys.get_cli_args() {
+  match @env.args() {
     [_, _, path] => {
       match run?(path~, commands=[WriteRTLIL(path=Some(path.replace(old=".yodl", new=".rtlil")))]) {
         Ok(_) => ()

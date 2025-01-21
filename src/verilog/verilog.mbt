@@ -42,8 +42,13 @@ pub enum AssignmentKind {
   Continous; Blocking; NonBlocking
 } derive(Eq)
 
+pub enum PortType {
+  Wire; Reg
+}
+
 pub struct Port {
-  name: String 
+  name: String
+  type_: PortType
   width: Int
   direction: @parse.PortDirection
 }
