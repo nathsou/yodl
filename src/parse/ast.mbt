@@ -330,7 +330,7 @@ pub impl Show for PortDirection with output(self, logger) {
 pub(all) struct Port {
   name: String
   ty: Type
-  dir: PortDirection
+  direction: PortDirection
   span: Span
   optional: Bool
   attributes: Map[String, Attribute]
@@ -418,6 +418,18 @@ pub impl Spanned for Expr with span(self: Expr) -> Span {
   }
 }
 
+pub impl Spanned for Stmt with span(self: Stmt) -> Span {
+  match self {
+    Expr(span~, ..) => span
+    Const(span~, ..) => span
+    Let(span~, ..) => span
+    Assign(span~, ..) => span
+    For(span~, ..) => span
+    Scope(span~, ..) => span
+    Procedural(span~, ..) => span
+  }
+}
+
 pub fn ctor(self: Expr) -> String {
   match self {
     Natural(_) => "Natural"
@@ -426,7 +438,7 @@ pub fn ctor(self: Expr) -> String {
     Binary(_) => "Binary"
     Indexing(_) => "Indexing"
     Slicing(_) => "Slicing"
-    FieldAccess(_) => "PortAccess"
+    FieldAccess(_) => "FieldAccess"
     Instance(_) => "Instance"
     Vector(_) => "Vector"
     Spread(_) => "Spread"
@@ -883,12 +895,12 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
         Fixed(len) => ty.width!(span) * len
         Dynamic(_) => raise VectorLengthNotFixed(span~)
       }
-    Instance(sig~, params=_, accessed_ports~) => {
+    Instance(sig~, params~, accessed_ports~) => {
       let mut width = 0
 
       for port in sig.ports {
         if accessed_ports.contains(port.name) {
-          width += port.ty.width!(span)
+          width += port.ty.substitute(params).width!(span)
         }
       }
 
@@ -908,11 +920,11 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
   }
 }
 
-pub fn substitute(self: Type, params_env~: Map[String, Param]) -> Type {
+pub fn substitute(self: Type, params_env: Map[String, Param]) -> Type {
   match self {
     Nat | Logic | String(_) => self
     Vector(ty~, len=Dynamic(expr)) => {
-      Vector(ty=substitute(ty, params_env~), len=match expr.partial_eval?(params=params_env) {
+      Vector(ty=ty.substitute(params_env), len=match expr.partial_eval?(params=params_env) {
         Ok(Natural(bits~, ..)) => match bits.as_int?() {
           Ok(value) => Fixed(value)
           _ => Dynamic(expr)
@@ -920,7 +932,7 @@ pub fn substitute(self: Type, params_env~: Map[String, Param]) -> Type {
         _ => Dynamic(expr)
       })
     }
-    Vector(ty~, len~) => Vector(ty=substitute(ty, params_env~), len~)
+    Vector(ty~, len~) => Vector(ty=ty.substitute(params_env), len~)
     Instance(sig~, params~, accessed_ports~) => {
       let new_params = Map::new(capacity=params.size()) 
 
@@ -942,7 +954,7 @@ pub fn substitute(self: Type, params_env~: Map[String, Param]) -> Type {
         _ => Name(path~, params~)
       }
     }
-    Struct(fields) => Struct(@utils.map_values(fields, fn(expr) { substitute(expr, params_env~) }))
+    Struct(fields) => Struct(@utils.map_values(fields, fn(ty) { ty.substitute(params_env) }))
   }
 }
 
@@ -982,15 +994,15 @@ pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
 }
 
 pub fn inputs(self: ModuleSignature) -> Iter[Port] {
-  self.ports.iter().filter(fn(port) { port.dir == Input })
+  self.ports.iter().filter(fn(port) { port.direction == Input })
 }
 
 pub fn outputs(self: ModuleSignature) -> Iter[Port] {
-  self.ports.iter().filter(fn(port) { port.dir == Output })
+  self.ports.iter().filter(fn(port) { port.direction == Output })
 }
 
 pub fn inouts(self: ModuleSignature) -> Iter[Port] {
-  self.ports.iter().filter(fn(port) { port.dir == Inout })
+  self.ports.iter().filter(fn(port) { port.direction == Inout })
 }
 
 pub fn is_numerical(self: Type) -> Bool {

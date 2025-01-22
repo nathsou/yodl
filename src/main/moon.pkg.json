@@ -7,6 +7,7 @@
     "nathsou/yodl/simplify",
     "nathsou/yodl/verilog",
     "nathsou/yodl/utils",
+    "nathsou/yodl/yir",
     "moonbitlang/x/fs",
     "moonbitlang/x/sys"
   ]

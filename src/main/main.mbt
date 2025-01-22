@@ -150,6 +150,19 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
           }
         }
       }
+      WriteYIR => {
+        let low = @elaborate.Lowerer::new()
+        low.lower!(simplified_decls.iter())
+
+        let builder = StringBuilder::new()
+
+        for mod in low.modules.values() {
+          builder.write_string(mod.to_string())
+          builder.write_char('\n')
+        }
+
+        println(builder.to_string())
+      }
       Flatten => {
         design = @rtlil.FlattenPass::new(design).run()
       }

@@ -339,7 +339,7 @@ fn elaborate_module(self: Elaborator, mod~: @parse.ModuleDecl, env~: ElaboratorE
     let _ = mod_def.add_wire!(
       name=PubId(port.name),
       width=port.ty.width!(port.span),
-      port=Some({ direction: port.dir, id: port_id, optional: port.optional }),
+      port=Some({ direction: port.direction, id: port_id, optional: port.optional }),
       attributes=src_attribute(port.span),
       span=port.span,
     )
@@ -351,7 +351,7 @@ fn elaborate_module(self: Elaborator, mod~: @parse.ModuleDecl, env~: ElaboratorE
 
   // make sure that output ports are on the left side of connections
   // this seems to be necessary for the Lattice iCEcube2 flow
-  let ports = Map::from_iter(mod.ports.iter().map(fn(p) { (p.name, p.dir) }))
+  let ports = Map::from_iter(mod.ports.iter().map(fn(p) { (p.name, p.direction) }))
   mod_def.connections.map_inplace(fn(connection) {
     let (lhs, rhs) = connection
 
@@ -394,7 +394,7 @@ fn declare(path: @parse.Path, value: Value, env~: ElaboratorEnv, span~: @parse.S
 fn expr_width(expr: @parse.Expr) -> Int! {
   match expr {
     Natural(width=Some(width), ..) => width
-    _ => expr.ty().val.or_error!(Unreachable(message="Untyped expression", span=expr.span())).width!(expr.span())
+    _ => expr.ty().val.or_error!(ElaboratorError::Unreachable(message="Untyped expression", span=expr.span())).width!(expr.span())
   }
 }
 
@@ -543,7 +543,7 @@ fn elaborate_expr(
     }
     Instance(path~, params~, ports~, span~, ty=inst_ty) => {
       if params._.length() > 0 && not(self.declared_modules.contains(path)) {
-        raise Unreachable(message="Parameterized instance after simplification", span~)
+        raise ElaboratorError::Unreachable(message="Parameterized instance after simplification", span~)
       }
 
       let (ports_sig, params_map, attributes) = match self.modules[path] {
@@ -572,7 +572,7 @@ fn elaborate_expr(
             }
 
             for port in sig.ports {
-              let width = port.ty.substitute(params_env~).width!(port.span)
+              let width = port.ty.substitute(params_env).width!(port.span)
               ports_sig[port.name] = (width, port.span, port.optional)
             }
 
@@ -586,7 +586,7 @@ fn elaborate_expr(
       let inline_connections: Map[@rtlil.Id, @rtlil.Signal] = {}
       let accessed_ports = match inst_ty.val {
         Some(Instance(sig=_, params=_, accessed_ports~)) => accessed_ports
-        _ => raise Unreachable(message="Untyped instance", span~)
+        _ => raise ElaboratorError::Unreachable(message="Untyped instance", span~)
       }
       let extra_ports = []
       let cell_name = name_binding.or(GenId("\{path}_\{self.next_genidx()}"))
@@ -922,11 +922,11 @@ fn elaborate_expr(
         Struct(fields) => {
           match fields[field] {
             Some(value) => value
-            None => raise Unreachable(message="Unknown struct field", span~)
+            None => raise ElaboratorError::Unreachable(message="Unknown struct field", span~)
           }
         }
         Signal(signal) => {
-          let ty = expr.ty().val.or_error!(Unreachable(message="Untyped signal field access", span=expr.span()))
+          let ty = expr.ty().val.or_error!(ElaboratorError::Unreachable(message="Untyped signal field access", span=expr.span()))
 
           match ty {
             Struct(fields) => {
@@ -943,15 +943,14 @@ fn elaborate_expr(
                 offset -= width
               }
 
-              raise Unreachable(message="Unknown struct field: \{field}", span~)
+              raise ElaboratorError::Unreachable(message="Unknown struct field: \{field}", span~)
             }
             Instance(sig~, params~, accessed_ports~) => {
               let field_widths = {}
-              let params_env = Map::from_iter(params.iter())
 
               for port in sig.ports {
                 if accessed_ports.contains(port.name) {
-                  let width = port.ty.substitute(params_env~).width!(span)
+                  let width = port.ty.substitute(params).width!(span)
                   field_widths[port.name] = width
                 }
               }
@@ -969,7 +968,7 @@ fn elaborate_expr(
                 offset -= width
               }
 
-              raise Unreachable(message="Unknown instance field: \{field}", span~)
+              raise ElaboratorError::Unreachable(message="Unknown instance field: \{field}", span~)
             }
             _ => raise Unsupported(message="Field access on non-struct type: \{ty}", span~)
           }
@@ -1009,7 +1008,7 @@ fn elaborate_expr(
       let lsb = self.elaborate_expr!(lsb, mod~, env~).expect_integer!(lsb.span())
 
       if msb < lsb {
-        raise Unreachable(message="Invalid slicing range", span=expr.span())
+        raise ElaboratorError::Unreachable(message="Invalid slicing range", span=expr.span())
       }
 
       Value::Signal(@rtlil.SigChunk(signal=sig, offset=msb, width=(msb - lsb) + 1))
@@ -1040,7 +1039,7 @@ fn elaborate_expr(
       Value::Vector(values)
     }
     Spread(span~, ..) => {
-      raise Unreachable(message="Spread operator outside Vector", span~)
+      raise ElaboratorError::Unreachable(message="Spread operator outside Vector", span~)
     }
     Ternary(span~, ..) => {
       raise TernaryExprAfterSimplification(span~)
@@ -1267,7 +1266,7 @@ fn elaborate_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: @rtlil.Module, env~
       mod.connect!(sig1, sig2, span~)
     }
     For(span~, ..) => {
-      raise Unreachable(message="For loop after simplification", span~)
+      raise ElaboratorError::Unreachable(message="For loop after simplification", span~)
     }
     Scope(body~, ..) => {
       for stmt in body {

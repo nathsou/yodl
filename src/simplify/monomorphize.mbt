@@ -351,7 +351,7 @@ fn monomorphize_module(
     mono_ports.push({
       name: port.name,
       ty: self.monomorphize_type!(port.ty, env=child_env, packages=full_path.packages),
-      dir: port.dir,
+      direction: port.direction,
       optional: port.optional,
       span: port.span,
       attributes: port.attributes,

@@ -1,7 +1,6 @@
 
 pub struct Simplifier {
   name_counts: Map[String, Int]
-  mut is_inside_condition: Bool
 }
 
 struct UniqueName {
@@ -26,7 +25,7 @@ enum SimplifierEnvEntry {
 typealias SimplifierEnv = @elaborate.Scope[@parse.Path, SimplifierEnvEntry]
 
 pub fn Simplifier::new() -> Simplifier {
-  { name_counts: {}, is_inside_condition: false }
+  { name_counts: {} }
 }
 
 pub type! SimplifierError {
@@ -74,13 +73,8 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // - Rewrite slicing expressions using width and offset to absolute slicing expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr! {
   let rewr_stmt = fn!(stmt) { self.simplify_stmt!(stmt, env~, scope~) }
-  let prev_is_inside_condition = self.is_inside_condition
-  self.is_inside_condition = match expr {
-    Match(_) | Ternary(_) => true
-    _ => self.is_inside_condition
-  }
 
-  let res = @parse.rewrite_expr!(expr, rewr_stmt~, rewr_expr=fn(expr) {
+  @parse.rewrite_expr!(expr, rewr_stmt~, rewr_expr=fn(expr) {
     (match expr {
       Identifier(path~, span~, ty~) => {
         match env.resolve(path) {
@@ -239,10 +233,6 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
         @parse.Expr::Slicing(expr~, msb~, lsb=@parse.Expr::nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
       })
       Block(body~, last~, span~, ty~) => {
-        if self.is_inside_condition {
-          return None
-        }
-
         let block_env = env.child()
 
         for stmt in body {
@@ -261,10 +251,6 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
       _ => None
     })
   })
-
-  self.is_inside_condition = prev_is_inside_condition
-
-  res
 }
 
 pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> Iter[@parse.Stmt]! {

@@ -767,7 +767,7 @@ fn parse_port(self: Parser, dir~: PortDirection) -> Port! {
     None => dir
   }
 
-  { name, ty, dir, optional, attributes, span: self.span(start_idx) }
+  { name, ty, direction: dir, optional, attributes, span: self.span(start_idx) }
 }
 
 fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]! {
