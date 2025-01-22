@@ -60,6 +60,19 @@ pub(all) struct Const {
   span: @parse.Span
 } derive(Show)
 
+pub fn Const::zeros(width: Int, span: @parse.Span) -> Const {
+  {
+    bits: { bits: @utils.fill(width, Zero), value: Some(BigInt::from_int(0)), span },
+    width,
+    base: ConstBase::Bin,
+    span,
+  }
+}
+
+pub fn Const::xs(width: Int, span: @parse.Span) -> Const {
+  { bits: { bits: @utils.fill(width, X), value: None, span }, width, base: ConstBase::Bin, span }
+}
+
 pub fn Expr::width(self: Expr) -> Int {
   match self {
     Const(value~, ..) => value.width

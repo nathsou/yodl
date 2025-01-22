@@ -137,19 +137,31 @@ fn lower_stmt(self: Lowerer, stmt: @parse.Stmt, mod~: &ModuleLike, env~: LowerEn
     Let(name~, ty~, expr~, span~) => {
       let path = @parse.Path::new([], name)
       let width = get_width!(ty, span~)
-      let yir_expr = match expr {
-        Some(expr) => Some(self.lower_expr!(expr, mod~, env~, binding=Some(name)).as_expr())
+      let val = match expr {
+        Some(expr) => Some(self.lower_expr!(expr, mod~, env~, binding=Some(name)))
         None => None
       }
       
       env.declare!(path, Expr(expr=Variable(name~, width~, span~), span~))
       mod.add_stmt(Wire(name~, width~, span~))
 
-      match yir_expr {
-        Some(yir_expr) => {
-          mod.add_stmt(Assign(lhs=Variable(name~, width~, span~), rhs=yir_expr, span~))
+      match val {
+        Some(val) => {
+          match val {
+            Expr(expr~, span~) => {
+              mod.add_stmt(Wire(name~, width~, span~))
+              mod.add_stmt(Assign(lhs=Variable(name~, width~, span~), rhs=expr, span~))
+            }
+            Vector(_) | Struct(_) as val => {
+              env.declare!(path, val)
+            }
+          }
         }
-        None => ()
+        None => {
+          let ty = ty.val.or_error!(UntypedLet(span~))
+          let val = self.default_value!(ty~, mod~, env~, span~, name_binding=name)
+          env.declare!(path, val)
+        }
       }
     }
     Assign(lhs~, rhs~, span~) => {
@@ -495,6 +507,71 @@ pub fn lower(self: Lowerer, decls: Iter[@parse.Decl]) -> Unit! {
         self.declared_modules[sig.path] = sig
       }
       Const(_) | Package(_) | Import(_) => ()
+    }
+  }
+}
+
+fn default_value(
+  self: Lowerer,
+  ty~: @parse.Type,
+  mod~: &ModuleLike,
+  env~: LowerEnv,
+  span~: @parse.Span,
+  name_binding~: String
+) -> Val! {
+  match ty {
+    Nat => Val::Expr(expr=Const(value=@yir.Const::xs(32, span), span~), span~)
+    Logic => Val::Expr(expr=Const(value=@yir.Const::xs(1, span), span~), span~) 
+    Vector(ty~, len~) => match ty {
+      Logic => {
+        let width = len.expect_fixed!(span)
+        mod.add_stmt(Wire(name=name_binding, width~, span~))
+        Val::Expr(expr=Variable(name=name_binding, width~, span~), span~)
+      }
+      _ => {
+        let len = len.expect_fixed!(span)
+        let val = Array::new(capacity=len)
+
+        for i in 0..<len {
+          val.push(self.default_value!(ty~, mod~, env~, span~, name_binding=name_binding + "[\{i}]"))
+        }
+
+        Val::Vector(elems=val, span~)
+      }
+    }
+    Instance(sig={ path, span, .. }, params~, accessed_ports=_) => {
+      let inst = @parse.Expr::Instance(
+        path~,
+        params={
+          let new_params: Array[@parse.InstanceParam] = Array::new(capacity=params.size())
+
+          for name, param in params {
+            new_params.push({ name: Some(name), value: param.as_expr!(span~) })
+          }
+
+          @parse.InstanceParams(new_params)
+        },
+        ports={},
+        span~,
+        ty={ val: Some(ty) },
+      )
+
+      self.lower_expr!(inst, mod~, env~, binding=Some(name_binding))
+    }
+    Name(_) => {
+      raise UnresolvedType(span~)
+    }
+    Struct(fields) => {
+      let val = Map::new(capacity=fields.size())
+
+      for field, ty in fields {
+        val[field] = self.default_value!(ty~, mod~, env~, span~, name_binding=name_binding + ".\{field}")
+      }
+
+      Val::Struct(fields=val, span~)
+    }
+    String(_) => {
+      raise LoweringError::Unreachable(message="String type during elaboration", span~)
     }
   }
 }
