@@ -8,7 +8,8 @@ pub(all) enum Expr {
   Select(expr~: Expr, offset~: Int, width~: Int, span~: @parse.Span)
   Mux(subject~: Expr, cases~: Array[(Const, Expr)], default~: Expr?, width~: Int, span~: @parse.Span)
   MemRead(mem_name~: String, addr~: Expr, width~: Int, span~: @parse.Span)
-} derive(Show)
+  Block(body~: Array[Stmt], last~: Expr?, width~: Int, span~: @parse.Span)
+}
 
 pub(all) enum Stmt {
   Expr(expr~: Expr, span~: @parse.Span)
@@ -17,60 +18,58 @@ pub(all) enum Stmt {
   Assign(lhs~: Expr, rhs~: Expr, span~: @parse.Span)
   Memory(name~: String, width~: Int, depth~: Int, read_ports~: Int, write_ports~: Int, span~: @parse.Span)
   MemWrite(mem_name~: String, addr~: Expr, data~: Expr, span~: @parse.Span)
-  Instance(name~: String, module_name~: String, ports~: Map[String, Expr], span~: @parse.Span)
+  Instance(module_name~: String, ports~: Map[String, Expr], span~: @parse.Span)
   Process(triggers~: ProcessTriggers, body~: Array[Stmt], span~: @parse.Span)
-} derive(Show)
+}
 
 pub(all) enum ProcessTriggers {
   All
   Events(Array[SensitivityListEvent])
-} derive(Show)
+}
 
 pub(all) struct SensitivityListEvent {
   polarity: Polarity?
   signal: String
-} derive(Show)
+}
 
 pub(all) enum Polarity {
   Posedge; Negedge
-} derive(Eq, Show)
+} derive(Eq)
 
 pub(all) struct Port {
   name: String
   width: Int
   direction: @parse.PortDirection
   span: @parse.Span
-} derive(Show)
+}
 
 pub(all) struct Module {
   name: String
   ports: Array[Port]
   body: Array[Stmt]
   span: @parse.Span
-} derive(Show)
+}
 
 pub(all) enum ConstBase {
   Bin; Oct; Dec; Hex
-} derive(Show)
+}
 
 pub(all) struct Const {
   bits: @parse.Bits
   width: Int
-  base: ConstBase
-  span: @parse.Span
-} derive(Show)
+  base: Int
+}
 
-pub fn Const::zeros(width: Int, span: @parse.Span) -> Const {
+pub fn Const::zeros(width: Int, span~: @parse.Span) -> Const {
   {
     bits: { bits: @utils.fill(width, Zero), value: Some(BigInt::from_int(0)), span },
     width,
-    base: ConstBase::Bin,
-    span,
+    base: 2,
   }
 }
 
-pub fn Const::xs(width: Int, span: @parse.Span) -> Const {
-  { bits: { bits: @utils.fill(width, X), value: None, span }, width, base: ConstBase::Bin, span }
+pub fn Const::xs(width: Int, span~: @parse.Span) -> Const {
+  { bits: { bits: @utils.fill(width, X), value: None, span }, width, base: 2 }
 }
 
 pub fn Expr::width(self: Expr) -> Int {
@@ -83,6 +82,7 @@ pub fn Expr::width(self: Expr) -> Int {
     Select(width~, ..) => width
     Mux(width~, ..) => width
     MemRead(width~, ..) => width
+    Block(width~, ..) => width
   }
 }
 

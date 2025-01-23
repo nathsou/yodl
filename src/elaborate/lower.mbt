@@ -137,32 +137,23 @@ fn lower_stmt(self: Lowerer, stmt: @parse.Stmt, mod~: &ModuleLike, env~: LowerEn
     Let(name~, ty~, expr~, span~) => {
       let path = @parse.Path::new([], name)
       let width = get_width!(ty, span~)
+      mod.add_stmt(Wire(name~, width~, span~))
+
       let val = match expr {
         Some(expr) => Some(self.lower_expr!(expr, mod~, env~, binding=Some(name)))
         None => None
       }
       
-      env.declare!(path, Expr(expr=Variable(name~, width~, span~), span~))
-      mod.add_stmt(Wire(name~, width~, span~))
+      let var = @yir.Expr::Variable(name~, width~, span~)
 
       match val {
         Some(val) => {
-          match val {
-            Expr(expr~, span~) => {
-              mod.add_stmt(Wire(name~, width~, span~))
-              mod.add_stmt(Assign(lhs=Variable(name~, width~, span~), rhs=expr, span~))
-            }
-            Vector(_) | Struct(_) as val => {
-              env.declare!(path, val)
-            }
-          }
+          mod.add_stmt(Assign(lhs=var, rhs=val.as_expr(), span~))
         }
-        None => {
-          let ty = ty.val.or_error!(UntypedLet(span~))
-          let val = self.default_value!(ty~, mod~, env~, span~, name_binding=name)
-          env.declare!(path, val)
-        }
+        None => ()
       }
+      
+      env.declare!(path, Expr(expr=var, span~))
     }
     Assign(lhs~, rhs~, span~) => {
       let yir_lhs = self.lower_expr!(lhs, mod~, env~, binding=None).as_expr()
@@ -200,14 +191,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
       let yir_const: @yir.Const = {
         bits,
         width,
-        base: match base {
-          2 => Bin
-          8 => Oct
-          10 => Dec
-          16 => Hex
-          _ => raise Failure("invalid base")
-        },
-        span,
+        base,
       }
       
       Expr(expr=Const(value=yir_const, span~), span~)
@@ -374,15 +358,20 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
       }
 
       let inst = @yir.Stmt::Instance(
-        name=inst_name,
         module_name=path.to_string(),
         ports=connections,
         span=span,
       )
 
+      let width = get_width!(inst_ty, span~)
       mod.add_stmt(inst)
 
-      Expr(expr=Variable(name=inst_name, width=get_width!(inst_ty, span~), span~), span~)
+      let inst_expr = match fields.size() {
+        1 => fields.values().map(Val::as_expr).collect()[0]
+        _ => Concat(elems=fields.values().map(Val::as_expr).collect(), width~, span~)
+      }
+
+      Expr(expr=inst_expr, span~)
     }
     Indexing(expr~, index~, span=_, ty=_) => {
       let val = self.lower_expr!(expr, mod~, env~)
@@ -422,13 +411,10 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
             raise LoweringError::Unreachable(message="Slice out of bounds, width: \{width}, msb: \{msb}, lsb: \{lsb}", span~)
           }
 
-          Expr(expr=Select(expr~, offset=lsb, width=msb - lsb + 1, span~), span~)
+          Expr(expr=Select(expr~, offset=msb, width=msb - lsb + 1, span~), span~)
         }
         _ => raise Unsupported(message="Slicing on non-vector data type", span=expr.span())
       }
-    }
-    String(_) | Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | Block(_) => {
-      raise UnexpectedExprDuringElaboration(span=expr.span())
     }
     FieldAccess(expr=accessed_expr, field~, span~, ..) => {
       let val = self.lower_expr!(accessed_expr, mod~, env~)
@@ -494,6 +480,28 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         }
       }
     }
+    Block(body~, last~, span~, ..) => {
+      let block_env = env.child()
+      let stmts: StmtContainer = []
+
+      for stmt in body {
+        self.lower_stmt!(stmt, mod=stmts, env=block_env)
+      }
+
+      let (last, width) = match last {
+        Some(last) => {
+          let val = self.lower_expr!(last, mod~, env=block_env)
+          (Some(val.as_expr()), val.width())
+        }
+        None => (None, 0)
+      }
+
+      let yir_block = @yir.Expr::Block(body=stmts._, last~, width~, span~)
+      Val::Expr(expr=yir_block, span~)
+    }
+    String(_) | Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) => {
+      raise UnexpectedExprDuringElaboration(span=expr.span())
+    }
   }
 }
 
@@ -507,71 +515,6 @@ pub fn lower(self: Lowerer, decls: Iter[@parse.Decl]) -> Unit! {
         self.declared_modules[sig.path] = sig
       }
       Const(_) | Package(_) | Import(_) => ()
-    }
-  }
-}
-
-fn default_value(
-  self: Lowerer,
-  ty~: @parse.Type,
-  mod~: &ModuleLike,
-  env~: LowerEnv,
-  span~: @parse.Span,
-  name_binding~: String
-) -> Val! {
-  match ty {
-    Nat => Val::Expr(expr=Const(value=@yir.Const::xs(32, span), span~), span~)
-    Logic => Val::Expr(expr=Const(value=@yir.Const::xs(1, span), span~), span~) 
-    Vector(ty~, len~) => match ty {
-      Logic => {
-        let width = len.expect_fixed!(span)
-        mod.add_stmt(Wire(name=name_binding, width~, span~))
-        Val::Expr(expr=Variable(name=name_binding, width~, span~), span~)
-      }
-      _ => {
-        let len = len.expect_fixed!(span)
-        let val = Array::new(capacity=len)
-
-        for i in 0..<len {
-          val.push(self.default_value!(ty~, mod~, env~, span~, name_binding=name_binding + "[\{i}]"))
-        }
-
-        Val::Vector(elems=val, span~)
-      }
-    }
-    Instance(sig={ path, span, .. }, params~, accessed_ports=_) => {
-      let inst = @parse.Expr::Instance(
-        path~,
-        params={
-          let new_params: Array[@parse.InstanceParam] = Array::new(capacity=params.size())
-
-          for name, param in params {
-            new_params.push({ name: Some(name), value: param.as_expr!(span~) })
-          }
-
-          @parse.InstanceParams(new_params)
-        },
-        ports={},
-        span~,
-        ty={ val: Some(ty) },
-      )
-
-      self.lower_expr!(inst, mod~, env~, binding=Some(name_binding))
-    }
-    Name(_) => {
-      raise UnresolvedType(span~)
-    }
-    Struct(fields) => {
-      let val = Map::new(capacity=fields.size())
-
-      for field, ty in fields {
-        val[field] = self.default_value!(ty~, mod~, env~, span~, name_binding=name_binding + ".\{field}")
-      }
-
-      Val::Struct(fields=val, span~)
-    }
-    String(_) => {
-      raise LoweringError::Unreachable(message="String type during elaboration", span~)
     }
   }
 }

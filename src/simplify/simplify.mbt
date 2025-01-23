@@ -232,22 +232,6 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
         let lsb = msb.as_int!() - width.as_int!() + 1
         @parse.Expr::Slicing(expr~, msb~, lsb=@parse.Expr::nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
       })
-      Block(body~, last~, span~, ty~) => {
-        let block_env = env.child()
-
-        for stmt in body {
-          scope.push_iter(self.simplify_stmt!(stmt, env=block_env, scope~))
-        }
-
-        Some(match last {
-          Some(last) => {
-            self.simplify_expr!(last, env=block_env, scope~)
-          }
-          None => {
-            @parse.Expr::Vector(elems=[], span~, ty~)
-          }
-        })
-      }
       _ => None
     })
   })

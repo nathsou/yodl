@@ -25,6 +25,7 @@ module TopSim(
 
     procedural {
         counter.d = counter.q + 1'd1;
+        state.d = state.q;
 
         match vga.is_active_area {
             1'b0 => {
