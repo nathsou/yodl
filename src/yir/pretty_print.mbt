@@ -85,6 +85,7 @@ pub fn emit_expr(self: YirEmitter, expr: Expr) -> Unit {
 
       match default {
         Some(value) => {
+          self._.write_indent()
           self._.write("default: ")
           self.emit_expr(value)
           self._.write(",\n")
@@ -95,12 +96,6 @@ pub fn emit_expr(self: YirEmitter, expr: Expr) -> Unit {
       self._.indent -= 1
       self._.write_indent()
       self._.write("}")
-    }
-    MemRead(mem_name~, addr~, ..) => {
-      self._.write(mem_name)
-      self._.write("[")
-      self.emit_expr(addr)
-      self._.write("]")
     }
     Block(body~, last~, ..) => {
       self._.write("{\n")
@@ -134,11 +129,50 @@ pub fn emit_stmt(self: YirEmitter, stmt: Stmt) -> Unit {
       self._.write("\n")
     }
     Wire(name~, width~, ..) => {
-      self._.emit("wire \{name}[\{width}]")
+      self._.emit("wire [\{width}] \{name}")
     }
-    Reg(name~, width~, async_reset~, ..) => {
-      let cell = if async_reset { "adff" } else { "dff" }
-      self._.emit("\{cell} \{name}[\{width}]")
+    Reg(width~, clk~, data_in~, async_reset~, enable~, reset~, data_out~, ..) => {
+      self._.emit("reg [\{width}](")
+      self._.indent += 1
+      self._.write_indent()
+      self._.write("async_reset: ")
+      self._.write(async_reset)
+      self._.write(",\n")
+      self._.write_indent()
+      self._.write("clk: ")
+      self.emit_expr(clk)
+      self._.write(",\n")
+      self._.write_indent()
+      self._.write("data_in: ")
+      self.emit_expr(data_in)
+      self._.write(",\n")
+      self._.write_indent()
+      self._.write("data_out: ")
+      self.emit_expr(data_out)
+      self._.write(",\n")
+
+      match enable {
+        Some(enable) => {
+          self._.write_indent()
+          self._.write("enable: ")
+          self.emit_expr(enable)
+          self._.write(",\n")
+        }
+        _ => ()
+      }
+
+      match reset {
+        Some(reset) => {
+          self._.write_indent()
+          self._.write("reset: ")
+          self.emit_expr(reset)
+          self._.write(",\n")
+        }
+        _ => ()
+      }
+
+      self._.indent -= 1
+      self._.emit(")")
     }
     Assign(lhs~, rhs~, ..) => {
       self._.write_indent()
@@ -147,14 +181,53 @@ pub fn emit_stmt(self: YirEmitter, stmt: Stmt) -> Unit {
       self.emit_expr(rhs)
       self._.write("\n")
     }
-    Memory(name~, width~, depth~, read_ports~, write_ports~, ..) => {
-      self._.write("memory \{name}[\{width}x\{depth}] \{read_ports} \{write_ports}")
-    }
-    MemWrite(mem_name~, addr~, data~, ..) => {
-      self._.emit("\{mem_name}[")
-      self.emit_expr(addr)
-      self._.write("] = ")
-      self.emit_expr(data)
+    Memory(width~, depth~, init~, clk~, read_addr~, write_addr~, write_enable~, data_in~, data_out~, span=_) => {
+      self._.emit("memory \{width}x\{depth}(")
+      self._.indent += 1
+
+      match init {
+        Some(init) => {
+          self._.write_indent()
+          self._.write("init: ")
+          self._.write(init)
+          self._.write(",\n")
+        }
+        None => ()
+      }
+
+      self._.write_indent()
+      self._.write("clk: ")
+      self.emit_expr(clk)
+      self._.write(",\n")
+      self._.write_indent()
+      self._.write("read_addr: ")
+      self.write_expr_array(read_addr)
+      self._.write(",\n")
+      self._.write_indent()
+      self._.write("write_addr: ")
+      self.write_expr_array(write_addr)
+      self._.write(",\n")
+      
+      match write_enable {
+        Some(write_enable) => {
+          self._.write_indent()
+          self._.write("write_enable: ")
+          self.write_expr_array(write_enable)
+          self._.write(",\n")
+        }
+        None => ()
+      }
+
+      self._.write_indent()
+      self._.write("data_in: ")
+      self.write_expr_array(data_in)
+      self._.write(",\n")
+      self._.write_indent()
+      self._.write("data_out: ")
+      self.write_expr_array(data_out)
+      self._.write(",\n")
+      self._.indent -= 1
+      self._.emit(")")
     }
     Instance(module_name~, ports~, ..) => {
       self._.emit("\{module_name}(")
@@ -223,4 +296,17 @@ pub fn emit_module(self: YirEmitter, mod: Module) -> Unit {
 
   self._.indent -= 1
   self._.write("}\n\n")
+}
+
+fn write_expr_array(self: YirEmitter, exprs: Array[Expr]) -> Unit {
+  self._.write("[")
+
+  for idx, expr in exprs {
+    self.emit_expr(expr)
+    if idx < exprs.length() - 1 {
+      self._.write(", ")
+    }
+  }
+
+  self._.write("]")
 }

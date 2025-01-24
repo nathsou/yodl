@@ -70,6 +70,7 @@ fn Val::expect_const(self: Val) -> @yir.Const!LoweringError {
 typealias LowerEnv = Scope[@parse.Path, Val]
 
 pub type! LoweringError {
+  UnresolvedIdentifier(path~: @parse.Path, span~: @parse.Span)
   UnexpectedStmtDuringElaboration(span~: @parse.Span)
   UnexpectedExprDuringElaboration(span~: @parse.Span)
   UntypedValue(span~: @parse.Span)
@@ -149,11 +150,20 @@ fn lower_stmt(self: Lowerer, stmt: @parse.Stmt, mod~: &ModuleLike, env~: LowerEn
       match val {
         Some(val) => {
           mod.add_stmt(Assign(lhs=var, rhs=val.as_expr(), span~))
+
+          match val {
+            Struct(_) => {
+              env.declare!(path, val)
+            }
+            _ => {
+              env.declare!(path, Expr(expr=var, span~))
+            }
+          }
         }
-        None => ()
+        None => {
+          env.declare!(path, Expr(expr=var, span~))
+        }
       }
-      
-      env.declare!(path, Expr(expr=var, span~))
     }
     Assign(lhs~, rhs~, span~) => {
       let yir_lhs = self.lower_expr!(lhs, mod~, env~, binding=None).as_expr()
@@ -196,10 +206,10 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
       
       Expr(expr=Const(value=yir_const, span~), span~)
     }
-    Identifier(path~, ..) => {
+    Identifier(path~, span~, ..) => {
       match env.resolve(path) {
         Some(val) => val
-        None => raise Failure("unresolved identifier '\{path}'")
+        None => raise UnresolvedIdentifier(path~, span~)
       }
     }
     Unary(op~, expr~, span~, ty~) => {
@@ -283,7 +293,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         raise ParametricInstanceDuringElaboration(span~)
       }
 
-      let (ports_sig, _params_map, _attributes) = match self.modules[path] {
+      let (ports_sig, params_map, attributes) = match self.modules[path] {
         Some(inst_mod) => {
           let ports_sig = {}
 
@@ -357,21 +367,183 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         raise ExtraPorts(extra_ports~, span~)
       }
 
-      let inst = @yir.Stmt::Instance(
-        module_name=path.to_string(),
-        ports=connections,
-        span=span,
-      )
+      let inst = if attributes.contains("internal") {
+        fn get_port(port_name: String) -> @yir.Expr! {
+          match connections[port_name] {
+            Some(expr) => expr
+            None => raise UnknownModulePort(module_path=path, port_name~, span~)
+          }
+        }
 
-      let width = get_width!(inst_ty, span~)
-      mod.add_stmt(inst)
+        fn get_param(name: String) -> @parse.Expr! {
+          match params_map[name] {
+            Some(param) => param
+            None => raise UnknownModuleParameter(name~, span~)
+          }
+        }
 
-      let inst_expr = match fields.size() {
-        1 => fields.values().map(Val::as_expr).collect()[0]
-        _ => Concat(elems=fields.values().map(Val::as_expr).collect(), width~, span~)
+        match path {
+          { packages: [], member: "Reg" | "RegSyncReset" as internal_module_name } => {
+            let width = get_param!("Width").as_int!()
+            let sync_reset = internal_module_name == "RegSyncReset"
+            let uses_rst = uses_port("rst")
+            let uses_en = uses_port("en")
+            
+            @yir.Stmt::Reg(
+              width~,
+              async_reset=not(sync_reset),
+              clk=get_port!("clk"),
+              data_in=get_port!("d"),
+              enable=if uses_en { Some(get_port!("en")) } else { None },
+              reset=if uses_rst { Some(get_port!("rst")) } else { None },
+              data_out=get_port!("q"),
+              span~,
+            )
+          }
+          { packages: [], member: "Memory" } => {
+            let width = get_param!("Width").as_int!()
+            let depth = get_param!("Depth").as_int!()
+            let read_ports = get_param!("ReadPorts").as_int!()
+            let write_ports = get_param!("WritePorts").as_int!()
+            let clamped_write_ports = @utils.max(write_ports, 1)
+            let abits = @utils.clog2(depth + 1)
+
+            let init = match params_map["Init"] {
+              Some(Natural(bits~, width=Some(init_width), ..)) => {
+                if init_width != depth * width {
+                  raise InvalidMemoryInitValue(
+                    span~,
+                    expected_size=depth * width,
+                    actual_size=Some(init_width),
+                  )
+                }
+
+                bits
+              }
+              _ => raise InvalidMemoryInitValue(
+                span~,
+                expected_size=depth * width,
+                actual_size=None,
+              )
+            }
+
+            let uses_data_in = uses_port("data_in")
+            let uses_write_enable = uses_port("write_enable")
+            let uses_write_addr = uses_port("write_addr")
+            let is_writeable = uses_data_in || uses_write_enable || uses_write_addr
+
+            if is_writeable && not(uses_data_in && uses_write_enable && uses_write_addr) {
+              let missing_connections = []
+
+              if not(uses_data_in) {
+                missing_connections.push("data_in")
+              }
+
+              if not(uses_write_enable) {
+                missing_connections.push("write_enable")
+              }
+
+              if not(uses_write_addr) {
+                missing_connections.push("write_addr")
+              }
+
+              raise MissingConnectionsOnWriteableMemoryInstance(missing_connections~, span~)
+            }
+
+            let read_addrs = Array::new(capacity=read_ports)
+
+            for i in 0..<read_ports {
+              read_addrs.push(@yir.Expr::Select(
+                expr=get_port!("read_addr"),
+                offset=(read_ports - i) * abits - 1,
+                width=abits,
+                span~,
+              ))
+            }
+
+            let write_addrs = Array::new(capacity=clamped_write_ports)
+
+            for i in 0..<write_ports {
+              write_addrs.push(@yir.Expr::Select(
+                expr=get_port!("write_addr"),
+                offset=(write_ports - i) * abits - 1,
+                width=abits,
+                span~,
+              ))
+            }
+
+            let write_enables = if uses_write_enable {
+              let write_enables = Array::new(capacity=write_ports)
+
+              for i in 0..<write_ports {
+                write_enables.push(@yir.Expr::Select(
+                  expr=get_port!("write_enable"),
+                  offset=i,
+                  width=1,
+                  span~,
+                ))
+              }
+
+              Some(write_enables)
+            } else {
+              None
+            }
+
+            let data_ins = Array::new(capacity=clamped_write_ports)
+
+            for i in 0..<clamped_write_ports {
+              data_ins.push(@yir.Expr::Select(
+                expr=get_port!("data_in"),
+                offset=(clamped_write_ports - i) * width - 1,
+                width=width,
+                span~,
+              ))
+            }
+
+            let data_out = Array::new(capacity=read_ports)
+          
+            for i in 0..<read_ports {
+              data_out.push(@yir.Expr::Select(
+                expr=get_port!("data_out"),
+                offset=(read_ports - i) * width - 1,
+                width=width,
+                span~,
+              ))
+            }
+
+            @yir.Stmt::Memory(
+              width~,
+              depth~,
+              init=Some(init),
+              clk=get_port!("clk"),
+              read_addr=read_addrs,
+              write_addr=write_addrs,
+              write_enable=write_enables,
+              data_in=data_ins,
+              data_out=data_out,
+              span~, 
+            )
+          }
+          _ => raise UnknownModuleMarkedAsInternal(path~, span~)
+        }
+      } else {
+        @yir.Stmt::Instance(
+          module_name=path.to_string(),
+          ports=connections,
+          span=span,
+        )
       }
 
-      Expr(expr=inst_expr, span~)
+      mod.add_stmt(inst)
+
+      for port_name, port_expr in inline_connections {
+        mod.add_stmt(Assign(lhs=connections[port_name].unwrap(), rhs=port_expr, span~))
+      }
+
+      match fields.size() {
+        1 => Expr(expr=fields.values().map(Val::as_expr).collect()[0], span~)
+        _ => Struct(fields~, span~)
+      }
     }
     Indexing(expr~, index~, span=_, ty=_) => {
       let val = self.lower_expr!(expr, mod~, env~)
@@ -416,8 +588,21 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         _ => raise Unsupported(message="Slicing on non-vector data type", span=expr.span())
       }
     }
-    FieldAccess(expr=accessed_expr, field~, span~, ..) => {
-      let val = self.lower_expr!(accessed_expr, mod~, env~)
+    FieldAccess(expr=accessed_expr, field~, span~, ty=_) => {
+      let mut val = self.lower_expr!(accessed_expr, mod~, env~)
+
+      match val {
+        Expr(expr=Variable(name~, ..), ..) => {
+          let path = @parse.Path::new([], name)
+          match env.resolve(path) {
+            Some(resolved_val) => {
+              val = resolved_val
+            }
+            _ => ()
+          }
+        }
+        _ => ()
+      }
 
       match val {
         Struct(fields~, ..) => {
@@ -480,24 +665,45 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         }
       }
     }
-    Block(body~, last~, span~, ..) => {
+    Block(body~, last~, span~, ..) as block_expr => {
       let block_env = env.child()
-      let stmts: StmtContainer = []
+      let mut contains_assignments = false
 
-      for stmt in body {
-        self.lower_stmt!(stmt, mod=stmts, env=block_env)
-      }
-
-      let (last, width) = match last {
-        Some(last) => {
-          let val = self.lower_expr!(last, mod~, env=block_env)
-          (Some(val.as_expr()), val.width())
+      @parse.visit_expr!(block_expr, on_expr=fn(_) { true }, on_stmt=fn(stmt) {
+        match stmt {
+          Assign(..) => contains_assignments = true
+          _ => ()
         }
-        None => (None, 0)
-      }
 
-      let yir_block = @yir.Expr::Block(body=stmts._, last~, width~, span~)
-      Val::Expr(expr=yir_block, span~)
+        false
+      })
+
+      if contains_assignments {
+        let stmts: StmtContainer = []
+        for stmt in body {
+          self.lower_stmt!(stmt, mod=stmts, env=block_env)
+        }
+
+        let (last, width) = match last {
+          Some(last) => {
+            let val = self.lower_expr!(last, mod~, env=block_env)
+            (Some(val.as_expr()), val.width())
+          }
+          None => (None, 0)
+        }
+
+        let yir_block = @yir.Expr::Block(body=stmts._, last~, width~, span~)
+        Val::Expr(expr=yir_block, span~)
+      } else {
+        for stmt in body {
+          self.lower_stmt!(stmt, mod~, env=block_env)
+        }
+
+        match last {
+          Some(last) => self.lower_expr!(last, mod~, env=block_env)
+          None => Val::Expr(expr=@yir.Expr::Concat(elems=[], width=0, span~), span~)
+        }
+      }
     }
     String(_) | Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())

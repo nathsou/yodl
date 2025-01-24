@@ -7,17 +7,35 @@ pub(all) enum Expr {
   Concat(elems~: Array[Expr], width~: Int, span~: @parse.Span)
   Select(expr~: Expr, offset~: Int, width~: Int, span~: @parse.Span)
   Mux(subject~: Expr, cases~: Array[(Const, Expr)], default~: Expr?, width~: Int, span~: @parse.Span)
-  MemRead(mem_name~: String, addr~: Expr, width~: Int, span~: @parse.Span)
   Block(body~: Array[Stmt], last~: Expr?, width~: Int, span~: @parse.Span)
 }
 
 pub(all) enum Stmt {
   Expr(expr~: Expr, span~: @parse.Span)
   Wire(name~: String, width~: Int, span~: @parse.Span)
-  Reg(name~: String, width~: Int, async_reset~: Bool, span~: @parse.Span)
+  Reg(
+    width~: Int,
+    async_reset~: Bool,
+    clk~: Expr,
+    data_in~: Expr,
+    enable~: Expr?,
+    reset~: Expr?,
+    data_out~: Expr,
+    span~: @parse.Span,
+  )
   Assign(lhs~: Expr, rhs~: Expr, span~: @parse.Span)
-  Memory(name~: String, width~: Int, depth~: Int, read_ports~: Int, write_ports~: Int, span~: @parse.Span)
-  MemWrite(mem_name~: String, addr~: Expr, data~: Expr, span~: @parse.Span)
+  Memory(
+    width~: Int,
+    depth~: Int,
+    init~: @parse.Bits?,
+    clk~: Expr,
+    read_addr~: Array[Expr],
+    write_addr~: Array[Expr],
+    write_enable~: Array[Expr]?,
+    data_in~: Array[Expr],
+    data_out~: Array[Expr],
+    span~: @parse.Span,
+  )
   Instance(module_name~: String, ports~: Map[String, Expr], span~: @parse.Span)
   Process(triggers~: ProcessTriggers, body~: Array[Stmt], span~: @parse.Span)
 }
@@ -81,7 +99,6 @@ pub fn Expr::width(self: Expr) -> Int {
     Concat(width~, ..) => width
     Select(width~, ..) => width
     Mux(width~, ..) => width
-    MemRead(width~, ..) => width
     Block(width~, ..) => width
   }
 }
