@@ -105,37 +105,35 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
     }
   }
 
-  let elaborator = @elaborate.Elaborator::new()
-
-  for decl in simplified_decls {
-    elaborator.elaborate_decl!(decl)
+  let yir = {
+    let low = @elaborate.Lowerer::new()
+    low.lower!(simplified_decls.iter())
+    low.modules
   }
-
-  let mut design = @utils.map_keys(elaborator.modules, fn(_, mod) { mod.name })
 
   for cmd in commands {
     match cmd {
-      WriteRTLIL(path~) => {
-        let rtlil = {
-          let serializer = @rtlil.Serializer::new(
-            autoidx=elaborator.autoidx,
-            modules=@utils.map_keys(design, fn(id, _) { id.to_string() }),
-          )
+      // WriteRTLIL(path~) => {
+      //   let rtlil = {
+      //     let serializer = @rtlil.Serializer::new(
+      //       autoidx=elaborator.autoidx,
+      //       modules=@utils.map_keys(design, fn(id, _) { id.to_string() }),
+      //     )
 
-          serializer.to_string()
-        }
+      //     serializer.to_string()
+      //   }
 
-        match path {
-          Some(path) => {
-            @fs.write_string_to_file(path~, content=rtlil)
-          }
-          None => {
-            println(rtlil)
-          }
-        }
-      }
+      //   match path {
+      //     Some(path) => {
+      //       @fs.write_string_to_file(path~, content=rtlil)
+      //     }
+      //     None => {
+      //       println(rtlil)
+      //     }
+      //   }
+      // }
       WriteVerilog(path~) => {
-        let exporter = @verilog.VerilogExporter::new(design.values().collect())
+        let exporter = @verilog.VerilogExporter::new(yir.values().collect())
         let verilog_decls = exporter.export!()
         let emitter = @verilog.VerilogEmitter::new()
         emitter.emit_decls(verilog_decls)
@@ -151,18 +149,13 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
         }
       }
       WriteYIR => {
-        let low = @elaborate.Lowerer::new()
-        low.lower!(simplified_decls.iter())
         let emitter = @yir.YirEmitter::new()
 
-        for mod in low.modules.values() {
+        for mod in yir.values() {
           emitter.emit_module(mod)
         }
 
         println(emitter._)
-      }
-      Flatten => {
-        design = @rtlil.FlattenPass::new(design).run()
       }
       _ => ()
     }

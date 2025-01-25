@@ -76,7 +76,7 @@ pub(all) struct Const {
   bits: @parse.Bits
   width: Int
   base: Int
-}
+} derive(Eq)
 
 pub fn Const::zeros(width: Int, span~: @parse.Span) -> Const {
   {
@@ -88,6 +88,10 @@ pub fn Const::zeros(width: Int, span~: @parse.Span) -> Const {
 
 pub fn Const::xs(width: Int, span~: @parse.Span) -> Const {
   { bits: { bits: @utils.fill(width, X), value: None, span }, width, base: 2 }
+}
+
+pub fn Const::from(value: Int, width~: Int, span~: @parse.Span) -> Const! {
+  { bits: @parse.Bits::from!(value, width=Some(width), span~), width, base: 10 }
 }
 
 pub fn Expr::width(self: Expr) -> Int {
@@ -105,4 +109,134 @@ pub fn Expr::width(self: Expr) -> Int {
 
 pub fn Module::add_stmt(self: Module, stmt: Stmt) -> Unit {
   self.body.push(stmt)
+}
+
+pub fn Expr::child_statements(self: Expr) -> Iter[Stmt] {
+  match self {
+    Const(_) => Iter::empty()
+    Variable(_) => Iter::empty()
+    Unary(expr~, ..) => expr.child_statements()
+    Binary(lhs~, rhs~, ..) => lhs.child_statements() + rhs.child_statements()
+    Concat(elems~, ..) => {
+      let mut iter = Iter::empty()
+
+      for elem in elems {
+        iter = iter + elem.child_statements()
+      }
+
+      iter
+    }
+    Select(expr~, ..) => expr.child_statements()
+    Mux(subject~, cases~, default~, ..) => {
+      let mut iter = subject.child_statements()
+
+      for case in cases {
+        iter = iter + case.1.child_statements()
+      }
+
+      match default {
+        Some(expr) => iter = iter + expr.child_statements()
+        None => ()
+      }
+
+      iter
+    }
+    Block(body~, last~, ..) => {
+      let mut iter = Iter::empty()
+
+      for stmt in body {
+        iter = iter + Iter::singleton(stmt) + stmt.child_statements()
+      }
+
+      match last {
+        Some(expr) => iter = iter + expr.child_statements()
+        None => ()
+      }
+
+      iter
+    }
+  }
+}
+
+pub fn Stmt::child_statements(self: Stmt) -> Iter[Stmt] {
+  match self {
+    Expr(expr~, ..) => expr.child_statements()
+    Wire(_) => Iter::empty()
+    Reg(clk~, data_in~, enable~, reset~, data_out~, ..) => {
+      let mut iter = clk.child_statements()
+      iter = iter + data_in.child_statements()
+
+      match enable {
+        Some(expr) => iter = iter + expr.child_statements()
+        None => ()
+      }
+
+      match reset {
+        Some(expr) => iter = iter + expr.child_statements()
+        None => ()
+      }
+
+      iter = iter + data_out.child_statements()
+      iter
+    }
+    Assign(lhs~, rhs~, ..) => lhs.child_statements() + rhs.child_statements()
+    Memory(clk~, read_addr~, write_addr~, write_enable~, data_in~, data_out~, ..) => {
+      let mut iter = clk.child_statements()
+
+      for addr in read_addr {
+        iter = iter + addr.child_statements()
+      }
+
+      for addr in write_addr {
+        iter = iter + addr.child_statements()
+      }
+
+      match write_enable {
+        Some(enables) => {
+          for en in enables {
+            iter = iter + en.child_statements()
+          }
+        }
+        None => ()
+      }
+
+      for data in data_in {
+        iter = iter + data.child_statements()
+      }
+
+      for data in data_out {
+        iter = iter + data.child_statements()
+      }
+
+      iter
+    }
+    Instance(ports~, ..) => {
+      let mut iter = Iter::empty()
+
+      for port_expr in ports.values() {
+        iter = iter + port_expr.child_statements()
+      }
+
+      iter
+    }
+    Process(body~, ..) => {
+      let mut iter = Iter::empty()
+
+      for stmt in body {
+        iter = iter + Iter::singleton(stmt) + stmt.child_statements()
+      }
+
+      iter
+    }
+  }
+}
+
+pub fn Module::child_statements(self: Module) -> Iter[Stmt] {
+  let mut iter = Iter::empty()
+
+  for stmt in self.body {
+    iter = iter + Iter::singleton(stmt) + stmt.child_statements()
+  }
+
+  iter
 }

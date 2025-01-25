@@ -76,44 +76,31 @@ pub fn write_iter[T: Show](
   self.write(suffix)
 }
 
-fn show_binary_digit(digit: @parse.BinaryDigit, is_case_expr~: Bool = false) -> Char {
-  match digit {
-    Zero => '0'
-    One => '1'
-    X => 'x'
-    Z => 'z'
-    M => 'm'
-    DontCare => if is_case_expr { '?' } else { '-' }
-  }
-}
-
 impl Show for FunctionArgument with output(self, logger) {
   logger.write_string("\{self.direction} [\{self.width - 1}:0] \{self.name};")
 }
 
-fn show_expr(expr: Expr, logger: &Logger, is_case_expr~: Bool = false) -> Unit {
+fn show_expr(expr: Expr, logger: &Logger) -> Unit {
   match expr {
     Identifier(name) => logger.write_string(name)
-    Const(constant) => {
-      match constant {
-        ConstInteger(value) => logger.write_string(value.to_string())
-        ConstValue(width~, bits~) => {
-          logger.write_string("\{width}'b")
-
-          for d in bits {
-            logger.write_char(show_binary_digit(d, is_case_expr~))
-          }
-        }
-        ConstString(value) => logger.write_string("\"" + value + "\"")
+    Const(c) => {
+      match c.width { 
+        32 => logger.write_string(c.bits.as_bigint?().unwrap().to_string())
+        _ => logger.write_object(c)
       }
-    }
-    BitSelect(expr~, offset~) => {
-      logger.write_string("\{expr}[\{offset}]")
     }
     PartSelect(expr~, offset~, width~) => {
       match offset {
-        Const(ConstInteger(offset)) => {
-          logger.write_string("\{expr}[\{offset}:\{(offset + 1) - width}]")
+        Const(offset) => {
+          let offset = offset.bits.as_int?().unwrap()
+          let msb = (offset + 1) - width
+          let lsb = offset
+
+          if msb == lsb {
+            logger.write_string("\{expr}[\{offset}]")
+          } else {
+            logger.write_string("\{expr}[\{lsb}:\{msb}]")
+          }
         }
         _ => {
           match width {
@@ -159,20 +146,13 @@ fn show_expr(expr: Expr, logger: &Logger, is_case_expr~: Bool = false) -> Unit {
         Ternary => "?"
       }
 
-      logger.write_string("\{lhs} \{op} \{rhs}")
-    }
-    Ternary(cond~, then~, else_~) => {
-      logger.write_string("\{cond} ? \{then} : \{else_}")
-    }
-    FunctionCall(name~, args~) => {
-      logger.write_string(name)
-      logger.write_iter(args.iter(), prefix="(", suffix=")", sep=", ")
+      logger.write_string("(\{lhs} \{op} \{rhs})")
     }
   }
 }
 
 pub impl Show for Expr with output(self, logger) {
-  show_expr(self, logger, is_case_expr=false)
+  show_expr(self, logger)
 }
 
 pub impl Show for SensitivityListEvent with output(self, logger) {
@@ -182,7 +162,7 @@ pub impl Show for SensitivityListEvent with output(self, logger) {
     None => ()
   }
 
-  logger.write_string(self.signal)
+  logger.write_object(self.signal)
 }
 
 pub impl Show for PortType with output(self, logger) {
@@ -214,7 +194,12 @@ fn emit_expr(self: VerilogEmitter, expr: Expr) -> Unit {
 
 fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
   match stmt {
-    WireDecl(name~, msb~, lsb~, init~) | RegDecl(name~, msb~, lsb~, width=_, init~) => {
+    Expr(expr~) => {
+      self.write_indent()
+      self.emit_expr(expr)
+      self.write(";\n")
+    }
+    WireDecl(name~, top=msb, bot=lsb, init~) | RegDecl(name~, top=msb, bot=lsb, width=_, init~) => {
       let decl_type = match stmt { WireDecl(_) => "wire"; _ => "reg" }
       self.write_indent()
 
@@ -284,7 +269,7 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
       for case in cases {
         let (case_cond, case_body) = case
         self.write_indent()
-        show_expr(case_cond, self, is_case_expr=true)
+        show_expr(case_cond, self)
         self.write(": ")
         self.indent += 1
         self.emit_stmt(case_body)
@@ -356,22 +341,6 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
       }
 
       self.emit_stmt(body)
-    }
-    FunctionDecl(name~, output_width~, args~, body~) => {
-      self.write_indent()
-      self.write("function [\{output_width - 1}:0] \{name};\n")
-      self.indent += 1
-      
-      for arg in args {
-        self.write_indent()
-        self.write(arg.to_string())
-        self.write("\n")
-      }
-
-      self.emit_stmt(body)
-      self.indent -= 1
-      self.write_indent()
-      self.write("endfunction\n")
     }
     Initial(body~) => {
       self.write_indent()

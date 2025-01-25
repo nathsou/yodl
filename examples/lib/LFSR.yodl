@@ -3,15 +3,13 @@
 module LFSR<NumBits>(
     clk: logic,
     enable: logic,
-    seed_ready: logic,
-    seed_data: logic[NumBits],
 ) -> (
     q: logic[NumBits],
     done: logic,
 ) {
     let r_xnor = Reg<1>(clk);
     let r_lfsr = Reg<NumBits>(clk, en: enable, q);
-    r_lfsr.d = seed_ready ? seed_data : {r_lfsr.q[NumBits - 2:0], r_xnor.q};
+    r_lfsr.d = {r_lfsr.q[NumBits - 2:0], r_xnor.q};
 
     // https://docs.amd.com/v/u/en-US/xapp052
     r_xnor.d = match NumBits {
@@ -47,5 +45,5 @@ module LFSR<NumBits>(
         32 => r_lfsr.q[31] xnor r_lfsr.q[21] xnor r_lfsr.q[1] xnor r_lfsr.q[0],
     };
 
-    done = r_lfsr.q == seed_data;
+    done = r_lfsr.q == 0;
 }

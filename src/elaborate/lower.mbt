@@ -133,7 +133,10 @@ fn lower_stmt(self: Lowerer, stmt: @parse.Stmt, mod~: &ModuleLike, env~: LowerEn
   match stmt {
     Expr(expr~, span~) => {
       let yir_expr = self.lower_expr!(expr, mod~, env~, binding=None).as_expr()
-      mod.add_stmt(Expr(expr=yir_expr, span~))
+
+      if yir_expr.width() > 0 {
+        mod.add_stmt(Expr(expr=yir_expr, span~))
+      }
     }
     Let(name~, ty~, expr~, span~) => {
       let path = @parse.Path::new([], name)
@@ -298,7 +301,11 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
           let ports_sig = {}
 
           for wire in inst_mod.ports {
-            ports_sig[wire.name] = (wire.width, wire.span, false)
+            ports_sig[wire.name] = {
+              width: wire.width,
+              direction: wire.direction,
+              optional: false,
+            }
           }
 
           (ports_sig, {}, {})
@@ -315,7 +322,11 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
 
             for port in sig.ports {
               let width = port.ty.substitute(params_env).width!(port.span)
-              ports_sig[port.name] = (width, port.span, port.optional)
+              ports_sig[port.name] = {
+                width,
+                direction: port.direction,
+                optional: false,
+              }
             }
 
             (ports_sig, params_map, sig.attributes)
@@ -341,16 +352,15 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
       let inst_name = binding.or_else(fn() { path.to_string() + "$\{self.next_idx()}" })
 
       for port_name, port_sig in ports_sig {
-        let (width, span, optional) = port_sig
-        let skip = optional && not(uses_port(port_name))
+        let skip = port_sig.optional && not(uses_port(port_name))
 
         if not(skip) {
           let wire_name = "\{inst_name}.\{port_name}"
-          mod.add_stmt(Wire(name=wire_name, width~, span~))
-          connections[port_name] = Variable(name=wire_name, width~, span~)
+          mod.add_stmt(Wire(name=wire_name, width=port_sig.width, span~))
+          connections[port_name] = Variable(name=wire_name, width=port_sig.width, span~)
 
           if accessed_ports.contains(port_name) {
-            fields[port_name] = Val::Expr(expr=Variable(name=wire_name, width~, span~), span~)
+            fields[port_name] = Val::Expr(expr=Variable(name=wire_name, width=port_sig.width, span~), span~)
           }
         }
       }
@@ -537,7 +547,17 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
       mod.add_stmt(inst)
 
       for port_name, port_expr in inline_connections {
-        mod.add_stmt(Assign(lhs=connections[port_name].unwrap(), rhs=port_expr, span~))
+        let sig = ports_sig[port_name].unwrap()
+
+        let lhs = connections[port_name].unwrap()
+        let rhs = port_expr
+
+        let assignment = match sig.direction {
+          Input => @yir.Stmt::Assign(lhs~, rhs~, span~)
+          Output | Inout => @yir.Stmt::Assign(rhs=lhs, lhs=rhs, span~)
+        }
+
+        mod.add_stmt(assignment)
       }
 
       match fields.size() {
@@ -545,19 +565,11 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         _ => Struct(fields~, span~)
       }
     }
-    Indexing(expr~, index~, span=_, ty=_) => {
+    Indexing(expr~, index~, span~, ty=_) => {
       let val = self.lower_expr!(expr, mod~, env~)
       let idx = self.lower_expr!(index, mod~, env~).expect_const!().bits.as_int!()
 
       match val {
-        Expr(expr~, span~) => {
-          let width = expr.width()
-          if idx > width {
-            raise LoweringError::Unreachable(message="Index out of bounds, width: \{width}, index: \{idx}", span~)
-          }
-
-          Expr(expr=Select(expr~, offset=idx, width=1, span~), span~)
-        }
         Vector(elems~, span~) => {
           let len = elems.length()
 
@@ -567,7 +579,20 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
           
           elems[idx]
         }
-        _ => raise Unsupported(message="Indexing on non-vector data type", span=expr.span())
+        _ => {
+          match expr.ty().val.unwrap() {
+            Vector(ty=inner_ty, len=_) => {
+              let bits_per_elem = inner_ty.width!(span)
+              let lsb = idx * bits_per_elem
+              let msb = lsb + bits_per_elem - 1
+
+              Expr(expr=Select(expr=val.as_expr(), offset=msb, width=bits_per_elem, span~), span~)
+            }
+            _ => {
+              raise Unsupported(message="Indexing on non-vector data type'", span=expr.span())
+            }
+          }
+        }
       }
     }
     Slicing(expr~, msb~, lsb~, ..) => {
@@ -613,6 +638,10 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         }
         Expr(expr~, ..) => {
           let ty = accessed_expr.ty().val.or_error!(LoweringError::Unreachable(message="Untyped signal field access", span=accessed_expr.span()))
+
+          if expr.width() == 1 {
+            return Val::Expr(expr~, span~)
+          }
 
           match ty {
             Struct(fields) => {
@@ -723,4 +752,10 @@ pub fn lower(self: Lowerer, decls: Iter[@parse.Decl]) -> Unit! {
       Const(_) | Package(_) | Import(_) => ()
     }
   }
+}
+
+struct PortSignature {
+  width: Int
+  direction: @parse.PortDirection
+  optional: Bool
 }

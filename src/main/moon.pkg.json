@@ -3,7 +3,6 @@
   "import": [
     "nathsou/yodl/parse",
     "nathsou/yodl/elaborate",
-    "nathsou/yodl/rtlil",
     "nathsou/yodl/simplify",
     "nathsou/yodl/verilog",
     "nathsou/yodl/utils",

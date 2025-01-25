@@ -1,43 +1,90 @@
 
 pub struct VerilogExporter {
-  rtlil_modules: Array[@rtlil.Module]
+  yir_modules: Array[@yir.Module]
   verilog_decls: Array[Decl]
-  wires_assigned_in_processes: Set[@rtlil.Id]
+  mut is_inside_always_block: Bool
+  mut autoidx: Int
+  wires_assigned_in_always_blocks: Set[String]
 }
 
-pub fn VerilogExporter::new(modules: Array[@rtlil.Module]) -> VerilogExporter {
+pub fn VerilogExporter::new(modules: Array[@yir.Module]) -> VerilogExporter {
   {
-    rtlil_modules: modules,
+    yir_modules: modules,
     verilog_decls: [],
-    wires_assigned_in_processes: collect_wires_assigned_in_processes(modules),
+    is_inside_always_block: false,
+    autoidx: 0,
+    wires_assigned_in_always_blocks: collect_wires_assigned_in_always_blocks(modules),
   }
+}
+
+fn collect_wires_assigned_in_always_blocks(modules: Array[@yir.Module]) -> Set[String] {
+  let acc = Set::new()
+
+  for mod in modules {
+    for stmt in mod.child_statements() {
+      match stmt {
+        Process(_) as proc => {
+          for sub_stmt in proc.child_statements() {
+            match sub_stmt {
+              Assign(lhs=Variable(name~, ..), ..) | Reg(data_out=Variable(name~, ..), ..) => {
+                acc.add(name)
+              }
+              _ => ()
+            }
+          }
+        }
+        Reg(data_out=Variable(name~, ..), ..) => {
+          acc.add(name)
+        }
+        _ => ()
+      }
+    }
+  }
+
+  acc
 }
 
 pub type! VerilogExportError {
-  UnknownConnection(id~: @rtlil.Id)
-  UnknownParameter(id~: @rtlil.Id)
-  InvalidUnopCellType(cell_type~: @rtlil.Id)
-  InvalidBinopCellType(cell_type~: @rtlil.Id)
   ExpectedIdentifier(expr~: Expr)
-  Unreachable(msg~: String)
-  UnsupportedMemV2Instance(id~: @rtlil.Id, reason~: String)
-  ProcessSwitchWithMultipleCasesNotSupported(span~: @parse.Span)
-  ProcessSyncNotSupportedYet
 } derive(Show)
 
-fn show_id(id: @rtlil.Id) -> String {
-  let name = match id {
-    PubId(name) => {
-      if is_reserved_keyword(name) {
-        "_$" + name
-      } else {
-        name
-      }
-    }
-    GenId(name) => name + "$"
+fn next_id(self: VerilogExporter, prefix: String) -> String {
+  let id = self.autoidx
+  self.autoidx += 1
+  "\{prefix}$\{id}"
+}
+
+fn show_id(name: String) -> String {
+  let name = if is_reserved_keyword(name) {
+    "_$" + name
+  } else {
+    name
   }
 
-  name.replace_all(old=".", new="_").replace_all(old="::", new="_")
+  let new_name = name.replace_all(old=".", new="_").replace_all(old="::", new="_")
+
+  if new_name != name {
+    new_name + "$"
+  } else {
+    new_name
+  }
+}
+
+struct StmtScope {
+  wire_decls: Array[Stmt]
+  stmts: Array[Stmt]
+}
+
+fn StmtScope::new() -> StmtScope {
+  { wire_decls: [], stmts: [] }
+}
+
+fn StmtScope::push(self: StmtScope, stmt: Stmt) -> Unit {
+  self.stmts.push(stmt)
+}
+
+fn StmtScope::append(self: StmtScope, other: StmtScope) -> Unit {
+  self.stmts.append(other.stmts)
 }
 
 fn expect_identifier(self: Expr) -> String!VerilogExportError {
@@ -54,24 +101,6 @@ fn as_concat(self: Expr) -> Array[Expr] {
   }
 }
 
-fn export_signal(self: VerilogExporter, signal: @rtlil.Signal) -> Expr {
-  match signal {
-    SigConst(constant) => Const(constant)
-    SigWire(wire) => Identifier(show_id(wire.name))
-    SigChunk(signal~, offset~, width~) => {
-      let expr = self.export_signal(signal)
-
-      match width {
-        1 => BitSelect(expr~, offset~)
-        _ => PartSelect(expr~, offset=Const(ConstInteger(offset)), width~)
-      }
-    }
-    SigConcat(signals) => {
-      Concat(signals.iter().map(fn(sig) { self.export_signal(sig) }).collect())
-    }
-  }
-}
-
 fn conditional_not(expr: Expr, polarity: Polarity) -> Expr {
   match polarity {
     Posedge => expr
@@ -79,570 +108,267 @@ fn conditional_not(expr: Expr, polarity: Polarity) -> Expr {
   }
 }
 
-fn remove_wire_decl(self: ModuleDecl, name: String) -> Unit {
-  let index = self.body.search_by(fn(stmt) {
-    match stmt {
-      WireDecl(name=wire_name, ..) => wire_name == name
-      _ => false
+fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Expr! {
+  match expr {
+    Const(value~, ..) => Const(value)
+    Variable(name~, ..) => Identifier(show_id(name))
+    Unary(op~, expr~, ..) => Unary(op~, expr=self.export_expr!(expr, scope~))
+    Binary(op~, lhs~, rhs~, ..) => {
+      let v_lhs = self.export_expr!(lhs, scope~)
+      let v_rhs = self.export_expr!(rhs, scope~)
+      Binary(op~, lhs=v_lhs, rhs=v_rhs)
     }
-  })
+    Concat(elems~, ..) => {
+      let v_elems = Array::new(capacity=elems.length())
 
-  match index {
-    Some(index) => {
-      let _ = self.body.remove(index)
+      for elem in elems {
+        let v_elem = self.export_expr!(elem, scope~)
+        v_elems.push(v_elem)
+      }
+
+      Concat(v_elems)
     }
-    None => ()
+    Select(expr~, offset~, width~, span~) => {
+      let v_expr = self.export_expr!(expr, scope~)
+
+      let lhs = match v_expr {
+        Identifier(_) => v_expr
+        _ => {
+          let id = self.next_id("sel")
+          let kind = if self.is_inside_always_block {
+            scope.wire_decls.push(RegDecl(name=id, top=expr.width() - 1, bot=0, width=1, init=None))
+            Blocking
+          } else {
+            scope.wire_decls.push(WireDecl(name=id, top=expr.width() - 1, bot=0, init=None))
+            Continous
+          }
+          
+          scope.push(Assign(lhs=Identifier(id), rhs=v_expr, kind~))
+          Identifier(id)
+        }
+      }
+      PartSelect(expr=lhs, offset=Const(@yir.Const::from!(offset, width=32, span~)), width=width)
+    }
+    Mux(subject~, cases~, default~, width~, span=_) => {
+      let mux_id = self.next_id("mux")
+      let mux = Identifier(mux_id)
+      scope.wire_decls.push(RegDecl(name=mux_id, top=width - 1, bot=0, width=1, init=None))
+      let prev_is_inside_always_block = self.is_inside_always_block
+      self.is_inside_always_block = true
+      let v_cases = []
+
+      for case in cases {
+        let (cond, value) = case
+        let case_scope = StmtScope::new()
+        let v_value = self.export_expr!(value, scope=case_scope)
+        case_scope.push(Assign(lhs=mux, rhs=v_value, kind=Blocking))
+
+        let block = if case_scope.stmts.length() == 1 {
+          case_scope.stmts[0]
+        } else {
+          Block(case_scope.stmts)
+        }
+
+        scope.wire_decls.append(case_scope.wire_decls)
+        v_cases.push((Expr::Const(cond), block))
+      }
+
+      let v_default = match default {
+        Some(expr) => {
+          let v_expr = self.export_expr!(expr, scope~)
+          Some(Stmt::Assign(lhs=mux, rhs=v_expr, kind=Blocking))
+        }
+        None => None
+      }
+
+      let v_subject = self.export_expr!(subject, scope~)
+      let casez = Casez(cond=v_subject, cases=v_cases, default=v_default)
+
+      if not(prev_is_inside_always_block) {
+        scope.push(Always(
+          sensitivity_list=All,
+          body=Block([casez]),
+        ))
+      } else {
+        scope.push(casez)
+      }
+
+      self.is_inside_always_block = prev_is_inside_always_block
+      mux
+    }
+    Block(body~, last~, width~, span~) => {
+      for stmt in body {
+        self.export_stmt!(stmt, scope~)
+      }
+
+      match last {
+        Some(expr) => self.export_expr!(expr, scope~)
+        None => Const(@yir.Const::zeros(width, span~))
+      }
+    }
   }
 }
 
-fn export_cell(self: VerilogExporter, cell: @rtlil.Cell, mod: ModuleDecl) -> Unit!VerilogExportError {
-  match cell.type_ {
-    GenId("not") => {
-      let { op, a, y, .. } = self.extract_unop_cell!(cell)
-      mod.body.push(Assign(lhs=y, rhs=Unary(op~, expr=a), kind=Continous))
+fn export_stmt(self: VerilogExporter, stmt: @yir.Stmt, scope~: StmtScope) -> Unit! {
+  match stmt {
+    Expr(expr~, ..) => {
+      let v_expr = self.export_expr!(expr, scope~)
+      scope.push(Expr(expr=v_expr))
     }
-    GenId(
-      "add" | "sub" | "mul" | "div" | "mod" | "eq" | "ne" | "gt" | "lt" | "ge" |
-      "le" | "shl" | "shr" | "and" | "or" | "xor" | "xnor"
+    Wire(name~, width~, ..) => {
+      if self.wires_assigned_in_always_blocks.contains(name) {
+        scope.wire_decls.push(RegDecl(name=show_id(name), top=width - 1, bot=0, width=1, init=None))
+      } else {
+        scope.wire_decls.push(WireDecl(name=show_id(name), top=width - 1, bot=0, init=None))
+      }
+    }
+    Reg(
+      width~,
+      async_reset~,
+      clk~,
+      data_in~,
+      enable~,
+      reset~,
+      data_out~,
+      span~,
     ) => {
-      let { op, a, b, y, .. } = self.extract_binop_cell!(cell)
-      mod.body.push(Assign(lhs=y, rhs=Binary(op~, lhs=a, rhs=b), kind=Continous))
-    }
-    GenId("dff" | "dffe" | "adff" | "adffe" | "sdff" | "sdffe" as cell_type) => {
-      let (uses_reset, uses_enable, sync_reset) = match cell_type {
-        "dff" => (false, false, false)
-        "dffe" => (false, true, false)
-        "adff" => (true, false, false)
-        "adffe" => (true, true, false)
-        "sdff" => (true, false, true)
-        "sdffe" => (true, true, true)
-        _ => raise Unreachable(msg="Invalid dff cell type: \{cell_type}")
-      }
-
-      let clk = self.get_connection!(cell, "CLK").expect_identifier!()
-      let d = self.get_connection!(cell, "D").expect_identifier!()
-      let q = self.get_connection!(cell, "Q").expect_identifier!()
-      
-      let clk_polarity = match get_parameter!(cell, PubId("CLK_POLARITY")) {
-        ConstInteger(0) => Negedge
-        ConstInteger(1) => Posedge
-        _ => raise Unreachable(msg="Invalid CLK_POLARITY parameter in \{cell_type} cell")
-      }
+      let clk = self.export_expr!(clk, scope~)
+      let d = self.export_expr!(data_in, scope~)
+      let q = self.export_expr!(data_out, scope~)
 
       let sensitivity_list: Array[SensitivityListEvent] = [
-        { polarity: Some(clk_polarity), signal: clk },
+        { polarity: Some(Posedge), signal: clk },
       ]
 
-      let width = match get_parameter!(cell, PubId("WIDTH")) {
-        ConstInteger(width) => width
-        _ => raise Unreachable(msg="Invalid WIDTH parameter in \{cell_type} cell")
-      }
-
-      mod.remove_wire_decl(q)
-      mod.body.push(RegDecl(name=q, msb=width - 1, lsb=0, width=1, init=None))
-
       let mut body = Block([
-        Assign(lhs=Identifier(q), rhs=Identifier(d), kind=NonBlocking)
+        Assign(lhs=q, rhs=d, kind=NonBlocking)
       ])
 
-      if uses_enable {
-        let en = self.get_connection!(cell, "EN").expect_identifier!()
-        let en_polarity = match get_parameter!(cell, PubId("EN_POLARITY")) {
-          ConstInteger(0) => Negedge
-          ConstInteger(1) => Posedge
-          _ => raise Unreachable(msg="Invalid enable polarity parameter in \{cell_type} cell")
-        }
+      match enable {
+        Some(en) => {
+          let en = self.export_expr!(en, scope~)
 
-        body = Block([
-          If(
-            cond=conditional_not(Identifier(en), en_polarity),
-            then=body,
-            else_=None,
-          )
-        ])
-      }
-
-      if uses_reset {
-        let (rst_name, polarity_name, initial_value) = match sync_reset {
-          true => ("SRST", "SRST_POLARITY", "SRST_VALUE")
-          false => ("ARST", "ARST_POLARITY", "ARST_VALUE")
-        }
-
-        let rst = self.get_connection!(cell, rst_name).expect_identifier!()
-        let rst_polarity = match get_parameter!(cell, PubId(polarity_name)) {
-          ConstInteger(0) => Negedge
-          ConstInteger(1) => Posedge
-          _ => raise Unreachable(msg="Invalid reset polarity parameter in \{cell_type} cell")
-        }
-
-        if not(sync_reset) {
-          sensitivity_list.push({ polarity: Some(rst_polarity), signal: rst })
-        }
-
-        let rst_value = get_parameter!(cell, PubId(initial_value))
-
-        body = Block([
-          If(
-            cond=conditional_not(Identifier(rst), rst_polarity),
-            then=Block([
-              Assign(lhs=Identifier(q), rhs=Const(rst_value), kind=NonBlocking)
-            ]),
-            else_=Some(body),
-          )
-        ])
-      }
-
-      mod.body.push(Always(sensitivity_list=Events(sensitivity_list), body~))
-    }
-    GenId("mux") => {
-      let a = self.get_connection!(cell, "A")
-      let b = self.get_connection!(cell, "B")
-      let s = self.get_connection!(cell, "S")
-      let y = self.get_connection!(cell, "Y").expect_identifier!()
-
-      mod.body.push(Assign(
-        lhs=Identifier(y),
-        rhs=Ternary(cond=s, then=b, else_=a),
-        kind=Continous,
-      ))
-    }
-    GenId("pmux") => {
-      let s_width = match get_parameter!(cell, PubId("S_WIDTH")) {
-        ConstInteger(width) => width
-        _ => raise Unreachable(msg="Invalid S_WIDTH parameter in $pmux cell")
-      }
-
-      let width = match get_parameter!(cell, PubId("WIDTH")) {
-        ConstInteger(width) => width
-        _ => raise Unreachable(msg="Invalid WIDTH parameter in $pmux cell")
-      }
-
-      let a = self.get_connection!(cell, "A")
-      let b = self.get_connection!(cell, "B")
-      let s = self.get_connection!(cell, "S")
-      let y = self.get_connection!(cell, "Y").expect_identifier!()
-
-      let func_name = show_id(cell.name)
-      let cases: Array[(Expr, Stmt)] = []
-      let mut offset = 0
-
-      for idx in 0..<s_width {
-        let bits = @utils.fill(s_width, @parse.BinaryDigit::DontCare)
-        bits[s_width - idx - 1] = @parse.BinaryDigit::One
-        let pattern = Const(@rtlil.Constant::ConstValue(width=s_width, bits~))
-        let slice = PartSelect(expr=Identifier("b"), offset=Const(ConstInteger(offset + width - 1)), width~)
-        cases.push((pattern, Assign(lhs=Identifier(func_name), rhs=slice, kind=Blocking)))
-        offset += width
-      }
-      
-      let casez = Casez(
-        cond=Identifier("s"),
-        cases~,
-        default=Some(
-          Assign(lhs=Identifier(func_name), rhs=Identifier("a"), kind=Blocking),
-        ),
-      )
-
-      let func = Stmt::FunctionDecl(
-        name=func_name,
-        output_width=width,
-        args=[
-          { name: "a", width: width, direction: Input },
-          { name: "b", width: width * s_width, direction: Input },
-          { name: "s", width: s_width, direction: Input },
-        ],
-        body=casez,
-      )
-
-      mod.body.push(func)
-      mod.body.push(Assign(
-        lhs=Identifier(y),
-        rhs=FunctionCall(name=func_name, args=[a, b, s]),
-        kind=Continous,
-      ))
-    }
-    GenId("mem_v2") => {
-      // TODO: Validate unused parameters and connections
-      let abits = get_int_parameter!(cell, PubId("ABITS"))
-      let init = get_parameter!(cell, PubId("INIT"))
-      let offset = get_int_parameter!(cell, PubId("OFFSET"))
-      let size = get_int_parameter!(cell, PubId("SIZE"))
-      let width = get_int_parameter!(cell, PubId("WIDTH"))
-      let read_ports = get_int_parameter!(cell, PubId("RD_PORTS"))
-      let write_ports = get_int_parameter!(cell, PubId("WR_PORTS"))
-
-      let read_addr = self.get_connection!(cell, "RD_ADDR")
-      let read_data = self.get_connection!(cell, "RD_DATA").expect_identifier!()
-      let read_enable = self.get_connection!(cell, "RD_EN").as_concat()
-      let write_addr = self.get_connection!(cell, "WR_ADDR").as_concat()
-      let write_clk = self.get_connection!(cell, "WR_CLK").as_concat()
-      let write_data = self.get_connection!(cell, "WR_DATA")
-      let write_enable = self.get_connection!(cell, "WR_EN").as_concat()
-
-      if read_enable.length() != read_ports {
-        raise UnsupportedMemV2Instance(id=cell.name, reason="Inconsistent RD_EN width")
-      }
-
-      if (
-        write_addr.length() != write_ports ||
-        write_enable.length() != write_ports ||
-        write_clk.length() != write_ports
-      ) {
-        raise UnsupportedMemV2Instance(id=cell.name, reason="Inconsistent WR_ADDR, WR_EN, or WR_CLK width")
-      }
-
-      if offset != 0 {
-        raise UnsupportedMemV2Instance(id=cell.name, reason="Non-zero OFFSET")
-      }
-
-      if init.size() != width * size {
-        raise UnsupportedMemV2Instance(id=cell.name, reason="Invalid INIT width, expected \{width * size}, got \{init.size()}")
-      }
-
-      let mem_reg_name = show_id(cell.name)
-      mod.body.push(RegDecl(name=mem_reg_name, msb=size - 1, lsb=0, width~, init=None))
-
-      mod.body.push(Initial(
-        body=Block({
-          let bits = match init.as_bits?(span=cell.span) {
-            Ok(bits) => bits
-            Err(_) => raise Unreachable(msg="Invalid bits in INIT parameter")
-          }
-
-          let assignments = Array::new(capacity=size)
-          let mut i = 0
-
-          for chunk in @utils.chunk(bits, width) {
-            assignments.push(Assign(
-              lhs=BitSelect(
-                expr=Identifier(mem_reg_name),
-                offset=(size - 1) - i,
-              ),
-              rhs=Const(ConstValue(width~, bits=chunk)),
-              kind=Blocking,
-            ))
-
-            i += 1
-          }
-
-          { assignments.rev_inplace(); assignments }
-        }),
-      ))
-
-      for i in 0..<read_ports {
-        let lhs = PartSelect(
-          expr=Identifier(read_data),
-          offset=Const(ConstInteger((i + 1) * width - 1)),
-          width=width,
-        )
-
-        let rhs = PartSelect(
-          expr=Identifier(mem_reg_name),
-          offset=PartSelect(
-            expr=read_addr,
-            offset=Const(ConstInteger((i + 1) * abits - 1)),
-            width=abits,
-          ),
-          width=1,
-        )
-
-        mod.body.push(Assign(lhs~, rhs~, kind=Continous))
-      }
-
-      for i in 0..<write_ports {
-        let always_block_body = []
-
-        // check that all the bits are enabled or disabled uniformly
-        let write_enable_i = write_enable[i].as_concat()
-        if not(@utils.all_eq(write_enable_i)) {
-          raise UnsupportedMemV2Instance(id=cell.name, reason="Non-uniform write enable signals for port \{i}")
-        }
-
-        always_block_body.push(If(
-          cond=write_enable_i[0],
-          then=Block([
-            Assign(
-              lhs=PartSelect(
-                expr=Identifier(mem_reg_name),
-                offset=PartSelect(
-                  expr=write_addr[i],
-                  offset=Const(ConstInteger(abits - 1)),
-                  width=abits,
-                ),
-                width=1,
-              ),
-              rhs=PartSelect(
-                expr=write_data,
-                offset=Const(ConstInteger((i + 1) * width - 1)),
-                width=width,
-              ),
-              kind=NonBlocking,
+          body = Block([
+            If(
+              cond=conditional_not(en, Posedge),
+              then=body,
+              else_=None,
             )
-          ]),
-          else_=None,
-        ))
-
-        mod.body.push(Always(
-          sensitivity_list=Events([
-            { polarity: Some(Posedge), signal: write_clk[i].expect_identifier!() },
-          ]),
-          body=Block(always_block_body),
-        ))
-      }
-    }
-    _ => {
-      let parameters = []
-      let ports = []
-
-      for param in cell.parameters {
-        parameters.push((show_id(param.0), param.1))
+          ])
+        }
+        _ => ()
       }
 
-      for conn in cell.connections {
-        let (id, signal) = conn
-        let expr = self.export_signal(signal)
-        ports.push((show_id(id), expr))
-      }
-
-      let inst = Instance(
-        mod=show_id(cell.type_),
-        name=show_id(cell.name),
-        parameters~,
-        ports~,
-      )
-
-      mod.body.push(inst)
-    }
-  }
-}
-
-fn export_process_case_stmt(self: VerilogExporter, case_stmt: @rtlil.ProcessCaseStmt) -> Stmt!VerilogExportError {
-  match case_stmt {
-    @rtlil.ProcessCaseStmt::Assign({ lhs, rhs, span: _ }) => {
-      Assign(lhs=self.export_signal(lhs), rhs=self.export_signal(rhs), kind=Blocking)
-    }
-    @rtlil.ProcessCaseStmt::Switch(switch) => {
-      self.export_proc_switch!(switch)
-    }
-  }
-}
-
-fn export_process_stmt(self: VerilogExporter, stmt: @rtlil.ProcessStmt) -> Stmt!VerilogExportError {
-  match stmt {
-    @rtlil.ProcessStmt::Assign({ lhs, rhs, span: _ }) => {
-      Assign(lhs=self.export_signal(lhs), rhs=self.export_signal(rhs), kind=Blocking)
-    }
-    @rtlil.ProcessStmt::Switch(switch) => {
-      self.export_proc_switch!(switch)
-    }
-    @rtlil.ProcessStmt::Sync(_) => {
-      raise ProcessSyncNotSupportedYet
-    }
-  }
-}
-
-fn export_proc_switch(self: VerilogExporter, switch: @rtlil.ProcessSwitch) -> Stmt!VerilogExportError {
-  let cases: Array[(Expr, Stmt)] = Array::new(capacity=switch.cases.length())
-  let cond = self.export_signal(switch.subject)
-  let mut default = None
-
-  for case in switch.cases {
-    let stmts = Array::new(capacity=case.body.length())
-
-    for case_stmt in case.body {
-      stmts.push(self.export_process_case_stmt!(case_stmt))
-    }
-
-    match case.conditions {
-      [] => {
-        default = Some(Block(stmts))
-      }
-      [cond] => {
-        cases.push((self.export_signal(cond), Block(stmts)))
-      }
-      _ => raise ProcessSwitchWithMultipleCasesNotSupported(span=switch.span)
-    }
-  }
-
-  Casez(cond~, cases~, default~)
-}
-
-fn export_process(self: VerilogExporter, proc: @rtlil.Process, mod: ModuleDecl) -> Unit!VerilogExportError {
-  let body = Array::new(capacity=proc.body.length())
-
-  for stmt in proc.body {
-    body.push(self.export_process_stmt!(stmt))
-  }
-
-  let always_block = Always(sensitivity_list=All, body=Block(body))
-  mod.body.push(always_block)
-}
-
-fn collect_wires_assigned_in_switch(switch: @rtlil.ProcessSwitch, acc~: Set[@rtlil.Id]) -> Unit {
-  for case in switch.cases {
-    for stmt in case.body {
-      match stmt {
-        Assign({ lhs, .. }) => {
-          for wire in lhs.wires() {
-            acc.add(wire.name)
+      match reset {
+        Some(rst) => {
+          let rst = self.export_expr!(rst, scope~)
+          let rst_value = @yir.Const::zeros(width, span~)
+          if async_reset {
+            sensitivity_list.push({ polarity: Some(Posedge), signal: rst })
           }
-        }
-        Switch(switch) => {
-          collect_wires_assigned_in_switch(switch, acc~)
-        }
-      }
-    }
-  }
-}
 
-fn collect_wires_assigned_in_process(proc: @rtlil.Process, acc~: Set[@rtlil.Id]) -> Unit {
-  for stmt in proc.body {
-    match stmt {
-      Assign({ lhs, .. }) => {
-        for wire in lhs.wires() {
-          acc.add(wire.name)
+          body = Block([
+            If(
+              cond=conditional_not(rst, Posedge),
+              then=Block([
+                Assign(lhs=q, rhs=Const(rst_value), kind=NonBlocking)
+              ]),
+              else_=Some(body),
+            )
+          ])
         }
+        _ => ()
       }
-      Switch(switch) => {
-        collect_wires_assigned_in_switch(switch, acc~)
+
+      scope.push(Always(sensitivity_list=Events(sensitivity_list), body~))
+    }
+    Assign(lhs~, rhs~, span=_) => {
+      let v_lhs = self.export_expr!(lhs, scope~)
+      let v_rhs = self.export_expr!(rhs, scope~)
+      let kind = if self.is_inside_always_block { Blocking } else { Continous }
+      scope.push(Assign(lhs=v_lhs, rhs=v_rhs, kind~))
+    }
+    Instance(module_name~, ports~, span=_) => {
+      let instance_id = self.next_id("inst")
+      let v_ports = []
+
+      for port_name, port_expr in ports {
+        let v_port_expr = self.export_expr!(port_expr, scope~)
+        v_ports.push((port_name, v_port_expr))
       }
-      Sync(sync) => {
-        for update in sync.updates {
-          for wire in update.dst.wires() {
-            acc.add(wire.name)
+
+      scope.push(Instance(
+        mod=show_id(module_name),
+        name=instance_id,
+        parameters=[],
+        ports=v_ports,
+      ))
+    }
+    Process(triggers~, body~, span=_) => {
+      let sensitivity_list = match triggers {
+        All => All
+        Events(events) => {
+          let list = Array::new(capacity=events.length())
+
+          for event in events {
+            let signal = Identifier(event.signal)
+            let polarity = event.polarity.map(fn(p) {
+              match p {
+                Posedge => Posedge
+                Negedge => Negedge
+              }
+            })
+
+            list.push({ polarity, signal })
           }
+
+          Events(list)
         }
       }
+
+      let body_scope = StmtScope::new()
+
+      for stmt in body {
+        self.export_stmt!(stmt, scope=body_scope)
+      }
+
+      scope.wire_decls.append(body_scope.wire_decls)
+      let body = Block(body_scope.stmts)
+      scope.push(Always(sensitivity_list~, body~))
+    }
+    Memory(_) => {
+      raise Failure("Memory statements are not supported yet")
     }
   }
 }
 
-fn collect_wires_assigned_in_processes(modules: Array[@rtlil.Module]) -> Set[@rtlil.Id] {
-  let wires_assigned_in_processes = Set::new()
-
-  for mod in modules {
-    for proc in mod.procs.values() {
-      collect_wires_assigned_in_process(proc, acc=wires_assigned_in_processes)
-    }
-  }
-
-  wires_assigned_in_processes
-}
-
-struct UnopCell {
-  op: @parse.UnaryOp
-  a: Expr
-  y: Expr
-}
-
-struct BinopCell {
-  op: @parse.BinaryOp
-  a: Expr
-  b: Expr
-  y: Expr
-}
-
-fn get_connection(self: VerilogExporter, cell: @rtlil.Cell, name: String) -> Expr!VerilogExportError {
-  let signal = cell.connections[PubId(name)].or_error!(UnknownConnection(id=PubId(name)))
-  self.export_signal(signal)
-}
-
-fn get_parameter(cell: @rtlil.Cell, id: @rtlil.Id) -> @rtlil.Constant!VerilogExportError {
-  cell.parameters[id].or_error!(UnknownParameter(id~))
-}
-
-fn get_int_parameter(cell: @rtlil.Cell, id: @rtlil.Id) -> Int!VerilogExportError {
-  match get_parameter!(cell, id) {
-    ConstInteger(value) => value
-    _ => raise Unreachable(msg="Expected integer parameter")
-  }
-}
-
-fn extract_unop_cell(self: VerilogExporter, cell: @rtlil.Cell) -> UnopCell!VerilogExportError {
-  let a = self.get_connection!(cell, "A")
-  let y = self.get_connection!(cell, "Y")
-
-  let op: @parse.UnaryOp = match cell.type_.inner() {
-    "not" => Not
-    _ => raise InvalidUnopCellType(cell_type=cell.type_)
-  }
-
-  { op, a, y }
-}
-
-fn extract_binop_cell(self: VerilogExporter, cell: @rtlil.Cell) -> BinopCell!VerilogExportError {
-  let a = self.get_connection!(cell, "A")
-  let b = self.get_connection!(cell, "B")
-  let y = self.get_connection!(cell, "Y")
-
-  let op: @parse.BinaryOp = match cell.type_.inner() {
-    "add" => Add
-    "sub" => Sub
-    "mul" => Mul
-    "div" => Div
-    "mod" => Mod
-    "eq" => Equ
-    "ne" => Neq
-    "gt" => Gtr
-    "lt" => Lss
-    "ge" => Geq
-    "le" => Leq
-    "shl" => Shl
-    "shr" => Shr
-    "and" => And
-    "or" => Or
-    "xor" => Xor
-    "xnor" => Xnor
-    _ => raise InvalidBinopCellType(cell_type=cell.type_)
-  }
-
-  { op, a, b, y }
-}
-
-fn export_module(self: VerilogExporter, mod: @rtlil.Module) -> Unit!VerilogExportError {
+fn export_module(self: VerilogExporter, mod: @yir.Module) -> Unit! {
   let verilog_mod: ModuleDecl = {
     name: show_id(mod.name),
-    ports: [],
+    ports: mod.ports.map(fn(port) {
+      {
+        name: show_id(port.name),
+        type_: Wire,
+        width: port.width,
+        direction: port.direction,
+      }
+    }),
     body: [],
   }
 
-  for wire in mod.wires.values() {
-    match wire.port {
-      Some({ direction, id: _, optional: _ }) => {
-        let type_ = if self.wires_assigned_in_processes.contains(wire.name) { Reg } else { Wire }
-        verilog_mod.ports.push({ name: show_id(wire.name), direction, type_, width: wire.width })
-      }
-      None => {
-        if self.wires_assigned_in_processes.contains(wire.name) {
-          // Note: A reg declaration in Verilog does not imply a register
-          // as it can also represent combinational logic, like here
-          verilog_mod.body.push(RegDecl(name=show_id(wire.name), msb=wire.width - 1, lsb=0, width=1, init=None))
-        } else {
-          verilog_mod.body.push(WireDecl(name=show_id(wire.name), msb=wire.width - 1, lsb=0, init=None))
-        }
-      }
-    }
+  let scope = StmtScope::new()
+
+  for stmt in mod.body {
+    self.export_stmt!(stmt, scope~)
   }
 
-  for cell in mod.cells.values() {
-    self.export_cell!(cell, verilog_mod)
-  }
-
-  for proc in mod.procs.values() {
-    self.export_process!(proc, verilog_mod) 
-  }
-
-  for conn in mod.connections {
-    let lhs = self.export_signal(conn.0)
-    let rhs = self.export_signal(conn.1)
-    verilog_mod.body.push(Assign(lhs~, rhs~, kind=Continous))
-  }
+  verilog_mod.body = scope.wire_decls + scope.stmts
 
   self.verilog_decls.push(Decl::Module(verilog_mod))
 }
 
-pub fn export(self: VerilogExporter) -> Array[Decl]!VerilogExportError {
-  for mod in self.rtlil_modules {
+pub fn export(self: VerilogExporter) -> Array[Decl]! {
+  for mod in self.yir_modules {
     self.export_module!(mod)
   }
 

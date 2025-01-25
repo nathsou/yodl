@@ -1,20 +1,17 @@
 
 pub enum Expr {
   Identifier(String)
-  BitSelect(expr~: Expr, offset~: Int)
   PartSelect(expr~: Expr, offset~: Expr, width~: Int)
   Concat(Array[Expr])
-  Const(@rtlil.Constant)
+  Const(@yir.Const)
   Unary(op~: @parse.UnaryOp, expr~: Expr)
   Binary(op~: @parse.BinaryOp, lhs~: Expr, rhs~: Expr)
-  Ternary(cond~: Expr, then~: Expr, else_~: Expr)
-  FunctionCall(name~: String, args~: Array[Expr])
 } derive(Eq)
 
 pub enum Stmt {
-  WireDecl(name~: String, msb~: Int, lsb~: Int, init~: Expr?)
-  RegDecl(name~: String, msb~: Int, lsb~: Int, width~: Int, init~: Expr?)
-  FunctionDecl(name~: String, output_width~: Int, args~: Array[FunctionArgument], body~: Stmt)
+  Expr(expr~: Expr)
+  WireDecl(name~: String, top~: Int, bot~: Int, init~: Expr?)
+  RegDecl(name~: String, top~: Int, bot~: Int, width~: Int, init~: Expr?)
   Assign(lhs~: Expr, rhs~: Expr, kind~: AssignmentKind)
   If(cond~: Expr, then~: Stmt, else_~: Stmt?)
   Casez(cond~: Expr, cases~: Array[(Expr, Stmt)], default~: Stmt?)
@@ -31,7 +28,7 @@ pub enum SensitivityList {
 
 pub struct SensitivityListEvent {
   polarity: Polarity?
-  signal: String
+  signal: Expr
 }
 
 pub enum Polarity {
@@ -62,7 +59,7 @@ pub struct FunctionArgument {
 pub struct ModuleDecl {
   name: String
   ports: Array[Port]
-  body: Array[Stmt]
+  mut body: Array[Stmt]
 }
 
 pub enum Decl {

@@ -1,7 +1,7 @@
 {
     "import": [
-        "nathsou/yodl/rtlil",
-        "nathsou/yodl/utils",
-        "nathsou/yodl/parse"
+      "nathsou/yodl/rtlil",
+      "nathsou/yodl/parse",
+      "nathsou/yodl/yir"
     ]
 }

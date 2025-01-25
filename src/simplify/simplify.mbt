@@ -110,10 +110,11 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
               subject=index,
               cases={
                 let cases = []
+                let max = @utils.pow2(s_width) - 1
 
-                for i in 0..<@utils.pow2(s_width) {
+                for i in 0..=max {
                   let lhs = @parse.Expr::nat!(i, width=Some(s_width), base=10, span~)
-                  let idx = @parse.Expr::nat!(i, width=None, base=10, span~)
+                  let idx = @parse.Expr::nat!(max - i, width=None, base=10, span~)
                   cases.push((lhs, @parse.Expr::Indexing(expr~, index=idx, span~, ty~)))
                 }
 
