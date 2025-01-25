@@ -4,7 +4,6 @@ pub struct VerilogExporter {
   verilog_decls: Array[Decl]
   mut is_inside_always_block: Bool
   mut autoidx: Int
-  wires_assigned_in_always_blocks: Set[String]
 }
 
 pub fn VerilogExporter::new(modules: Array[@yir.Module]) -> VerilogExporter {
@@ -13,39 +12,13 @@ pub fn VerilogExporter::new(modules: Array[@yir.Module]) -> VerilogExporter {
     verilog_decls: [],
     is_inside_always_block: false,
     autoidx: 0,
-    wires_assigned_in_always_blocks: collect_wires_assigned_in_always_blocks(modules),
   }
-}
-
-fn collect_wires_assigned_in_always_blocks(modules: Array[@yir.Module]) -> Set[String] {
-  let acc = Set::new()
-
-  for mod in modules {
-    for stmt in mod.child_statements() {
-      match stmt {
-        Process(_) as proc => {
-          for sub_stmt in proc.child_statements() {
-            match sub_stmt {
-              Assign(lhs=Variable(name~, ..), ..) | Reg(data_out=Variable(name~, ..), ..) => {
-                acc.add(name)
-              }
-              _ => ()
-            }
-          }
-        }
-        Reg(data_out=Variable(name~, ..), ..) => {
-          acc.add(name)
-        }
-        _ => ()
-      }
-    }
-  }
-
-  acc
 }
 
 pub type! VerilogExportError {
   ExpectedIdentifier(expr~: Expr)
+  MismatchingWritePorts(span~: @parse.Span)
+  MismatchingReadPorts(span~: @parse.Span)
 } derive(Show)
 
 fn next_id(self: VerilogExporter, prefix: String) -> String {
@@ -54,7 +27,7 @@ fn next_id(self: VerilogExporter, prefix: String) -> String {
   "\{prefix}$\{id}"
 }
 
-fn show_id(name: String) -> String {
+fn display(name: String) -> String {
   let name = if is_reserved_keyword(name) {
     "_$" + name
   } else {
@@ -111,7 +84,7 @@ fn conditional_not(expr: Expr, polarity: Polarity) -> Expr {
 fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Expr! {
   match expr {
     Const(value~, ..) => Const(value)
-    Variable(name~, ..) => Identifier(show_id(name))
+    Variable(name~, ..) => Identifier(display(name))
     Unary(op~, expr~, ..) => Unary(op~, expr=self.export_expr!(expr, scope~))
     Binary(op~, lhs~, rhs~, ..) => {
       let v_lhs = self.export_expr!(lhs, scope~)
@@ -150,9 +123,14 @@ fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Exp
       PartSelect(expr=lhs, offset=Const(@yir.Const::from!(offset, width=32, span~)), width=width)
     }
     Mux(subject~, cases~, default~, width~, span=_) => {
+      let is_expr = width > 0
       let mux_id = self.next_id("mux")
       let mux = Identifier(mux_id)
-      scope.wire_decls.push(RegDecl(name=mux_id, top=width - 1, bot=0, width=1, init=None))
+
+      if is_expr {
+        scope.wire_decls.push(RegDecl(name=mux_id, top=width - 1, bot=0, width=1, init=None))
+      }
+
       let prev_is_inside_always_block = self.is_inside_always_block
       self.is_inside_always_block = true
       let v_cases = []
@@ -161,7 +139,10 @@ fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Exp
         let (cond, value) = case
         let case_scope = StmtScope::new()
         let v_value = self.export_expr!(value, scope=case_scope)
-        case_scope.push(Assign(lhs=mux, rhs=v_value, kind=Blocking))
+
+        if is_expr {
+          case_scope.push(Assign(lhs=mux, rhs=v_value, kind=Blocking))
+        }
 
         let block = if case_scope.stmts.length() == 1 {
           case_scope.stmts[0]
@@ -194,7 +175,12 @@ fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Exp
       }
 
       self.is_inside_always_block = prev_is_inside_always_block
-      mux
+
+      if is_expr {
+        mux
+      } else {
+        Concat([])
+      }
     }
     Block(body~, last~, width~, span~) => {
       for stmt in body {
@@ -213,14 +199,17 @@ fn export_stmt(self: VerilogExporter, stmt: @yir.Stmt, scope~: StmtScope) -> Uni
   match stmt {
     Expr(expr~, ..) => {
       let v_expr = self.export_expr!(expr, scope~)
-      scope.push(Expr(expr=v_expr))
+      let is_empty = match v_expr {
+        Concat([]) => true
+        _ => false
+      }
+
+      if not(is_empty) {
+        scope.push(Expr(expr=v_expr))
+      }
     }
     Wire(name~, width~, ..) => {
-      if self.wires_assigned_in_always_blocks.contains(name) {
-        scope.wire_decls.push(RegDecl(name=show_id(name), top=width - 1, bot=0, width=1, init=None))
-      } else {
-        scope.wire_decls.push(WireDecl(name=show_id(name), top=width - 1, bot=0, init=None))
-      }
+      scope.wire_decls.push(WireDecl(name=display(name), top=width - 1, bot=0, init=None))
     }
     Reg(
       width~,
@@ -298,13 +287,15 @@ fn export_stmt(self: VerilogExporter, stmt: @yir.Stmt, scope~: StmtScope) -> Uni
       }
 
       scope.push(Instance(
-        mod=show_id(module_name),
+        mod=display(module_name),
         name=instance_id,
         parameters=[],
         ports=v_ports,
       ))
     }
     Process(triggers~, body~, span=_) => {
+      let prev_is_inside_always_block = self.is_inside_always_block
+      self.is_inside_always_block = true
       let sensitivity_list = match triggers {
         All => All
         Events(events) => {
@@ -333,22 +324,109 @@ fn export_stmt(self: VerilogExporter, stmt: @yir.Stmt, scope~: StmtScope) -> Uni
       }
 
       scope.wire_decls.append(body_scope.wire_decls)
-      let body = Block(body_scope.stmts)
-      scope.push(Always(sensitivity_list~, body~))
+      scope.push(Always(sensitivity_list~, body=Block(body_scope.stmts)))
+      self.is_inside_always_block = prev_is_inside_always_block
     }
-    Memory(_) => {
-      raise Failure("Memory statements are not supported yet")
+    Memory(
+      width~,
+      depth~,
+      init~,
+      clk~,
+      read_addr~,
+      write_addr~,
+      write_enable~,
+      data_in~,
+      data_out~,
+      span~,
+    ) => {
+      let clk = self.export_expr!(clk, scope~)
+      let mem = self.next_id("mem")
+      let write_ports = write_addr.length()
+      scope.wire_decls.push(RegDecl(name=mem, top=depth - 1, bot=0, width~, init=None))
+
+      match init {
+        Some(init) => {
+          scope.stmts.push(Initial(
+            body=Block({
+              let assignments = Array::new(capacity=depth)
+              let mut index = 0
+
+              for chunk in @utils.chunk(init.bits.iter(), width) {
+                let value = Const({ bits: @parse.Bits::new(chunk, value=None, span=init.span), width, base: 2 })
+                let offset = Const(@yir.Const::from!(depth - index - 1, width=32, span=init.span))
+                assignments.push(Assign(lhs=PartSelect(expr=Identifier(mem), offset~, width=1), rhs=value, kind=Blocking))
+                index += 1
+              }
+
+              { assignments.rev_inplace(); assignments }
+            }),
+          ))
+        }
+        _ => ()
+      }
+
+      match write_enable {
+        Some(write_enable) => {
+          if (write_enable.length() != write_addr.length()) || (write_enable.length() != data_in.length()) {
+            raise MismatchingWritePorts(span~)
+          }
+        }
+        _ => ()
+      }
+
+      if read_addr.length() != data_out.length() {
+        raise MismatchingReadPorts(span~)
+      }
+
+      let body = []
+
+      for i in 0..<write_ports {
+        let addr = self.export_expr!(write_addr[i], scope~)
+        let data = self.export_expr!(data_in[i], scope~)
+        let lhs = PartSelect(expr=Identifier(mem), offset=addr, width=1)
+        let mut stmts = [
+          Assign(lhs~, rhs=data, kind=NonBlocking)
+        ]
+
+        match write_enable {
+          Some(en) => {
+            stmts = [
+              If(
+                cond=self.export_expr!(en[i], scope~),
+                then=Block(stmts),
+                else_=None,
+              )
+            ]
+          }
+          _ => ()
+        }
+
+        body.append(stmts)
+      }
+
+      for i in 0..<read_addr.length() {
+        let addr = self.export_expr!(read_addr[i], scope~)
+        let lhs = self.export_expr!(data_out[i], scope~)
+        let rhs = PartSelect(expr=Identifier(mem), offset=addr, width=1)
+        body.push(Assign(lhs~, rhs~, kind=NonBlocking))
+      }
+
+      scope.push(Always(
+        sensitivity_list=Events([{ polarity: Some(Posedge), signal: clk }]),
+        body=Block(body),
+      ))
     }
   }
 }
 
 fn export_module(self: VerilogExporter, mod: @yir.Module) -> Unit! {
+  let wires_assigned_in_procs = collect_wires_assigned_in_always_blocks(mod)
   let verilog_mod: ModuleDecl = {
-    name: show_id(mod.name),
+    name: display(mod.name),
     ports: mod.ports.map(fn(port) {
       {
-        name: show_id(port.name),
-        type_: Wire,
+        name: display(port.name),
+        type_: if wires_assigned_in_procs.contains(port.name) { Reg } else { Wire },
         width: port.width,
         direction: port.direction,
       }
@@ -362,7 +440,23 @@ fn export_module(self: VerilogExporter, mod: @yir.Module) -> Unit! {
     self.export_stmt!(stmt, scope~)
   }
 
-  verilog_mod.body = scope.wire_decls + scope.stmts
+  for wire_decl in scope.wire_decls {
+    match wire_decl {
+      // promote wires that are assigned in processes to regs
+      WireDecl(name~, top~, bot~, init~) => {
+        if wires_assigned_in_procs.contains(name) {
+          verilog_mod.body.push(RegDecl(name~, top~, bot~, width=1, init~))
+        } else {
+          verilog_mod.body.push(wire_decl)
+        }
+      }
+      _ => {
+        verilog_mod.body.push(wire_decl)
+      }
+    }
+  }
+
+  verilog_mod.body.append(scope.stmts)
 
   self.verilog_decls.push(Decl::Module(verilog_mod))
 }
@@ -373,4 +467,48 @@ pub fn export(self: VerilogExporter) -> Array[Decl]! {
   }
 
   self.verilog_decls
+}
+
+fn assigned_identifiers(expr: @yir.Expr) -> Iter[String] {
+  match expr {
+    Variable(name~, ..) => Iter::singleton(name)
+    Select(expr~, ..) => assigned_identifiers(expr)
+    _ => Iter::empty() // invalid assignment target
+  }
+}
+
+fn collect_wires_assigned_in_always_blocks(mod: @yir.Module) -> Set[String] {
+  let acc = Set::new()
+
+  fn add_identifiers(expr: @yir.Expr) -> Unit {
+    for ident in assigned_identifiers(expr) {
+      acc.add(display(ident))
+    }
+  }
+  
+  for stmt in mod.child_statements() {
+    match stmt {
+      Process(_) as proc => {
+        for sub_stmt in proc.child_statements() {
+          match sub_stmt {
+            Assign(lhs~, ..) | Reg(data_out=lhs, ..) => {
+              add_identifiers(lhs)
+            }
+            _ => ()
+          }
+        }
+      }
+      Reg(data_out~, ..) => {
+        add_identifiers(data_out)
+      }
+      Memory(data_out~, ..) => {
+        for data in data_out {
+          add_identifiers(data)
+        }
+      }
+      _ => ()
+    }
+  }
+
+  acc
 }

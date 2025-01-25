@@ -75,11 +75,6 @@ pub fn write_iter[T: Show](
   }
   self.write(suffix)
 }
-
-impl Show for FunctionArgument with output(self, logger) {
-  logger.write_string("\{self.direction} [\{self.width - 1}:0] \{self.name};")
-}
-
 fn show_expr(expr: Expr, logger: &Logger) -> Unit {
   match expr {
     Identifier(name) => logger.write_string(name)

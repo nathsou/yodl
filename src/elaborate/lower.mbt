@@ -133,8 +133,12 @@ fn lower_stmt(self: Lowerer, stmt: @parse.Stmt, mod~: &ModuleLike, env~: LowerEn
   match stmt {
     Expr(expr~, span~) => {
       let yir_expr = self.lower_expr!(expr, mod~, env~, binding=None).as_expr()
+      let is_empty_vec = match yir_expr {
+        Concat(elems=[], ..) => true
+        _ => false
+      }
 
-      if yir_expr.width() > 0 {
+      if not(is_empty_vec) {
         mod.add_stmt(Expr(expr=yir_expr, span~))
       }
     }
@@ -191,6 +195,14 @@ fn lower_stmt(self: Lowerer, stmt: @parse.Stmt, mod~: &ModuleLike, env~: LowerEn
 
 fn get_width(ty: Ref[@parse.Type?], span~: @parse.Span) -> Int! {
   ty.val.or_error!(UntypedValue(span~)).width!(span)
+}
+
+fn select(expr~: @yir.Expr, offset~: Int, width~: Int, span~: @parse.Span) -> @yir.Expr {
+  if expr.width() == 1 {
+    return expr
+  }
+
+  Select(expr~, offset~, width~, span~)
 }
 
 fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEnv, binding~: String? = None) -> Val! {
@@ -463,7 +475,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
             let read_addrs = Array::new(capacity=read_ports)
 
             for i in 0..<read_ports {
-              read_addrs.push(@yir.Expr::Select(
+              read_addrs.push(select(
                 expr=get_port!("read_addr"),
                 offset=(read_ports - i) * abits - 1,
                 width=abits,
@@ -474,7 +486,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
             let write_addrs = Array::new(capacity=clamped_write_ports)
 
             for i in 0..<write_ports {
-              write_addrs.push(@yir.Expr::Select(
+              write_addrs.push(select(
                 expr=get_port!("write_addr"),
                 offset=(write_ports - i) * abits - 1,
                 width=abits,
@@ -486,7 +498,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
               let write_enables = Array::new(capacity=write_ports)
 
               for i in 0..<write_ports {
-                write_enables.push(@yir.Expr::Select(
+                write_enables.push(select(
                   expr=get_port!("write_enable"),
                   offset=i,
                   width=1,
@@ -502,7 +514,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
             let data_ins = Array::new(capacity=clamped_write_ports)
 
             for i in 0..<clamped_write_ports {
-              data_ins.push(@yir.Expr::Select(
+              data_ins.push(select(
                 expr=get_port!("data_in"),
                 offset=(clamped_write_ports - i) * width - 1,
                 width=width,
@@ -513,7 +525,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
             let data_out = Array::new(capacity=read_ports)
           
             for i in 0..<read_ports {
-              data_out.push(@yir.Expr::Select(
+              data_out.push(select(
                 expr=get_port!("data_out"),
                 offset=(read_ports - i) * width - 1,
                 width=width,
@@ -586,7 +598,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
               let lsb = idx * bits_per_elem
               let msb = lsb + bits_per_elem - 1
 
-              Expr(expr=Select(expr=val.as_expr(), offset=msb, width=bits_per_elem, span~), span~)
+              Expr(expr=select(expr=val.as_expr(), offset=msb, width=bits_per_elem, span~), span~)
             }
             _ => {
               raise Unsupported(message="Indexing on non-vector data type'", span=expr.span())
@@ -608,7 +620,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
             raise LoweringError::Unreachable(message="Slice out of bounds, width: \{width}, msb: \{msb}, lsb: \{lsb}", span~)
           }
 
-          Expr(expr=Select(expr~, offset=msb, width=msb - lsb + 1, span~), span~)
+          Expr(expr=select(expr~, offset=msb, width=msb - lsb + 1, span~), span~)
         }
         _ => raise Unsupported(message="Slicing on non-vector data type", span=expr.span())
       }
@@ -652,7 +664,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
                 let width = fields[field].unwrap().width!(span)
 
                 if name == field {
-                  return Expr(expr=Select(expr~, offset~, width~, span~), span~)
+                  return Expr(expr=select(expr~, offset~, width~, span~), span~)
                 }
 
                 offset -= width
@@ -678,7 +690,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
                 let width = field_widths[field].unwrap()
 
                 if name == field {
-                  return Expr(expr=Select(expr~, offset~, width~, span~), span~)
+                  return Expr(expr=select(expr~, offset~, width~, span~), span~)
                 }
 
                 offset -= width

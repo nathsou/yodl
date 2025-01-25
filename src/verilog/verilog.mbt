@@ -3,7 +3,7 @@ pub enum Expr {
   Identifier(String)
   PartSelect(expr~: Expr, offset~: Expr, width~: Int)
   Concat(Array[Expr])
-  Const(@yir.Const)
+  Const(@yir.Const) 
   Unary(op~: @parse.UnaryOp, expr~: Expr)
   Binary(op~: @parse.BinaryOp, lhs~: Expr, rhs~: Expr)
 } derive(Eq)
@@ -50,16 +50,10 @@ pub struct Port {
   direction: @parse.PortDirection
 }
 
-pub struct FunctionArgument {
-  name: String
-  width: Int
-  direction: @parse.PortDirection
-}
-
 pub struct ModuleDecl {
   name: String
   ports: Array[Port]
-  mut body: Array[Stmt]
+  body: Array[Stmt]
 }
 
 pub enum Decl {
