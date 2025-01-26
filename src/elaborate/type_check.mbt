@@ -366,7 +366,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                             accessed_ports.add(port)
                             port_def.ty.substitute(params)
                         }
-                        None => raise UnknownModulePort(module_path=sig.path, port_name=port, span~)
+                        None => raise TypeCheckerError::UnknownModulePort(module_path=sig.path, port_name=port, span~)
                     }
                 }
                 Struct(fields) => {
@@ -403,7 +403,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                                 let expr_ty = self.check_expr!(port_expr, env).substitute(params_env)
                                 let _ = unify!(port_def.ty.substitute(params_env), expr_ty, span=port_expr.span(), subst~)
                             }
-                            None => raise UnknownModulePort(module_path=path, port_name=port_name, span~)
+                            None => raise TypeCheckerError::UnknownModulePort(module_path=path, port_name=port_name, span~)
                         }
                     }
 

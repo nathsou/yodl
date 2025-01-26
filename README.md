@@ -8,7 +8,7 @@ Yet anOther (hardware) Description Language
 - Install [Moonbit](https://www.moonbitlang.com/)
 - ```$ git clone https://github.com/nathsou/yodl.git yodl```
 - ```$ cd yodl```
-- ```$ moon run src/main examples/Hello.yodl "write_rtlil Hello.rtlil; write_verilog Hello.v"```
+- ```$ moon run src/main examples/Hello.yodl "write_verilog Hello.v"```
 
 ## Checklist
 

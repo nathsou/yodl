@@ -1,13 +1,11 @@
 
 enum Command {
-  WriteRTLIL(path~: String?)
   WriteVerilog(path~: String?)
   WriteSource
   WriteMono(path~: String?)
   WriteTyped
   WriteYIR
   WriteSimplified(path~: String?)
-  Flatten
 } derive(Show)
 
 struct ParsedCommand {
@@ -176,15 +174,6 @@ fn parse_commands(source: String) -> Array[Command]!CommandParserError {
 
         WriteSimplified(path~)
       }
-      "write_rtlil" => {
-        let path = match cmd.args {
-          [] => None
-          [path] => Some(path)
-          _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
-        }
-
-        WriteRTLIL(path~)
-      }
       "write_verilog" => {
         let path = match cmd.args {
           [] => None
@@ -201,14 +190,6 @@ fn parse_commands(source: String) -> Array[Command]!CommandParserError {
         }
 
         WriteYIR
-      }
-      "flatten" => {
-        match cmd.args.length() {
-          0 => ()
-          _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
-        }
-
-        Flatten
       }
       _ => raise UnknownCommand(name=cmd.name)
     }

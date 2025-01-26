@@ -200,3 +200,21 @@ module Dec<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 8]) {
         };
     }
 }
+
+// https://en.wikipedia.org/wiki/Double_dabble#Parametric_Verilog_implementation
+module BCD<W>(bin: logic[W]) -> (bcd: logic[W + (W - 4) / 3 + 1]) {
+    procedural {
+        for i in 0..=W + (W - 4) / 3 {
+            bcd[i] = 1'b0;
+        }
+
+        bcd[W - 1 : 0] = bin;
+
+        for i in 0..=W - 4 {
+            for j in 0..=(i / 3) {
+                let bin = bcd[W - i + 4 * j -: 4];
+                bcd[W - i + 4 * j -: 4] = bin > 4'd4 ? bin + 4'd3 : bin;
+            }
+        }
+    }
+}

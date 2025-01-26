@@ -297,6 +297,10 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
       let simplified_body = []
       let mod_env = env.child()
 
+      for port in ports {
+        let _ = self.declare_unique(port.name)
+      }
+
       for stmt in body {
         let scope = []
         let stmts = self.simplify_stmt!(stmt, env=mod_env, scope~)

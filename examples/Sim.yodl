@@ -1,10 +1,15 @@
-import VGA
+import Text
 
-package State {
-    const RED = 2'b00;
-    const GREEN = 2'b01;
-    const BLUE = 2'b10;
-    const PINK = 2'b11;
+module Euler1(clk: logic, rst: logic) -> (q: logic[18], is_ready: logic) {
+    const N = 1000;
+    const CounterWidth = $clog2(N);
+    let counter = Reg<CounterWidth>(clk, rst);
+    let is_active = counter.q <= N - 1;
+    counter.d = counter.q + is_active;
+    let sum = Reg<18>(clk, en: is_active, rst, q);
+    let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0;
+    sum.d = sum.q + (is_divisible ? counter.q : CounterWidth * {1'0});
+    is_ready = not is_active;
 }
 
 module TopSim(
@@ -18,65 +23,28 @@ module TopSim(
     g: logic[3],
     b: logic[3],
 ) {
-    let state = Reg<2>(clk, rst);
-    let counter = Reg<25>(clk);
-    let vga = VGA::SyncPulses(pixel_clk: clk, col: screen_x, row: screen_y, is_active_area);
-    let color: logic[9];
+    let vga = VGA::SyncPulses(
+        pixel_clk: clk,
+        is_active_area,
+        col: screen_x,
+        row: screen_y,
+    );
 
-    procedural {
-        counter.d = counter.q + 1'd1;
+    let euler1 = Euler1(clk, rst);
+    let bcd = Text::BCD<18>(bin: euler1.q).bcd;
+    let hex = Text::Dec<24>(n: {1'b0, bcd});
+    let text = Text::Text<Length: 41, X: 20, Y: 30>(
+        text: {"The solution to Project Euler 1 is ", hex.chars},
+        screen_x: vga.col,
+        screen_y: vga.row,
+    );
 
-        match vga.is_active_area {
-            1'b0 => {
-                color = 9'd0;
-            },
-            1'b1 => {
-                match state.q {
-                    State::RED => {
-                        color = {3'd7, 3'd0, 3'd0};
-                        match counter.q {
-                            25*{1'b1} => {
-                                state.d = State::GREEN;
-                                counter.d = 25'd0;
-                            },
-                        };
-                    },
-                    State::GREEN => {
-                        color = {3'd0, 3'd7, 3'd0};
+    let color = match vga.is_active_area and text.is_active {
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'b1 => { r: 3'd2, g: 3'd6, b: 3'd4 },
+    };
 
-                        match counter.q {
-                            25'd16777215 => {
-                                state.d = State::BLUE;
-                                counter.d = 25'd0;
-                            },
-                        };
-                    },
-                    State::BLUE => {
-                        color = {3'd0, 3'd0, 3'd7};
-
-                        match counter.q {
-                            25'd11184810 => {
-                                state.d = State::PINK;
-                                counter.d = 25'd0;
-                            },
-                        };
-                    },
-                    State::PINK => {
-                        color = {3'd7, 3'd0, 3'd7};
-
-                        match counter.q {
-                            25'd8388608 => {
-                                state.d = State::RED;
-                                counter.d = 25'd0;
-                            },
-                        };
-                    },
-                };
-            },
-        };
-    }
-
-    r = color[8-:3];
-    g = color[5-:3];
-    b = color[2-:3];
+    r = color.r;
+    g = color.g;
+    b = color.b;
 }

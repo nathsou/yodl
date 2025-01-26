@@ -106,32 +106,22 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
   }
 
   let yir = {
-    let low = @elaborate.Lowerer::new()
+    let low = @elaborate.Elaborator::new()
     low.lower!(simplified_decls.iter())
     low.modules
   }
 
   for cmd in commands {
     match cmd {
-      // WriteRTLIL(path~) => {
-      //   let rtlil = {
-      //     let serializer = @rtlil.Serializer::new(
-      //       autoidx=elaborator.autoidx,
-      //       modules=@utils.map_keys(design, fn(id, _) { id.to_string() }),
-      //     )
+      WriteYIR => {
+        let emitter = @yir.YirEmitter::new()
 
-      //     serializer.to_string()
-      //   }
+        for mod in yir.values() {
+          emitter.emit_module(mod)
+        }
 
-      //   match path {
-      //     Some(path) => {
-      //       @fs.write_string_to_file(path~, content=rtlil)
-      //     }
-      //     None => {
-      //       println(rtlil)
-      //     }
-      //   }
-      // }
+        println(emitter._)
+      }
       WriteVerilog(path~) => {
         let exporter = @verilog.VerilogExporter::new(yir.values().collect())
         let verilog_decls = exporter.export!()
@@ -148,15 +138,6 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
           }
         }
       }
-      WriteYIR => {
-        let emitter = @yir.YirEmitter::new()
-
-        for mod in yir.values() {
-          emitter.emit_module(mod)
-        }
-
-        println(emitter._)
-      }
       _ => ()
     }
   }
@@ -165,7 +146,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
 fn main {
   match @env.args() {
     [_, _, path] => {
-      match run?(path~, commands=[WriteRTLIL(path=Some(path.replace(old=".yodl", new=".rtlil")))]) {
+      match run?(path~, commands=[WriteVerilog(path=Some(path.replace(old=".yodl", new=".v")))]) {
         Ok(_) => ()
         Err(error) => {
           println(error)

@@ -1,41 +1,41 @@
 
-pub struct Lowerer {
+pub struct Elaborator {
   mut autoidx: Int
   modules: Map[@parse.Path, @yir.Module]
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
 }
 
-pub fn Lowerer::new() -> Lowerer {
+pub fn Elaborator::new() -> Elaborator {
   { autoidx: 0, modules: {}, declared_modules: {} }
 }
 
-fn next_idx(self: Lowerer) -> Int {
+fn next_idx(self: Elaborator) -> Int {
   let idx = self.autoidx
   self.autoidx += 1
   idx
 }
 
-priv enum Val {
+priv enum Value {
   Expr(expr~: @yir.Expr, span~: @parse.Span)
-  Vector(elems~: Array[Val], span~: @parse.Span)
-  Struct(fields~: Map[String, Val], span~: @parse.Span)
+  Vector(elems~: Array[Value], span~: @parse.Span)
+  Struct(fields~: Map[String, Value], span~: @parse.Span)
 }
 
-impl @parse.Spanned for Val with span(self) {
+impl @parse.Spanned for Value with span(self) {
   match self { 
     Expr(span~, ..) | Vector(span~, ..) | Struct(span~, ..) => span
   }
 }
 
-fn Val::width(self: Val) -> Int {
+fn Value::width(self: Value) -> Int {
   match self {
     Expr(expr~, ..) => expr.width()
-    Vector(elems~, ..) => @utils.sum(elems.iter().map(Val::width))
-    Struct(fields~, ..) => @utils.sum(fields.values().map(Val::width))
+    Vector(elems~, ..) => @utils.sum(elems.iter().map(Value::width))
+    Struct(fields~, ..) => @utils.sum(fields.values().map(Value::width))
   }
 }
 
-fn Val::ctor(self: Val) -> String {
+fn Value::ctor(self: Value) -> String {
   match self {
     Expr(..) => "Expr"
     Vector(..) => "Vector"
@@ -43,10 +43,10 @@ fn Val::ctor(self: Val) -> String {
   }
 }
 
-fn Val::as_expr(self: Val) -> @yir.Expr {
+fn Value::as_expr(self: Value) -> @yir.Expr {
   match self {
     Expr(expr~, ..) => expr
-    Vector(elems~, span~) => Concat(elems=elems.map(Val::as_expr), width=self.width(), span~)
+    Vector(elems~, span~) => Concat(elems=elems.map(Value::as_expr), width=self.width(), span~)
     Struct(fields~, span~) => {
       let elems = Array::new(capacity=fields.size())
       let sorted_keys = { let keys = fields.keys().collect(); keys.sort(); keys }
@@ -60,16 +60,16 @@ fn Val::as_expr(self: Val) -> @yir.Expr {
   }
 }
 
-fn Val::expect_const(self: Val) -> @yir.Const!LoweringError {
+fn Value::expect_const(self: Value) -> @yir.Const!ElaborationError {
   match self {
     Expr(expr=Const(value~, ..), ..) => value
     _ => raise ExpectedConst(span=self.span())
   }
 }
 
-typealias LowerEnv = Scope[@parse.Path, Val]
+typealias ElaboratorEnv = Scope[@parse.Path, Value]
 
-pub type! LoweringError {
+pub type! ElaborationError {
   UnresolvedIdentifier(path~: @parse.Path, span~: @parse.Span)
   UnexpectedStmtDuringElaboration(span~: @parse.Span)
   UnexpectedExprDuringElaboration(span~: @parse.Span)
@@ -77,6 +77,14 @@ pub type! LoweringError {
   ExpectedConst(span~: @parse.Span)
   ParametricInstanceDuringElaboration(span~: @parse.Span)
   Unreachable(message~: String, span~: @parse.Span)
+  ExtraPorts(extra_ports~: Array[String], span~: @parse.Span)
+  UnknownModule(path~: @parse.Path, span~: @parse.Span)
+  UnknownModulePort(module_path~: @parse.Path, port_name~: String, span~: @parse.Span)
+  UnknownModuleParameter(name~: String, span~: @parse.Span)
+  InvalidMemoryInitValue(span~: @parse.Span, expected_size~: Int, actual_size~: Int?)
+  MissingConnectionsOnWriteableMemoryInstance(missing_connections~: Array[String], span~: @parse.Span)
+  UnknownModuleMarkedAsInternal(path~: @parse.Path, span~: @parse.Span)
+  Unsupported(message~: String, span~: @parse.Span)
 } derive (Show)
 
 trait ModuleLike {
@@ -93,8 +101,8 @@ impl ModuleLike for StmtContainer with add_stmt(self, stmt) {
   self._.push(stmt)
 }
 
-fn lower_module(self: Lowerer, mod: @parse.ModuleDecl) -> Unit! {
-  let env = LowerEnv::new()
+fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
+  let env = ElaboratorEnv::new()
 
   let yir_mod: @yir.Module = {
     name: mod.path.to_string(),
@@ -129,7 +137,7 @@ fn lower_module(self: Lowerer, mod: @parse.ModuleDecl) -> Unit! {
   }
 }
 
-fn lower_stmt(self: Lowerer, stmt: @parse.Stmt, mod~: &ModuleLike, env~: LowerEnv) -> Unit! {
+fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: &ModuleLike, env~: ElaboratorEnv) -> Unit! {
   match stmt {
     Expr(expr~, span~) => {
       let yir_expr = self.lower_expr!(expr, mod~, env~, binding=None).as_expr()
@@ -205,7 +213,7 @@ fn select(expr~: @yir.Expr, offset~: Int, width~: Int, span~: @parse.Span) -> @y
   Select(expr~, offset~, width~, span~)
 }
 
-fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEnv, binding~: String? = None) -> Val! {
+fn lower_expr(self: Elaborator, expr: @parse.Expr, mod~: &ModuleLike, env~: ElaboratorEnv, binding~: String? = None) -> Value! {
   match expr {
     Natural(bits~, width~, base~, span~, ty=_) => {
       let width = match width {
@@ -301,7 +309,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         val[field] = self.lower_expr!(field_expr, mod~, env~, binding=field_name)
       }
 
-      Val::Struct(fields=val, span~)
+      Value::Struct(fields=val, span~)
     }
     Instance(path~, params~, ports~, span~, ty=inst_ty) => {
       if params._.length() > 0 && not(self.declared_modules.contains(path)) {
@@ -343,7 +351,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
 
             (ports_sig, params_map, sig.attributes)
           }
-          None => raise ElaboratorError::UnknownModule(path~, span~)
+          None => raise ElaborationError::UnknownModule(path~, span~)
         }
       }
 
@@ -351,11 +359,11 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
       let inline_connections: Map[String, @yir.Expr] = {}
       let accessed_ports = match inst_ty.val {
         Some(Instance(sig=_, params=_, accessed_ports~)) => accessed_ports
-        _ => raise LoweringError::Unreachable(message="Untyped instance", span~)
+        _ => raise ElaborationError::Unreachable(message="Untyped instance", span~)
       }
 
       let extra_ports = []
-      let fields: Map[String, Val] = {}
+      let fields: Map[String, Value] = {}
 
       fn uses_port(port_name: String) -> Bool {
         ports.contains(port_name) || accessed_ports.contains(port_name)
@@ -372,7 +380,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
           connections[port_name] = Variable(name=wire_name, width=port_sig.width, span~)
 
           if accessed_ports.contains(port_name) {
-            fields[port_name] = Val::Expr(expr=Variable(name=wire_name, width=port_sig.width, span~), span~)
+            fields[port_name] = Value::Expr(expr=Variable(name=wire_name, width=port_sig.width, span~), span~)
           }
         }
       }
@@ -393,7 +401,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         fn get_port(port_name: String) -> @yir.Expr! {
           match connections[port_name] {
             Some(expr) => expr
-            None => raise UnknownModulePort(module_path=path, port_name~, span~)
+            None => raise ElaborationError::UnknownModulePort(module_path=path, port_name~, span~)
           }
         }
 
@@ -573,7 +581,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
       }
 
       match fields.size() {
-        1 => Expr(expr=fields.values().map(Val::as_expr).collect()[0], span~)
+        1 => Expr(expr=fields.values().map(Value::as_expr).collect()[0], span~)
         _ => Struct(fields~, span~)
       }
     }
@@ -586,7 +594,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
           let len = elems.length()
 
           if idx >= len {
-            raise LoweringError::Unreachable(message="Index out of bounds, len: \{len}, index: \{idx}", span~)
+            raise ElaborationError::Unreachable(message="Index out of bounds, len: \{len}, index: \{idx}", span~)
           }
           
           elems[idx]
@@ -617,7 +625,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
           let width = expr.width()
           
           if msb >= width || lsb >= width || msb < lsb {
-            raise LoweringError::Unreachable(message="Slice out of bounds, width: \{width}, msb: \{msb}, lsb: \{lsb}", span~)
+            raise ElaborationError::Unreachable(message="Slice out of bounds, width: \{width}, msb: \{msb}, lsb: \{lsb}", span~)
           }
 
           Expr(expr=select(expr~, offset=msb, width=msb - lsb + 1, span~), span~)
@@ -645,14 +653,14 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         Struct(fields~, ..) => {
           match fields[field] {
             Some(value) => value
-            None => raise ElaboratorError::Unreachable(message="Unknown struct field", span~)
+            None => raise ElaborationError::Unreachable(message="Unknown struct field", span~)
           }
         }
         Expr(expr~, ..) => {
-          let ty = accessed_expr.ty().val.or_error!(LoweringError::Unreachable(message="Untyped signal field access", span=accessed_expr.span()))
+          let ty = accessed_expr.ty().val.or_error!(ElaborationError::Unreachable(message="Untyped signal field access", span=accessed_expr.span()))
 
           if expr.width() == 1 {
-            return Val::Expr(expr~, span~)
+            return Value::Expr(expr~, span~)
           }
 
           match ty {
@@ -670,7 +678,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
                 offset -= width
               }
 
-              raise ElaboratorError::Unreachable(message="Unknown struct field: \{field}", span~)
+              raise ElaborationError::Unreachable(message="Unknown struct field: \{field}", span~)
             }
             Instance(sig~, params~, accessed_ports~) => {
               let field_widths = {}
@@ -696,7 +704,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
                 offset -= width
               }
 
-              raise ElaboratorError::Unreachable(message="Unknown instance field: \{field}", span~)
+              raise ElaborationError::Unreachable(message="Unknown instance field: \{field}", span~)
             }
             _ => raise Unsupported(message="Field access on non-struct type: \{ty}", span~)
           }
@@ -734,7 +742,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
         }
 
         let yir_block = @yir.Expr::Block(body=stmts._, last~, width~, span~)
-        Val::Expr(expr=yir_block, span~)
+        Value::Expr(expr=yir_block, span~)
       } else {
         for stmt in body {
           self.lower_stmt!(stmt, mod~, env=block_env)
@@ -742,7 +750,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
 
         match last {
           Some(last) => self.lower_expr!(last, mod~, env=block_env)
-          None => Val::Expr(expr=@yir.Expr::Concat(elems=[], width=0, span~), span~)
+          None => Value::Expr(expr=@yir.Expr::Concat(elems=[], width=0, span~), span~)
         }
       }
     }
@@ -752,7 +760,7 @@ fn lower_expr(self: Lowerer, expr: @parse.Expr, mod~: &ModuleLike, env~: LowerEn
   }
 }
 
-pub fn lower(self: Lowerer, decls: Iter[@parse.Decl]) -> Unit! {
+pub fn lower(self: Elaborator, decls: Iter[@parse.Decl]) -> Unit! {
   for decl in decls {
     match decl {
       Module(mod) => {

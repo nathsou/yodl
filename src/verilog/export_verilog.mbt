@@ -286,12 +286,18 @@ fn export_stmt(self: VerilogExporter, stmt: @yir.Stmt, scope~: StmtScope) -> Uni
         v_ports.push((port_name, v_port_expr))
       }
 
-      scope.push(Instance(
+      let inst = Instance(
         mod=display(module_name),
         name=instance_id,
         parameters=[],
         ports=v_ports,
-      ))
+      )
+
+      if self.is_inside_always_block {
+        scope.wire_decls.push(inst)
+      } else {
+        scope.stmts.push(inst)
+      }
     }
     Process(triggers~, body~, span=_) => {
       let prev_is_inside_always_block = self.is_inside_always_block

@@ -8,6 +8,7 @@
 // screen dimensions
 const int H_RES = 640;
 const int V_RES = 480;
+const int SCALE = 2;
 
 typedef struct {  // for SDL texture
     uint8_t a;  // transparency
@@ -31,7 +32,7 @@ int main(int argc, char* argv[]) {
     SDL_Texture*  sdl_texture  = NULL;
 
     sdl_window = SDL_CreateWindow("Sim", SDL_WINDOWPOS_CENTERED,
-        SDL_WINDOWPOS_CENTERED, H_RES, V_RES, SDL_WINDOW_SHOWN);
+        SDL_WINDOWPOS_CENTERED, H_RES * SCALE, V_RES * SCALE, SDL_WINDOW_SHOWN);
     if (!sdl_window) {
         printf("Window creation failed: %s\n", SDL_GetError());
         return 1;
