@@ -63,7 +63,7 @@ pub enum Decl {
 fn is_reserved_keyword(name: String) -> Bool {
   match name {
     "module" | "endmodule" | "begin" | "end" | "wire" | "reg" |
-    "input" | "output" | "inout" | "assign" | "always" |
+    "input" | "output" | "inout" | "assign" | "always" | "cell" |
     "posedge" | "negedge" | "if" | "else" | "case" | "default" => true
     _ => false
   }

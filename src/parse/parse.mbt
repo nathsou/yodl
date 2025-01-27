@@ -231,6 +231,20 @@ fn parse_match_expr(self: Parser) -> Expr! {
   Match(subject~, cases~, default~, span=self.span(start_idx), ty={ val: None })
 }
 
+fn parse_if_expr(self: Parser) -> Expr! {
+  let start_idx = self.index
+  self.expect!(If, self.index)
+  let cond = self.parse_expr!()
+  let then = self.parse_expr!()
+  let else_ = if self.consumes(Else) {
+    Some(self.parse_expr!())
+  } else {
+    None
+  }
+
+  If(cond~, then~, else_~, span=self.span(start_idx), ty={ val: None })
+}
+
 fn parse_primary_expr(self: Parser) -> Expr! {
   let token = self.peek()
   let start_idx = self.index
@@ -264,6 +278,7 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     Lbrace => self.parse_struct_or_concat_or_block_expr!()
     DotDotDot => self.parse_spread_expr!()
     Match => self.parse_match_expr!()
+    If => self.parse_if_expr!()
     Dollar => self.parse_function_call_expr!()
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
@@ -518,7 +533,15 @@ fn parse_assignment_stmt(self: Parser) -> Stmt! {
   } else if self.consumes(Semicolon) {
     Expr(expr=lhs, span=self.span(start_idx))
   } else {
-    raise ExpectedStmt(received=self.peek(), span=self.span(start_idx))
+    match lhs {
+      Match(_) | If(_) | Block(_) => {
+        // accept match, if and block expressions without a semicolon
+        Expr(expr=lhs, span=self.span(start_idx))
+      }
+      _ => {
+        raise ExpectedStmt(received=self.peek(), span=self.span(start_idx))
+      }
+    }
   }
 }
 

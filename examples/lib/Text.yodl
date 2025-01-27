@@ -213,7 +213,10 @@ module BCD<W>(bin: logic[W]) -> (bcd: logic[W + (W - 4) / 3 + 1]) {
         for i in 0..=W - 4 {
             for j in 0..=(i / 3) {
                 let bin = bcd[W - i + 4 * j -: 4];
-                bcd[W - i + 4 * j -: 4] = bin > 4'd4 ? bin + 4'd3 : bin;
+                
+                if bin > 4'd4 {
+                    bcd[W - i + 4 * j -: 4] = bin + 4'd3;
+                };
             }
         }
     }

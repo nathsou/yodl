@@ -31,9 +31,10 @@ module Top(
     );
 
     let euler1 = Euler1(clk, rst);
-    let hex = Text::Hex<20>(n: {2'b00, euler1.q});
-    let text = Text::Text<Length: 40, X: 20, Y: 30>(
-        text: {"The solution to Project Euler 1 is ", hex.chars},
+    let bcd = Text::BCD<18>(bin: euler1.q).bcd;
+    let dec = Text::Dec<24>(n: {1'b0, bcd});
+    let text = Text::Text<Length: 41, X: 20, Y: 30>(
+        text: {"The solution to Project Euler 1 is ", dec.chars},
         screen_x: vga.col,
         screen_y: vga.row,
     );

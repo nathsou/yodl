@@ -104,22 +104,23 @@ fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Exp
     Select(expr~, offset~, width~, span~) => {
       let v_expr = self.export_expr!(expr, scope~)
 
-      let lhs = match v_expr {
-        Identifier(_) => v_expr
-        _ => {
-          let id = self.next_id("sel")
-          let kind = if self.is_inside_always_block {
-            scope.wire_decls.push(RegDecl(name=id, top=expr.width() - 1, bot=0, width=1, init=None))
-            Blocking
-          } else {
-            scope.wire_decls.push(WireDecl(name=id, top=expr.width() - 1, bot=0, init=None))
-            Continous
-          }
+      let lhs = v_expr
+      // let lhs = match v_expr {
+      //   Identifier(_) => v_expr
+      //   _ => {
+      //     let id = self.next_id("sel")
+      //     let kind = if self.is_inside_always_block {
+      //       scope.wire_decls.push(RegDecl(name=id, top=expr.width() - 1, bot=0, width=1, init=None))
+      //       Blocking
+      //     } else {
+      //       scope.wire_decls.push(WireDecl(name=id, top=expr.width() - 1, bot=0, init=None))
+      //       Continous
+      //     }
           
-          scope.push(Assign(lhs=Identifier(id), rhs=v_expr, kind~))
-          Identifier(id)
-        }
-      }
+      //     scope.push(Assign(lhs=Identifier(id), rhs=v_expr, kind~))
+      //     Identifier(id)
+      //   }
+      // }
       PartSelect(expr=lhs, offset=Const(@yir.Const::from!(offset, width=32, span~)), width=width)
     }
     Mux(subject~, cases~, default~, width~, span=_) => {

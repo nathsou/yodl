@@ -71,6 +71,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // - Rewrite nand expressions into not + and expressions
 // - Rewrite ternary expressions into match expressions
 // - Rewrite slicing expressions using width and offset to absolute slicing expressions
+// - Rewrite if expressions into match expressions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr! {
   let rewr_stmt = fn!(stmt) { self.simplify_stmt!(stmt, env~, scope~) }
 
@@ -106,15 +107,16 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
           Err(_) => {
             // Rewrite non-constant indexing expressions to match expressions
             let s_width = index.ty().val.unwrap().width!(index.span())
+            let lhs_width = expr.ty().val.unwrap().width!(expr.span())
             let match_expr = @parse.Expr::Match(
               subject=index,
               cases={
                 let cases = []
-                let max = @utils.pow2(s_width) - 1
+                let max = @utils.min(@utils.pow2(s_width) - 1, lhs_width - 1)
 
                 for i in 0..=max {
                   let lhs = @parse.Expr::nat!(i, width=Some(s_width), base=10, span~)
-                  let idx = @parse.Expr::nat!(max - i, width=None, base=10, span~)
+                  let idx = @parse.Expr::nat!(i, width=None, base=10, span~)
                   cases.push((lhs, @parse.Expr::Indexing(expr~, index=idx, span~, ty~)))
                 }
 
@@ -233,6 +235,24 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
         let lsb = msb.as_int!() - width.as_int!() + 1
         @parse.Expr::Slicing(expr~, msb~, lsb=@parse.Expr::nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
       })
+      If(cond~, then~, else_~, span~, ty~) => {
+        // Rewrite if expressions into match expressions
+        let match_expr = @parse.Expr::Match(
+          subject=cond,
+          cases=[
+            (@parse.Expr::nat!(1, width=Some(1), span~), then),
+            (@parse.Expr::nat!(0, width=Some(1), span~), match else_ {
+              Some(else_) => else_
+              None => @parse.Expr::Block(body=[], last=None, span~, ty=@ref.new(Some(@parse.Type::empty())))
+            }),
+          ],
+          default=None,
+          span~,
+          ty~,
+        )
+
+        Some(self.simplify_expr!(match_expr, env~, scope~))
+      }
       _ => None
     })
   })

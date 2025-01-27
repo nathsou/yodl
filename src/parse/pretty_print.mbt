@@ -362,6 +362,22 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.write_indent()
       self.write("}")
     }
+    If(cond~, then~, else_~, span=_, ty=_) => {
+      self.write("if ")
+      self.emit_expr(cond)
+      self.write(" ")
+      self.emit_expr(then)
+      self.write("\n")
+
+      match else_ {
+        Some(else_) => {
+          self.write_indent()
+          self.write("else ")
+          self.emit_expr(else_)
+        }
+        None => ()
+      }
+    }
   }
 
   if self.show_expr_types {

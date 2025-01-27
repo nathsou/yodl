@@ -439,6 +439,8 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           "in" => In
           "for" => For
           "declare" => Declare
+          "if" => If
+          "else" => Else
           "match" => Match
           "const" => Const
           "package" => Package

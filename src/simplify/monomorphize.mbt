@@ -290,9 +290,10 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
       for i in start..<end {
         env.declare!(var_path, GenVar(i))
         let scope = []
+        let scope_env = env.child()
 
         for stmt in body {
-          scope.push(self.monomorphize_stmt!(stmt, env~, packages~))
+          scope.push(self.monomorphize_stmt!(stmt, env=scope_env, packages~))
         }
 
         unrolled_stmts.push(@parse.Stmt::Scope(body=scope, span~))
@@ -304,9 +305,10 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
     }
     Scope(body~, span~) => {
       let mono_body = []
+      let scope_env = env.child()
 
       for stmt in body {
-        mono_body.push(self.monomorphize_stmt!(stmt, env~, packages~))
+        mono_body.push(self.monomorphize_stmt!(stmt, env=scope_env, packages~))
       }
 
       @parse.Stmt::Scope(body=mono_body, span~)

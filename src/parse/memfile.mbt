@@ -123,17 +123,27 @@ pub fn parse_mem_file(path: String, base~: Int, start~: Int, end~: Int?) -> Arra
       }
     }
 
-    let value = match @strconv.parse_int?(lexeme, base~) {
-      Ok(value) => value
-      Err(err) => raise StrConvError(err)
-    }
-
-    for bit in @utils.bin(value, width~) {
-      bits.push(match bit {
-        0 => BinaryDigit::Zero
-        1 => BinaryDigit::One
-        _ => raise Unreachable("unexpected bit value")
-      })
+    if base == 2 {
+      for char in lexeme {
+        bits.push(match char {
+          '0' => BinaryDigit::Zero
+          '1' => BinaryDigit::One
+          _ => raise Unreachable("unexpected bit value")
+        })
+      }
+    } else {
+      match @strconv.parse_int?(lexeme, base~) {
+        Ok(value) => {
+          for bit in @utils.bin(value, width~) {
+            bits.push(match bit {
+              0 => BinaryDigit::Zero
+              1 => BinaryDigit::One
+              _ => raise Unreachable("unexpected bit value")
+            })
+          }
+        }
+        Err(err) => raise StrConvError(err)
+      }
     }
   }
 

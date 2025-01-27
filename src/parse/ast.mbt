@@ -18,6 +18,7 @@ pub(all) enum Expr {
   FunCall(name~: String, args~: Array[Expr], span~: Span, ty~: Ref[Type?])
   String(str~: String, span~: Span, ty~: Ref[Type?])
   Block(body~: Array[Stmt], last~: Expr?, span~: Span, ty~: Ref[Type?])
+  If(cond~: Expr, then~: Expr, else_~: Expr?, span~: Span, ty~: Ref[Type?])
 }
 
 pub(all) enum Stmt {
@@ -49,6 +50,10 @@ pub(all) enum Type {
   Struct(Map[String, Type])
   String(len~: Int)
 } derive(Eq)
+
+pub fn Type::empty() -> Type {
+  Type::Vector(ty=Logic, len=Fixed(0))
+}
 
 pub(all) struct InstanceParam {
   name: String?
@@ -367,6 +372,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     FunCall(ty~, ..) => ty
     String(ty~, ..) => ty
     Block(ty~, ..) => ty
+    If(ty~, ..) => ty
   }
 }
 
@@ -415,6 +421,7 @@ pub impl Spanned for Expr with span(self: Expr) -> Span {
     FunCall(span~, ..) => span
     String(span~, ..) => span
     Block(span~, ..) => span
+    If(span~, ..) => span
   }
 }
 
@@ -450,6 +457,7 @@ pub fn ctor(self: Expr) -> String {
     FunCall(_) => "FunCall"
     String(_) => "String"
     Block(_) => "Block"
+    If(_) => "If"
   }
 }
 
@@ -478,6 +486,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     FunCall(_) => false
     Block(body=[], last=Some(last), ..) => last.is_constant_expr()
     Block(..) => false
+    If(_) => false
   }
 }
 
@@ -526,18 +535,30 @@ pub fn as_expr(self: Param, span~: Span) -> Expr!AstError {
 pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
   rewrite_expr!(self, rewr_stmt=fn(stmt) { Iter::singleton(stmt) }, rewr_expr=fn!(expr) {
     match expr {
-      Identifier(path={ packages: [], member }, ..) => Some({
+      Identifier(path={ packages: [], member }, ..) => {
         match params[member] {
           Some(Int(n)) => {
-            Natural(bits=Bits::from!(n, span=expr.span()), width=None, base=10, span=expr.span(), ty=expr.ty())
+            Some(Natural(bits=Bits::from!(n, span=expr.span()), width=None, base=10, span=expr.span(), ty=expr.ty()))
           }
           Some(Val(bits~, width~)) => {
-            Natural(bits~, width=Some(width), base=2, span=expr.span(), ty=expr.ty())
+            Some(Natural(bits~, width=Some(width), base=2, span=expr.span(), ty=expr.ty()))
           }
-          None => expr
+          None => None
         }
-      })
-      Binary(op = Add | Sub | Mul | Div | Mod as op, lhs~, rhs~, span~, ty~) => {
+      }
+      Unary(op~, expr~, span~, ty~) => {
+        match expr.as_int?() {
+          Ok(value) => {
+            let value = match op {
+              Not => if value == 0 { 1 } else { 0 }
+            }
+
+            Some(Natural(bits=Bits::from!(value, span~), width=None, base=10, span~, ty~))
+          }
+          _ => None
+        }
+      }
+      Binary(op~, lhs~, rhs~, span~, ty~) => {
         match (lhs.as_bigint?(), rhs.as_bigint?()) {
           (Ok(lhs), Ok(rhs)) => {
             let value = match op {
@@ -548,6 +569,15 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
               Mod => lhs % rhs
               Shl => lhs << rhs.to_int()
               Shr => lhs >> rhs.to_int()
+              Equ => if lhs == rhs { 1 } else { 0 }
+              Neq => if lhs != rhs { 1 } else { 0 }
+              Lss => if lhs < rhs { 1 } else { 0 }
+              Gtr => if lhs > rhs { 1 } else { 0 }
+              Leq => if lhs <= rhs { 1 } else { 0 }
+              Geq => if lhs >= rhs { 1 } else { 0 }
+              And => lhs & rhs
+              Or => lhs | rhs
+              Xor => lhs ^ rhs
               _ => raise Failure("Invalid arithmetical binary operator")
             }
 
@@ -556,9 +586,19 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
           _ => None
         }
       }
-      Ternary(cond~, then~, else_~, ..) => {
+      Ternary(cond~, then~, else_~, ..) | If(cond~, then~, else_=Some(else_), ..) => {
+        match cond.partial_eval!().as_int?() {
+          Ok(cond) => {
+            Some(if cond != 0 { then } else { else_ })
+          }
+          _ => None
+        }
+      }
+      If(cond~, then~, else_=None, span~, ty~) => {
         match cond.as_int?() {
-          Ok(cond) => Some(if cond != 0 { then } else { else_ })
+          Ok(cond) => {
+            if cond != 0 { Some(then) } else { Some(Block(body=[], last=None, span~, ty~)) }
+          }
           _ => None
         }
       }
@@ -591,6 +631,15 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
         }
 
         Some((fun.apply)!(args, span))
+      }
+      Indexing(expr~, index~, span~, ty~) => {
+        match (expr.as_bits?(), index.as_int?()) {
+          (Ok(bits), Ok(index)) => {
+            let bit = bits.bits[index]
+            Some(Natural(bits=Bits::new([bit], span~), width=Some(1), base=2, span~, ty~))
+          }
+          _ => None
+        }
       }
       _ => None
     }
@@ -793,9 +842,11 @@ pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError
 }
 
 pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bits!AstError {
-  if value < 0 {
-    raise NegativeIntegersNotSupported(span~)
-  }
+  // if value < 0 {
+  //   raise NegativeIntegersNotSupported(span~)
+  // }
+
+  let value = @utils.abs(value)
 
   let bytes = value.to_octets()
 
@@ -866,6 +917,13 @@ pub fn Expr::as_int(self: Expr) -> Int! {
 pub fn Expr::as_bigint(self: Expr) -> BigInt! {
   match self {
     Natural(bits~, ..) => bits.as_bigint!()
+    _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
+  }
+}
+
+pub fn Expr::as_bits(self: Expr) -> Bits! {
+  match self {
+    Natural(bits~, ..) => bits
     _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
   }
 }

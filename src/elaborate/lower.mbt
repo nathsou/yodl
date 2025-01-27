@@ -695,7 +695,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, mod~: &ModuleLike, env~: Elab
               let mut offset = @utils.sum(field_widths.values()) - 1
 
               for name in sorted_keys {
-                let width = field_widths[field].unwrap()
+                let width = field_widths[name].unwrap()
 
                 if name == field {
                   return Expr(expr=select(expr~, offset~, width~, span~), span~)
@@ -754,7 +754,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, mod~: &ModuleLike, env~: Elab
         }
       }
     }
-    String(_) | Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) => {
+    String(_) | Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())
     }
   }

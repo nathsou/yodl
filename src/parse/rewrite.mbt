@@ -70,10 +70,10 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
       let new_cases = Array::new(capacity=cases.length())
 
       for case in cases {
-        let (pat, expr) = case
+        let (pat, case_expr) = case
         let pat = rewrite_expr!(pat, rewr_expr~, rewr_stmt~)
-        let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)
-        new_cases.push((pat, expr))
+        let case_expr = rewrite_expr!(case_expr, rewr_expr~, rewr_stmt~)
+        new_cases.push((pat, case_expr))
       }
 
       let new_default = match default {
@@ -129,6 +129,16 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
       }
 
       Block(body=new_body, last~, span~, ty=clone_ty(ty))
+    }
+    If(cond~, then~, else_~, span~, ty~) => {
+      let cond = rewrite_expr!(cond, rewr_expr~, rewr_stmt~)
+      let then = rewrite_expr!(then, rewr_expr~, rewr_stmt~)
+      let else_ = match else_ {
+        Some(expr) => Some(rewrite_expr!(expr, rewr_expr~, rewr_stmt~))
+        None => None
+      }
+
+      If(cond~, then~, else_~, span~, ty=clone_ty(ty))
     }
   }
 
@@ -287,6 +297,15 @@ pub fn visit_expr(expr: Expr, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Boo
         }
 
         match last {
+          Some(expr) => visit_expr!(expr, on_expr~, on_stmt~)
+          None => ()
+        }
+      }
+      If(cond~, then~, else_~, span=_, ty=_) => {
+        visit_expr!(cond, on_expr~, on_stmt~)
+        visit_expr!(then, on_expr~, on_stmt~)
+
+        match else_ {
           Some(expr) => visit_expr!(expr, on_expr~, on_stmt~)
           None => ()
         }

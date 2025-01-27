@@ -414,7 +414,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Vector(elems~, span~, ..) => {
             if elems.is_empty() {
-                return Vector(ty=Logic, len=Fixed(0))
+                return @parse.Type::empty()
             }
 
             let mut elem_ty = None
@@ -570,8 +570,28 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 Some(last) => {
                     self.check_expr!(last, new_env, expected_ty~)
                 }
-                _ => Vector(ty=Logic, len=Fixed(0))
+                _ => @parse.Type::empty()
             }
+        }
+        If(cond~, then~, else_~, span~, ..) => {
+            let _ = self.check_expr!(cond, env, expected_ty=Some(@parse.Logic))
+            let prev_is_inside_condition = self.is_inside_condition
+            self.is_inside_condition = true
+            let then_ty = self.check_expr!(then, env, expected_ty~)
+            let if_ty = match else_ {
+                Some(else_) => {
+                    let else_ty = self.check_expr!(else_, env, expected_ty~)
+                    let _ = unify!(then_ty, else_ty, span~)
+                    then_ty
+                }
+                None => {
+                    let _ = unify!(then_ty, @parse.Type::empty(), span~)
+                    then_ty
+                }
+            }
+
+            self.is_inside_condition = prev_is_inside_condition
+            if_ty
         }
     }
 
@@ -669,6 +689,8 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
             for stmt in body {
                 self.check_stmt!(stmt, new_env)
             }
+
+            self.is_inside_procedural_block = false
         }
     }
 }

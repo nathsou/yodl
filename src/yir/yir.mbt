@@ -112,131 +112,127 @@ pub fn Module::add_stmt(self: Module, stmt: Stmt) -> Unit {
 }
 
 pub fn Expr::child_statements(self: Expr) -> Iter[Stmt] {
-  match self {
-    Const(_) => Iter::empty()
-    Variable(_) => Iter::empty()
-    Unary(expr~, ..) => expr.child_statements()
-    Binary(lhs~, rhs~, ..) => lhs.child_statements() + rhs.child_statements()
-    Concat(elems~, ..) => {
-      let mut iter = Iter::empty()
-
-      for elem in elems {
-        iter = iter + elem.child_statements()
-      }
-
-      iter
-    }
-    Select(expr~, ..) => expr.child_statements()
-    Mux(subject~, cases~, default~, ..) => {
-      let mut iter = subject.child_statements()
-
-      for case in cases {
-        iter = iter + case.1.child_statements()
-      }
-
-      match default {
-        Some(expr) => iter = iter + expr.child_statements()
-        None => ()
-      }
-
-      iter
-    }
-    Block(body~, last~, ..) => {
-      let mut iter = Iter::empty()
-
-      for stmt in body {
-        iter = iter + Iter::singleton(stmt) + stmt.child_statements()
-      }
-
-      match last {
-        Some(expr) => iter = iter + expr.child_statements()
-        None => ()
-      }
-
-      iter
-    }
-  }
-}
-
-pub fn Stmt::child_statements(self: Stmt) -> Iter[Stmt] {
-  match self {
-    Expr(expr~, ..) => expr.child_statements()
-    Wire(_) => Iter::empty()
-    Reg(clk~, data_in~, enable~, reset~, data_out~, ..) => {
-      let mut iter = clk.child_statements()
-      iter = iter + data_in.child_statements()
-
-      match enable {
-        Some(expr) => iter = iter + expr.child_statements()
-        None => ()
-      }
-
-      match reset {
-        Some(expr) => iter = iter + expr.child_statements()
-        None => ()
-      }
-
-      iter = iter + data_out.child_statements()
-      iter
-    }
-    Assign(lhs~, rhs~, ..) => lhs.child_statements() + rhs.child_statements()
-    Memory(clk~, read_addr~, write_addr~, write_enable~, data_in~, data_out~, ..) => {
-      let mut iter = clk.child_statements()
-
-      for addr in read_addr {
-        iter = iter + addr.child_statements()
-      }
-
-      for addr in write_addr {
-        iter = iter + addr.child_statements()
-      }
-
-      match write_enable {
-        Some(enables) => {
-          for en in enables {
-            iter = iter + en.child_statements()
-          }
-        }
-        None => ()
-      }
-
-      for data in data_in {
-        iter = iter + data.child_statements()
-      }
-
-      for data in data_out {
-        iter = iter + data.child_statements()
-      }
-
-      iter
-    }
-    Instance(ports~, ..) => {
-      let mut iter = Iter::empty()
-
-      for port_expr in ports.values() {
-        iter = iter + port_expr.child_statements()
-      }
-
-      iter
-    }
-    Process(body~, ..) => {
-      let mut iter = Iter::empty()
-
-      for stmt in body {
-        iter = iter + Iter::singleton(stmt) + stmt.child_statements()
-      }
-
-      iter
-    }
-  }
-}
-
-pub fn Module::child_statements(self: Module) -> Iter[Stmt] {
   let mut iter = Iter::empty()
+  let stack = [self]
 
-  for stmt in self.body {
-    iter = iter + Iter::singleton(stmt) + stmt.child_statements()
+  while stack.length() > 0 {
+    let expr = stack.unsafe_pop()
+    
+    match expr {
+      Const(_) => ()
+      Variable(_) => ()
+      Unary(expr~, ..) => stack.push(expr)
+      Binary(lhs~, rhs~, ..) => {
+        stack.push(lhs)
+        stack.push(rhs)
+      }
+      Concat(elems~, ..) => stack.push_iter(elems.iter())
+      Select(expr~, ..) => stack.push(expr)
+      Mux(subject~, cases~, default~, ..) => {
+        stack.push(subject)
+
+        for case in cases {
+          stack.push(case.1)
+        }
+
+        match default {
+          Some(expr) => stack.push(expr)
+          None => ()
+        }
+      }
+      Block(body~, last~, ..) => {
+        for stmt in body {
+          iter += Iter::singleton(stmt) + stmt.child_statements()
+        }
+
+        match last {
+          Some(expr) => stack.push(expr)
+          None => ()
+        }
+      }
+    }
   }
 
   iter
+}
+
+pub fn Stmt::child_statements(self: Stmt) -> Iter[Stmt] {
+  let mut iter = Iter::empty()
+
+  let stack = [self]
+
+  while stack.length() > 0 {
+    let stmt = stack.unsafe_pop()
+    iter += Iter::singleton(stmt)
+
+    match stmt {
+      Expr(expr~, ..) => iter += expr.child_statements()
+      Wire(_) => ()
+      Reg(clk~, data_in~, enable~, reset~, data_out~, ..) => {
+        iter += clk.child_statements()
+        iter += data_in.child_statements()
+
+        match enable {
+          Some(expr) => iter += expr.child_statements()
+          None => ()
+        }
+
+        match reset {
+          Some(expr) => iter += expr.child_statements()
+          None => ()
+        }
+
+        iter += data_out.child_statements()
+      }
+      Assign(lhs~, rhs~, ..) => iter += lhs.child_statements() + rhs.child_statements()
+      Memory(clk~, read_addr~, write_addr~, write_enable~, data_in~, data_out~, ..) => {
+        iter += clk.child_statements()
+
+        for addr in read_addr {
+          iter += addr.child_statements()
+        }
+
+        for addr in write_addr {
+          iter += addr.child_statements()
+        }
+
+        match write_enable {
+          Some(enables) => {
+            for en in enables {
+              iter += en.child_statements()
+            }
+          }
+          None => ()
+        }
+
+        for data in data_in {
+          iter += data.child_statements()
+        }
+
+        for data in data_out {
+          iter += data.child_statements()
+        }
+      }
+      Instance(ports~, ..) => {
+        for port_expr in ports.values() {
+          iter += port_expr.child_statements()
+        }
+      }
+      Process(body~, ..) => {
+        stack.push_iter(body.iter())
+      }
+    }
+  }
+
+  iter
+}
+
+pub fn Module::child_statements(self: Module) -> Iter[Stmt] {
+  let stmts = []
+
+  for stmt in self.body {
+    stmts.push_iter(stmt.child_statements())
+  }
+
+  stmts.iter()
 }
