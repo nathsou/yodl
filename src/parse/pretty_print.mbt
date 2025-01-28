@@ -107,7 +107,7 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
     Identifier(path~, ..) => {
       self.write(path.to_string())
     }
-    String(str~, ..) => {
+    String(value=str, ..) => {
       self.write("\"")
       self.write(str)
       self.write("\"")

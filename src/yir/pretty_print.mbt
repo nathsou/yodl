@@ -118,6 +118,23 @@ pub fn emit_expr(self: YirEmitter, expr: Expr) -> Unit {
       self._.write_indent()
       self._.write("}")
     }
+    FunCall(name~, args~, ..) => {
+      self._.write("$\{name}(")
+
+      for idx, arg in args {
+        self.emit_expr(arg)
+        if idx < args.length() - 1 {
+          self._.write(", ")
+        }
+      }
+      
+      self._.write(")")
+    }
+    String(value~, ..) => {
+      self._.write("\"")
+      self._.write(value)
+      self._.write("\"")
+    }
   }
 }
 

@@ -754,7 +754,21 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, mod~: &ModuleLike, env~: Elab
         }
       }
     }
-    String(_) | Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
+    FunCall(name="display" as name, args~, span~, ty~) => {
+      let yir_args = Array::new(capacity=args.length())
+      let width = get_width!(ty, span~)
+
+      for arg in args {
+        yir_args.push(self.lower_expr!(arg, mod~, env~).as_expr())
+      }
+
+      Value::Expr(expr=FunCall(name~, args=yir_args, span~, width~), span~)
+    }
+    String(value=str, span~, ty~) => {
+      let width = get_width!(ty, span~)
+      Value::Expr(expr=String(value=str, span~, width~), span~)
+    }
+    Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())
     }
   }

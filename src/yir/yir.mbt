@@ -8,6 +8,8 @@ pub(all) enum Expr {
   Select(expr~: Expr, offset~: Int, width~: Int, span~: @parse.Span)
   Mux(subject~: Expr, cases~: Array[(Const, Expr)], default~: Expr?, width~: Int, span~: @parse.Span)
   Block(body~: Array[Stmt], last~: Expr?, width~: Int, span~: @parse.Span)
+  FunCall(name~: String, args~: Array[Expr], width~: Int, span~: @parse.Span)
+  String(value~: String, width~: Int, span~: @parse.Span)
 }
 
 pub(all) enum Stmt {
@@ -104,6 +106,8 @@ pub fn Expr::width(self: Expr) -> Int {
     Select(width~, ..) => width
     Mux(width~, ..) => width
     Block(width~, ..) => width
+    FunCall(width~, ..) => width
+    String(width~, ..) => width
   }
 }
 
@@ -150,6 +154,8 @@ pub fn Expr::child_statements(self: Expr) -> Iter[Stmt] {
           None => ()
         }
       }
+      FunCall(args~, ..) => stack.push_iter(args.iter())
+      String(_) => ()
     }
   }
 

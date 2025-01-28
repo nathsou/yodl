@@ -143,6 +143,15 @@ fn show_expr(expr: Expr, logger: &Logger) -> Unit {
 
       logger.write_string("(\{lhs} \{op} \{rhs})")
     }
+    FunCall(name~, args~) => {
+      logger.write_string("$\{name}")
+      logger.write_iter(args.iter(), prefix="(", suffix=")", sep=", ")
+    }
+    String(value~) => {
+      logger.write_string("\"")
+      logger.write_string(value)
+      logger.write_string("\"")
+    }
   }
 }
 

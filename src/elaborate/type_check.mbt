@@ -276,7 +276,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             Some(width) => @parse.Type::Vector(ty=@parse.Logic, len=Fixed(width))
             None => Nat
         }
-        String(str~,  span~, ..) => {
+        String(value=str,  span~, ..) => {
             for char in str {
                 if not(@utils.is_ascii(char)) {
                     raise StringContainsNonAsciiChar(char~, span~)
@@ -546,6 +546,13 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
 
             Vector(ty=elem_ty, len=Fixed(len))
+        }
+        FunCall(name="display", args~, ..) => {
+            for arg in args {
+                let _ = self.check_expr!(arg, env)
+            }
+
+            @parse.Type::empty()
         }
         FunCall(span~, ..) => {
             raise FunCallAfterMonomorphization(span~)

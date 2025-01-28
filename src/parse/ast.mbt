@@ -16,7 +16,7 @@ pub(all) enum Expr {
   Struct(fields~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Replicate(expr~: Expr, count~: Expr, concat~: Bool, span~: Span, ty~: Ref[Type?])
   FunCall(name~: String, args~: Array[Expr], span~: Span, ty~: Ref[Type?])
-  String(str~: String, span~: Span, ty~: Ref[Type?])
+  String(value~: String, span~: Span, ty~: Ref[Type?])
   Block(body~: Array[Stmt], last~: Expr?, span~: Span, ty~: Ref[Type?])
   If(cond~: Expr, then~: Expr, else_~: Expr?, span~: Span, ty~: Ref[Type?])
 }
@@ -726,6 +726,12 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       Vector(elems=flattened, span~, ty={ val: None })
     }
   },
+  "$display": {
+    arity: Range(min=1, max=@int.max_value),
+    apply: fn(args, span) {
+      FunCall(name="display", args~, span~, ty={ val: Some(Type::empty()) })
+    }
+  },
 }
 
 pub fn as_int(self: Bits) -> Int!AstError {
@@ -930,7 +936,7 @@ pub fn Expr::as_bits(self: Expr) -> Bits! {
 
 pub fn expect_string(self: Expr) -> String! {
   match self {
-    String(str~, ..) => str
+    String(value=str, ..) => str
     _ => raise ExpectedStringExpression(expr=self, span=self.span())
   }
 }

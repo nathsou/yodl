@@ -266,7 +266,7 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     }
     StringLiteral(str) => {
       self.advance()
-      String(str~, span=self.span(start_idx), ty={ val: None })
+      String(value=str, span=self.span(start_idx), ty={ val: None })
     }
     Not => {
       self.advance()

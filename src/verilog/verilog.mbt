@@ -6,6 +6,8 @@ pub enum Expr {
   Const(@yir.Const) 
   Unary(op~: @parse.UnaryOp, expr~: Expr)
   Binary(op~: @parse.BinaryOp, lhs~: Expr, rhs~: Expr)
+  FunCall(name~: String, args~: Array[Expr])
+  String(value~: String)
 } derive(Eq)
 
 pub enum Stmt {

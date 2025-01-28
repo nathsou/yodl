@@ -27,28 +27,6 @@ typealias SimplifierEnv = @elaborate.Scope[@parse.Path, SimplifierEnvEntry]
 pub fn Simplifier::new() -> Simplifier {
   { name_counts: {} }
 }
-
-pub type! SimplifierError {
-  InvalidCharacterInString(char~: Char, span~: @parse.Span)
-}
-
-pub impl @parse.Spanned for SimplifierError with span(self) {
-  match self {
-    InvalidCharacterInString(span~, ..) => span
-  }
-}
-
-pub impl Show for SimplifierError with output(self, logger) {
-  match self {
-    InvalidCharacterInString(char~, span=_) => {
-      logger.write_string("Character '\{char}'' is not part of the ISO/IEC 8859-1 standard and cannot be used in a string literal ")
-      logger.write_char(char)
-    }
-  }
-
-  logger.write_string(self.show_context())
-}
-
 pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
   let count = match self.name_counts[name] {
     Some(count) => count
@@ -67,7 +45,6 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // - Remove unecessary spreads
 // - Rewrite flat constant vectors to natural expressions
 // - Hardcode constant references
-// - Rewrite strings into vectors
 // - Rewrite nand expressions into not + and expressions
 // - Rewrite ternary expressions into match expressions
 // - Rewrite slicing expressions using width and offset to absolute slicing expressions
@@ -116,7 +93,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
 
                 for i in 0..=max {
                   let lhs = @parse.Expr::nat!(i, width=Some(s_width), base=10, span~)
-                  let idx = @parse.Expr::nat!(i, width=None, base=10, span~)
+                  let idx = @parse.Expr::nat!(max - i, width=None, base=10, span~)
                   cases.push((lhs, @parse.Expr::Indexing(expr~, index=idx, span~, ty~)))
                 }
 
@@ -190,32 +167,6 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
           None
         }
       }
-      String(str~, span~, ty=_) => Some({
-        let encoded = Array::new(capacity=str.length() * @parse.BITS_PER_CHAR)
-
-        for char in str {
-          let char_latin1 = char.to_int()
-
-          if char_latin1 < 0 || char_latin1 > 255 {
-            raise InvalidCharacterInString(char~, span~)
-          }
-
-          for bit in @utils.bin(char_latin1, width=@parse.BITS_PER_CHAR) {
-            encoded.push(match bit {
-              1 => @parse.BinaryDigit::One
-              _ => @parse.BinaryDigit::Zero
-            })
-          }
-        }
-
-        @parse.Expr::Natural(
-          bits=@parse.Bits::new(encoded, span~),
-          width=Some(encoded.length()),
-          base=2,
-          span~,
-          ty={ val: Some(Vector(ty=Logic, len=Fixed(encoded.length()))),
-        })
-      })
       Ternary(cond~, then~, else_~, span~, ty~) => {
         // Rewrite ternary expressions into match expressions
         let match_expr = @parse.Expr::Match(

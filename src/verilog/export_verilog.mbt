@@ -193,6 +193,16 @@ fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Exp
         None => Const(@yir.Const::zeros(width, span~))
       }
     }
+    FunCall(name~, args~, ..) => {
+      let v_args = Array::new(capacity=args.length())
+
+      for arg in args {
+        v_args.push(self.export_expr!(arg, scope~))
+      }
+
+      FunCall(name~, args=v_args)
+    }
+    String(value~, ..) => String(value~)
   }
 }
 

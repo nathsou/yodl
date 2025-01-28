@@ -111,7 +111,8 @@ module CharAt<Length, IndexWidth>(
     is_out_of_bounds: logic,
 ) {
     is_out_of_bounds = index >= Length;
-    char = is_out_of_bounds ? " " : (str >> ((Length - 1 - index) * 8))[7:0];
+    let shifted = str >> ((Length - 1 - index) * 8);
+    char = is_out_of_bounds ? " " : shifted[7:0];
 }
 
 const Rows = VGA::V_ACTIVE / 8;
@@ -211,12 +212,12 @@ module BCD<W>(bin: logic[W]) -> (bcd: logic[W + (W - 4) / 3 + 1]) {
         bcd[W - 1 : 0] = bin;
 
         for i in 0..=W - 4 {
-            for j in 0..=(i / 3) {
+            for j in 0..=i / 3 {
                 let bin = bcd[W - i + 4 * j -: 4];
                 
                 if bin > 4'd4 {
                     bcd[W - i + 4 * j -: 4] = bin + 4'd3;
-                };
+                }
             }
         }
     }
