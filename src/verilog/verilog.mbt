@@ -8,12 +8,14 @@ pub enum Expr {
   Binary(op~: @parse.BinaryOp, lhs~: Expr, rhs~: Expr)
   FunCall(name~: String, args~: Array[Expr])
   String(value~: String)
+  Indexing(expr~: Expr, index~: Expr)
+  Array(Array[Expr])
 } derive(Eq)
 
 pub enum Stmt {
   Expr(expr~: Expr)
-  WireDecl(name~: String, top~: Int, bot~: Int, init~: Expr?)
-  RegDecl(name~: String, top~: Int, bot~: Int, width~: Int, init~: Expr?)
+  WireDecl(name~: String, top~: Int, bot~: Int, dims~: Array[Int], init~: Expr?)
+  RegDecl(name~: String, top~: Int, bot~: Int, dims~: Array[Int], init~: Expr?)
   Assign(lhs~: Expr, rhs~: Expr, kind~: AssignmentKind)
   If(cond~: Expr, then~: Stmt, else_~: Stmt?)
   Casez(cond~: Expr, cases~: Array[(Expr, Stmt)], default~: Stmt?)

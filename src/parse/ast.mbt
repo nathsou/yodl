@@ -984,6 +984,37 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
   }
 }
 
+pub struct Dims {
+  width: Int
+  dims: Array[Int]
+} derive (Eq, Show)
+
+pub fn dimensions(self: Type, span: Span) -> Dims!AstError {
+  let dims = []
+  let mut width = 0
+  
+  fn go(ty: Type) -> Unit!AstError {
+    match ty {
+      Vector(ty=Logic, len=Fixed(len)) => {
+        width = len
+      }
+      Vector(ty~, len~) => match len {
+          Fixed(len) => {
+            go!(ty)
+            dims.push(len)
+          }
+          Dynamic(_) => raise VectorLengthNotFixed(span~)
+        }
+      _ => {
+        width = ty.width!(span)
+      }
+    }
+  }
+
+  go!(self)
+  { width, dims }
+}
+
 pub fn substitute(self: Type, params_env: Map[String, Param]) -> Type {
   match self {
     Nat | Logic | String(_) => self

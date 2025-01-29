@@ -184,8 +184,10 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
             (Vector(ty=_, len=Dynamic(Identifier(_))), Vector(ty=_, len=Fixed(_))) => {
                 eqs.push((ty2, ty1))
             }
-            (Instance(sig=_, params=params1, accessed_ports=accessed_ports1), Instance(sig=_, params=params2, accessed_ports=accessed_ports2)) => {
-                if params1 == params2 {
+            (Instance(sig=sig1, params=params1, accessed_ports=accessed_ports1), Instance(sig=sig2, params=params2, accessed_ports=accessed_ports2)) => {
+                if sig1.path != sig2.path {
+                    raise IncompatibleTypes(ty1~, ty2~, span~)
+                } else if params1 == params2 {
                     // merge accessed ports
                     for port in accessed_ports1 {
                         accessed_ports2.add(port)

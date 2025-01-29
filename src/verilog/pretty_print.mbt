@@ -152,6 +152,12 @@ fn show_expr(expr: Expr, logger: &Logger) -> Unit {
       logger.write_string(value)
       logger.write_string("\"")
     }
+    Indexing(expr~, index~) => {
+      logger.write_string("\{expr}[\{index}]")
+    }
+    Array(elems) => {
+      logger.write_iter(elems.iter(), prefix="{", suffix="}", sep=", ")
+    }
   }
 }
 
@@ -203,24 +209,25 @@ fn emit_stmt(self: VerilogEmitter, stmt: Stmt) -> Unit {
       self.emit_expr(expr)
       self.write(";\n")
     }
-    WireDecl(name~, top=msb, bot=lsb, init~) | RegDecl(name~, top=msb, bot=lsb, width=_, init~) => {
+    WireDecl(name~, top~, bot~, dims~, init~) | RegDecl(name~, top~, bot~, dims~, init~) => {
       let decl_type = match stmt { WireDecl(_) => "wire"; _ => "reg" }
       self.write_indent()
-
-      let width = match stmt {
-        RegDecl(width~, ..) => width
-        _ => 1
-      }
 
       fn pos(n: Int) -> Int {
         @math.maximum(n, 0)
       }
 
-      match (width, msb == lsb) {
-        (1, true) => self.write("\{decl_type} \{name}")
-        (1, false) => self.write("\{decl_type} [\{pos(msb)}:\{lsb}] \{name}")
-        (_, true) => self.write("\{decl_type} [\{pos(width - 1)}:0] \{name}")
-        (_, false) => self.write("\{decl_type} [\{pos(width - 1)}:0] \{name} [\{msb}:\{lsb}]")
+      self.write(decl_type)
+      self.write(" ")
+
+      if top != bot {
+        self.write("[\{pos(top)}:\{bot}] ")
+      }
+
+      self.write(name + " ")
+
+      for dim in dims {
+        self.write("[0:\{pos(dim - 1)}]")
       }
 
       match init {

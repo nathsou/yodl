@@ -46,7 +46,7 @@ fn Value::ctor(self: Value) -> String {
 fn Value::as_expr(self: Value) -> @yir.Expr {
   match self {
     Expr(expr~, ..) => expr
-    Vector(elems~, span~) => Concat(elems=elems.map(Value::as_expr), width=self.width(), span~)
+    Vector(elems~, span~) => Vector(elems=elems.map(Value::as_expr), width=self.width(), span~)
     Struct(fields~, span~) => {
       let elems = Array::new(capacity=fields.size())
       let sorted_keys = { let keys = fields.keys().collect(); keys.sort(); keys }
@@ -152,8 +152,8 @@ fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: &ModuleLike, env~: Elab
     }
     Let(name~, ty~, expr~, span~) => {
       let path = @parse.Path::new([], name)
-      let width = get_width!(ty, span~)
-      mod.add_stmt(Wire(name~, width~, span~))
+      let { width, dims } = get_dims!(ty, span~)
+      mod.add_stmt(Wire(name~, width~, dims~, span~))
 
       let val = match expr {
         Some(expr) => Some(self.lower_expr!(expr, mod~, env~, binding=Some(name)))
@@ -203,6 +203,10 @@ fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, mod~: &ModuleLike, env~: Elab
 
 fn get_width(ty: Ref[@parse.Type?], span~: @parse.Span) -> Int! {
   ty.val.or_error!(UntypedValue(span~)).width!(span)
+}
+
+fn get_dims(ty: Ref[@parse.Type?], span~: @parse.Span) -> @parse.Dims! {
+  ty.val.or_error!(UntypedValue(span~)).dimensions!(span)
 }
 
 fn select(expr~: @yir.Expr, offset~: Int, width~: Int, span~: @parse.Span) -> @yir.Expr {
@@ -376,7 +380,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, mod~: &ModuleLike, env~: Elab
 
         if not(skip) {
           let wire_name = "\{inst_name}.\{port_name}"
-          mod.add_stmt(Wire(name=wire_name, width=port_sig.width, span~))
+          mod.add_stmt(Wire(name=wire_name, width=port_sig.width, dims=[], span~))
           connections[port_name] = Variable(name=wire_name, width=port_sig.width, span~)
 
           if accessed_ports.contains(port_name) {
@@ -585,12 +589,16 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, mod~: &ModuleLike, env~: Elab
         _ => Struct(fields~, span~)
       }
     }
-    Indexing(expr~, index~, span~, ty=_) => {
+    Indexing(expr~, index~, span~, ty~) => {
       let val = self.lower_expr!(expr, mod~, env~)
-      let idx = self.lower_expr!(index, mod~, env~).expect_const!().bits.as_int!()
+      let width = get_width!(ty, span~)
+      let idx_int = match self.lower_expr!(index, mod~, env~).expect_const?() {
+        Ok(c) => Some(c.bits.as_int!())
+        Err(_) => None
+      }
 
-      match val {
-        Vector(elems~, span~) => {
+      match (val, idx_int) {
+        (Vector(elems~, span~), Some(idx)) => {
           let len = elems.length()
 
           if idx >= len {
@@ -600,18 +608,8 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, mod~: &ModuleLike, env~: Elab
           elems[idx]
         }
         _ => {
-          match expr.ty().val.unwrap() {
-            Vector(ty=inner_ty, len=_) => {
-              let bits_per_elem = inner_ty.width!(span)
-              let lsb = idx * bits_per_elem
-              let msb = lsb + bits_per_elem - 1
-
-              Expr(expr=select(expr=val.as_expr(), offset=msb, width=bits_per_elem, span~), span~)
-            }
-            _ => {
-              raise Unsupported(message="Indexing on non-vector data type'", span=expr.span())
-            }
-          }
+          let v_index = self.lower_expr!(index, mod~, env~).as_expr()
+          Expr(expr=Indexing(expr=val.as_expr(), index=v_index, width~, span~), span~)
         }
       }
     }

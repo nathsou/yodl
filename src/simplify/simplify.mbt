@@ -39,7 +39,6 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 }
 
 // - Resolve identifiers to unique names
-// - Rewrite non-constant indexing expressions to match expressions
 // - Rewrite port accesses on match expressions
 // - Rewrite replication expressions into concatenation expressions
 // - Remove unecessary spreads
@@ -77,36 +76,6 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
         }
 
         @parse.Expr::Struct(fields=fields, span~, ty={ val: Some(Struct(types)) })
-      })
-      Indexing(expr~, index~, span~, ty~) as indexing_expr => Some({
-        match index.as_int?() {
-          Ok(_) => indexing_expr
-          Err(_) => {
-            // Rewrite non-constant indexing expressions to match expressions
-            let s_width = index.ty().val.unwrap().width!(index.span())
-            let lhs_width = expr.ty().val.unwrap().width!(expr.span())
-            let match_expr = @parse.Expr::Match(
-              subject=index,
-              cases={
-                let cases = []
-                let max = @utils.min(@utils.pow2(s_width) - 1, lhs_width - 1)
-
-                for i in 0..=max {
-                  let lhs = @parse.Expr::nat!(i, width=Some(s_width), base=10, span~)
-                  let idx = @parse.Expr::nat!(max - i, width=None, base=10, span~)
-                  cases.push((lhs, @parse.Expr::Indexing(expr~, index=idx, span~, ty~)))
-                }
-
-                cases
-              },
-              default=None,
-              span~,
-              ty~,
-            )
-
-            self.simplify_expr!(match_expr, env~, scope~)
-          }
-        }
       })
       FieldAccess(expr~, field=port, span=port_acc_span, ty=port_acc_ty) => {
         // Rewrite port accesses on match expressions

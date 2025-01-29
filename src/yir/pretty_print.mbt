@@ -135,6 +135,22 @@ pub fn emit_expr(self: YirEmitter, expr: Expr) -> Unit {
       self._.write(value)
       self._.write("\"")
     }
+    Indexing(expr~, index~, ..) => {
+      self.emit_expr(expr)
+      self._.write("[")
+      self.emit_expr(index)
+      self._.write("]")
+    }
+    Vector(elems~, ..) => {
+      self._.write("[")
+      for idx, elem in elems {
+        self.emit_expr(elem)
+        if idx < elems.length() - 1 {
+          self._.write(", ")
+        }
+      }
+      self._.write("]")
+    }
   }
 }
 
@@ -145,8 +161,17 @@ pub fn emit_stmt(self: YirEmitter, stmt: Stmt) -> Unit {
       self.emit_expr(expr)
       self._.write("\n")
     }
-    Wire(name~, width~, ..) => {
-      self._.emit("wire [\{width}] \{name}")
+    Wire(name~, width~, dims~, ..) => {
+      self._.write_indent()
+      self._.write("wire [\{width}]")
+
+      for dim in dims {
+        self._.write("[")
+        self._.write(dim)
+        self._.write("]")
+      }
+
+      self._.write(" \{name}\n")
     }
     Reg(width~, clk~, data_in~, async_reset~, enable~, reset~, data_out~, ..) => {
       self._.emit("reg [\{width}](")

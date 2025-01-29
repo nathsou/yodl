@@ -1,6 +1,6 @@
 # Adapted from https://projectf.io/posts/verilog-sim-verilator-sdl/
 
-VFLAGS = -O3 --x-assign fast --x-initial fast --noassert -Wno-WIDTHEXPAND
+VFLAGS = -O3 --x-assign fast --x-initial fast --noassert -Wno-WIDTHEXPAND -Wno-SELRANGE
 SDL_CFLAGS = `sdl2-config --cflags`
 SDL_LDFLAGS = `sdl2-config --libs`
 

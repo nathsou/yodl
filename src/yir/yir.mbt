@@ -10,11 +10,13 @@ pub(all) enum Expr {
   Block(body~: Array[Stmt], last~: Expr?, width~: Int, span~: @parse.Span)
   FunCall(name~: String, args~: Array[Expr], width~: Int, span~: @parse.Span)
   String(value~: String, width~: Int, span~: @parse.Span)
+  Indexing(expr~: Expr, index~: Expr, width~: Int, span~: @parse.Span)
+  Vector(elems~: Array[Expr], width~: Int, span~: @parse.Span)
 }
 
 pub(all) enum Stmt {
   Expr(expr~: Expr, span~: @parse.Span)
-  Wire(name~: String, width~: Int, span~: @parse.Span)
+  Wire(name~: String, width~: Int, dims~: Array[Int], span~: @parse.Span)
   Reg(
     width~: Int,
     async_reset~: Bool,
@@ -108,6 +110,8 @@ pub fn Expr::width(self: Expr) -> Int {
     Block(width~, ..) => width
     FunCall(width~, ..) => width
     String(width~, ..) => width
+    Indexing(width~, ..) => width
+    Vector(width~, ..) => width
   }
 }
 
@@ -156,6 +160,11 @@ pub fn Expr::child_statements(self: Expr) -> Iter[Stmt] {
       }
       FunCall(args~, ..) => stack.push_iter(args.iter())
       String(_) => ()
+      Indexing(expr~, index~, ..) => {
+        stack.push(expr)
+        stack.push(index)
+      }
+      Vector(elems~, ..) => stack.push_iter(elems.iter())
     }
   }
 

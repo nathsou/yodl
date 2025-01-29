@@ -129,7 +129,7 @@ fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Exp
       let mux = Identifier(mux_id)
 
       if is_expr {
-        scope.wire_decls.push(RegDecl(name=mux_id, top=width - 1, bot=0, width=1, init=None))
+        scope.wire_decls.push(RegDecl(name=mux_id, top=width - 1, bot=0, dims=[], init=None))
       }
 
       let prev_is_inside_always_block = self.is_inside_always_block
@@ -158,7 +158,12 @@ fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Exp
       let v_default = match default {
         Some(expr) => {
           let v_expr = self.export_expr!(expr, scope~)
-          Some(Stmt::Assign(lhs=mux, rhs=v_expr, kind=Blocking))
+          
+          if width > 0 {
+            Some(Assign(lhs=mux, rhs=v_expr, kind=Blocking))
+          } else {
+            Some(Block([]))
+          }
         }
         None => None
       }
@@ -203,6 +208,21 @@ fn export_expr(self: VerilogExporter, expr: @yir.Expr, scope~: StmtScope) -> Exp
       FunCall(name~, args=v_args)
     }
     String(value~, ..) => String(value~)
+    Indexing(expr~, index~, ..) => {
+      let v_expr = self.export_expr!(expr, scope~)
+      let v_index = self.export_expr!(index, scope~)
+      Indexing(expr=v_expr, index=v_index)
+    }
+    Vector(elems~, ..) => {
+      let v_elems = Array::new(capacity=elems.length())
+
+      for elem in elems {
+        let v_elem = self.export_expr!(elem, scope~)
+        v_elems.push(v_elem)
+      }
+
+      Array(v_elems)
+    }
   }
 }
 
@@ -219,8 +239,8 @@ fn export_stmt(self: VerilogExporter, stmt: @yir.Stmt, scope~: StmtScope) -> Uni
         scope.push(Expr(expr=v_expr))
       }
     }
-    Wire(name~, width~, ..) => {
-      scope.wire_decls.push(WireDecl(name=display(name), top=width - 1, bot=0, init=None))
+    Wire(name~, width~, dims~, ..) => {
+      scope.wire_decls.push(WireDecl(name=display(name), top=width - 1, bot=0, dims~, init=None))
     }
     Reg(
       width~,
@@ -359,7 +379,7 @@ fn export_stmt(self: VerilogExporter, stmt: @yir.Stmt, scope~: StmtScope) -> Uni
       let clk = self.export_expr!(clk, scope~)
       let mem = self.next_id("mem")
       let write_ports = write_addr.length()
-      scope.wire_decls.push(RegDecl(name=mem, top=depth - 1, bot=0, width~, init=None))
+      scope.wire_decls.push(RegDecl(name=mem, top=depth - 1, bot=0, dims=[width], init=None))
 
       match init {
         Some(init) => {
@@ -460,9 +480,9 @@ fn export_module(self: VerilogExporter, mod: @yir.Module) -> Unit! {
   for wire_decl in scope.wire_decls {
     match wire_decl {
       // promote wires that are assigned in processes to regs
-      WireDecl(name~, top~, bot~, init~) => {
+      WireDecl(name~, top~, bot~, dims~, init~) => {
         if wires_assigned_in_procs.contains(name) {
-          verilog_mod.body.push(RegDecl(name~, top~, bot~, width=1, init~))
+          verilog_mod.body.push(RegDecl(name~, top~, bot~, dims~, init~))
         } else {
           verilog_mod.body.push(wire_decl)
         }
