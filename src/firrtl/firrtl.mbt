@@ -1,4 +1,4 @@
-// FIRRTL
+// FIRRTL https://github.com/chipsalliance/firrtl-spec
 pub(all) enum Id {
   Ident(String)
   Literal(String)
