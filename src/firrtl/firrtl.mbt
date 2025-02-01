@@ -4,10 +4,17 @@ pub(all) enum Id {
   Literal(String)
 }
 
-pub fn inner(self: Id) -> String {
+pub fn Id::inner(self: Id) -> String {
   match self {
     Ident(s) => s
     Literal(s) => s
+  }
+}
+
+pub fn Id::join(self: Id, str: String) -> Id {
+  match self {
+    Ident(s) => Ident(s + str)
+    Literal(s) => Literal(s + str)
   }
 }
 
@@ -53,6 +60,7 @@ pub(all) enum ReadUnderWrite { Undefined; Old; New }
 
 pub(all) enum Expr {
   Reference(Reference)
+  Int(BigInt)
   Literal(Literal)
   Mux(cond~: Expr, tval~: Expr, fval~: Expr)
   PrimOp(op~: PrimOp, args~: Array[Expr])
@@ -104,7 +112,7 @@ pub(all) struct BundleField {
 pub(all) enum PrimOp {
   AsUInt; AsSInt; AsClock; AsAsyncReset; Cvt
   Neg; Not; Andr; Orr; Xorr
-  Add; Sub; Mul; Div; Mod
+  Add; Sub; Mul; Div; Rem
   Lt; Leq; Gt; Geq; Eq; Neq
   Dshl; Dshr
   And; Or; Xor; Cat

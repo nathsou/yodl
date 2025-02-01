@@ -316,7 +316,7 @@ pub impl Show for PrimOp with output(self, logger) {
     Sub => "sub"
     Mul => "mul"
     Div => "div"
-    Mod => "mod"
+    Rem => "rem"
     Neg => "neg"
     Not => "not"
     Andr => "andr"
@@ -346,6 +346,7 @@ pub impl Show for PrimOp with output(self, logger) {
 pub fn emit_expr(self: FIRRTLEmitter, expr: Expr) -> Unit {
   match expr {
     Reference(reference) => self.emit_reference(reference)
+    Int(value) => self._.write(value)
     Literal(literal) => self.emit_literal(literal)
     Mux(cond~, tval~, fval~) => {
       self._.write("mux ")

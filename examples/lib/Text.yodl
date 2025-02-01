@@ -135,7 +135,7 @@ module Text<Length, X, Y>(
     let char = cell_idx >= StartIdx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " ";
     let bitmap = AsciiTable(char).q;
     let pixel_idx: logic[6] = y * 8 + x;
-    is_active = bitmap[pixel_idx];
+    is_active = (bitmap >> pixel_idx)[0];
 }
 
 module TextDynamicPosition<Length>(
@@ -157,8 +157,7 @@ module TextDynamicPosition<Length>(
     let char = cell_idx >= start_idx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " ";
     let bitmap = AsciiTable(char).q;
     let pixel_idx: logic[6] = y * 8 + x;
-
-    is_active = bitmap[pixel_idx];
+    is_active = (bitmap >> pixel_idx)[0];
 }
 
 module Hex<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 8]) {
@@ -203,20 +202,18 @@ module Dec<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 8]) {
 
 // https://en.wikipedia.org/wiki/Double_dabble#Parametric_Verilog_implementation
 module BCD<W>(bin: logic[W]) -> (bcd: logic[W + (W - 4) / 3 + 1]) {
-    procedural {
-        for i in 0..=W + (W - 4) / 3 {
-            bcd[i] = 1'b0;
-        }
+    for i in 0..=W + (W - 4) / 3 {
+        bcd[i] = 1'b0;
+    }
 
-        bcd[W - 1 : 0] = bin;
+    bcd[W - 1 : 0] = bin;
 
-        for i in 0..=W - 4 {
-            for j in 0..=i / 3 {
-                let bin = bcd[W - i + 4 * j -: 4];
-                
-                if bin > 4'd4 {
-                    bcd[W - i + 4 * j -: 4] = bin + 4'd3;
-                }
+    for i in 0..=W - 4 {
+        for j in 0..=i / 3 {
+            let bin = bcd[W - i + 4 * j -: 4];
+            
+            if bin > 4'd4 {
+                bcd[W - i + 4 * j -: 4] = bin + 4'd3;
             }
         }
     }

@@ -55,9 +55,14 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
 
       Vector(elems=new_elems, span~, ty=clone_ty(ty))
     }
-    Spread(expr~, span~, ty~) => {
-      let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)
-      Spread(expr~, span~, ty=clone_ty(ty))
+    Concat(elems~, span~, ty~) => {
+      let new_elems = Array::new(capacity=elems.length())
+
+      for elem in elems {
+        new_elems.push(rewrite_expr!(elem, rewr_expr~, rewr_stmt~))
+      }
+
+      Concat(elems=new_elems, span~, ty=clone_ty(ty))
     }
     Ternary(cond~, then~, else_~, span~, ty~) => {
       let cond = rewrite_expr!(cond, rewr_expr~, rewr_stmt~)
@@ -201,15 +206,6 @@ pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
 
       Scope(body~, span~)
     }
-    Procedural(body~, span~) => {
-      let body = Array::new(capacity=body.length())
-
-      for stmt in body {
-        body.push_iter(rewr_stmt!(stmt))
-      }
-
-      Procedural(body~, span~)
-    }
   }
 
   (rewr_stmt)!(res)
@@ -247,12 +243,11 @@ pub fn visit_expr(expr: Expr, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Boo
           visit_expr!(expr, on_expr~, on_stmt~)
         }
       }
-      Vector(elems~, span=_, ty=_) => {
+      Vector(elems~, span=_, ty=_) | Concat(elems~, span=_, ty=_) => {
         for elem in elems {
           visit_expr!(elem, on_expr~, on_stmt~)
         }
       }
-      Spread(expr~, span=_, ty=_) => visit_expr!(expr, on_expr~, on_stmt~)
       Ternary(cond~, then~, else_~, span=_, ty=_) => {
         visit_expr!(cond, on_expr~, on_stmt~)
         visit_expr!(then, on_expr~, on_stmt~)
@@ -340,11 +335,6 @@ pub fn visit_stmt(stmt: Stmt, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Boo
         }
       }
       Scope(body~, span=_) => {
-        for stmt in body {
-          visit_stmt!(stmt, on_expr~, on_stmt~)
-        }
-      }
-      Procedural(body~, span=_) => {
         for stmt in body {
           visit_stmt!(stmt, on_expr~, on_stmt~)
         }

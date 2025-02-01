@@ -113,15 +113,22 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
 
   for cmd in commands {
     match cmd {
-      WriteFIRRTL => {
+      WriteFIRRTL(path~) => {
         let emitter = @firrtl.FIRRTLEmitter::new()
         emitter.emit_circuit({
           version: (4, 1, 0),
-          id: Ident("TopSim"),
+          id: Ident("Top"),
           decls: firrtl.values().map(fn(mod) { @firrtl.Decl::Module(mod) }).collect()
         })
 
-        println(emitter._)
+        match path {
+          Some(path) => {
+            @fs.write_string_to_file(path~, content=emitter._.to_string())
+          }
+          None => {
+            println(emitter._.to_string())
+          }
+        }
       }
       _ => ()
     }

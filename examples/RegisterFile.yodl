@@ -18,7 +18,6 @@ module RegisterFile<WIDTH, DEPTH>(
     write_dest: logic[$clog2(DEPTH)],
     write_data: logic[WIDTH],
     read_src: logic[$clog2(DEPTH)],
-    data_out: logic,
 ) -> (
     reg0_data: logic[WIDTH],
     reg1_data: logic[WIDTH],
@@ -32,10 +31,16 @@ module RegisterFile<WIDTH, DEPTH>(
 
     reg0_data = regs[0].q;
     reg1_data = regs[1].q;
-    read_data = data_out ? regs[read_src].q : WIDTH * {1'bZ};
+    read_data = regs[read_src].q;
 }
 
-module Top(clk: logic, rst_n: logic) -> () {
-    let rst = not rst_n;
-    RegisterFile<8, 8>(clk, rst);
+module Top(
+    clk: logic,
+    rst: logic,
+    write_enable: logic,
+    write_dest: logic[3],
+    write_data: logic[8],
+    read_src: logic[3],
+) -> () {
+    RegisterFile<8, 8>(clk, rst, write_enable, write_dest, write_data, read_src);
 }

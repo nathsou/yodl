@@ -229,9 +229,19 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.indent -= 1
       self.write("]")
     }
-    Spread(expr~, ..) => {
-      self.write("...")
-      self.emit_expr(expr)
+    Concat(elems~, ..) => {
+      self.write("{")
+      self.indent += 1
+
+      for i, elem in elems {
+        self.emit_expr(elem)
+
+        if i < elems.length() - 1 {
+          self.write(",\n")
+        }
+      }
+
+      self.write("}")
     }
     Ternary(cond~, then~, else_~, ..) => {
       self.write("(")
@@ -496,21 +506,6 @@ pub fn emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
     }
     Const(decl~, ..) => {
       self.emit_const_decl(decl)
-    }
-    Procedural(body~, ..) => {
-      self.write("\n")
-      self.write_indent()
-      self.write("procedural {\n")
-      self.indent += 1
-
-      for stmt in body {
-        self.emit_stmt(stmt)
-        self.write("\n")
-      }
-
-      self.indent -= 1
-      self.write_indent()
-      self.write("}")
     }
   }
 }

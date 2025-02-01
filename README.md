@@ -12,7 +12,7 @@ Yet anOther (hardware) Description Language
 
 ## Checklist
 
-- [ ] [FIRRTL](https://github.com/chipsalliance/firrtl-spec) export
+- [x] [FIRRTL](https://github.com/chipsalliance/firrtl-spec) export
 - [x] Verilog export
 - [x] Generic multi-port memories
 - [x] Imports (TODO: unqualified imports)

@@ -276,7 +276,6 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     Lparen => self.parse_tuple_or_paren_expr!()
     Lbracket => self.parse_vector_expr!()
     Lbrace => self.parse_struct_or_concat_or_block_expr!()
-    DotDotDot => self.parse_spread_expr!()
     Match => self.parse_match_expr!()
     If => self.parse_if_expr!()
     Dollar => self.parse_function_call_expr!()
@@ -365,7 +364,7 @@ fn parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) -> Expr! {
 
   self.expect!(Rbrace, start_idx)
 
-  FunCall(name="$flat", args=elems, span=self.span(start_idx), ty={ val: None })
+  Concat(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_struct_or_concat_or_block_expr(self: Parser) -> Expr! {
@@ -440,13 +439,6 @@ fn parse_struct_or_concat_or_block_expr(self: Parser) -> Expr! {
       }
     }
   }
-}
-
-fn parse_spread_expr(self: Parser) -> Expr! {
-  let start_idx = self.index
-  self.expect!(DotDotDot, start_idx)
-  let expr = self.parse_expr!()
-  Spread(expr~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_vector_expr(self: Parser) -> Expr! {
@@ -604,11 +596,6 @@ fn parse_stmt(self: Parser) -> Stmt! {
       For(var~, range={ start, end, inclusive }, body~, span=self.span(start_idx))
     }
     Const => Stmt::Const(decl=self.parse_const_decl!(), span=self.span(start_idx))
-    Procedural => {
-      self.advance()
-      let body = self.parse_block!()
-      Procedural(body~, span=self.span(start_idx))
-    }
     _ => {
       self.parse_assignment_stmt!()
     }

@@ -9,7 +9,7 @@ pub(all) enum Expr {
   FieldAccess(expr~: Expr, field~: String, span~: Span, ty~: Ref[Type?])
   Instance(path~: Path, params~: InstanceParams, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
-  Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
+  Concat(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
   Match(subject~: Expr, cases~: Array[(Expr, Expr)], default~: Expr?, span~: Span, ty~: Ref[Type?])
   Tuple(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
@@ -28,7 +28,6 @@ pub(all) enum Stmt {
   Assign(lhs~: Expr, rhs~: Expr, span~: Span)
   For(var~: String, range~: ForRange, body~: Array[Stmt], span~: Span)
   Scope(body~: Array[Stmt], span~: Span)
-  Procedural(body~: Array[Stmt], span~: Span)
 }
 
 pub(all) enum Decl {
@@ -363,7 +362,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     FieldAccess(ty~, ..) => ty
     Instance(ty~, ..) => ty
     Vector(ty~, ..) => ty
-    Spread(ty~, ..) => ty
+    Concat(ty~, ..) => ty
     Ternary(ty~, ..) => ty
     Match(ty~, ..) => ty
     Tuple(ty~, ..) => ty
@@ -412,7 +411,7 @@ pub impl Spanned for Expr with span(self: Expr) -> Span {
     FieldAccess(span~, ..) => span
     Instance(span~, ..) => span
     Vector(span~, ..) => span
-    Spread(span~, ..) => span
+    Concat(span~, ..) => span
     Ternary(span~, ..) => span
     Match(span~, ..) => span
     Tuple(span~, ..) => span
@@ -433,7 +432,6 @@ pub impl Spanned for Stmt with span(self: Stmt) -> Span {
     Assign(span~, ..) => span
     For(span~, ..) => span
     Scope(span~, ..) => span
-    Procedural(span~, ..) => span
   }
 }
 
@@ -448,7 +446,7 @@ pub fn ctor(self: Expr) -> String {
     FieldAccess(_) => "FieldAccess"
     Instance(_) => "Instance"
     Vector(_) => "Vector"
-    Spread(_) => "Spread"
+    Concat(_) => "Concat"
     Ternary(_) => "Ternary"
     Match(_) => "Match"
     Tuple(_) => "Tuple"
@@ -477,7 +475,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     FieldAccess(_) => false
     Instance(_) => false
     Vector(_) => false
-    Spread(_) => false
+    Concat(_) => false
     Ternary(_) => false
     Match(_) => false
     Tuple(_) => false
@@ -714,22 +712,6 @@ let builtin_functions: Map[String, BuiltinFunction] = {
         span~,
         ty={ val: Some(Type::Vector(ty=Logic, len=Fixed(bits.length()))) }
       )
-    }
-  },
-  "$flat": {
-    arity: Range(min=0, max=@int.max_value),
-    apply: fn(args, span) {
-      let flattened = args.map(fn(expr) {
-        Spread(expr~, span=expr.span(), ty={ val: None })
-      })
-      
-      Vector(elems=flattened, span~, ty={ val: None })
-    }
-  },
-  "$display": {
-    arity: Range(min=1, max=@int.max_value),
-    apply: fn(args, span) {
-      FunCall(name="display", args~, span~, ty={ val: Some(Type::empty()) })
     }
   },
 }

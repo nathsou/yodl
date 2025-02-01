@@ -41,7 +41,6 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // - Resolve identifiers to unique names
 // - Rewrite port accesses on match expressions
 // - Rewrite replication expressions into concatenation expressions
-// - Remove unecessary spreads
 // - Rewrite flat constant vectors to natural expressions
 // - Hardcode constant references
 // - Rewrite nand expressions into not + and expressions
@@ -101,23 +100,19 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
       Replicate(expr~, count~, concat~, span~, ty~) => Some({
         // Rewrite replication expressions into concatenation expressions
         let repeated_expr = self.simplify_expr!(
-          match concat {
-            true => @parse.Expr::Spread(expr~, span~, ty~)
-            false => expr
-          },
+          expr,
           env~,
           scope~,
         )
 
         let elems = @utils.fill(count.as_int!(), repeated_expr)
-        self.simplify_expr!(@parse.Expr::Vector(elems~, span~, ty~), env~, scope~)
-      })
-      Spread(expr~, ..) as spread_expr => Some({
-        // Remove unecessary spreads
-        match expr.ty().val.unwrap().width!(expr.span()) {
-          1 => expr
-          _ => spread_expr
+        let res = if concat {
+          @parse.Expr::Concat(elems~, span~, ty~)
+        } else {
+          @parse.Expr::Vector(elems~, span~, ty~)
         }
+
+        self.simplify_expr!(res, env~, scope~)
       })
       Vector(elems~, span~, ty={ val: Some(Vector(ty=Logic, len=Fixed(len))) } as ty) => {
         // Rewrite flat constant vectors to natural expressions
@@ -159,13 +154,20 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
         // Rewrite if expressions into match expressions
         let match_expr = @parse.Expr::Match(
           subject=cond,
-          cases=[
-            (@parse.Expr::nat!(1, width=Some(1), span~), then),
-            (@parse.Expr::nat!(0, width=Some(1), span~), match else_ {
-              Some(else_) => else_
-              None => @parse.Expr::Block(body=[], last=None, span~, ty=@ref.new(Some(@parse.Type::empty())))
-            }),
-          ],
+          cases={
+            let cases = [
+              (@parse.Expr::nat!(1, width=Some(1), span~), then),
+            ]
+
+            match else_ {
+              Some(else_) => {
+                cases.push((@parse.Expr::nat!(0, width=Some(1), span~), else_))
+              }
+              None => ()
+            }
+          
+            cases
+          },
           default=None,
           span~,
           ty~,
@@ -217,16 +219,6 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, s
     Const(decl~, span=_) => {
       env.declare!(decl.path, Const(decl.expr))
       Iter::empty()
-    }
-    Procedural(body~, span~) => {
-      let simplified_body = []
-      let scope_env = env.child()
-
-      for stmt in body {
-        simplified_body.push_iter(self.simplify_stmt!(stmt, env=scope_env, scope~))
-      }
-
-      Iter::singleton(@parse.Stmt::Procedural(body=simplified_body, span~))
     }
   }
 }
