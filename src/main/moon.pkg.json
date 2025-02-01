@@ -4,10 +4,9 @@
     "nathsou/yodl/parse",
     "nathsou/yodl/elaborate",
     "nathsou/yodl/simplify",
-    "nathsou/yodl/verilog",
     "nathsou/yodl/utils",
-    "nathsou/yodl/yir",
     "moonbitlang/x/fs",
-    "moonbitlang/x/sys"
+    "moonbitlang/x/sys",
+    "nathsou/yodl/firrtl"
   ]
 }

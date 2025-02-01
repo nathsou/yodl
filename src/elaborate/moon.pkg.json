@@ -6,6 +6,7 @@
             "value": []
         },
         "nathsou/yodl/yir",
+        "nathsou/yodl/firrtl",
         "nathsou/yodl/utils"
     ]
 }

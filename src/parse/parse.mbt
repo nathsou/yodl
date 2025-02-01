@@ -167,7 +167,7 @@ fn parse_indexing_expr(self: Parser) -> Expr! {
 
           let lsb = self.parse_expr!()
           self.expect!(Rbracket, start_idx)
-          lhs = Slicing(expr=lhs, msb=index, lsb~, kind~, span=self.span(start_idx), ty={ val: None })
+          lhs = Slicing(expr=lhs, hi=index, lo=lsb, kind~, span=self.span(start_idx), ty={ val: None })
         }
         _ => {
           self.expect!(Rbracket, start_idx)

@@ -1,9 +1,9 @@
-struct Scope[K, T] {
+pub struct Scope[K, T] {
   members: Map[K, T]
   parent: Scope[K, T]?
 }
 
-type! ScopeError {
+pub type! ScopeError {
   MemberAlreadyDeclared(name~: String)
 } derive(Show)
 

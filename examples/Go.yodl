@@ -3,7 +3,7 @@
 // nextpnr-ice40 --hx1k --json output/Go.json --pcf output/go.pcf --package vq100 --freq 25 --asc output/Go.asc
 // icepack output/Go.asc output/Go.bin
 
-module Go(
+module Top(
     i_Switch: logic[4],
 ) -> (
     o_LED: logic[4],

@@ -329,7 +329,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
-        Slicing(expr~, msb~, lsb~, kind~, span~, ..) => {
+        Slicing(expr~, hi=msb, lo=lsb, kind~, span~, ..) => {
             let ty = self.check_expr!(expr, env)
             let start_ty = self.check_expr!(msb, env)
             let end_ty = self.check_expr!(lsb, env)

@@ -151,9 +151,9 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
 
         Some(self.simplify_expr!(match_expr, env~, scope~))
       }
-      Slicing(expr~, msb~, lsb=width, kind=Width, span~, ty~) => Some({
+      Slicing(expr~, hi=msb, lo=width, kind=Width, span~, ty~) => Some({
         let lsb = msb.as_int!() - width.as_int!() + 1
-        @parse.Expr::Slicing(expr~, msb~, lsb=@parse.Expr::nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
+        @parse.Expr::Slicing(expr~, hi=msb, lo=@parse.Expr::nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
       })
       If(cond~, then~, else_~, span~, ty~) => {
         // Rewrite if expressions into match expressions

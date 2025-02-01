@@ -105,7 +105,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
     }
   }
 
-  let yir = {
+  let firrtl = {
     let low = @elaborate.Elaborator::new()
     low.lower!(simplified_decls.iter())
     low.modules
@@ -113,30 +113,15 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
 
   for cmd in commands {
     match cmd {
-      WriteYIR => {
-        let emitter = @yir.YirEmitter::new()
-
-        for mod in yir.values() {
-          emitter.emit_module(mod)
-        }
+      WriteFIRRTL => {
+        let emitter = @firrtl.FIRRTLEmitter::new()
+        emitter.emit_circuit({
+          version: (4, 1, 0),
+          id: Ident("TopSim"),
+          decls: firrtl.values().map(fn(mod) { @firrtl.Decl::Module(mod) }).collect()
+        })
 
         println(emitter._)
-      }
-      WriteVerilog(path~) => {
-        let exporter = @verilog.VerilogExporter::new(yir.values().collect())
-        let verilog_decls = exporter.export!()
-        let emitter = @verilog.VerilogEmitter::new()
-        emitter.emit_decls(verilog_decls)
-        let verilog = emitter.to_string()
-
-        match path {
-          Some(path) => {
-            @fs.write_string_to_file(path~, content=verilog)
-          }
-          None => {
-            println(verilog)
-          }
-        }
       }
       _ => ()
     }

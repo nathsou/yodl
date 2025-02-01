@@ -4,7 +4,7 @@ enum Command {
   WriteSource
   WriteMono(path~: String?)
   WriteTyped
-  WriteYIR
+  WriteFIRRTL
   WriteSimplified(path~: String?)
 } derive(Show)
 
@@ -183,13 +183,13 @@ fn parse_commands(source: String) -> Array[Command]!CommandParserError {
 
         WriteVerilog(path~)
       }
-      "write_yir" => {
+      "write_firrtl" => {
         match cmd.args.length() {
           0 => ()
           _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
         }
 
-        WriteYIR
+        WriteFIRRTL
       }
       _ => raise UnknownCommand(name=cmd.name)
     }

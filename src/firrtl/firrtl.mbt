@@ -4,6 +4,13 @@ pub(all) enum Id {
   Literal(String)
 }
 
+pub fn inner(self: Id) -> String {
+  match self {
+    Ident(s) => s
+    Literal(s) => s
+  }
+}
+
 pub(all) struct Circuit {
   version: (Int, Int, Int)
   id: Id
@@ -32,9 +39,14 @@ pub(all) enum Stmt {
     readwriters~: Array[Id],
   )
   Connect(Reference, Expr)
-  When(cond~: Expr, body~: Array[Stmt], otherwise~: Array[Stmt]?)
-  PrimOp(op~: PrimOp, args~: Array[Expr])
+  When(When)
   Skip
+}
+
+pub(all) struct When {
+  cond: Expr
+  body: Array[Stmt]
+  mut otherwise: Array[Stmt]?
 }
 
 pub(all) enum ReadUnderWrite { Undefined; Old; New }
@@ -43,6 +55,7 @@ pub(all) enum Expr {
   Reference(Reference)
   Literal(Literal)
   Mux(cond~: Expr, tval~: Expr, fval~: Expr)
+  PrimOp(op~: PrimOp, args~: Array[Expr])
 }
 
 pub(all) enum Literal {
@@ -63,10 +76,8 @@ pub(all) struct Module {
   body: Array[Stmt]
 }
 
-pub(all) enum PortDirection { Input; Output }
-
 pub(all) struct Port {
-  direction: PortDirection
+  direction: @parse.PortDirection
   id: Id
   ty: Type
 }
@@ -78,6 +89,8 @@ pub(all) enum Type {
   AsyncReset
   UInt(Int)
   SInt(Int)
+  UIntInferred
+  SIntInferred
   Bundle(Array[BundleField])
   Vec(Type, Int)
 }

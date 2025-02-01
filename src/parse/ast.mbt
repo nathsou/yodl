@@ -5,7 +5,7 @@ pub(all) enum Expr {
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
   Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
-  Slicing(expr~: Expr, msb~: Expr, lsb~: Expr, kind~: PartSelect, span~: Span, ty~: Ref[Type?])
+  Slicing(expr~: Expr, hi~: Expr, lo~: Expr, kind~: PartSelect, span~: Span, ty~: Ref[Type?])
   FieldAccess(expr~: Expr, field~: String, span~: Span, ty~: Ref[Type?])
   Instance(path~: Path, params~: InstanceParams, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])

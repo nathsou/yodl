@@ -134,7 +134,7 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.emit_expr(index)
       self.write("]")
     }
-    Slicing(expr~, msb~, lsb~, kind~, ..) => {
+    Slicing(expr~, hi=msb, lo=lsb, kind~, ..) => {
       self.emit_expr(expr)
       self.write("[")
       self.emit_expr(msb)

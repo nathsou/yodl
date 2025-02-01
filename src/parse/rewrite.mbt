@@ -26,11 +26,11 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
       let index = rewrite_expr!(index, rewr_expr~, rewr_stmt~)
       Indexing(expr~, index~, span~, ty=clone_ty(ty))
     }
-    Slicing(expr~, msb~, lsb~, kind~, span~, ty~) => {
+    Slicing(expr~, hi=msb, lo=lsb, kind~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)
       let msb = rewrite_expr!(msb, rewr_expr~, rewr_stmt~)
       let lsb = rewrite_expr!(lsb, rewr_expr~, rewr_stmt~)
-      Slicing(expr~, msb~, lsb~, kind~, span~, ty=clone_ty(ty))
+      Slicing(expr~, hi=msb, lo=lsb, kind~, span~, ty=clone_ty(ty))
     }
     FieldAccess(expr~, field=port, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)
@@ -232,7 +232,7 @@ pub fn visit_expr(expr: Expr, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Boo
         visit_expr!(expr, on_expr~, on_stmt~)
         visit_expr!(index, on_expr~, on_stmt~)
       }
-      Slicing(expr~, msb~, lsb~, kind=_, span=_, ty=_) => {
+      Slicing(expr~, hi=msb, lo=lsb, kind=_, span=_, ty=_) => {
         visit_expr!(expr, on_expr~, on_stmt~)
         visit_expr!(msb, on_expr~, on_stmt~)
         visit_expr!(lsb, on_expr~, on_stmt~)

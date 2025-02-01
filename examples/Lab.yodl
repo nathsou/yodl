@@ -1,85 +1,25 @@
 import VGA
 
-package State {
-    const RED = 2'b00;
-    const GREEN = 2'b01;
-    const BLUE = 2'b10;
-    const PINK = 2'b11;
-}
-
-module Top(
+module TopSim(
     clk: logic,
+    rst: logic,
 ) -> (
-    led: logic[4],
-    vga_hsync: logic,
-    vga_vsync: logic,
-    vga_red: logic[3],
-    vga_green: logic[3],
-    vga_blue: logic[3],
+    is_active_area: logic,
+    screen_x: logic[10],
+    screen_y: logic[10],
+    r: logic[3],
+    g: logic[3],
+    b: logic[3],
 ) {
-    let state = Reg<2>(clk);
-    let counter = Reg<25>(clk);
-    let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync);
-    let color = Reg<9>(clk);
+    let vga = VGA::SyncPulses(pixel_clk: clk, col: screen_x, row: screen_y);
+    let color = if vga.is_active_area {
+        { r: 3'd3, g: 3'd5, b: 3'd7 };
+    } else {
+        { r: 3'd0, g: 3'd0, b: 3'd0 };
+    };
 
-    procedural {
-        counter.d = counter.q + 1'd1;
-        // TODO: automatically generate default register assignments in procedural blocks
-        color.d = color.q;
-        state.d = state.q;
-
-        match vga.is_active_area {
-            1'b0 => {
-                color.d = 9'd0;
-            },
-            1'b1 => {
-                match state.q {
-                    State::RED => {
-                        color.d = {3'd7, 3'd0, 3'd0};
-                        match counter.q {
-                            25*{1'b1} => {
-                                state.d = State::GREEN;
-                                counter.d = 25'd0;
-                            },
-                        };
-                    },
-                    State::GREEN => {
-                        color.d = {3'd0, 3'd7, 3'd0};
-
-                        match counter.q {
-                            25'd16777215 => {
-                                state.d = State::BLUE;
-                                counter.d = 25'd0;
-                            },
-                        };
-                    },
-                    State::BLUE => {
-                        color.d = {3'd0, 3'd0, 3'd7};
-
-                        match counter.q {
-                            25'd11184810 => {
-                                state.d = State::PINK;
-                                counter.d = 25'd0;
-                            },
-                        };
-                    },
-                    State::PINK => {
-                        color.d = {3'd7, 3'd0, 3'd7};
-
-                        match counter.q {
-                            25'd8388608 => {
-                                state.d = State::RED;
-                                counter.d = 25'd0;
-                            },
-                        };
-                    },
-                };
-            },
-        };
-    }
-
-    vga_red = color.q[8-:3];
-    vga_green = color.q[5-:3];
-    vga_blue = color.q[2-:3];
-    led = {state.q, 2'd0};
+    is_active_area = vga.is_active_area;
+    r = color.r;
+    g = color.g;
+    b = color.b;
 }
