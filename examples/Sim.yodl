@@ -21,27 +21,6 @@ module BCD2(bin: uint<6>) -> (q: uint<8>) {
     q = {1'b0, t[3], u[3], v, f};
 }
 
-module BCD3(bin: uint<8>) -> (q: uint<12>) {
-    let a = bin[7];
-    let b = bin[6];
-    let c = bin[5];
-    let d = bin[4];
-    let e = bin[3];
-    let f = bin[2];
-    let g = bin[1];
-    let h = bin[0];
-
-    let t = Dabble(bin: {1'b0, a, b, c}).q;
-    let u = Dabble(bin: {t[2:0], d}).q;
-    let v = Dabble(bin: {u[2:0], e}).q;
-    let w = Dabble(bin: {1'b0, t[3], u[3], v[3]}).q;
-    let x = Dabble(bin: {v[2:0], f}).q;
-    let y = Dabble(bin: {w[2:0], x[3]}).q;
-    let z = Dabble(bin: {x[2:0], g}).q;
-
-    q = {2'b0, w[3], y, z, h};
-}
-
 module TicTac<Max>(clk: uint<1>, en: bool, rst: bool) -> (tick: bool, count: uint<$clog2(Max)>) {
     let counter = Reg<$clog2(Max)>(clk, en, rst: rst or tick, q: count);
     counter.d = counter.q + 1;

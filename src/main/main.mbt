@@ -114,10 +114,31 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
   for cmd in commands {
     match cmd {
       WriteFIRRTL(path~) => {
+        let top_level_pkg_modules = pkg.body.filter_map(fn(decl) {
+          match decl {
+            Module({ path, params: [], .. }) => Some(path)
+            _ => None
+          }
+        })
+
+        let top_candidates = top_level_pkg_modules.filter(fn(path) { not(monomorphizer.instanciated_modules.contains(path)) })
+
+        let top = match top_candidates {
+          [] => raise Failure("No top-level module found")
+          [top] => top.member
+          _ => {
+            if top_candidates.contains(@parse.Path::new([], "Top")) {
+              "Top"
+            } else {
+              raise Failure("Multiple top-level modules found: \{top_candidates}, remove extraneous uninstanciated modules or call the top module `Top`")
+            }
+          }
+        }
+
         let emitter = @firrtl.FIRRTLEmitter::new()
         emitter.emit_circuit({
           version: (4, 1, 0),
-          id: Ident("Top"),
+          id: Ident(top.to_string()),
           decls: firrtl.values().map(fn(mod) { @firrtl.Decl::Module(mod) }).collect()
         })
 

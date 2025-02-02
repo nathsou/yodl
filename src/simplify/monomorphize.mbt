@@ -6,6 +6,7 @@ pub struct Monomorphizer {
   parameterized: Map[@parse.Path, @parse.ModuleDecl]
   monomorphized: Map[@parse.Path, Map[ParamsHash, @parse.ModuleDecl]]
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
+  instanciated_modules: Set[@parse.Path]
   constants: Map[@parse.Path, @parse.ConstDecl]
   top_env: MonoEnv
 }
@@ -16,6 +17,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
     parameterized: {},
     monomorphized: {},
     declared_modules: {},
+    instanciated_modules: Set::new(),
     constants: {},
     top_env: @elaborate.Scope::new(),
   }
@@ -209,6 +211,8 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
             raise ModuleNotFound(path~, span~)
           }
         }
+
+        self.instanciated_modules.add(resolved_path)
 
         let (mono_path, mono_params) = if params._.length() > 0 && not(self.declared_modules.contains(path)) {
           let mod = self.register_monomorphized_module!(

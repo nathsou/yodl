@@ -13,11 +13,10 @@ Yet anOther (hardware) Description Language
 ## Checklist
 
 - [x] [FIRRTL](https://github.com/chipsalliance/firrtl-spec) export
-- [x] Verilog export
 - [x] Generic multi-port memories
 - [x] Imports (TODO: unqualified imports)
 - [x] Verilator + SDL graphics simulation example
-- [ ] Multi-dimensional vectors (logic[16][4])
+- [ ] Multi-dimensional vectors (uint<16>[4][8])
 - [ ] Optional module parameters (and register initial value)
 - [ ] Arbitrary port types
 - [ ] Testbench generation (or use cocotb?)
