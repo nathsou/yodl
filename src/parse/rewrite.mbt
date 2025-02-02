@@ -10,7 +10,7 @@ pub fn clone_ty(ty: Ref[Type?]) -> Ref[Type?] {
 
 pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt) -> Iter[Stmt]!) -> Expr! {
   let res = match expr {
-    Natural(bits~, width~, base~, span~, ty~) => Expr::Natural(bits~, width~, base~, span~, ty=clone_ty(ty))
+    Natural(value~, width~, base~, span~, ty~) => Expr::Natural(value~, width~, base~, span~, ty=clone_ty(ty))
     Identifier(path~, span~, ty~) => Identifier(path~, span~, ty=clone_ty(ty)) 
     Unary(op~, expr~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)

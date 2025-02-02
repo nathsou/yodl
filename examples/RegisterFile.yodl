@@ -1,27 +1,27 @@
 
 module ProgramCounter(
-    clk: logic,
-    rst: logic,
-    jump: logic,
-    jump_addr: logic[16],
+    clk: uint<1>,
+    rst: bool,
+    jump: bool,
+    jump_addr: uint<16>,
 ) -> (
-    q: logic[16],
+    q: uint<16>,
 ) {
     let pc = Reg<16>(clk, rst, q);
     pc.d = jump ? jump_addr : pc.q + 1'1;
 }
 
 module RegisterFile<WIDTH, DEPTH>(
-    clk: logic,
-    rst: logic,
-    write_enable: logic,
-    write_dest: logic[$clog2(DEPTH)],
-    write_data: logic[WIDTH],
-    read_src: logic[$clog2(DEPTH)],
+    clk: uint<1>,
+    rst: bool,
+    write_enable: bool,
+    write_dest: uint<$clog2(DEPTH)>,
+    write_data: uint<WIDTH>,
+    read_src: uint<$clog2(DEPTH)>,
 ) -> (
-    reg0_data: logic[WIDTH],
-    reg1_data: logic[WIDTH],
-    read_data: logic[WIDTH],
+    reg0_data: uint<WIDTH>,
+    reg1_data: uint<WIDTH>,
+    read_data: uint<WIDTH>,
 ) {
     let regs = DEPTH * [Reg<WIDTH>(clk, rst, d: write_data)];
 
@@ -35,12 +35,12 @@ module RegisterFile<WIDTH, DEPTH>(
 }
 
 module Top(
-    clk: logic,
-    rst: logic,
-    write_enable: logic,
-    write_dest: logic[3],
-    write_data: logic[8],
-    read_src: logic[3],
+    clk: uint<1>,
+    rst: bool,
+    write_enable: bool,
+    write_dest: uint<3>,
+    write_data: uint<8>,
+    read_src: uint<3>,
 ) -> () {
     RegisterFile<8, 8>(clk, rst, write_enable, write_dest, write_data, read_src);
 }

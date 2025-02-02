@@ -1,6 +1,0 @@
-{
-  "import": [
-    "nathsou/yodl/parse",
-    "nathsou/yodl/utils"
-  ]
-}

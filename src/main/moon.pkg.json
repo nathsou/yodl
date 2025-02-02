@@ -5,8 +5,8 @@
     "nathsou/yodl/elaborate",
     "nathsou/yodl/simplify",
     "nathsou/yodl/utils",
+    "nathsou/yodl/firrtl",
     "moonbitlang/x/fs",
-    "moonbitlang/x/sys",
-    "nathsou/yodl/firrtl"
+    "moonbitlang/x/sys"
   ]
 }

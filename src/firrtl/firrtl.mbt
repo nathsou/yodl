@@ -71,6 +71,12 @@ pub(all) enum Literal {
   SInt(width~: Int, radix~: Int?, value~: BigInt)
 }
 
+pub fn Literal::value(self: Literal) -> BigInt {
+  match self {
+    UInt(value~, ..) | SInt(value~, ..) => value
+  }
+}
+
 pub(all) enum Reference {
   Id(Id)
   Indexing(lhs~: Reference, index~: Expr) // static or dynamic
@@ -118,4 +124,28 @@ pub(all) enum PrimOp {
   And; Or; Xor; Cat
   Pad; Shl; Shr; Head; Tail
   Bits
+} derive(Eq)
+
+pub fn primop(op: PrimOp, args: Array[Expr]) -> Expr {
+  // ensure that integer arguments for some operations are not Literals
+  match op {
+    Pad | Shl | Shr | Head | Tail | Bits => {
+      if args.length() > 1 {
+        args[1] = match args[1] {
+          Literal(lit) => Int(lit.value())
+          _ => args[1]
+        }
+
+        if op == Bits && args.length() > 2 {
+          args[2] = match args[2] {
+            Literal(lit) => Int(lit.value())
+            _ => args[2]
+          }
+        }
+      }
+    }
+    _ => ()
+  }
+
+  PrimOp(op~, args~)
 }

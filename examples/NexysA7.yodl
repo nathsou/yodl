@@ -1,8 +1,0 @@
-
-module Top(
-    sw: logic[16],
-) -> (
-    led: logic[16],
-) {
-    led = sw;
-}

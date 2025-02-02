@@ -13,9 +13,10 @@ VTopSim.mk: Sim.v
 		-CFLAGS "${SDL_CFLAGS}" -LDFLAGS "${SDL_LDFLAGS}"
 
 Sim.v:
-	cd .. && moon run src/main examples/Sim.yodl "write_verilog sim/Sim.v"
+	cd .. && moon run src/main examples/Sim.yodl "write_firrtl sim/Sim.fir"
+	firtool --format=fir --verilog -disable-all-randomization -strip-debug-info Sim.fir -o Sim.v
 
 clean:
-	rm -rf ./obj_dir Sim.v
+	rm -rf ./obj_dir Sim.v Sim.fir
 
 .PHONY: all VTopSim

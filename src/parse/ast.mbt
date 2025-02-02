@@ -1,6 +1,6 @@
 
 pub(all) enum Expr {
-  Natural(bits~: Bits, width~: Int?, base~: Int, span~: Span, ty~: Ref[Type?])
+  Natural(value~: BigInt, width~: Int?, base~: Int, span~: Span, ty~: Ref[Type?])
   Identifier(path~: Path, span~: Span, ty~: Ref[Type?])
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
   Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
@@ -42,16 +42,25 @@ pub const BITS_PER_CHAR = 8
 
 pub(all) enum Type {
   Nat
-  Logic
-  Vector(ty~: Type, len~: VectorLen)
+  UInt(IntParam)
+  SInt(IntParam)
+  Vector(ty~: Type, len~: IntParam)
   Instance(sig~: ModuleSignature, params~: Map[String, Param], accessed_ports~: Set[String])
   Name(path~: Path, params~: Array[Param])
   Struct(Map[String, Type])
   String(len~: Int)
 } derive(Eq)
 
+pub fn Type::bool() -> Type {
+  UInt(Fixed(1))
+}
+
+pub fn Type::uint(width: Int) -> Type {
+  UInt(Fixed(width))
+}
+
 pub fn Type::empty() -> Type {
-  Type::Vector(ty=Logic, len=Fixed(0))
+  UInt(Fixed(0))
 }
 
 pub(all) struct InstanceParam {
@@ -115,62 +124,6 @@ pub(all) enum BinaryOp {
   Shl; Shr
   Ternary // hack for precedence climbing
 } derive(Eq)
-
-pub(all) enum BinaryDigit {
-  Zero; One; X; Z; M; DontCare
-} derive(Eq, Hash)
-
-pub fn is_determined(self: BinaryDigit) -> Bool {
-  match self {
-    Zero | One => true
-    _ => false
-  }
-}
-
-pub impl Show for BinaryDigit with output(self, logger) {
-  logger.write_char(match self {
-    Zero => '0'
-    One => '1'
-    X => 'x'
-    Z => 'z'
-    M => 'm'
-    DontCare => '-'
-  })
-}
-
-pub fn BinaryDigit::from(value: Int) -> BinaryDigit {
-  match value {
-    0 => Zero
-    _ => One
-  }
-}
-
-pub(all) struct Bits {
-  bits: Array[BinaryDigit]
-  mut value: BigInt?
-  span: Span
-}
-
-pub impl Hash for Bits with hash_combine(self, hasher) {
-  for bit in self.bits {
-    hasher.combine(bit)
-  }
-}
-
-pub impl Eq for Bits with op_equal(self, other) {
-  self.bits == other.bits
-}
-
-pub impl Show for Bits with output(self, logger) {
-  match self.value {
-    Some(value) => logger.write_string(value.to_string())
-    None => {
-      for bit in self.bits {
-        logger.write_string(bit.to_string())
-      }
-    }
-  }
-}
 
 fn precedence(self: BinaryOp) -> Int {
   match self {
@@ -237,12 +190,12 @@ pub(all) struct ImportDecl {
   span: Span
 }
 
-pub(all) enum VectorLen {
+pub(all) enum IntParam {
   Fixed(Int)
   Dynamic(Expr)
 }
 
-impl Eq for VectorLen with op_equal(self, other) {
+impl Eq for IntParam with op_equal(self, other) {
   match (self, other) {
     (Fixed(a), Fixed(b)) => a == b
     _ => false
@@ -250,11 +203,10 @@ impl Eq for VectorLen with op_equal(self, other) {
 }
 
 pub type! AstError {
-  ExpectedFixedVectorLength(span~: Span)
   ExpectedIntegerExpression(expr~: Expr, span~: Span)
   NaturalContainsUndeterminedDigit(span~: Span)
   ValueTooLargeForWidth(value~: BigInt, width~: Int, span~: Span)
-  VectorLengthNotFixed(span~: Span)
+  IntParamNotFixed(span~: Span)
   CannotGetWidthOfUnresolvedNamedType(span~: Span)
   InvalidFunCallArity(name~: String, expected~: Arity, actual~: Int, span~: Span)
   ExpectedStringExpression(expr~: Expr, span~: Span)
@@ -268,11 +220,10 @@ pub type! AstError {
 
 pub impl Show for AstError with output(self, logger) {
   match self {
-    ExpectedFixedVectorLength(_) => logger.write_string("Expected a fixed vector length")
     ExpectedIntegerExpression(expr~, ..) => logger.write_string("Expected an integer expression, got: \{expr.ctor()}")
     NaturalContainsUndeterminedDigit(_) => logger.write_string("Natural contains an undetermined digit")
     ValueTooLargeForWidth(value~, width~, ..) => logger.write_string("Value \{value} is too large for width \{width}")
-    VectorLengthNotFixed(_) => logger.write_string("Vector length must be fixed")
+    IntParamNotFixed(_) => logger.write_string("Int parameter must be fixed")
     CannotGetWidthOfUnresolvedNamedType(_) => logger.write_string("Cannot get width of unresolved named type")
     InvalidFunCallArity(name~, expected~, actual~, ..) => logger.write_string("Function '\{name}' expected \{expected} argument(s), but got \{actual}")
     ExpectedStringExpression(expr~, ..) => logger.write_string("Expected a string expression, got: \{expr.ctor()}")
@@ -293,11 +244,10 @@ pub impl Show for AstError with output(self, logger) {
 
 pub impl Spanned for AstError with span(self) -> Span {
   match self {
-    ExpectedFixedVectorLength(span~) => span
     ExpectedIntegerExpression(span~, ..) => span
     NaturalContainsUndeterminedDigit(span~) => span
     ValueTooLargeForWidth(span~, ..) => span
-    VectorLengthNotFixed(span~) => span
+    IntParamNotFixed(span~) => span
     CannotGetWidthOfUnresolvedNamedType(span~) => span
     InvalidFunCallArity(span~, ..) => span
     ExpectedStringExpression(span~, ..) => span
@@ -310,12 +260,10 @@ pub impl Spanned for AstError with span(self) -> Span {
   }
 }
 
-pub fn expect_fixed(self: VectorLen, span: Span) -> Int! {
+pub fn expect_fixed(self: IntParam, span: Span) -> Int! {
   match self {
     Fixed(value) => value
-    Dynamic(_) => {
-      raise ExpectedFixedVectorLength(span~)
-    }
+    Dynamic(_) => raise IntParamNotFixed(span~)
   }
 }
 
@@ -490,22 +438,23 @@ pub fn is_constant_expr(self: Expr) -> Bool {
 
 pub enum Param {
   Int(Int)
-  Val(bits~: Bits, width~: Int)
-} derive(Eq, Hash)
+  Val(value~: BigInt, width~: Int)
+} derive(Eq)
 
 pub impl Show for Param with output(self, logger) -> Unit {
   match self {
     Int(n) => logger.write_string(n.to_string())
-    Val(bits~, width~) => {
+    Val(value~, width~) => {
       logger.write_string("\{width}'b")
+      let bytes = value.to_octets()
 
-      if width < 32 {
-        for bit in bits.bits {
-          logger.write_string(bit.to_string())
+      if bytes.length() <= 4 {
+        for byte in bytes {
+          logger.write_string(byte.to_string())
         }
       } else {
-        for i in 0..<32 {
-          logger.write_string(bits.bits[i].to_string())
+        for i in 0..<3 {
+          logger.write_string(bytes[i].to_string())
         }
 
         logger.write_string("...")
@@ -514,18 +463,31 @@ pub impl Show for Param with output(self, logger) -> Unit {
   }
 }
 
+pub impl Hash for Param with hash_combine(self, hasher) {
+  match self {
+    Int(n) => hasher.combine(n)
+    Val(value~, width~) => {
+      for byte in value.to_octets() {
+        hasher.combine(byte)
+      }
+
+      hasher.combine(width)
+    }
+  }
+}
+
 pub fn as_param(self: Expr) -> Param!AstError {
   match self {
-    Natural(bits~, width=Some(width), ..) => Val(bits~, width~)
-    Natural(bits~, width=None, ..) => Int(bits.as_int!())
+    Natural(value~, width=Some(width), ..) => Val(value~, width~)
+    Natural(value~, width=None, ..) => Int(value.to_int())
     _ => raise InvalidModuleParameter(span=self.span())
   }
 }
 
-pub fn as_expr(self: Param, span~: Span) -> Expr!AstError {
+pub fn as_expr(self: Param, span~: Span) -> Expr {
   match self {
-    Int(n) => Natural(bits=Bits::from!(n, span~), width=None, base=10, span=span, ty={ val: Some(Nat) })
-    Val(bits~, width~) => Natural(bits=bits, width=Some(width), base=2, span=span, ty={ val: Some(Type::Vector(ty=Logic, len=Fixed(width))) })
+    Int(n) => Natural(value=BigInt::from_int(n), width=None, base=10, span=span, ty={ val: Some(Nat) })
+    Val(value~, width~) => Natural(value~, width=Some(width), base=2, span=span, ty={ val: Some(Type::uint(width)) })
   }
 }
 
@@ -536,10 +498,10 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
       Identifier(path={ packages: [], member }, ..) => {
         match params[member] {
           Some(Int(n)) => {
-            Some(Natural(bits=Bits::from!(n, span=expr.span()), width=None, base=10, span=expr.span(), ty=expr.ty()))
+            Some(Natural(value=BigInt::from_int(n), width=None, base=10, span=expr.span(), ty=expr.ty()))
           }
-          Some(Val(bits~, width~)) => {
-            Some(Natural(bits~, width=Some(width), base=2, span=expr.span(), ty=expr.ty()))
+          Some(Val(value~, width~)) => {
+            Some(Natural(value~, width=Some(width), base=2, span=expr.span(), ty=expr.ty()))
           }
           None => None
         }
@@ -551,7 +513,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
               Not => if value == 0 { 1 } else { 0 }
             }
 
-            Some(Natural(bits=Bits::from!(value, span~), width=None, base=10, span~, ty~))
+            Some(Natural(value=BigInt::from_int(value), width=None, base=10, span~, ty~))
           }
           _ => None
         }
@@ -576,10 +538,13 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
               And => lhs & rhs
               Or => lhs | rhs
               Xor => lhs ^ rhs
+              Nand => @utils.bitwise_not(lhs & rhs)
+              Nor => @utils.bitwise_not(lhs | rhs)
+              Xnor => @utils.bitwise_not(lhs ^ rhs)
               _ => raise Failure("Invalid arithmetical binary operator")
             }
 
-            Some(Natural(bits=Bits::from_bigint!(value, span~), width=None, base=10, span~, ty~))
+            Some(Natural(value~, width=None, base=10, span~, ty~))
           }
           _ => None
         }
@@ -630,15 +595,6 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
 
         Some((fun.apply)!(args, span))
       }
-      Indexing(expr~, index~, span~, ty~) => {
-        match (expr.as_bits?(), index.as_int?()) {
-          (Ok(bits), Ok(index)) => {
-            let bit = bits.bits[index]
-            Some(Natural(bits=Bits::new([bit], span~), width=Some(1), base=2, span~, ty~))
-          }
-          _ => None
-        }
-      }
       _ => None
     }
   })
@@ -674,7 +630,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let arg = args[0].as_int!()
       let value = @utils.clog2(arg)
-      Expr::nat!(value, span~)
+      Expr::nat(value, span~)
     }
   },
   "$pow": {
@@ -682,7 +638,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let base = args[0].as_int!()
       let exp = args[1].as_int!()
-      Expr::nat!(@utils.pow(base, exp), span~)
+      Expr::nat(@utils.pow(base, exp), span~)
     }
   },
   "$cdiv": {
@@ -690,7 +646,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let dividend = args[0].as_int!()
       let divisor = args[1].as_int!()
-      Expr::nat!(@utils.cdiv(dividend, divisor), span~)
+      Expr::nat(@utils.cdiv(dividend, divisor), span~)
     }
   },
   "$readmemb": {
@@ -706,196 +662,19 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       let bits = parse_mem_file!(path, base=2, start~, end~)
 
       Expr::Natural(
-        bits=Bits::new(bits, span~),
+        value=BigInt::from_octets(bits),
         width=Some(bits.length()),
         base=2,
         span~,
-        ty={ val: Some(Type::Vector(ty=Logic, len=Fixed(bits.length()))) }
+        ty={ val: Some(Type::uint(bits.length())) }
       )
     }
   },
 }
 
-pub fn as_int(self: Bits) -> Int!AstError {
-  match self.value {
-    Some(value) => value.to_int()
-    None => {
-      if self.bits.length() > 16 {
-        raise ValueTooLargeForInt(span=self.span)
-      }
-      
-      let value = bits_to_int!(self.bits, span=self.span)
-      self.value = Some(BigInt::from_int(value))
-      value
-    }
-  }
-}
-
-pub fn as_bigint(self: Bits) -> BigInt!AstError {
-  match self.value {
-    Some(value) => value
-    None => {
-      let value = bits_to_bigint!(self.bits, span=self.span)
-      self.value = Some(value)
-      value
-    }
-  }
-}
-
-///|
-/// attempts to interpret the bits as a binary integer
-/// returns an error if any bit is undetermined (not a 0 or a 1)
-fn bits_to_int(bits: Array[BinaryDigit], span~: Span) -> Int!AstError {
-  if bits.length() >= 16 {
-    raise ValueTooLargeForInt(span~)
-  }
-
-  let mut value = 0
-
-  for i in 0..<bits.length() {
-    let bit = bits[bits.length() - i - 1]
-
-    value = match bit {
-      Zero => value * 2
-      One => value * 2 + 1
-      _ => raise NaturalContainsUndeterminedDigit(span~)
-    }
-  }
-
-  value
-}
-
-fn bits_to_bigint(bits: Array[BinaryDigit], span~: Span) -> BigInt!AstError {
-  let mut value: BigInt = 0
-
-  // prevent very wide integers from being converted to BigInt
-  if bits.length() > 512 {
-    raise BitsTooWideForBigIntConversion(span~)
-  }
-
-  for i in 0..<bits.length() {
-    let bit = bits[bits.length() - i - 1]
-
-    match bit {
-      Zero => {
-        value = value << 1
-      }
-      One => {
-        value = value << 1
-        value += 1
-      }
-      _ => raise NaturalContainsUndeterminedDigit(span~)
-    }
-  }
-
-  value
-}
-
-pub fn Bits::new(bits: Array[BinaryDigit], value~: BigInt? = None, span~: Span) -> Bits {
-  { bits, value, span }
-}
-
-pub fn Bits::from(value: Int, width~: Int? = None, span~: Span) -> Bits!AstError {
-  if value < 0 {
-    raise NegativeIntegersNotSupported(span~)
-  }
-
-  let required_width = @utils.clog2(value + 1)
-
-  match width {
-    Some(width) => {
-      if width < required_width {
-        raise ValueTooLargeForWidth(value=BigInt::from_int(value), width~, span~)
-      }
-    }
-    _ => ()
-  }
-
-  let bits = if value == 0 {
-    [Zero]
-  } else {
-    let bits = Array::new(capacity=required_width)
-
-    for bit in @utils.bin(value, width=required_width) {
-      bits.push(match bit {
-        0 => Zero
-        _ => One
-      })
-    }
-
-    bits
-  }
-
-  { bits, value: Some(BigInt::from_int(value)), span }
-}
-
-pub fn Bits::from_bigint(value: BigInt, width~: Int? = None, span~: Span) -> Bits!AstError {
-  // if value < 0 {
-  //   raise NegativeIntegersNotSupported(span~)
-  // }
-
-  let value = @utils.abs(value)
-
-  let bytes = value.to_octets()
-
-  match width {
-    Some(width) => {
-      if bytes.length() * 8 > width + 7 {
-        raise ValueTooLargeForWidth(value~, width~, span~)
-      }
-    } 
-    None => ()
-  }
-
-  let bits: Array[BinaryDigit] = Array::new(capacity=bytes.length() * 8)
-
-  for byte in bytes {
-    for bit in @utils.bin(byte.to_int(), width=8) {
-      bits.push(match bit {
-        0 => Zero
-        _ => One
-      })
-    }
-  }
-
-  if value == 0 {
-    bits.push(Zero)
-  }
-
-  // padding
-  match width {
-    Some(width) => {
-      while bits.length() < width {
-        bits.push(Zero)
-      }
-    }
-    _ => ()
-  }
-
-  bits.rev_inplace()
-
-  // truncate
-  match width {
-    Some(width) => {
-      while bits.length() > width {
-        let _ = bits.unsafe_pop()
-      }
-    }
-    _ => {
-      if value > 0 {
-        while bits[bits.length() - 1] == Zero {
-          let _ = bits.unsafe_pop()
-        }
-      }
-    }
-  }
-
-  { bits, value: Some(value), span }
-}
-
 pub fn Expr::as_int(self: Expr) -> Int! {
   match self {
-    Natural(bits~, ..) => bits.as_int!()
+    Natural(value~, ..) => value.to_int()
     _ => {
       raise ExpectedIntegerExpression(expr=self, span=self.span())
     }
@@ -904,14 +683,7 @@ pub fn Expr::as_int(self: Expr) -> Int! {
 
 pub fn Expr::as_bigint(self: Expr) -> BigInt! {
   match self {
-    Natural(bits~, ..) => bits.as_bigint!()
-    _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
-  }
-}
-
-pub fn Expr::as_bits(self: Expr) -> Bits! {
-  match self {
-    Natural(bits~, ..) => bits
+    Natural(value~, ..) => value
     _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
   }
 }
@@ -936,11 +708,12 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
 pub fn width(self: Type, span: Span) -> Int!AstError {
   match self {
     Nat => 32
-    Logic => 1
-    Vector(ty~, len~) => match len {
-        Fixed(len) => ty.width!(span) * len
-        Dynamic(_) => raise VectorLengthNotFixed(span~)
-      }
+    UInt(Fixed(width)) => width
+    SInt(Fixed(width)) => width
+    Vector(ty~, len=Fixed(len)) => ty.width!(span) * len
+    UInt(Dynamic(_)) | SInt(Dynamic(_)) | Vector(ty=_, len=Dynamic(_)) => {
+      raise IntParamNotFixed(span~)
+    }
     Instance(sig~, params~, accessed_ports~) => {
       let mut width = 0
 
@@ -977,15 +750,12 @@ pub fn dimensions(self: Type, span: Span) -> Dims!AstError {
   
   fn go(ty: Type) -> Unit!AstError {
     match ty {
-      Vector(ty=Logic, len=Fixed(len)) => {
-        width = len
-      }
       Vector(ty~, len~) => match len {
           Fixed(len) => {
             go!(ty)
             dims.push(len)
           }
-          Dynamic(_) => raise VectorLengthNotFixed(span~)
+          Dynamic(_) => raise IntParamNotFixed(span~)
         }
       _ => {
         width = ty.width!(span)
@@ -999,13 +769,19 @@ pub fn dimensions(self: Type, span: Span) -> Dims!AstError {
 
 pub fn substitute(self: Type, params_env: Map[String, Param]) -> Type {
   match self {
-    Nat | Logic | String(_) => self
+    Nat | String(_) => self
+    UInt(Fixed(width)) => UInt(Fixed(width))
+    SInt(Fixed(width)) => SInt(Fixed(width))
+    UInt(Dynamic(expr)) | SInt(Dynamic(expr)) => {
+      let is_unsigned = match self { UInt(_) => true; _ => false }
+      match expr.partial_eval?(params=params_env) {
+        Ok(Natural(value~, ..)) => if is_unsigned { UInt(Fixed(value.to_int())) } else { SInt(Fixed(value.to_int())) }
+        _ => if is_unsigned { UInt(Dynamic(expr)) } else { SInt(Dynamic(expr)) }
+      }
+    }
     Vector(ty~, len=Dynamic(expr)) => {
       Vector(ty=ty.substitute(params_env), len=match expr.partial_eval?(params=params_env) {
-        Ok(Natural(bits~, ..)) => match bits.as_int?() {
-          Ok(value) => Fixed(value)
-          _ => Dynamic(expr)
-        }
+        Ok(Natural(value~, ..)) => Fixed(value.to_int())
         _ => Dynamic(expr)
       })
     }
@@ -1084,8 +860,7 @@ pub fn inouts(self: ModuleSignature) -> Iter[Port] {
 
 pub fn is_numerical(self: Type) -> Bool {
   match self {
-    Nat => true
-    Logic => true
+    Nat | UInt(_) | SInt(_) => true
     Vector(ty~, ..) => ty.is_numerical()
     _ => false
   }
@@ -1094,7 +869,8 @@ pub fn is_numerical(self: Type) -> Bool {
 pub fn has_zero_width(self: Type) -> Bool {
   match self {
     Nat => false
-    Logic => false
+    UInt(Fixed(width)) | SInt(Fixed(width)) => width == 0
+    UInt(Dynamic(_)) | SInt(Dynamic(_)) => false
     Vector(ty~, len~) => match len {
       Fixed(0) => true
       _ => ty.has_zero_width()
@@ -1106,13 +882,13 @@ pub fn has_zero_width(self: Type) -> Bool {
   }
 }
 
-pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr!AstError {
+pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
   let ty = match width {
-    Some(width) => Type::Vector(ty=Logic, len=Fixed(width))
+    Some(width) => if n > 0 { Type::uint(width) } else { Type::uint(width) }
     None => Nat
   }
 
-  Natural(bits=Bits::from!(n, width~, span~), width~, base~, span~, ty={ val: Some(ty) })
+  Natural(value=BigInt::from_int(n), width~, base~, span~, ty={ val: Some(ty) })
 }
 
 pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Map[String, Expr]!AstError {
@@ -1151,7 +927,8 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
 pub fn clone(self: Type) -> Type {
   match self {
     Nat => Nat
-    Logic => Logic
+    UInt(width) => UInt(width)
+    SInt(width) => SInt(width)
     Vector(ty~, len~) => Vector(ty=ty.clone(), len~)
     Instance(sig~, params~, accessed_ports~) => Instance(sig~, params~, accessed_ports~)
     Name(path~, params~) => Name(path~, params~)

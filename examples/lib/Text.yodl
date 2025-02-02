@@ -2,7 +2,7 @@ import VGA
 import LFSR
 import Timing
 
-module AsciiTable(char: logic[8]) -> (q: logic[64]) {
+module AsciiTable(char: uint<8>) -> (q: uint<64>) {
     q = match char[6:0] {
         7'h21 => 64'h000C000C0C1E1E0C,
         7'h22 => 64'h0000000000363636,
@@ -104,65 +104,65 @@ module AsciiTable(char: logic[8]) -> (q: logic[64]) {
 }
 
 module CharAt<Length, IndexWidth>(
-    str: logic[Length * 8],
-    index: logic[IndexWidth],
+    str: uint<8>[Length],
+    index: uint<IndexWidth>,
 ) -> (
-    char: logic[8],
-    is_out_of_bounds: logic,
+    char: uint<8>,
+    is_out_of_bounds: bool,
 ) {
     is_out_of_bounds = index >= Length;
-    let shifted = str >> ((Length - 1 - index) * 8);
-    char = is_out_of_bounds ? " " : shifted[7:0];
+    let shifted = uint(str) >> ((Length - 1 - index) * 8);
+    char = is_out_of_bounds ? " "[0] : shifted[7:0];
 }
 
 const Rows = VGA::V_ACTIVE / 8;
 const Cols = VGA::H_ACTIVE / 8;
 
 module Text<Length, X, Y>(
-    text: logic[Length * 8],
-    screen_x: logic[10],
-    screen_y: logic[10],
+    text: uint<8>[Length],
+    screen_x: uint<10>,
+    screen_y: uint<10>,
 ) -> (
-    is_active: logic,
+    is_active: bool,
 ) {
     const StartIdx = Y * Cols + X;
     let x_div = screen_x[9:3];
     let y_div = screen_y[9:3];
     let x = screen_x[2:0];
     let y = screen_y[2:0];
-    let cell_idx: logic[13] = y_div * Cols + x_div;
-    let diff: logic[13] = cell_idx - StartIdx;
-    let char = cell_idx >= StartIdx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " ";
+    let cell_idx: uint<13> = y_div * Cols + x_div;
+    let diff: uint<13> = cell_idx - StartIdx;
+    let char = cell_idx >= StartIdx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " "[0];
     let bitmap = AsciiTable(char).q;
-    let pixel_idx: logic[6] = y * 8 + x;
+    let pixel_idx: uint<6> = y * 8 + x;
     is_active = (bitmap >> pixel_idx)[0];
 }
 
 module TextDynamicPosition<Length>(
-    text: logic[Length * 8],
-    x_offset: logic[$clog2(Cols)],
-    y_offset: logic[$clog2(Rows)],
-    screen_x: logic[10],
-    screen_y: logic[10],
+    text: uint<8>[Length],
+    x_offset: uint<$clog2(Cols)>,
+    y_offset: uint<$clog2(Rows)>,
+    screen_x: uint<10>,
+    screen_y: uint<10>,
 ) -> (
-    is_active: logic,
+    is_active: bool,
 ) {
     let x_div = screen_x[9:3];
     let y_div = screen_y[9:3];
     let x = screen_x[2:0];
     let y = screen_y[2:0];
-    let start_idx: logic[13] = y_offset * Cols + x_offset;
-    let cell_idx: logic[13] = y_div * Cols + x_div;
-    let diff: logic[13] = cell_idx - start_idx;
-    let char = cell_idx >= start_idx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " ";
+    let start_idx: uint<13> = y_offset * Cols + x_offset;
+    let cell_idx: uint<13> = y_div * Cols + x_div;
+    let diff: uint<13> = cell_idx - start_idx;
+    let char = cell_idx >= start_idx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " "[0];
     let bitmap = AsciiTable(char).q;
-    let pixel_idx: logic[6] = y * 8 + x;
+    let pixel_idx: uint<6> = y * 8 + x;
     is_active = (bitmap >> pixel_idx)[0];
 }
 
-module Hex<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 8]) {
+module Hex<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
     for i in 0..<$cdiv(Bits, 4) {
-        chars[(i + 1) * 8 - 1 -: 8] = match n[(i + 1) * 4 - 1 -: 4] {
+        chars[i] = (match n[(i + 1) * 4 - 1 -: 4] {
             4'h0 => "0",
             4'h1 => "1",
             4'h2 => "2",
@@ -179,13 +179,13 @@ module Hex<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 8]) {
             4'hD => "D",
             4'hE => "E",
             4'hF => "F",
-        };
+        })[0];
     }
 }
 
-module Dec<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 8]) {
+module Dec<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
     for i in 0..<$cdiv(Bits, 4) {
-        chars[(i + 1) * 8 - 1 -: 8] = match n[(i + 1) * 4 - 1 -: 4] {
+        chars[i] = (match n[(i + 1) * 4 - 1 -: 4] {
             4'h0 => "0",
             4'h1 => "1",
             4'h2 => "2",
@@ -196,25 +196,6 @@ module Dec<Bits>(n: logic[Bits]) -> (chars: logic[($cdiv(Bits, 4)) * 8]) {
             4'h7 => "7",
             4'h8 => "8",
             _ => "9",
-        };
-    }
-}
-
-// https://en.wikipedia.org/wiki/Double_dabble#Parametric_Verilog_implementation
-module BCD<W>(bin: logic[W]) -> (bcd: logic[W + (W - 4) / 3 + 1]) {
-    for i in 0..=W + (W - 4) / 3 {
-        bcd[i] = 1'b0;
-    }
-
-    bcd[W - 1 : 0] = bin;
-
-    for i in 0..=W - 4 {
-        for j in 0..=i / 3 {
-            let bin = bcd[W - i + 4 * j -: 4];
-            
-            if bin > 4'd4 {
-                bcd[W - i + 4 * j -: 4] = bin + 4'd3;
-            }
-        }
+        })[0];
     }
 }

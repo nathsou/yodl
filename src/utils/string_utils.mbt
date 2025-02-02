@@ -9,15 +9,11 @@ pub fn is_whitespace(c: Char) -> Bool {
   }
 }
 
-pub fn is_undetermined_digit(c: Char) -> Bool {
-  c == 'x' || c == 'X' || c == 'z' || c == 'Z'
-}
-
 pub fn is_digit(c: Char, base~: Int) -> Bool {
   match base {
-    2 => c == '0' || c == '1' || is_undetermined_digit(c)
+    2 => c == '0' || c == '1'
     8 => c >= '0' && c <= '7'
-    16 => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') // TODO: support x z in hex
+    16 => (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
     _ => c >= '0' && c <= '9'
   }
 }

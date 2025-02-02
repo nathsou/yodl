@@ -2,3 +2,4 @@ output/
 obj_dir/
 *.v
 *.rtlil
+*.fir

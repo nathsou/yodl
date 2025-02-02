@@ -41,7 +41,6 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // - Resolve identifiers to unique names
 // - Rewrite port accesses on match expressions
 // - Rewrite replication expressions into concatenation expressions
-// - Rewrite flat constant vectors to natural expressions
 // - Hardcode constant references
 // - Rewrite nand expressions into not + and expressions
 // - Rewrite ternary expressions into match expressions
@@ -114,30 +113,13 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
 
         self.simplify_expr!(res, env~, scope~)
       })
-      Vector(elems~, span~, ty={ val: Some(Vector(ty=Logic, len=Fixed(len))) } as ty) => {
-        // Rewrite flat constant vectors to natural expressions
-        if elems.iter().all(fn(elem) { match elem { Natural(_) => true; _ => false } }) {
-          let bits = []
-
-          for elem in elems {
-            bits.append(match elem {
-              Natural(bits={bits, ..}, ..) => bits
-              _ => []
-            })
-          }
-
-          Some(@parse.Expr::Natural(bits=@parse.Bits::new(bits, span~), width=Some(len), base=2, span~, ty~))
-        } else {
-          None
-        }
-      }
       Ternary(cond~, then~, else_~, span~, ty~) => {
         // Rewrite ternary expressions into match expressions
         let match_expr = @parse.Expr::Match(
           subject=cond,
           cases=[
-            (@parse.Expr::nat!(0, width=Some(1), span~), else_),
-            (@parse.Expr::nat!(1, width=Some(1), span~), then),
+            (@parse.Expr::nat(0, width=Some(1), span~), else_),
+            (@parse.Expr::nat(1, width=Some(1), span~), then),
           ],
           default=None,
           span~,
@@ -148,7 +130,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
       }
       Slicing(expr~, hi=msb, lo=width, kind=Width, span~, ty~) => Some({
         let lsb = msb.as_int!() - width.as_int!() + 1
-        @parse.Expr::Slicing(expr~, hi=msb, lo=@parse.Expr::nat!(lsb, span=width.span()), kind=Absolute, span~, ty~)
+        @parse.Expr::Slicing(expr~, hi=msb, lo=@parse.Expr::nat(lsb, span=width.span()), kind=Absolute, span~, ty~)
       })
       If(cond~, then~, else_~, span~, ty~) => {
         // Rewrite if expressions into match expressions
@@ -156,12 +138,12 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
           subject=cond,
           cases={
             let cases = [
-              (@parse.Expr::nat!(1, width=Some(1), span~), then),
+              (@parse.Expr::nat(1, width=Some(1), span~), then),
             ]
 
             match else_ {
               Some(else_) => {
-                cases.push((@parse.Expr::nat!(0, width=Some(1), span~), else_))
+                cases.push((@parse.Expr::nat(0, width=Some(1), span~), else_))
               }
               None => ()
             }

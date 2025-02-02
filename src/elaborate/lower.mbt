@@ -28,7 +28,7 @@ impl @parse.Spanned for Value with span(self) {
   }
 }
 
-typealias ElaboratorEnv = Scope[@parse.Path, @firrtl.Expr]
+typealias ElaboratorEnv = Scope[@parse.Path, Value]
 
 pub type! ElaborationError {
   UnresolvedIdentifier(path~: @parse.Path, span~: @parse.Span)
@@ -45,7 +45,7 @@ pub type! ElaborationError {
   MissingConnectionsOnWriteableMemoryInstance(missing_connections~: Array[String], span~: @parse.Span)
   UnknownModuleMarkedAsInternal(path~: @parse.Path, span~: @parse.Span)
   Unsupported(message~: String, span~: @parse.Span)
-  DynamicVectorLength(span~: @parse.Span)
+  DynamicIntParam(span~: @parse.Span)
   InvalidCharacterInString(char~: Char, span~: @parse.Span)
   ExpctedIntLiteral(span~: @parse.Span)
 } derive (Show)
@@ -82,16 +82,11 @@ fn id_of_str(name: String) -> @firrtl.Id {
 fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type! {
   match ty {
     Nat => UIntInferred
-    Logic => UInt(1)
-    Vector(ty=Logic, len=Fixed(len)) => UInt(len)
+    UInt(Fixed(width)) => UInt(width)
+    SInt(Fixed(width)) => SInt(width)
     Vector(ty~, len=Fixed(len)) => Vec(lower_type!(ty, span~), len)
-    Vector(ty=_, len=Dynamic(d)) => {
-      {
-        let emitter = @parse.AstEmitter::new()
-        emitter.emit_expr(d)
-        println("Dynamic vector length: \{emitter}")
-      }
-      raise DynamicVectorLength(span~)
+    UInt(Dynamic(_)) | SInt(Dynamic(_)) | Vector(ty=_, len=Dynamic(_)) => {
+      raise DynamicIntParam(span~)
     }
     Instance(sig~, params~, accessed_ports~) => {
       let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.size())
@@ -102,7 +97,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type! {
         let field: @firrtl.BundleField = {
           id: id_of_str(port),
           ty: lower_type!(port_sig.ty.substitute(params), span~),
-          flip: port_sig.direction == Output,
+          flip: port_sig.direction == Input,
         }
 
         fields.push(field)
@@ -129,7 +124,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type! {
 
       Bundle(fir_fields)
     }
-    String(len~) => UInt(len * @parse.BITS_PER_CHAR)
+    String(len~) => Vec(UInt(8), len)
   }
 }
 
@@ -152,7 +147,7 @@ fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
         }
         
         ports.push(fir_port)
-        env.declare!(@parse.Path::new([], port.name), @firrtl.Reference(Id(id_of_str(port.name))))
+        env.declare!(@parse.Path::new([], port.name), Expr(expr=@firrtl.Reference(Id(id_of_str(port.name))), ty=fir_ty, span=port.span))
       }
 
       ports
@@ -178,6 +173,15 @@ fn next_id(self: Elaborator) -> Int {
 }
 
 fn connect_aux(lhs~: @firrtl.Reference, ty~: @firrtl.Type, value~: @firrtl.Reference, scope~: &ScopeLike, span~: @parse.Span) -> Unit {
+  match (lhs, value) {
+    (Id(a), Id(b)) => {
+      if a.inner() == b.inner() {
+        return
+      }
+    }
+    _ => ()
+  }
+  
   match ty {
     Const(inner_ty) => {
       connect_aux(lhs~, ty=inner_ty, value~, scope~, span~)
@@ -200,7 +204,7 @@ fn connect_aux(lhs~: @firrtl.Reference, ty~: @firrtl.Type, value~: @firrtl.Refer
       if not(is_redundant) {
         for field in fields {
           let field_value = @firrtl.Reference::FieldAccess(lhs=value, field=field.id)
-          if field.flip {
+          if not(field.flip) {
             connect_aux(lhs=FieldAccess(lhs~, field=field.id), ty=field.ty, value=field_value, scope~, span~)
           } else {
             connect_aux(lhs=field_value, ty=field.ty, value=FieldAccess(lhs~, field=field.id), scope~, span~)
@@ -211,11 +215,12 @@ fn connect_aux(lhs~: @firrtl.Reference, ty~: @firrtl.Type, value~: @firrtl.Refer
   }
 }
 
-fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike) -> @firrtl.Reference! {
-  match self.as_expr!(elaborator, scope~) {
+fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference! {
+  match self.as_expr!(elaborator, scope~, binding~) {
     Reference(value) => value
     expr => {
-      let rhs_id = id_of_str("temp_\{elaborator.next_id()}")
+      let prefix = binding.or("temp")
+      let rhs_id = id_of_str("\{prefix}_\{elaborator.next_id()}")
       scope.add_stmt(Wire(id=rhs_id, ty=self.ty()))
       scope.add_stmt(Connect(Id(rhs_id), expr))
       Id(rhs_id)
@@ -223,18 +228,8 @@ fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike) -> @fi
   }
 }
 
-fn unaliased(expr: @firrtl.Expr, env~: ElaboratorEnv) -> @firrtl.Expr {
-  match expr {
-    Reference(Id(id)) => match env.resolve(@parse.Path::new([], id.inner())) {
-      Some(aliased) => unaliased(aliased, env~)
-      None => expr
-    }
-    _ => expr
-  }
-}
-
 fn connect(self: Elaborator, lhs~: @firrtl.Reference, ty~: @firrtl.Type, value~: Value, scope~: &ScopeLike, span~: @parse.Span) -> Unit! {
-  connect_aux(lhs~, ty~, value=value.as_ref!(self, scope~), scope~, span~)
+  connect_aux(lhs~, ty~, value=value.as_ref!(self, scope~, binding=None), scope~, span~)
 }
 
 fn Value::ty(self: Value) -> @firrtl.Type {
@@ -246,7 +241,7 @@ fn Value::ty(self: Value) -> @firrtl.Type {
   }
 }
 
-fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike) -> @firrtl.Expr! {
+fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Expr! {
   match self {
     Expr(expr~, ..) => expr
     Vector(elems~, ty~, span~) => {
@@ -260,8 +255,11 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike) -> @f
       Reference(Id(id))
     }
     Struct(fields~, ty~, span~) => {
-      let id = id_of_str("struct_\{elaborator.next_id()}")
-      scope.add_stmt(Wire(id~, ty~))
+      let id = id_of_str(binding.or_else(fn() {"struct_\{elaborator.next_id()}"}))
+
+      if binding.is_empty() {
+        scope.add_stmt(Wire(id~, ty~))
+      }
 
       for field in fields {
         elaborator.connect!(lhs=FieldAccess(lhs=Id(id), field=id_of_str(field.0)), ty=field.1.ty(), value=field.1, scope~, span~)
@@ -277,6 +275,54 @@ fn Value::as_int(self: Value) -> BigInt! {
   match self {
     Expr(expr=Literal(UInt(value~, ..)) | Int(value), ..) => value
     _ => raise ExpctedIntLiteral(span=self.span())
+  }
+}
+
+fn concat(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr! {
+    if exprs.is_empty() {
+      return Literal(UInt(width=0, radix=Some(2), value=BigInt::from_int(0)))
+    }
+
+    let list = @immut/list.from_array(exprs)
+
+    fn go(lst: @immut/list.T[@firrtl.Expr], acc: @firrtl.Expr) -> @firrtl.Expr! {
+      match lst.head() {
+        Some(expr) => {
+          go!(lst.tail(), @firrtl.primop(Cat, [acc, expr]))
+        }
+        None => acc
+      }
+    }
+
+    go!(list.tail(), exprs[0])
+}
+
+fn flat_uint(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Span) -> @firrtl.Expr! {
+  match ty {
+    Const(inner_ty) => flat_uint!(reference, inner_ty, span~)
+    Vec(elem_ty, len) => {
+      let refs = Array::new(capacity=len)
+
+      for i in 0..<len {
+        let index = @firrtl.Expr::Int(BigInt::from_int(i))
+        let r = @firrtl.Reference::Indexing(lhs=reference, index=index)
+        refs.push(flat_uint!(r, elem_ty, span~))
+      }
+
+      concat!(refs)
+    }
+    Bundle(fields) => {
+      let refs = Array::new(capacity=fields.length())
+
+      for field in fields {
+        let r = @firrtl.Reference::FieldAccess(lhs=reference, field=field.id)
+        refs.push(flat_uint!(r, field.ty, span~))
+      }
+
+      concat!(refs)
+    }
+    UInt(_) => Reference(reference)
+    _ => raise ElaborationError::Unsupported(message="Cannot flatten value of type \{ty}", span~)
   }
 }
 
@@ -300,14 +346,15 @@ fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: Ela
       match val {
         Some(val) => {
           self.connect!(lhs=var, ty~, value=val, scope~, span~)
+          env.declare!(path, val)
         }
-        None => ()
+        None => {
+          env.declare!(path, Expr(expr=Reference(var), ty~, span~))
+        }
       }
-
-      env.declare!(path, Reference(var))
     }
     Assign(lhs~, rhs~, span~) => {
-      let fir_lhs = self.lower_expr!(lhs, scope~, env~, binding=None).as_ref!(self, scope~)
+      let fir_lhs = self.lower_expr!(lhs, scope~, env~, binding=None).as_ref!(self, scope~, binding=None)
       let fir_rhs = self.lower_expr!(rhs, scope~, env~, binding=None)
       let lhs_span = lhs.span()
       let ty = lower_type!(unwrap_type!(lhs.ty(), span=lhs_span), span=lhs_span)
@@ -324,17 +371,17 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
   let ty = lower_type!(unwrap_type!(expr.ty(), span=expr_span), span=expr_span)
   
   match expr {
-    Natural(bits~, width~, base~, span~, ty=_) => {
+    Natural(value~, width~, base~, span~, ty=_) => {
       let width = match width {
         Some(width) => width
-        None => bits.bits.length()
+        None => @utils.significant_bits(value)
       }
       
-      Expr(expr=Literal(UInt(width~, radix=Some(base), value=bits.as_bigint!())), ty~, span~)
+      Expr(expr=Literal(UInt(width~, radix=Some(base), value~)), ty~, span~)
     }
     Identifier(path~, span~, ..) => {
       match env.resolve(path) {
-        Some(val) => Expr(expr=val, ty~, span~)
+        Some(val) => val
         None => raise UnresolvedIdentifier(path~, span~)
       }
     }
@@ -344,7 +391,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         Not => Not
       }
 
-      Expr(expr=PrimOp(op=primop, args=[fir_expr]), ty~, span~)
+      Expr(expr=@firrtl.primop(primop, [fir_expr]), ty~, span~)
     }
     Binary(op~, lhs~, rhs~, span~, ty=_) => {
       let fir_lhs = self.lower_expr!(lhs, scope~, env~).as_expr!(self, scope~)
@@ -374,10 +421,10 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         Ternary(_) => raise Unreachable(message="ternary operator", span~)
       }
 
-      let mut res = @firrtl.Expr::PrimOp(op=primop, args=[fir_lhs, fir_rhs])
+      let mut res = @firrtl.primop(primop, [fir_lhs, fir_rhs])
 
       if negate { 
-        res = @firrtl.Expr::PrimOp(op=Not, args=[res])
+        res = @firrtl.primop(Not, [res])
       }
 
       Expr(expr=res, ty~, span~) 
@@ -396,29 +443,22 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         return Empty(span~)
       }
 
-      let list = @immut/list.from_array(elems)
+      let fir_exprs = Array::new(capacity=elems.length())
 
-      fn concat(lst: @immut/list.T[@parse.Expr], acc: @firrtl.Expr) -> @firrtl.Expr! {
-        match lst.head() {
-          Some(expr) => {
-            let fir_expr = self.lower_expr!(expr, scope~, env~).as_expr!(self, scope~)
-            let cat = @firrtl.Expr::PrimOp(op=Cat, args=[acc, fir_expr])
-            concat!(lst.tail(), cat)
-          }
-          None => acc
-        }
+      for elem in elems {
+        fir_exprs.push(self.lower_expr!(elem, scope~, env~).as_expr!(self, scope~))
       }
 
-      let cat = concat!(
-        list.tail(),
-        self.lower_expr!(elems[0], scope~, env~).as_expr!(self, scope~)
-      )
-
+      let cat = concat!(fir_exprs)
       Expr(expr=cat, ty~, span~)
     }
     Match(subject~, cases~, default~, span~, ty=match_ty) => {
-      let res_id = id_of_str("match_\{self.next_idx()}")
-      scope.add_stmt(Wire(id=res_id, ty~))
+      let res_id = id_of_str(binding.or_else(fn() { "match_\{self.next_idx()}" }))
+      
+      if binding.is_empty() {
+        scope.add_stmt(Wire(id=res_id, ty~))
+      }
+      
       let has_value = unwrap_type!(match_ty, span~).width!(span) > 0
       let fir_subject = self.lower_expr!(subject, scope~, env~).as_expr!(self, scope~)
       let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type!(subject.ty(), span~).width!(span))
@@ -438,7 +478,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         }
 
         let when: @firrtl.When = {
-          cond: PrimOp(op=Eq, args=[fir_subject, fir_lhs]),
+          cond: @firrtl.primop(Eq, [fir_subject, fir_lhs]),
           body,
           otherwise: None,
         }
@@ -621,7 +661,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             let uses_en = uses_port("en")
             let reg_ty = @firrtl.Type::UInt(width)
             let reg_id = id_of_str("reg_\{self.next_idx()}")
-            let clk = @firrtl.Expr::PrimOp(op=AsClock, args=[get_port("clk")])
+            let clk = @firrtl.primop(AsClock, [get_port("clk")])
 
             let reg_stmt = if uses_rst {
               @firrtl.Stmt::RegReset(
@@ -634,7 +674,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
                   if sync_reset {
                     rst
                   } else {
-                    PrimOp(op=AsAsyncReset, args=[rst])
+                    @firrtl.primop(AsAsyncReset, [rst])
                   }
                 },
                 init=Literal(UInt(width~, radix=Some(10), value=BigInt::from_int(0))),
@@ -844,14 +884,12 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             None => index.as_expr!(self, scope~)
           }
 
-          // TODO: Differentiate uint<N> and logic[N]
-
           match expr.ty().val {
-            Some(Vector(ty=Logic, ..)) => {
-              Expr(expr=PrimOp(op=Bits, args=[val.as_expr!(self, scope~), index_expr, index_expr]), ty=UInt(1), span~)
+            Some(UInt(_)) => {
+              Expr(expr=@firrtl.primop(Bits, [val.as_expr!(self, scope~), index_expr, index_expr]), ty=UInt(1), span~)
             }
             _ => {
-              Expr(expr=@firrtl.Reference(Indexing(lhs=val.as_ref!(self, scope~), index=index_expr)), ty~, span~)   
+              Expr(expr=@firrtl.Reference(Indexing(lhs=val.as_ref!(self, scope~), index=index_expr)), ty~, span~)
             }
           }
         }
@@ -862,7 +900,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let hi = self.lower_expr!(hi, scope~, env~).as_int!()
       let lo = self.lower_expr!(lo, scope~, env~).as_int!()
 
-      Expr(expr=PrimOp(op=Bits, args=[val, Int(hi), Int(lo)]), ty~, span~)
+      Expr(expr=@firrtl.primop(Bits, [val, Int(hi), Int(lo)]), ty~, span~)
     }
     FieldAccess(expr=accessed_expr, field~, span~, ty=_) => {
       let val = self.lower_expr!(accessed_expr, scope~, env~)
@@ -890,25 +928,26 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         None => Empty(span~)
       }
     }
-    String(value=str, span~, ty=_) => {
-      let encoded = Bytes::new(str.length())
+    String(value=str, span~, ty~) => {
+      let chars: Array[@parse.Expr] = Array::new(capacity=str.length())
 
-      for idx, char in str {
+      for char in str {
         let char_latin1 = char.to_int()
 
         if char_latin1 < 0 || char_latin1 > 255 {
           raise InvalidCharacterInString(char~, span~)
         }
 
-        encoded[idx] = char_latin1.to_byte()
+        chars.push(@parse.Expr::nat(char_latin1, width=Some(8), span~))
       }
 
-      let lit = @firrtl.Expr::Literal(UInt(
-        width=str.length() * @parse.BITS_PER_CHAR,radix=Some(2),
-        value=BigInt::from_octets(encoded, signum=1))
-      )
-
-      Expr(expr=lit, ty=UInt(str.length() * @parse.BITS_PER_CHAR), span~)
+      self.lower_expr!(Vector(elems=chars, span~, ty~), scope~, env~)
+    }
+    FunCall(name="uint", args=[arg], ty~, span~, ..) => {
+      let arg = self.lower_expr!(arg, scope~, env~)
+      let arg_ref = arg.as_ref!(self, scope~)
+      let width = unwrap_type!(ty, span~).width!(span)
+      Expr(expr=flat_uint!(arg_ref, arg.ty(), span~), ty=UInt(width), span~)
     }
     Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())

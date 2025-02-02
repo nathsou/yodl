@@ -68,39 +68,25 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
   }
 
   match expr {
-    Natural(bits~, width~, base~, ..) => {
+    Natural(value~, width~, base~, ..) => {
       match width {
         Some(width) => {
           self.write(width.to_string())
           self.write("'")
 
-          let base_prefix = match (base, bits.value.is_empty()) {
-            (2, _) | (_, true) => 'b'
-            (8, false) => 'o'
-            (10, false) => 'd'
-            (16, false) => 'h'
+          let base_prefix = match base {
+            2 => 'b'
+            8 => 'o'
+            10 => 'd'
+            16 => 'h'
             _ => '?'
           }
 
           self.builder.write_char(base_prefix)
-          match bits.value {
-            Some(value) => {
-              self.write(@utils.show_nat(value, base~, width=Some(width)))
-            }
-            None => {
-              self.write(bits.to_string())
-            }
-          }
+          self.write(@utils.show_nat(value, base~, width=Some(width)))
         }
         None => {
-          match bits.value {
-            Some(value) => {
-              self.write(@utils.show_nat(value, base~, width=None))
-            }
-            None => {
-              self.write(bits.to_string())
-            }
-          }
+          self.write(@utils.show_nat(value, base~, width=None))
         }
       }
     }
@@ -521,29 +507,34 @@ impl Show for StructField with output(field, logger) {
   logger.write_string(field.ty.to_string())
 }
 
+impl Show for IntParam with output(param, logger) {
+  match param {
+    Fixed(n) => {
+      logger.write_string(n.to_string())
+    }
+    Dynamic(expr) => {
+      let emitter = AstEmitter::new()
+      emitter.emit_expr(expr)
+      logger.write_string(emitter.to_string())
+    }
+  }
+}
+
 pub impl Show for Type with output(ty, logger) {
   match ty {
     Nat(_) => {
       logger.write_string("nat")
     }
-    Logic => {
-      logger.write_string("logic")
+    UInt(width) => {
+      logger.write_string("uint<\{width}>")
+    }
+    SInt(width) => {
+      logger.write_string("sint<\{width}>")
     }
     Vector(ty~, len~) => {
       logger.write_string(ty.to_string())
       logger.write_char('[')
-
-      match len {
-        Fixed(len) => {
-          logger.write_string(len.to_string())
-        }
-        Dynamic(expr) => {
-          let emitter = AstEmitter::new()
-          emitter.emit_expr(expr)
-          logger.write_string(emitter.to_string())
-        }
-      }
-
+      logger.write_object(len)
       logger.write_char(']')
     }
     Instance(sig={ path, .. }, params~, accessed_ports~) => {

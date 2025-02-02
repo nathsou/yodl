@@ -3,14 +3,14 @@ const H_ACTIVE = 640;
 const V_ACTIVE = 480;
 
 module SyncPulses(
-    pixel_clk: logic, // a roughly 25.2 MHz clock
+    pixel_clk: uint<1>, // a roughly 25.2 MHz clock
 ) -> (
-    hsync: logic,
-    vsync: logic,
-    col: logic[10],
-    row: logic[10],
-    is_active_area: logic,
-    new_pixel: logic,
+    hsync: bool,
+    vsync: bool,
+    col: uint<10>,
+    row: uint<10>,
+    is_active_area: bool,
+    new_pixel: bool,
 ) {
     const H_FRONT_PORCH = 16;
     const H_SYNC_PULSE = 96;
@@ -32,7 +32,7 @@ module SyncPulses(
     row_reg.d = last_col ? (last_row ? 10'd0 : row_reg.q + 1'1) : row_reg.q;
     new_pixel = last_col nand last_row;
 
-    hsync = (col_reg.q >= (H_ACTIVE + H_FRONT_PORCH)) and (col_reg.q < (H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE));
-    vsync = (row_reg.q >= (V_ACTIVE + V_FRONT_PORCH)) and (row_reg.q < (V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE));
-    is_active_area = col_reg.q < H_ACTIVE and row_reg.q < V_ACTIVE;
+    hsync = (col_reg.q >= (H_ACTIVE + H_FRONT_PORCH)) and (col_reg.q <: (H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE));
+    vsync = (row_reg.q >= (V_ACTIVE + V_FRONT_PORCH)) and (row_reg.q <: (V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE));
+    is_active_area = col_reg.q <: H_ACTIVE and row_reg.q <: V_ACTIVE;
 }

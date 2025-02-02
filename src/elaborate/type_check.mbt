@@ -140,9 +140,6 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
         }
 
         match (ty1, ty2) {
-            (Vector(ty=ty1_inner, len=Fixed(1)), ty2) | (ty2, Vector(ty=ty1_inner, len=Fixed(1))) => {
-                eqs.push((ty1_inner, ty2))
-            }
             (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(path={ packages: [], member }, ..)))) => {
                 match subst[member] {
                     Some(len2) => {
@@ -157,6 +154,7 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
 
                 eqs.push((ty1_inner, ty2_inner))
             }
+            (UInt(_), Nat) | (Nat, UInt(_)) => ()
             (Vector(ty=_, len=Dynamic(Identifier(_))), Vector(ty=_, len=Fixed(_))) => {
                 eqs.push((ty2, ty1))
             }
@@ -177,7 +175,7 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
                 }
             }
             (String(len~), ty2) | (ty2, String(len~)) => {
-                eqs.push((Vector(ty=Logic, len=Fixed(len * @parse.BITS_PER_CHAR)), ty2))
+                eqs.push((Vector(ty=@parse.Type::uint(@parse.BITS_PER_CHAR), len=Fixed(len)), ty2))
             }
             _ => {
                 raise IncompatibleTypes(ty1~, ty2~, span~)
@@ -203,14 +201,15 @@ fn declare_name(env~: Scope[@parse.Path, @parse.Type], path~: @parse.Path, ty~: 
 // during the monomorphization pass
 fn eval_const_expr(expr: @parse.Expr) -> Int! {
     match expr {
-        Natural(bits~, ..) => bits.as_int!()
+        Natural(value~, ..) => value.to_int()
         _ => raise ExpectedConstantExpr(span=expr.span())
     }
 }
 
 fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.Type! {
     match ty {
-        Logic => Logic
+        UInt(width) => UInt(width)
+        SInt(width) => SInt(width)
         Nat => Nat
         Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty!(inner_ty, span~), len~)
         Instance(_) => ty
@@ -250,8 +249,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
         }
         Natural(width~, ..) => match width {
-            Some(1) => @parse.Logic
-            Some(width) => @parse.Type::Vector(ty=@parse.Logic, len=Fixed(width))
+            Some(width) => @parse.Type::uint(width)
             None => Nat
         }
         String(value=str,  span~, ..) => {
@@ -287,10 +285,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 None => op.output_width(wa, wb)
             }
 
-            match wy {
-                1 => Logic
-                width => Vector(ty=Logic, len=Fixed(width))
-            }
+            @parse.Type::uint(wy)
         }
         Indexing(expr~, index~, span~, ..) => {
             let ty = self.check_expr!(expr, env)
@@ -302,36 +297,42 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             match ty {
                 Vector(ty=inner_ty, ..) => inner_ty
+                UInt(_) | SInt(_) => @parse.Type::uint(1)
+                String(_) => @parse.Type::uint(@parse.BITS_PER_CHAR)
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
-        Slicing(expr~, hi=msb, lo=lsb, kind~, span~, ..) => {
+        Slicing(expr~, hi~, lo~, kind~, span~, ..) => {
             let ty = self.check_expr!(expr, env)
-            let start_ty = self.check_expr!(msb, env)
-            let end_ty = self.check_expr!(lsb, env)
+            let start_ty = self.check_expr!(hi, env)
+            let end_ty = self.check_expr!(lo, env)
 
             if start_ty != @parse.Nat || end_ty != @parse.Nat {
                 raise InvalidSlicingRange(reason="start and end must be natural numbers", span~)
             }
 
-            let msb = eval_const_expr!(msb)
-            let lsb = match (kind, eval_const_expr!(lsb)) {
+            let hi = eval_const_expr!(hi)
+            let lo = match (kind, eval_const_expr!(lo)) {
                 (Absolute, lsb) => lsb
-                (Width, width) => msb - width + 1
+                (Width, width) => hi + 1 - width
             }
 
+            let width = hi + 1 - lo
+
             match ty {
+                UInt(_) | SInt(_) => @parse.Type::uint(width)
+                String(_) => @parse.Type::Vector(ty=@parse.Type::uint(@parse.BITS_PER_CHAR), len=Fixed(width))
                 Vector(ty=inner_ty, len~) => {
                     let len = len.expect_fixed!(expr.span())
-                    if msb >= len {
-                        raise InvalidSlicingRange(reason="start index out of bounds: msb: \{msb}, len: \{len}", span~)
+                    if hi >= len {
+                        raise InvalidSlicingRange(reason="start index out of bounds: lsb: \{hi}, len: \{len}", span~)
                     }
 
-                    if lsb >= msb {
+                    if lo >= hi {
                         raise InvalidSlicingRange(reason="end index must be less than start index", span~)
                     }
 
-                    @parse.Type::Vector(ty=inner_ty, len=Fixed((msb - lsb) + 1))
+                    @parse.Type::Vector(ty=inner_ty, len=Fixed(width))
                 }
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
@@ -380,6 +381,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                             Some(port_def) => {
                                 let expr_ty = self.check_expr!(port_expr, env).substitute(params_env)
                                 let _ = unify!(port_def.ty.substitute(params_env), expr_ty, span=port_expr.span(), subst~)
+
+                                if port_def.direction != Input && not(is_valid_assignment_target(port_expr)) {
+                                    raise InvalidAssignmentTarget(span=port_expr.span())
+                                }
                             }
                             None => raise TypeCheckerError::UnknownModulePort(module_path=path, port_name=port_name, span~)
                         }
@@ -429,14 +434,14 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 len += elem_ty.width!(elem.span())
             }
 
-            @parse.Type::Vector(ty=Logic, len=Fixed(len))
+            @parse.Type::uint(len)
         }
         Ternary(cond~, then~, else_~, span~, ..) => {
-            let cond_ty = self.check_expr!(cond, env, expected_ty=Some(@parse.Logic))
+            let cond_ty = self.check_expr!(cond, env, expected_ty=Some(@parse.Type::uint(1)))
             let then_ty = self.check_expr!(then, env, expected_ty~)
             let else_ty = self.check_expr!(else_, env, expected_ty~)
 
-            let _ = unify!(cond_ty, @parse.Logic, span~)
+            let _ = unify!(cond_ty, @parse.Type::uint(1), span~)
             let ty = self.resolve_ty!(then_ty, span~)
             let _ = unify!(ty, else_ty, span~)
 
@@ -499,19 +504,17 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let (elem_ty, len) = match concat {
                 true => {
                     let expr_width = expr_ty.width!(expr.span())
-                    (@parse.Type::Logic, count * expr_width)
+                    (@parse.Type::uint(1), count * expr_width)
                 }
                 false => (expr_ty, count)
             }
 
             Vector(ty=elem_ty, len=Fixed(len))
         }
-        FunCall(name="display", args~, ..) => {
-            for arg in args {
-                let _ = self.check_expr!(arg, env)
-            }
-
-            @parse.Type::empty()
+        FunCall(name="uint", args=[arg], ..) => {
+            let arg_ty = self.check_expr!(arg, env)
+            let width = arg_ty.width!(arg.span())
+            @parse.Type::uint(width)
         }
         FunCall(span~, ..) => {
             raise FunCallAfterMonomorphization(span~)
@@ -540,7 +543,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
         }
         If(cond~, then~, else_~, span~, ..) => {
-            let _ = self.check_expr!(cond, env, expected_ty=Some(@parse.Logic))
+            let _ = self.check_expr!(cond, env, expected_ty=Some(@parse.Type::uint(1)))
             let then_ty = self.check_expr!(then, env, expected_ty~)
             let if_ty = match else_ {
                 Some(else_) => {
@@ -597,16 +600,13 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
             })
         }
         Assign(lhs~, rhs~, span~, ..) => {
-            let is_valid_assignment_target = match lhs {
-                Identifier(..) | Indexing(..) | Slicing(..) | FieldAccess(..) => true
-                _ => false
-            };
+            let lhs_ty = self.check_expr!(lhs, env)
+            let valid_lhs = is_valid_assignment_target(lhs)
 
-            if not(is_valid_assignment_target) {
+            if not(valid_lhs) {
                 raise InvalidAssignmentTarget(span~)
             }
 
-            let lhs_ty = self.check_expr!(lhs, env)
             let rhs_ty = self.check_expr!(rhs, env, expected_ty=Some(lhs_ty))
             let _ = unify!(lhs_ty, rhs_ty, span~)
         }
@@ -636,6 +636,17 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
         Const(decl~, span=_) => {
             self.check_const_decl!(decl, env)
         }
+    }
+}
+
+fn is_valid_assignment_target(expr: @parse.Expr) -> Bool {
+    match expr {
+        Identifier(..) | FieldAccess(..) => true
+        Indexing(expr~, ..) | Slicing(expr~, ..) => match expr.ty().val {
+            Some(Vector(_)) => true
+            _ => false
+        }
+        _ => false
     }
 }
 

@@ -1,10 +1,10 @@
 
 module Top(
-    clk: logic,
-    sw: logic[16],
-    btn_c: logic,
+    clk: uitn<1>,
+    sw: uint<16>,
+    btn_c: bool,
 ) -> (
-    led: logic[16],
+    led: uint<16>,
 ) {
     let counter = Reg<32>(clk, rst: btn_c);
     counter.d = counter.q + sw;

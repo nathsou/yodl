@@ -1,11 +1,6 @@
 {
     "import": [
-        {
-            "path": "nathsou/yodl/parse",
-            "alias": "parse",
-            "value": []
-        },
-        "nathsou/yodl/yir",
+        "nathsou/yodl/parse",
         "nathsou/yodl/firrtl",
         "nathsou/yodl/utils"
     ]

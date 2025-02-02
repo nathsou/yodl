@@ -64,17 +64,23 @@ fn ctor(self: MonoEnvEntry) -> String {
 
 typealias MonoEnv = @elaborate.Scope[@parse.Path, MonoEnvEntry]
 
+fn monomorphize_int_param(self: Monomorphizer, param: @parse.IntParam, env~: MonoEnv, packages~: Array[String]) -> @parse.IntParam! {
+  match param {
+    Fixed(value) => Fixed(value)
+    Dynamic(expr) => match self.monomorphize_expr!(expr, env~, packages~) {
+      Natural(value~, ..) => Fixed(value.to_int())
+      expr => Dynamic(expr)
+    }
+  }
+}
+
 fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packages~: Array[String]) -> @parse.Type! {
   match ty {
+    UInt(width) => UInt(self.monomorphize_int_param!(width, env~, packages~))
+    SInt(width) => SInt(self.monomorphize_int_param!(width, env~, packages~))
     Vector(ty~, len~) => {
       let mono_ty = self.monomorphize_type!(ty, env~, packages~)
-      let len = match len {
-        Fixed(len) => @parse.VectorLen::Fixed(len)
-        Dynamic(expr) => match self.monomorphize_expr!(expr, env~, packages~) {
-          Natural(bits~, ..) => @parse.VectorLen::Fixed(bits.as_int!())
-          expr => @parse.VectorLen::Dynamic(expr)
-        }
-      }
+      let len = self.monomorphize_int_param!(len, env~, packages~)
 
       @parse.Type::Vector(ty=mono_ty, len~)
     }
@@ -115,7 +121,7 @@ fn register_monomorphized_module(
     let map = Map::new(capacity=params._.length())
 
     for name, expr in params.as_map!(names=mod_decl.params) {
-      map[name] = expr.as_param!()
+      map[name] = expr.partial_eval!(params=map).as_param!()
     } 
 
     map
@@ -180,8 +186,8 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
     (match expr {
       Identifier(path~, span~, ty=_) => Some({
         match resolve_member(env, path~, packages~) {
-          Some((Param(Int(n)) | GenVar(n), _)) => @parse.Expr::nat!(n, width=None, base=10, span~)
-          Some((Param(Val(bits~, width~)), _)) => @parse.Expr::Natural(bits~, width=Some(width), base=2, span~, ty={ val: None })
+          Some((Param(Int(n)) | GenVar(n), _)) => @parse.Expr::nat(n, width=None, base=10, span~)
+          Some((Param(Val(value~, width~)), _)) => @parse.Expr::Natural(value~, width=Some(width), base=2, span~, ty={ val: None })
           Some((Const(decl), _)) => decl.expr
           Some((Name(_), resolved_path)) => @parse.Expr::Identifier(path=resolved_path, span~, ty={ val: None })
           None => Identifier(path~, span~, ty={ val: None })
@@ -256,7 +262,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
             let _ = self.register_monomorphized_module!(
               path~,
               params=@parse.InstanceParams(
-                @utils.map!(params, fn(param) { { name: None, value: param.as_expr!(span~) } })
+                @utils.map!(params, fn(param) { { name: None, value: param.as_expr(span~) } })
               ),
               span~,
               packages~,

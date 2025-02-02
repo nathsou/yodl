@@ -1,12 +1,12 @@
 // yosys -p "read_rtlil output/FullAdder.rtlil; check -assert; write_verilog output/FullAdder.v"
 
 module FullAdder(
-    a: logic,
-    b: logic,
-    carry_in: logic,
+    a: bool,
+    b: bool,
+    carry_in: bool,
 ) -> (
-    sum: logic,
-    carry_out: logic,
+    sum: bool,
+    carry_out: bool,
 ) {
     let xor1 = a xor b;
     sum = carry_in xor xor1;
@@ -14,15 +14,16 @@ module FullAdder(
 }
 
 module Adder<N>(
-    a: logic[N],
-    b: logic[N],
-    carry_in: logic,
+    a: uint<N>,
+    b: uint<N>,
+    carry_in: bool,
 ) -> (
-    sum: logic[N],
-    carry_out: logic,
+    sum: uint<N>,
+    carry_out: bool,
 ) {
-    let carry_chain: logic[N + 1];
+    let carry_chain: bool[N + 1];
     carry_chain[0] = carry_in;
+    let bits: bool[N];
 
     for i in 0..<N {
         FullAdder(
@@ -30,21 +31,21 @@ module Adder<N>(
             b: b[i],
             carry_in: carry_chain[i],
             carry_out: carry_chain[i + 1],
-            sum: sum[i],
+            sum: bits[i],
         );
     }
 
     carry_out = carry_chain[N];
+    sum = uint(bits);
 }
 
 // Nexys A7
 module Top(
-    clk: logic,
+    clk: uint<1>,
 ) -> (
-    led: logic[16],
+    led: uint<16>,
 ) {
     let counter = Reg<32>(clk);
-
     let adder = Adder<32>(
         a: counter.q,
         b: 32'1,

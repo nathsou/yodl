@@ -3,14 +3,14 @@ import LFSR
 import Text
 
 module Top(
-    clk: logic,
+    clk: uint<1>,
 ) -> (
-    led: logic[4],
-    vga_hsync: logic,
-    vga_vsync: logic,
-    vga_red: logic[3],
-    vga_green: logic[3],
-    vga_blue: logic[3],
+    led: uint<4>,
+    vga_hsync: bool,
+    vga_vsync: bool,
+    vga_red: uint<3>,
+    vga_green: uint<3>,
+    vga_blue: uint<3>,
 ) {
     let vga = VGA::SyncPulses(
         pixel_clk: clk,

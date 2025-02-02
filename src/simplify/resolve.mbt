@@ -61,41 +61,58 @@ fn collect_packages(dir: String, acc~: Map[String, String] = {}) -> Map[String, 
 
 let builtin_decls: Array[@parse.Decl] = {
   let source =
+    #|const true = 1'b1;
+    #|const false = 1'b0;
+    #|
     #|@internal
     #|declare module Reg<Width>(
-    #|    clk: logic,
-    #|    d: logic[Width],
-    #|    en?: logic,
-    #|    rst?: logic,
+    #|    clk: uint<1>,
+    #|    d: uint<Width>,
+    #|    en?: bool,
+    #|    rst?: bool,
     #|) -> (
-    #|    q: logic[Width],
+    #|    q: uint<Width>,
     #|)
     #|
     #|@internal
-    #|declare module RegSyncReset<Width>(
-    #|    clk: logic,
-    #|    d: logic[Width],
-    #|    en?: logic,
-    #|    rst?: logic,
+    #|declare module RegAsyncReset<Width>(
+    #|    clk: uint<1>,
+    #|    d: uint<Width>,
+    #|    en?: bool,
+    #|    rst?: bool,
     #|) -> (
-    #|    q: logic[Width],
+    #|    q: uint<Width>,
     #|)
     #|
     #|@internal
     #|declare module Memory<Width, Depth, ReadPorts, WritePorts, Init>(
-    #|    clk: logic,
-    #|    read_addr: logic[$clog2(Depth) * ReadPorts],
-    #|    write_addr: logic[$clog2(Depth) * WritePorts],
-    #|    write_enable?: logic[WritePorts],
-    #|    data_in?: logic[Width * WritePorts],
+    #|    clk: uint<1>,
+    #|    read_addr: uint<$clog2(Depth) * ReadPorts>,
+    #|    write_addr: uint<$clog2(Depth) * WritePorts>,
+    #|    write_enable?: uint<WritePorts>,
+    #|    data_in?: uint<Width * WritePorts>,
     #|) -> (
-    #|    data_out: logic[Width * ReadPorts],
+    #|    data_out: uint<Width * ReadPorts>,
     #|)
   
   let lexer = @parse.Lexer::new(source, file="builtin.yodl")
-  let tokens = lexer.lex?().unwrap()
+  let tokens = match lexer.lex?() {
+    Ok(tokens) => tokens
+    Err(error) => {
+      println("Error lexing builtin declarations: \{error}")
+      panic()
+    }
+  }
+  
   let parser = @parse.Parser::new(tokens, file="builtin.yodl")
-  parser.parse?().unwrap()
+
+  match parser.parse?() {
+    Ok(decls) => decls
+    Err(error) => {
+      println("Error parsing builtin declarations: \{error}")
+      panic()
+    }
+  }
 }
 
 pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.PackageDecl!ResolutionError {

@@ -3,18 +3,19 @@ enum TokenType {
   // symbols
   Lparen; Rparen; Lbrace; Rbrace; Comma; Semicolon; Colon
   Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang; SingleQuote
+  LchevronColon; RchevronColon
   Plus; Minus; Star; Slash
   Equal; EqualEqual; BangEqual; RightThinArrow; RightThickArrow
   LchevronEqual; RchevronEqual; LchevronLchevron; RchevronRchevron
-  DotDotLeftChevron; DotDotEqual; DotDotDot
+  DotDotLeftChevron; DotDotEqual
   Percent; QuestionMark; At; Underscore; X // Replication operator
   Dollar; ColonColon; MinusColon
   // keywords
-  Module; Let; Logic; In; For; Declare; Const
+  Module; Let; UInt; SInt; Bool; In; For; Declare; Const
   And; Or; Not; Xor; Nand; Nor; Xnor
   Match; Package; Import; If; Else
   // literals
-  Identifier(String); Natural(bits~: Bits, width~: Int?, base~: Int)
+  Identifier(String); Natural(value~: BigInt, width~: Int?, base~: Int)
   StringLiteral(String)
 } derive(Eq, Show)
 
@@ -115,8 +116,8 @@ fn to_binop(self: TokenType) -> BinaryOp? {
     Percent => Some(Mod)
     EqualEqual => Some(Equ)
     BangEqual => Some(Neq)
-    Lchevron => Some(Lss)
-    Rchevron => Some(Gtr)
+    LchevronColon => Some(Lss)
+    RchevronColon => Some(Gtr)
     LchevronEqual => Some(Leq)
     RchevronEqual => Some(Geq)
     LchevronLchevron => Some(Shl)

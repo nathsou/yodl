@@ -1,11 +1,11 @@
 
 // Linear Feedback Shift Register
 module LFSR<NumBits>(
-    clk: logic,
-    enable: logic,
+    clk: uint<1>,
+    enable: bool,
 ) -> (
-    q: logic[NumBits],
-    done: logic,
+    q: uint<NumBits>,
+    done: bool,
 ) {
     let r_xnor = Reg<1>(clk);
     let r_lfsr = Reg<NumBits>(clk, en: enable, q);

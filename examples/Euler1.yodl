@@ -1,27 +1,27 @@
 import Text
 
-module Euler1(clk: logic, rst: logic) -> (q: logic[18], is_ready: logic) {
+module Euler1(clk: uint<1>, rst: bool) -> (q: uint<18>, is_ready: bool) {
     const N = 1000;
     const CounterWidth = $clog2(N);
     let counter = Reg<CounterWidth>(clk, rst);
-    let is_active = counter.q <= N - 1;
+    let is_active = counter.q <: N;
     counter.d = counter.q + is_active;
     let sum = Reg<18>(clk, en: is_active, rst, q);
     let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0;
-    sum.d = sum.q + (is_divisible ? counter.q : CounterWidth * {1'0});
+    sum.d = sum.q + (is_divisible ? counter.q : 0);
     is_ready = not is_active;
 }
 
 module Top(
-    clk: logic,
-    button: logic[4],
+    clk: uint<1>,
+    button: uint<4>,
 ) -> (
-    led: logic[4],
-    vga_hsync: logic,
-    vga_vsync: logic,
-    vga_red: logic[3],
-    vga_green: logic[3],
-    vga_blue: logic[3],
+    led: uint<4>,
+    vga_hsync: bool,
+    vga_vsync: bool,
+    vga_red: uint<3>,
+    vga_green: uint<3>,
+    vga_blue: uint<3>,
 ) {
     let rst = button[0] or button[1] or button[2] or button[3];
     let vga = VGA::SyncPulses(

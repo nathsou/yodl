@@ -1,15 +1,15 @@
 import VGA
 
-module TopSim(
-    clk: logic,
-    rst: logic,
+module Top(
+    clk: uint<1>,
+    rst: bool,
 ) -> (
-    is_active_area: logic,
-    screen_x: logic[10],
-    screen_y: logic[10],
-    r: logic[3],
-    g: logic[3],
-    b: logic[3],
+    is_active_area: bool,
+    screen_x: uint<10>,
+    screen_y: uint<10>,
+    r: uint<3>,
+    g: uint<3>,
+    b: uint<3>,
 ) {
     let vga = VGA::SyncPulses(pixel_clk: clk, col: screen_x, row: screen_y);
     let color = if vga.is_active_area {

@@ -9,7 +9,7 @@ pub type! MemFileError {
   Unreachable(String)
 } derive(Show)
 
-pub fn parse_mem_file(path: String, base~: Int, start~: Int, end~: Int?) -> Array[BinaryDigit]!MemFileError {
+pub fn parse_mem_file(path: String, base~: Int, start~: Int, end~: Int?) -> Bytes!MemFileError {
   let contents = match @fs.read_file_to_string?(path~) {
     Ok(contents) => contents
     Err(err) => raise IOError(err)
@@ -125,27 +125,17 @@ pub fn parse_mem_file(path: String, base~: Int, start~: Int, end~: Int?) -> Arra
 
     if base == 2 {
       for char in lexeme {
-        bits.push(match char {
-          '0' => BinaryDigit::Zero
-          '1' => BinaryDigit::One
-          _ => raise Unreachable("unexpected bit value")
-        })
+        bits.push(char == '1')
       }
     } else {
       match @strconv.parse_int?(lexeme, base~) {
         Ok(value) => {
-          for bit in @utils.bin(value, width~) {
-            bits.push(match bit {
-              0 => BinaryDigit::Zero
-              1 => BinaryDigit::One
-              _ => raise Unreachable("unexpected bit value")
-            })
-          }
+          bits.push_iter(@utils.bin(value, width~))
         }
         Err(err) => raise StrConvError(err)
       }
     }
   }
 
-  bits
+  @utils.bools_to_bytes(bits.iter())
 }

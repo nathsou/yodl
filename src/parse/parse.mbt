@@ -17,6 +17,7 @@ pub type! ParserError {
   MultipleDefaultCases(span~: Span)
   InvalidPortOrTupleAccess(span~: Span)
   DuplicateStructField(name~: String, span~: Span)
+  DidYouMean(received~: TokenType, suggestion~: String, span~: Span)
 } derive(Show)
 
 pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
@@ -84,9 +85,9 @@ fn Parser::parse_integer(self: Parser) -> ParsedInteger!ParserError {
   let start_idx = self.index
 
   match token {
-    Natural(bits~, width~, base~) => {
+    Natural(value~, width~, base~) => {
       self.advance()
-      { bits, width, base }
+      { value, width, base }
     }
     _ => raise ExpectedInteger(received=token, span=self.span(start_idx))
   }
@@ -180,10 +181,10 @@ fn parse_indexing_expr(self: Parser) -> Expr! {
           self.advance()
           lhs = FieldAccess(expr=lhs, field=port, span=self.span(start_idx), ty={ val: None })
         }
-        Natural(bits~, ..) => {
+        Natural(value~, ..) => {
           self.advance()
           let span = self.span(start_idx)
-          lhs = FieldAccess(expr=lhs, field=bits.as_int!().to_string(), span~, ty={ val: None })
+          lhs = FieldAccess(expr=lhs, field=value.to_string(), span~, ty={ val: None })
         }
         _ => raise InvalidPortOrTupleAccess(span=self.span(start_idx))
       }
@@ -260,9 +261,9 @@ fn parse_primary_expr(self: Parser) -> Expr! {
         Identifier(path~, span=self.span(start_idx), ty={ val: None })
       }
     }
-    Natural(bits~, width~, base~) => {
+    Natural(value~, width~, base~) => {
       self.advance()
-      Natural(bits~, width~, base~, span=self.span(start_idx), ty={ val: None })
+      Natural(value~, width~, base~, span=self.span(start_idx), ty={ val: None })
     }
     StringLiteral(str) => {
       self.advance()
@@ -278,15 +279,23 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     Lbrace => self.parse_struct_or_concat_or_block_expr!()
     Match => self.parse_match_expr!()
     If => self.parse_if_expr!()
-    Dollar => self.parse_function_call_expr!()
+    Dollar => { self.advance(); self.parse_function_call_expr!(None) }
+    UInt => { self.advance(); self.parse_function_call_expr!(Some("uint")) }
+    Lchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '<', did you mean '<:' (less than operator) instead?")
+    Rchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '>', did you mean '>:' (greater than operator) instead?")
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
 }
 
-fn parse_function_call_expr(self: Parser) -> Expr! {
+fn parse_function_call_expr(self: Parser, name: String?) -> Expr! {
   let start_idx = self.index
-  self.expect!(Dollar, start_idx)
-  let name = self.parse_identifier!()
+  let prefix = if name.is_empty() { "$" } else { "" }
+
+  let name = match name {
+    Some(name) => name
+    None => self.parse_identifier!()
+  }
+
   let args = []
   self.expect!(Lparen, start_idx)
 
@@ -301,7 +310,7 @@ fn parse_function_call_expr(self: Parser) -> Expr! {
 
   self.expect!(Rparen, start_idx)
 
-  FunCall(name="$\{name}", args~, span=self.span(start_idx), ty={ val: None })
+  FunCall(name="\{prefix}\{name}", args~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_replication_expr(self: Parser) -> Expr! {
@@ -462,23 +471,20 @@ fn parse_vector_expr(self: Parser) -> Expr! {
 
 fn parse_instance_expr(self: Parser, path~: Path) -> Expr! {
   let start_idx = self.index
-  let params = self.parse_module_parameters!(fn(sub_parser) {
-    let start_idx = sub_parser.index
-
-    match sub_parser.parse_identifier?() {
-      Ok(name) => {
-        if sub_parser.consumes(Colon) {
-          let param = sub_parser.parse_expr!()
-          { name: Some(name), value: param }
-        } else {
-          let param = Expr::Identifier(path=Path::new([], name), span=sub_parser.span(start_idx), ty={ val: None })
-          { name: None, value: param }
+  let params = self.parse_module_parameters!(fn() {
+    match self.lookahead(0).kind {
+      Identifier(name) => {
+        if self.lookahead(1).kind == Colon {
+          self.advance()
+          self.advance()
+          let param = self.parse_expr!()
+          return { name: Some(name), value: param }
         }
       }
-      _ => {
-        { name: None, value: sub_parser.parse_expr!() }
-      }
+      _ => ()
     }
+
+    { name: None, value: self.parse_expr!() }
   })
 
   self.expect!(Lparen, start_idx)
@@ -666,10 +672,30 @@ fn parse_type(self: Parser) -> Type! {
   let start_idx = self.index
   let params: Array[Param] = []
 
-  let mut base_ty = match self.peek() {
-    Logic => {
+  let mut base_ty: Type = match self.peek() {
+    Bool => {
       self.advance()
-      Type::Logic
+      UInt(Fixed(1))
+    }
+    UInt => {
+      self.advance()
+      self.expect!(Lchevron, start_idx)
+      let width = match self.parse_expr!() {
+        Natural(value~, width=_, ..) => IntParam::Fixed(value.to_int())
+        expr => Dynamic(expr)
+      }
+      self.expect!(Rchevron, start_idx)
+      UInt(width)
+    }
+    SInt => {
+      self.advance()
+      self.expect!(Lchevron, start_idx)
+      let width = match self.parse_expr!() {
+        Natural(value~, width=_, ..) => IntParam::Fixed(value.to_int())
+        expr => Dynamic(expr)
+      }
+      self.expect!(Rchevron, start_idx)
+      SInt(width)
     }
     Identifier(name) => {
       self.advance()
@@ -752,7 +778,7 @@ fn parse_type(self: Parser) -> Type! {
     let expr = self.parse_expr!()
 
     let len = match expr {
-      Natural(bits~, width=_, ..) => VectorLen::Fixed(bits.as_int!())
+      Natural(value~, width=_, ..) => IntParam::Fixed(value.to_int())
       _ => Dynamic(expr)
     }
 
@@ -800,41 +826,22 @@ fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port]! {
   ports
 }
 
-fn parse_module_parameters[T](self: Parser, parse_elem: (Parser) -> T!) -> Array[T]! {
+fn parse_module_parameters[T](self: Parser, parse_elem: () -> T!) -> Array[T]! {
   if self.consumes(Lchevron) {
     let start_idx = self.index
     let params = []
 
-    // Parsing parameter lists can be ambiguous. For example, `$dff<N, 1>(` will attempt to parse `1>(` as a comparison operator.
-    // To handle this, we create a sub-parser to parse tokens inside the parameter list only, such as `N, 1`.
-    // Note that this implies that `>` cannot appear within the parameter list.
-    let sub_parser = {
-      let tokens = []
-
-      for i in self.index..<self.tokens.length() {
-        let token = self.tokens[i]
-
-        if token.kind == Rchevron {
-          break
-        } else {
-          tokens.push(token)
-        }
-      }
-
-      Parser::new(tokens, file=self.file)
-    }
-
-    while sub_parser.index < sub_parser.tokens.length() {
-      let param = parse_elem!(sub_parser)
+    while not(self.matches(Rchevron)) {
+      let param = parse_elem!()
       params.push(param)
 
-      if not(sub_parser.consumes(Comma)) {
+      if not(self.consumes(Comma)) {
         break
       }
     }
 
-    self.index += sub_parser.tokens.length()
     self.expect!(Rchevron, start_idx)
+
     params
   } else {
     []
@@ -850,9 +857,9 @@ fn parse_attribute_value(self: Parser) -> AttributeValue! {
       self.advance()
       AttributeValue::String(str)
     }
-    Natural(bits~, ..) => {
+    Natural(value~, ..) => {
       self.advance()
-      AttributeValue::Int(bits.as_int!())
+      AttributeValue::Int(value.to_int())
     }
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
@@ -900,7 +907,7 @@ fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> 
   let start_idx = self.index
   self.expect!(Module, start_idx)
   let name = self.parse_identifier!()
-  let params = self.parse_module_parameters!(Parser::parse_identifier)
+  let params = self.parse_module_parameters!(fn() { self.parse_identifier!() })
   let inputs = self.parse_port_list!(dir=Input)
   self.expect!(RightThinArrow, start_idx)
   let outputs = self.parse_port_list!(dir=Output)

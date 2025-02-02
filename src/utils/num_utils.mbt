@@ -132,12 +132,12 @@ pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
   }
 }
 
-pub fn bin(n: Int, width~: Int) -> Iter[Int] {
+pub fn bin(n: Int, width~: Int) -> Iter[Bool] {
   let mut p = 1 << (width - 1)
 
-  Iter::new(fn(visit: (Int) -> IterResult) -> IterResult {
+  Iter::new(fn(visit: (Bool) -> IterResult) -> IterResult {
     for i in 0..<width {
-      if visit(if (n & p) == 0 { 0 } else { 1 }) == IterEnd {
+      if visit((n & p) == 1) == IterEnd {
         break IterEnd
       }
 
@@ -146,4 +146,52 @@ pub fn bin(n: Int, width~: Int) -> Iter[Int] {
       IterContinue
     }
   })
+}
+
+pub fn bitwise_not(n: BigInt) -> BigInt {
+  let bytes = n.to_octets()
+  let flipped_bytes = Bytes::new(bytes.length())
+
+  for idx, byte in bytes {
+    flipped_bytes[idx] = byte.to_uint().lnot().to_byte()
+  }
+
+  BigInt::from_octets(flipped_bytes)
+}
+
+pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {
+  let bytes = FixedArray::from_iter(chunk(bools, 8).map(fn(chunk) {
+    let mut byte = 0U
+
+      for i in 0..<8 {
+        if i < chunk.length() && chunk[i] {
+          byte = byte | (1U << i)
+        }
+      }
+
+    byte.to_byte()
+  }))
+
+  Bytes::from_fixedarray(bytes, len=bytes.length())
+}
+
+pub fn bools_to_bigint(bools: Iter[Bool]) -> BigInt {
+  BigInt::from_octets(bools_to_bytes(bools))
+}
+
+pub fn significant_bits(n: BigInt) -> Int {
+  let bytes = n.to_octets()
+  let head = n.to_octets()[0].to_uint()
+  let mut leading_zeros = 0
+
+  for i in 0..=7 {
+    let bit = head & (1U << (7 - i))
+    if bit == 0U {
+      leading_zeros += 1
+    } else {
+      break
+    }
+  }
+
+  bytes.length() * 8 - leading_zeros
 }

@@ -2,11 +2,11 @@ import Text
 
 const CLOCK_FREQ = 25_000_000; // 25 Mhz on Nandland Go
 
-module Dabble(bin: logic[4]) -> (q: logic[4]) {
+module Dabble(bin: uint<4>) -> (q: uint<4>) {
     q = bin >= 4'd5 ? bin + 4'd3 : bin;
 }
 
-module BCD2(bin: logic[6]) -> (q: logic[8]) {
+module BCD2(bin: uint<6>) -> (q: uint<8>) {
     let a = bin[5];
     let b = bin[4];
     let c = bin[3];
@@ -21,7 +21,7 @@ module BCD2(bin: logic[6]) -> (q: logic[8]) {
     q = {1'b0, t[3], u[3], v, f};
 }
 
-module BCD3(bin: logic[8]) -> (q: logic[12]) {
+module BCD3(bin: uint<8>) -> (q: uint<12>) {
     let a = bin[7];
     let b = bin[6];
     let c = bin[5];
@@ -42,25 +42,25 @@ module BCD3(bin: logic[8]) -> (q: logic[12]) {
     q = {2'b0, w[3], y, z, h};
 }
 
-module TicTac<Max>(clk: logic, en: logic, rst: logic) -> (tick: logic, count: logic[$clog2(Max)]) {
-    let counter = RegSyncReset<$clog2(Max)>(clk, en, rst: rst or tick, q: count);
+module TicTac<Max>(clk: uint<1>, en: bool, rst: bool) -> (tick: bool, count: uint<$clog2(Max)>) {
+    let counter = Reg<$clog2(Max)>(clk, en, rst: rst or tick, q: count);
     counter.d = counter.q + 1;
     tick = counter.q == Max;
 }
 
 module ScreenClock(
-    clk: logic,
-    pixel_clk: logic,
-    rst: logic,
+    clk: uint<1>,
+    pixel_clk: uint<1>,
+    rst: bool,
 ) -> (
-    is_active_area: logic,
-    screen_x: logic[10],
-    screen_y: logic[10],
-    vga_hsync: logic,
-    vga_vsync: logic,
-    vga_red: logic[3],
-    vga_green: logic[3],
-    vga_blue: logic[3],
+    is_active_area: bool,
+    screen_x: uint<10>,
+    screen_y: uint<10>,
+    vga_hsync: bool,
+    vga_vsync: bool,
+    vga_red: uint<3>,
+    vga_green: uint<3>,
+    vga_blue: uint<3>,
 ) {
     VGA::SyncPulses(
         pixel_clk,
@@ -71,7 +71,7 @@ module ScreenClock(
         is_active_area,
     );
 
-    let milliseconds = TicTac<CLOCK_FREQ / 1000>(clk, en: 1'b1, rst);
+    let milliseconds = TicTac<CLOCK_FREQ>(clk, en: 1'b1, rst);
     let seconds = TicTac<60>(clk, en: milliseconds.tick, rst);
     let minutes = TicTac<60>(clk, en: seconds.tick, rst);
     let hours = TicTac<24>(clk, en: minutes.tick, rst);
@@ -81,8 +81,19 @@ module ScreenClock(
             let seconds_dec = Text::Dec<8>(n: BCD2(bin: seconds.count).q).chars;
             let minutes_dec = Text::Dec<8>(n: BCD2(bin: minutes.count).q).chars;
             let hours_dec = Text::Dec<8>(n: BCD2(bin: {1'b0, hours.count}).q).chars;
+
+            let msg: uint<8>[8];
+            msg[7] = seconds_dec[0];
+            msg[6] = seconds_dec[1];
+            msg[5] = ":"[0];
+            msg[4] = minutes_dec[0];
+            msg[3] = minutes_dec[1];
+            msg[2] = ":"[0];
+            msg[1] = hours_dec[0];
+            msg[0] = hours_dec[1];
             
-            {hours_dec, ":", minutes_dec, ":", seconds_dec};
+            // {hours_dec, ":", minutes_dec, ":", seconds_dec};
+            msg;
         },
         screen_x,
         screen_y,
@@ -90,7 +101,7 @@ module ScreenClock(
 
     let color = match is_active_area and text.is_active {
         1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => { r: 3'd5, g: 3'd3, b: 3'd1 },
+        1'b1 => { r: 3'd2, g: 3'd6, b: 3'd5 },
     };
 
     vga_red = color.r;
@@ -99,15 +110,15 @@ module ScreenClock(
 }
 
 module Top(
-    clk: logic,
-    button: logic[4],
+    clk: uint<1>,
+    button: uint<4>,
 ) -> (
-    led: logic[4],
-    vga_hsync: logic,
-    vga_vsync: logic,
-    vga_red: logic[3],
-    vga_green: logic[3],
-    vga_blue: logic[3],
+    led: uint<4>,
+    vga_hsync: bool,
+    vga_vsync: bool,
+    vga_red: uint<3>,
+    vga_green: uint<3>,
+    vga_blue: uint<3>,
 ) {
     ScreenClock(
         clk,
@@ -120,5 +131,5 @@ module Top(
         vga_blue,
     );
 
-    led = 4*{1'b0};
+    led = 4'd0;
 }

@@ -128,7 +128,7 @@ fn parse_uint(s: String, base~: Int) -> BigInt {
 }
 
 struct ParsedInteger {
-  bits: Bits
+  value: BigInt
   width: Int?
   base: Int
 }
@@ -137,22 +137,16 @@ fn span(self: Lexer, start: (Int, Int)) -> Span {
   { start, end: (self.line, self.column), file: self.file }
 } 
 
-fn parse_integer(self: Lexer) -> ParsedInteger! {
+fn parse_integer(self: Lexer) -> ParsedInteger {
   let builder = StringBuilder::new()
   let mut base = 10
   let mut width = None
-  let mut is_undetermined = false
-  let span_start = (self.line, self.column)
 
   while self.index < self.input.length() {
     let char = self.peek()
 
     if @utils.is_digit(char, base~) {
       builder.write_char(char)
-
-      if not(is_undetermined) {
-        is_undetermined = @utils.is_undetermined_digit(char)
-      }
       self.advance()
     } else if char == '\'' {
       self.advance()
@@ -175,36 +169,10 @@ fn parse_integer(self: Lexer) -> ParsedInteger! {
     }
   }
 
-  let span = { start: span_start, end: (self.line, self.column), file: self.file }
+  let num_str = builder.to_string()
+  let value = parse_uint(num_str, base~)
 
-  let bits = if is_undetermined {
-    let digits = builder.to_string()
-    let bits = Array::new(capacity=digits.length())
-
-    for digit in digits {
-      bits.push(match digit {
-        '0' => BinaryDigit::Zero
-        '1' => BinaryDigit::One
-        'x' | 'X' => BinaryDigit::X
-        'z' | 'Z' => BinaryDigit::Z
-        _ => raise InvalidDigitInBase(digit~, base=2, span~)
-      })
-    }
-
-    Bits::new(bits, span~)
-  } else {
-    let num_str = builder.to_string()
-    let max_bits = num_str.length() * (match base { 2 => 1; 8 => 3; _ => 4 })
-    let value = parse_uint(num_str, base~)
-
-    if max_bits < 32 {
-      Bits::from!(value.to_int(), width~, span~)
-    } else {
-      Bits::from_bigint!(value, width~, span~)
-    }
-  }
-
-  { bits, width, base }
+  { value, width, base }
 }
 
 fn advance(self: Lexer) -> Unit {
@@ -310,6 +278,8 @@ fn next(self: Lexer) -> LexerResult[Token]! {
         Ok(LchevronEqual)
       } else if self.consumes('<') {
         Ok(LchevronLchevron)
+      } else if self.consumes(':') {
+        Ok(LchevronColon)
       } else {
         Ok(Lchevron)
       }
@@ -321,6 +291,8 @@ fn next(self: Lexer) -> LexerResult[Token]! {
         Ok(RchevronEqual)
       } else if self.consumes('>') {
         Ok(RchevronRchevron)
+      } else if self.consumes(':') {
+        Ok(RchevronColon)
       } else {
         Ok(Rchevron)
       }
@@ -363,8 +335,6 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           Ok(DotDotLeftChevron)
         } else if self.consumes('=') {
           Ok(DotDotEqual)
-        } else if self.consumes('.') {
-          Ok(DotDotDot)
         } else {
           self.advance()
           Err(UnexepectedChar(char~, span=self.span(start)))
@@ -427,15 +397,17 @@ fn next(self: Lexer) -> LexerResult[Token]! {
     }
     _ => {
       if @utils.is_digit(char, base=10) {
-        let { bits, width, base } = self.parse_integer!()
-        Ok(Natural(bits~, width~, base~))
+        let { value, width, base } = self.parse_integer()
+        Ok(Natural(value~, width~, base~))
       } else if @utils.is_alpha(char) || char == '_' {
         let identifier = self.parse_identifier()
 
         Ok(match identifier {
           "module" => Module
           "let" => Let
-          "logic" => Logic
+          "bool" => Bool
+          "uint" => UInt
+          "sint" => SInt
           "in" => In
           "for" => For
           "declare" => Declare

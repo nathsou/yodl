@@ -10,12 +10,12 @@ import Timing
 const CLOCK_FREQ = 100_000_000; // 100 Mhz
 
 module Top(
-    clk: logic,
-    rst_n: logic,
+    clk: uint<1>,
+    rst_n: bool,
 ) -> (
-    io_led: logic[24],
-    io_seg: logic[8],
-    io_an: logic[4],
+    io_led: uint<24>,
+    io_seg: uint<8>,
+    io_an: uint<4>,
 ) {
     let rst = not rst_n;
     let timer = Timing::Timer<CLOCK_FREQ>(clk);
