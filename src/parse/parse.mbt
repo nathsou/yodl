@@ -279,12 +279,20 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     Lbrace => self.parse_struct_or_concat_or_block_expr!()
     Match => self.parse_match_expr!()
     If => self.parse_if_expr!()
+    DotDot => self.parse_spread_expr!()
     Dollar => { self.advance(); self.parse_function_call_expr!(None) }
     UInt => { self.advance(); self.parse_function_call_expr!(Some("uint")) }
     Lchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '<', did you mean '<:' (less than operator) instead?")
     Rchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '>', did you mean '>:' (greater than operator) instead?")
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
+}
+
+fn parse_spread_expr(self: Parser) -> Expr! {
+  let start_idx = self.index
+  self.expect!(DotDot, start_idx)
+  let expr = self.parse_expr!()
+  Spread(expr~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_function_call_expr(self: Parser, name: String?) -> Expr! {
@@ -358,12 +366,12 @@ fn parse_tuple_or_paren_expr(self: Parser) -> Expr! {
 }
 
 fn parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) -> Expr! {
-  let elems = [first_expr]
+  let elems = [Spread(expr=first_expr, span=self.span(start_idx), ty={ val: None })]
 
   if self.consumes(Comma) {
     while not(self.matches(Rbrace)) {
       let expr = self.parse_expr!()
-      elems.push(expr)
+      elems.push(Spread(expr~, span=self.span(start_idx), ty={ val: None }))
 
       if not(self.consumes(Comma)) {
         break
@@ -373,7 +381,7 @@ fn parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) -> Expr! {
 
   self.expect!(Rbrace, start_idx)
 
-  Concat(elems~, span=self.span(start_idx), ty={ val: None })
+  Vector(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_struct_or_concat_or_block_expr(self: Parser) -> Expr! {

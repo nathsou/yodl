@@ -98,18 +98,18 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
       }
       Replicate(expr~, count~, concat~, span~, ty~) => Some({
         // Rewrite replication expressions into concatenation expressions
-        let repeated_expr = self.simplify_expr!(
+        let mut repeated_expr = self.simplify_expr!(
           expr,
           env~,
           scope~,
         )
 
-        let elems = @utils.fill(count.as_int!(), repeated_expr)
-        let res = if concat {
-          @parse.Expr::Concat(elems~, span~, ty~)
-        } else {
-          @parse.Expr::Vector(elems~, span~, ty~)
+        if concat {
+          repeated_expr = @parse.Expr::Spread(expr=repeated_expr, span~, ty~)
         }
+
+        let elems = @utils.fill(count.as_int!(), repeated_expr)
+        let res = @parse.Expr::Vector(elems~, span~, ty~)
 
         self.simplify_expr!(res, env~, scope~)
       })

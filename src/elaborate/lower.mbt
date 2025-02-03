@@ -22,6 +22,26 @@ priv enum Value {
   Empty(span~: @parse.Span)
 }
 
+impl Show for Value with output(self, logger) {
+  match self {
+    Expr(_) => logger.write_string("Expr()")
+    Vector(elems~, ..) => {
+      logger.write_string("Vector(")
+      logger.write_iter(elems.iter(), sep=", ")
+      logger.write_string(")")
+    }
+    Struct(fields~, ..) => {
+      logger.write_string("Struct(")
+      for name, value in fields {
+        logger.write_string("\{name}: ")
+        logger.write_object(value)
+      }
+      logger.write_string(")")
+    }
+    Empty(_) => logger.write_string("Empty()")
+  }
+}
+
 impl @parse.Spanned for Value with span(self) {
   match self {
     Expr(span~, ..) | Vector(span~, ..) | Struct(span~, ..) | Empty(span~) => span
@@ -221,8 +241,7 @@ fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindin
     expr => {
       let prefix = binding.or("temp")
       let rhs_id = id_of_str("\{prefix}_\{elaborator.next_id()}")
-      scope.add_stmt(Wire(id=rhs_id, ty=self.ty()))
-      scope.add_stmt(Connect(Id(rhs_id), expr))
+      scope.add_stmt(Node(id=rhs_id, expr~))
       Id(rhs_id)
     }
   }
@@ -433,33 +452,51 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let values = Array::new(capacity=elems.length())
 
       for elem in elems {
-        values.push(self.lower_expr!(elem, scope~, env~))
+        match elem {
+          Spread(expr~, ..) => {
+            let val = self.lower_expr!(expr, scope~, env~)
+            let reference = val.as_ref!(self, scope~, binding=None)
+
+            match val.ty() {
+              Vec(elem_ty, len) => {
+                for i in 0..<len {
+                  let index = @firrtl.Expr::Int(BigInt::from_int(i))
+                  values.push(Expr(expr=Reference(Indexing(lhs=reference, index~)), ty=elem_ty, span=elem.span()))
+                }
+              }
+              UInt(len) | SInt(len) => {
+                for i in 0..<len {
+                  let index = @firrtl.Expr::Int(BigInt::from_int(i))
+                  values.push(Expr(expr=@firrtl.primop(Bits, [Reference(reference), index, index]), ty=UInt(1), span=elem.span()))
+                }
+              }
+              _ => {
+                values.push(val)
+              }
+            }
+          }
+          _ => {
+            values.push(self.lower_expr!(elem, scope~, env~))
+          }
+        }
       }
 
       Vector(elems=values, ty~, span~)
     }
-    Concat(elems~, ty=_, span~) => {
-      if elems.is_empty() {
-        return Empty(span~)
-      }
-
-      let fir_exprs = Array::new(capacity=elems.length())
-
-      for elem in elems {
-        fir_exprs.push(self.lower_expr!(elem, scope~, env~).as_expr!(self, scope~))
-      }
-
-      let cat = concat!(fir_exprs)
-      Expr(expr=cat, ty~, span~)
-    }
     Match(subject~, cases~, default~, span~, ty=match_ty) => {
-      let res_id = id_of_str(binding.or_else(fn() { "match_\{self.next_idx()}" }))
-      
-      if binding.is_empty() {
-        scope.add_stmt(Wire(id=res_id, ty~))
+      let has_value = unwrap_type!(match_ty, span~).width!(span) > 0
+      let res_id = if has_value {
+        let res_id = id_of_str(binding.or_else(fn() { "match_\{self.next_idx()}" }))
+
+        if binding.is_empty() {
+          scope.add_stmt(Wire(id=res_id, ty~))
+        }
+
+        Some(res_id)
+      } else {
+        None
       }
       
-      let has_value = unwrap_type!(match_ty, span~).width!(span) > 0
       let fir_subject = self.lower_expr!(subject, scope~, env~).as_expr!(self, scope~)
       let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type!(subject.ty(), span~).width!(span))
       let mut last_when: @firrtl.When? = None
@@ -471,7 +508,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
           let case_scope = StmtContainer::new()
           let fir_rhs = self.lower_expr!(rhs, scope=case_scope, env~).as_expr!(self, scope=case_scope)
           if has_value {
-            case_scope.add_stmt(Connect(Id(res_id), fir_rhs))
+            case_scope.add_stmt(Connect(Id(res_id.unwrap()), fir_rhs))
           }
 
           case_scope._
@@ -505,7 +542,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             let case_scope = StmtContainer::new()
             let fir_rhs = self.lower_expr!(expr, scope=case_scope, env~).as_expr!(self, scope=case_scope)
             if has_value {
-              case_scope.add_stmt(Connect(Id(res_id), fir_rhs))
+              case_scope.add_stmt(Connect(Id(res_id.unwrap()), fir_rhs))
             }
 
             last_when.otherwise = Some(case_scope._)
@@ -518,7 +555,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       }
 
       if has_value {
-        Expr(expr=Reference(Id(res_id)), ty~, span~)
+        Expr(expr=Reference(Id(res_id.unwrap())), ty~, span~)
       } else {
         Empty(span~)
       }
@@ -896,11 +933,17 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       }
     }
     Slicing(expr~, hi~, lo~, span~, ..) => {
-      let val = self.lower_expr!(expr, scope~, env~).as_expr!(self, scope~)
+      let val = self.lower_expr!(expr, scope~, env~)
       let hi = self.lower_expr!(hi, scope~, env~).as_int!()
       let lo = self.lower_expr!(lo, scope~, env~).as_int!()
 
-      Expr(expr=@firrtl.primop(Bits, [val, Int(hi), Int(lo)]), ty~, span~)
+      match val.ty() {
+        UInt(_) | SInt(_) => {
+          let expr = val.as_expr!(self, scope~)
+          Expr(expr=@firrtl.primop(Bits, [expr, Int(hi), Int(lo)]), ty~, span~)
+        }
+        _ => raise ElaborationError::Unsupported(message="Slicing is only supported on UInt, SInt types", span~)
+      }
     }
     FieldAccess(expr=accessed_expr, field~, span~, ty=_) => {
       let val = self.lower_expr!(accessed_expr, scope~, env~)
@@ -949,7 +992,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let width = unwrap_type!(ty, span~).width!(span)
       Expr(expr=flat_uint!(arg_ref, arg.ty(), span~), ty=UInt(width), span~)
     }
-    Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
+    Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())
     }
   }

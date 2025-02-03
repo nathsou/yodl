@@ -33,6 +33,7 @@ type! TypeCheckerError {
     InvalidUnaryOpOperand(op~: @parse.UnaryOp, ty~: @parse.Type, span~: @parse.Span)
     InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
     StringContainsNonAsciiChar(char~: Char, span~: @parse.Span)
+    SpreadOutsideVector(span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -100,6 +101,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         StringContainsNonAsciiChar(char~, ..) => {
             logger.write_string("String contains non-ASCII character '\{char}'")
         }
+        SpreadOutsideVector(..) => {
+            logger.write_string("Spread outside vector")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -128,6 +132,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidUnaryOpOperand(span~, ..) => span
         InvalidBinaryOpOperand(span~, ..) => span
         StringContainsNonAsciiChar(span~, ..) => span
+        SpreadOutsideVector(span~, ..) => span
     }
 }
 
@@ -416,25 +421,39 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
 
             for elem in elems {
-                check_elem_ty!(self.check_expr!(elem, env))
-                len += 1
+                match elem {
+                    Spread(expr=spread_expr, ..) => {
+                        let spread_ty = self.check_expr!(spread_expr, env)
+                        match spread_ty {
+                            Vector(ty=spread_ty_inner, len=Fixed(spread_len)) => {
+                                check_elem_ty!(spread_ty_inner)
+                                len += spread_len
+                            }
+                            UInt(Fixed(int_len)) | SInt(Fixed(int_len)) => {
+                                check_elem_ty!(UInt(Fixed(1)))
+                                len += int_len
+                            }
+                            String(len=str_len) => {
+                                check_elem_ty!(UInt(Fixed(@parse.BITS_PER_CHAR)))
+                                len += str_len
+                            }
+                            _ => {
+                                check_elem_ty!(spread_ty)
+                                len += 1
+                            }
+                        }
+                    }
+                    _ => {
+                        check_elem_ty!(self.check_expr!(elem, env))
+                        len += 1
+                    }
+                }
             }
 
             @parse.Type::Vector(ty=elem_ty.unwrap(), len=Fixed(len))
         }
-        Concat(elems~, span=_, ..) => {
-            if elems.is_empty() {
-                return @parse.Type::empty()
-            }
-
-            let mut len = 0
-
-            for elem in elems {
-                let elem_ty = self.check_expr!(elem, env)
-                len += elem_ty.width!(elem.span())
-            }
-
-            @parse.Type::uint(len)
+        Spread(span~, ..) => {
+            raise SpreadOutsideVector(span~)
         }
         Ternary(cond~, then~, else_~, span~, ..) => {
             let cond_ty = self.check_expr!(cond, env, expected_ty=Some(@parse.Type::uint(1)))

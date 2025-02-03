@@ -6,7 +6,6 @@ pub type! MemFileError {
   InvalidBase(Int)
   InvalidDigitForBase(digit~: Char, base~: Int)
   InconsistentWidth(expected~: Int, actual~: Int)
-  Unreachable(String)
 } derive(Show)
 
 pub fn parse_mem_file(path: String, base~: Int, start~: Int, end~: Int?) -> Bytes!MemFileError {

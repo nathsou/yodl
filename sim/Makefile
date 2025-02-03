@@ -1,6 +1,6 @@
 # Adapted from https://projectf.io/posts/verilog-sim-verilator-sdl/
 
-VFLAGS = -O3 --x-assign fast --x-initial fast --noassert -Wno-WIDTHEXPAND -Wno-SELRANGE
+VFLAGS = -O3 --x-assign fast --x-initial fast --noassert
 SDL_CFLAGS = `sdl2-config --cflags`
 SDL_LDFLAGS = `sdl2-config --libs`
 
@@ -14,7 +14,7 @@ VTopSim.mk: Sim.v
 
 Sim.v:
 	cd .. && moon run src/main examples/Sim.yodl "write_firrtl sim/Sim.fir"
-	firtool --format=fir --verilog -disable-all-randomization -strip-debug-info Sim.fir -o Sim.v
+	firtool -O=debug --format=fir --verilog -disable-all-randomization -strip-debug-info Sim.fir -o Sim.v
 
 clean:
 	rm -rf ./obj_dir Sim.v Sim.fir

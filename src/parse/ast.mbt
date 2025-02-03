@@ -9,7 +9,7 @@ pub(all) enum Expr {
   FieldAccess(expr~: Expr, field~: String, span~: Span, ty~: Ref[Type?])
   Instance(path~: Path, params~: InstanceParams, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
-  Concat(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
+  Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
   Match(subject~: Expr, cases~: Array[(Expr, Expr)], default~: Expr?, span~: Span, ty~: Ref[Type?])
   Tuple(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
@@ -204,30 +204,22 @@ impl Eq for IntParam with op_equal(self, other) {
 
 pub type! AstError {
   ExpectedIntegerExpression(expr~: Expr, span~: Span)
-  NaturalContainsUndeterminedDigit(span~: Span)
-  ValueTooLargeForWidth(value~: BigInt, width~: Int, span~: Span)
   IntParamNotFixed(span~: Span)
   CannotGetWidthOfUnresolvedNamedType(span~: Span)
   InvalidFunCallArity(name~: String, expected~: Arity, actual~: Int, span~: Span)
   ExpectedStringExpression(expr~: Expr, span~: Span)
-  ValueTooLargeForInt(span~: Span)
-  BitsTooWideForBigIntConversion(span~: Span)
   InvalidModuleParameter(span~: Span)
   ConflictingInstanceParameterValue(name~: String, span~: Span)
   UnknownModuleParameter(name~: String, span~: Span)
-  NegativeIntegersNotSupported(span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
   match self {
     ExpectedIntegerExpression(expr~, ..) => logger.write_string("Expected an integer expression, got: \{expr.ctor()}")
-    NaturalContainsUndeterminedDigit(_) => logger.write_string("Natural contains an undetermined digit")
-    ValueTooLargeForWidth(value~, width~, ..) => logger.write_string("Value \{value} is too large for width \{width}")
     IntParamNotFixed(_) => logger.write_string("Int parameter must be fixed")
     CannotGetWidthOfUnresolvedNamedType(_) => logger.write_string("Cannot get width of unresolved named type")
     InvalidFunCallArity(name~, expected~, actual~, ..) => logger.write_string("Function '\{name}' expected \{expected} argument(s), but got \{actual}")
     ExpectedStringExpression(expr~, ..) => logger.write_string("Expected a string expression, got: \{expr.ctor()}")
-    ValueTooLargeForInt(..) => logger.write_string("Value is too large for an integer")
     InvalidModuleParameter(_) => logger.write_string("Invalid module parameter")
     ConflictingInstanceParameterValue(name~, ..) => {
       logger.write_string("Conflicting value for instance parameter '\{name}'")
@@ -235,8 +227,6 @@ pub impl Show for AstError with output(self, logger) {
     UnknownModuleParameter(name~, ..) => {
       logger.write_string("Unknown module parameter '\{name}'")
     }
-    BitsTooWideForBigIntConversion(_) => logger.write_string("Bits are too wide for BigInt conversion")
-    NegativeIntegersNotSupported(_) => logger.write_string("Negative integers are not supported")
   }
 
   logger.write_string(self.show_context())
@@ -245,18 +235,13 @@ pub impl Show for AstError with output(self, logger) {
 pub impl Spanned for AstError with span(self) -> Span {
   match self {
     ExpectedIntegerExpression(span~, ..) => span
-    NaturalContainsUndeterminedDigit(span~) => span
-    ValueTooLargeForWidth(span~, ..) => span
     IntParamNotFixed(span~) => span
     CannotGetWidthOfUnresolvedNamedType(span~) => span
     InvalidFunCallArity(span~, ..) => span
     ExpectedStringExpression(span~, ..) => span
-    ValueTooLargeForInt(span~, ..) => span
     InvalidModuleParameter(span~) => span
     ConflictingInstanceParameterValue(span~, ..) => span
     UnknownModuleParameter(span~, ..) => span
-    BitsTooWideForBigIntConversion(span~) => span
-    NegativeIntegersNotSupported(span~) => span
   }
 }
 
@@ -310,7 +295,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     FieldAccess(ty~, ..) => ty
     Instance(ty~, ..) => ty
     Vector(ty~, ..) => ty
-    Concat(ty~, ..) => ty
+    Spread(ty~, ..) => ty
     Ternary(ty~, ..) => ty
     Match(ty~, ..) => ty
     Tuple(ty~, ..) => ty
@@ -359,7 +344,7 @@ pub impl Spanned for Expr with span(self: Expr) -> Span {
     FieldAccess(span~, ..) => span
     Instance(span~, ..) => span
     Vector(span~, ..) => span
-    Concat(span~, ..) => span
+    Spread(span~, ..) => span
     Ternary(span~, ..) => span
     Match(span~, ..) => span
     Tuple(span~, ..) => span
@@ -394,7 +379,7 @@ pub fn ctor(self: Expr) -> String {
     FieldAccess(_) => "FieldAccess"
     Instance(_) => "Instance"
     Vector(_) => "Vector"
-    Concat(_) => "Concat"
+    Spread(_) => "Spread"
     Ternary(_) => "Ternary"
     Match(_) => "Match"
     Tuple(_) => "Tuple"
@@ -423,7 +408,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     FieldAccess(_) => false
     Instance(_) => false
     Vector(_) => false
-    Concat(_) => false
+    Spread(_) => false
     Ternary(_) => false
     Match(_) => false
     Tuple(_) => false

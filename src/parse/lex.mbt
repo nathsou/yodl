@@ -9,16 +9,12 @@ pub struct Lexer {
 
 pub type! LexerError {
   UnexepectedChar(char~: Char, span~: Span)
-  InvalidDigitInBase(digit~: Char, base~: Int, span~: Span)
 }
 
 pub impl Show for LexerError with output(self, logger) -> Unit {
   match self {
     UnexepectedChar(char~, ..) => {
       logger.write_string("Unexpected character '\{char}'")
-    }
-    InvalidDigitInBase(digit~, base~, ..) => {
-      logger.write_string("Invalid digit '\{digit}' in base \{base}")
     }
   }
 
@@ -28,7 +24,6 @@ pub impl Show for LexerError with output(self, logger) -> Unit {
 pub impl Spanned for LexerError with span(self: LexerError) -> Span {
   match self {
     UnexepectedChar(span~, ..) => span
-    InvalidDigitInBase(span~, ..) => span
   }
 }
 
@@ -336,8 +331,7 @@ fn next(self: Lexer) -> LexerResult[Token]! {
         } else if self.consumes('=') {
           Ok(DotDotEqual)
         } else {
-          self.advance()
-          Err(UnexepectedChar(char~, span=self.span(start)))
+          Ok(DotDot)
         }
       } else {
         Ok(Dot)

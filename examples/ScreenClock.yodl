@@ -14,32 +14,11 @@ module BCD2(bin: uint<6>) -> (q: uint<8>) {
     let e = bin[1];
     let f = bin[0];
 
-    let t = Dabble(bin: {1'b0, a, b, c}).q;
-    let u = Dabble(bin: {t[2:0], d}).q;
-    let v = Dabble(bin: {u[2:0], e}).q;
+    let t = Dabble(bin: uint({1'b0, a, b, c})).q;
+    let u = Dabble(bin: uint({t[2:0], d})).q;
+    let v = Dabble(bin: uint({u[2:0], e})).q;
 
-    q = {1'b0, t[3], u[3], v, f};
-}
-
-module BCD3(bin: uint<8>) -> (q: uint<12>) {
-    let a = bin[7];
-    let b = bin[6];
-    let c = bin[5];
-    let d = bin[4];
-    let e = bin[3];
-    let f = bin[2];
-    let g = bin[1];
-    let h = bin[0];
-
-    let t = Dabble(bin: {1'b0, a, b, c}).q;
-    let u = Dabble(bin: {t[2:0], d}).q;
-    let v = Dabble(bin: {u[2:0], e}).q;
-    let w = Dabble(bin: {1'b0, t[3], u[3], v[3]}).q;
-    let x = Dabble(bin: {v[2:0], f}).q;
-    let y = Dabble(bin: {w[2:0], x[3]}).q;
-    let z = Dabble(bin: {x[2:0], g}).q;
-
-    q = {2'b0, w[3], y, z, h};
+    q = uint({1'b0, t[3], u[3], v, f});
 }
 
 module TicTac<Max>(clk: uint<1>, en: bool, rst: bool) -> (tick: bool, count: uint<$clog2(Max)>) {
@@ -80,20 +59,8 @@ module ScreenClock(
         text: {
             let seconds_dec = Text::Dec<8>(n: BCD2(bin: seconds.count).q).chars;
             let minutes_dec = Text::Dec<8>(n: BCD2(bin: minutes.count).q).chars;
-            let hours_dec = Text::Dec<8>(n: BCD2(bin: {1'b0, hours.count}).q).chars;
-
-            let msg: uint<8>[8];
-            msg[7] = seconds_dec[0];
-            msg[6] = seconds_dec[1];
-            msg[5] = ":"[0];
-            msg[4] = minutes_dec[0];
-            msg[3] = minutes_dec[1];
-            msg[2] = ":"[0];
-            msg[1] = hours_dec[0];
-            msg[0] = hours_dec[1];
-            
-            // {hours_dec, ":", minutes_dec, ":", seconds_dec};
-            msg;
+            let hours_dec = Text::Dec<8>(n: BCD2(bin: uint([1'b0, ..hours.count])).q).chars;
+            {hours_dec, ":", minutes_dec, ":", seconds_dec};
         },
         screen_x,
         screen_y,
@@ -101,7 +68,7 @@ module ScreenClock(
 
     let color = match is_active_area and text.is_active {
         1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => { r: 3'd2, g: 3'd6, b: 3'd5 },
+        1'b1 => { r: 3'd1, g: 3'd6, b: 3'd3 },
     };
 
     vga_red = color.r;

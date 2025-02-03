@@ -7,7 +7,7 @@ enum TokenType {
   Plus; Minus; Star; Slash
   Equal; EqualEqual; BangEqual; RightThinArrow; RightThickArrow
   LchevronEqual; RchevronEqual; LchevronLchevron; RchevronRchevron
-  DotDotLeftChevron; DotDotEqual
+  DotDotLeftChevron; DotDotEqual; DotDot
   Percent; QuestionMark; At; Underscore; X // Replication operator
   Dollar; ColonColon; MinusColon
   // keywords

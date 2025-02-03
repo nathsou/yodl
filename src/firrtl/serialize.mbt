@@ -134,7 +134,7 @@ pub fn emit_reference(self: FIRRTLEmitter, reference: Reference) -> Unit {
   }
 }
 
-pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt) -> Unit {
+pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit {
   match stmt {
     Node(id~, expr~) => {
       self._.write_indent()
@@ -187,7 +187,10 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt) -> Unit {
       self.emit_expr(init)
     }
     When({ cond, body, otherwise }) => {
-      self._.write_indent()
+      if not(glued) {
+        self._.write_indent()
+      }
+
       self._.write("when ")
       self.emit_expr(cond)
       self._.write(":\n")
@@ -201,6 +204,11 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt) -> Unit {
       self._.indent -= 1
 
       match otherwise {
+        Some([When(otherwise)]) => {
+          self._.write_indent()
+          self._.write("else ")
+          self.emit_stmt(When(otherwise), glued=true)
+        }
         Some(otherwise) => {
           self._.write_indent()
           self._.write("else:\n")
