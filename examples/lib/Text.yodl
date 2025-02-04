@@ -161,7 +161,8 @@ module TextDynamicPosition<Length>(
 }
 
 module Hex<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
-    for i in 0..<$cdiv(Bits, 4) {
+    const Len = $cdiv(Bits, 4);
+    for i in 0..<Len {
         chars[i] = (match n[(i + 1) * 4 - 1 -: 4] {
             4'h0 => "0",
             4'h1 => "1",
@@ -184,7 +185,8 @@ module Hex<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
 }
 
 module Dec<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
-    for i in 0..<$cdiv(Bits, 4) {
+    const Len = $cdiv(Bits, 4);
+    for i in 0..<Len {
         chars[i] = (match n[(i + 1) * 4 - 1 -: 4] {
             4'h0 => "0",
             4'h1 => "1",
@@ -197,5 +199,11 @@ module Dec<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
             4'h8 => "8",
             _ => "9",
         })[0];
+    }
+}
+
+module Bin<Bits>(n: uint<Bits>) -> (chars: uint<8>[Bits]) {
+    for i in 0..<Bits {
+        chars[i] = (n[i] ? "1" : "0")[0];
     }
 }

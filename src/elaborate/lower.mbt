@@ -267,7 +267,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       let id = id_of_str("vec_\{elaborator.next_id()}")
       scope.add_stmt(Wire(id~, ty~))
       for i, elem in elems {
-        let index = @firrtl.Expr::Int(BigInt::from_int(i))
+        let index = @firrtl.Expr::Int(BigInt::from_int(elems.length() -  i - 1))
         elaborator.connect!(lhs=Indexing(lhs=Id(id), index~), ty=elem.ty(), value=elem, scope~, span~)
       }
 
@@ -307,7 +307,7 @@ fn concat(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr! {
     fn go(lst: @immut/list.T[@firrtl.Expr], acc: @firrtl.Expr) -> @firrtl.Expr! {
       match lst.head() {
         Some(expr) => {
-          go!(lst.tail(), @firrtl.primop(Cat, [acc, expr]))
+          go!(lst.tail(), @firrtl.primop(Cat, [expr, acc]))
         }
         None => acc
       }
@@ -365,12 +365,11 @@ fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: Ela
       match val {
         Some(val) => {
           self.connect!(lhs=var, ty~, value=val, scope~, span~)
-          env.declare!(path, val)
         }
-        None => {
-          env.declare!(path, Expr(expr=Reference(var), ty~, span~))
-        }
+        None => ()
       }
+
+      env.declare!(path, Expr(expr=Reference(var), ty~, span~))
     }
     Assign(lhs~, rhs~, span~) => {
       let fir_lhs = self.lower_expr!(lhs, scope~, env~, binding=None).as_ref!(self, scope~, binding=None)
@@ -460,13 +459,13 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             match val.ty() {
               Vec(elem_ty, len) => {
                 for i in 0..<len {
-                  let index = @firrtl.Expr::Int(BigInt::from_int(i))
+                  let index = @firrtl.Expr::Int(BigInt::from_int(len - i - 1))
                   values.push(Expr(expr=Reference(Indexing(lhs=reference, index~)), ty=elem_ty, span=elem.span()))
                 }
               }
               UInt(len) | SInt(len) => {
                 for i in 0..<len {
-                  let index = @firrtl.Expr::Int(BigInt::from_int(i))
+                  let index = @firrtl.Expr::Int(BigInt::from_int(len - i - 1))
                   values.push(Expr(expr=@firrtl.primop(Bits, [Reference(reference), index, index]), ty=UInt(1), span=elem.span()))
                 }
               }
@@ -497,7 +496,8 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         None
       }
       
-      let fir_subject = self.lower_expr!(subject, scope~, env~).as_expr!(self, scope~)
+      let subject_binding = binding.map(fn(b) { "\{b}_subject" }).or("subject")
+      let fir_subject = @firrtl.Reference(self.lower_expr!(subject, scope~, env~).as_ref!(self, scope~, binding=Some(subject_binding)))
       let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type!(subject.ty(), span~).width!(span))
       let mut last_when: @firrtl.When? = None
 

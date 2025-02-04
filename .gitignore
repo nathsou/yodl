@@ -2,8 +2,8 @@ target/
 .mooncakes/
 .DS_Store
 output/
-gen_bitstream.sh
 examples/*.lab.yodl
 examples/*.rtlil
 verilator/
 src/sim/
+extensions/firrtl-vscode-syntax/

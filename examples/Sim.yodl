@@ -1,91 +1,14 @@
 import Text
 
-const CLOCK_FREQ = 25_000_000; // 25 Mhz on Nandland Go
-
-module Dabble(bin: uint<4>) -> (q: uint<4>) {
-    q = bin >= 4'd5 ? bin + 4'd3 : bin;
-}
-
-module BCD2(bin: uint<6>) -> (q: uint<8>) {
-    let a = bin[5];
-    let b = bin[4];
-    let c = bin[3];
-    let d = bin[2];
-    let e = bin[1];
-    let f = bin[0];
-
-    let t = Dabble(bin: {1'b0, a, b, c}).q;
-    let u = Dabble(bin: {t[2:0], d}).q;
-    let v = Dabble(bin: {u[2:0], e}).q;
-
-    q = {1'b0, t[3], u[3], v, f};
-}
-
-module TicTac<Max>(clk: uint<1>, en: bool, rst: bool) -> (tick: bool, count: uint<$clog2(Max)>) {
-    let counter = Reg<$clog2(Max)>(clk, en, rst: rst or tick, q: count);
-    counter.d = counter.q + 1;
-    tick = counter.q == Max;
-}
-
-module ScreenClock(
-    clk: uint<1>,
-    pixel_clk: uint<1>,
-    rst: bool,
-) -> (
-    is_active_area: bool,
-    screen_x: uint<10>,
-    screen_y: uint<10>,
-    vga_hsync: bool,
-    vga_vsync: bool,
-    vga_red: uint<3>,
-    vga_green: uint<3>,
-    vga_blue: uint<3>,
-) {
-    VGA::SyncPulses(
-        pixel_clk,
-        hsync: vga_hsync,
-        vsync: vga_vsync,
-        col: screen_x,
-        row: screen_y,
-        is_active_area,
-    );
-
-    let milliseconds = TicTac<CLOCK_FREQ>(clk, en: 1'b1, rst);
-    let seconds = TicTac<60>(clk, en: milliseconds.tick, rst);
-    let minutes = TicTac<60>(clk, en: seconds.tick, rst);
-    let hours = TicTac<24>(clk, en: minutes.tick, rst);
-
-    let text = Text::Text<Length: 8, X: 36, Y: 30>(
-        text: {
-            let seconds_dec = Text::Dec<8>(n: BCD2(bin: seconds.count).q).chars;
-            let minutes_dec = Text::Dec<8>(n: BCD2(bin: minutes.count).q).chars;
-            let hours_dec = Text::Dec<8>(n: BCD2(bin: {1'b0, hours.count}).q).chars;
-
-            let msg: uint<8>[8];
-            msg[7] = seconds_dec[0];
-            msg[6] = seconds_dec[1];
-            msg[5] = ":"[0];
-            msg[4] = minutes_dec[0];
-            msg[3] = minutes_dec[1];
-            msg[2] = ":"[0];
-            msg[1] = hours_dec[0];
-            msg[0] = hours_dec[1];
-            
-            // {hours_dec, ":", minutes_dec, ":", seconds_dec};
-            msg;
-        },
-        screen_x,
-        screen_y,
-    );
-
-    let color = match is_active_area and text.is_active {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => { r: 3'd2, g: 3'd6, b: 3'd5 },
-    };
-
-    vga_red = color.r;
-    vga_green = color.g;
-    vga_blue = color.b;
+module Euler1(clk: uint<1>, rst: bool) -> (q: uint<18>, is_ready: bool) {
+    const N = 1000;
+    let counter = Reg<$clog2(N)>(clk, rst);
+    let is_active = counter.q <: N;
+    counter.d = counter.q + is_active;
+    let sum = Reg<18>(clk, en: is_active, rst, q);
+    let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0;
+    sum.d = sum.q + (is_divisible ? counter.q : 0);
+    is_ready = not is_active;
 }
 
 module TopSim(
@@ -99,15 +22,24 @@ module TopSim(
     g: uint<3>,
     b: uint<3>,
 ) {
-    ScreenClock(
-        clk,
-        pixel_clk: clk,
-        rst,
-        is_active_area,
-        screen_x,
-        screen_y,
-        vga_red: r,
-        vga_green: g,
-        vga_blue: b,
+    let vga = VGA::SyncPulses(pixel_clk: clk);
+    let euler1 = Euler1(clk, rst);
+    let hex = Text::Hex<20>(n: uint({2'0, euler1.q}));
+    let text = Text::Text<Length: 40, X: 20, Y: 30>(
+        text: {"The solution to Project Euler 1 is ", hex.chars},
+        screen_x: vga.col,
+        screen_y: vga.row,
     );
+
+    let color = match vga.is_active_area and text.is_active {
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'b1 => { r: 3'd1, g: 3'd3, b: 3'd6 },
+    };
+
+    r = color.r;
+    g = color.g;
+    b = color.b;
+    is_active_area = vga.is_active_area;
+    screen_x = vga.col;
+    screen_y = vga.row;
 }
