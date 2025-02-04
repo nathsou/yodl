@@ -192,49 +192,6 @@ fn next_id(self: Elaborator) -> Int {
   idx
 }
 
-fn connect_aux(lhs~: @firrtl.Reference, ty~: @firrtl.Type, value~: @firrtl.Reference, scope~: &ScopeLike, span~: @parse.Span) -> Unit {
-  match (lhs, value) {
-    (Id(a), Id(b)) => {
-      if a.inner() == b.inner() {
-        return
-      }
-    }
-    _ => ()
-  }
-  
-  match ty {
-    Const(inner_ty) => {
-      connect_aux(lhs~, ty=inner_ty, value~, scope~, span~)
-    }
-    UInt(_) | SInt(_) | UIntInferred | SIntInferred | Clock | Reset | AsyncReset => {
-      scope.add_stmt(Connect(lhs, Reference(value)))
-    }
-    Vec(elem_ty, len) => {
-      for i in 0..<len {
-        let index = @firrtl.Expr::Int(BigInt::from_int(i))
-        connect_aux(lhs=Indexing(lhs~, index~), ty=elem_ty, value=Indexing(lhs=value, index~), scope~, span~)
-      }
-    }
-    Bundle(fields) => {
-      let is_redundant = match (lhs, value) {
-        (Id(a), Id(b)) => a.inner() == b.inner()
-        _ => false
-      }
-
-      if not(is_redundant) {
-        for field in fields {
-          let field_value = @firrtl.Reference::FieldAccess(lhs=value, field=field.id)
-          if not(field.flip) {
-            connect_aux(lhs=FieldAccess(lhs~, field=field.id), ty=field.ty, value=field_value, scope~, span~)
-          } else {
-            connect_aux(lhs=field_value, ty=field.ty, value=FieldAccess(lhs~, field=field.id), scope~, span~)
-          }
-        }
-      }
-    }
-  }
-}
-
 fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference! {
   match self.as_expr!(elaborator, scope~, binding~) {
     Reference(value) => value
@@ -247,8 +204,16 @@ fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindin
   }
 }
 
-fn connect(self: Elaborator, lhs~: @firrtl.Reference, ty~: @firrtl.Type, value~: Value, scope~: &ScopeLike, span~: @parse.Span) -> Unit! {
-  connect_aux(lhs~, ty~, value=value.as_ref!(self, scope~, binding=None), scope~, span~)
+fn connect(self: Elaborator, lhs~: @firrtl.Reference, value~: Value, scope~: &ScopeLike) -> Unit! {
+  let rhs = value.as_ref!(self, scope~)
+  let same = match (lhs, rhs) {
+    (Id(a), Id(b)) => a.inner() == b.inner()
+    _ => false
+  }
+
+  if not(same) {
+    scope.add_stmt(Connect(lhs, Reference(rhs)))
+  }
 }
 
 fn Value::ty(self: Value) -> @firrtl.Type {
@@ -268,7 +233,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       scope.add_stmt(Wire(id~, ty~))
       for i, elem in elems {
         let index = @firrtl.Expr::Int(BigInt::from_int(elems.length() -  i - 1))
-        elaborator.connect!(lhs=Indexing(lhs=Id(id), index~), ty=elem.ty(), value=elem, scope~, span~)
+        elaborator.connect!(lhs=Indexing(lhs=Id(id), index~), value=elem, scope~)
       }
 
       Reference(Id(id))
@@ -281,7 +246,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       }
 
       for field in fields {
-        elaborator.connect!(lhs=FieldAccess(lhs=Id(id), field=id_of_str(field.0)), ty=field.1.ty(), value=field.1, scope~, span~)
+        elaborator.connect!(lhs=FieldAccess(lhs=Id(id), field=id_of_str(field.0)), value=field.1, scope~)
       }
 
       Reference(Id(id))
@@ -364,7 +329,7 @@ fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: Ela
 
       match val {
         Some(val) => {
-          self.connect!(lhs=var, ty~, value=val, scope~, span~)
+          self.connect!(lhs=var, value=val, scope~)
         }
         None => ()
       }
@@ -374,9 +339,7 @@ fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: Ela
     Assign(lhs~, rhs~, span~) => {
       let fir_lhs = self.lower_expr!(lhs, scope~, env~, binding=None).as_ref!(self, scope~, binding=None)
       let fir_rhs = self.lower_expr!(rhs, scope~, env~, binding=None)
-      let lhs_span = lhs.span()
-      let ty = lower_type!(unwrap_type!(lhs.ty(), span=lhs_span), span=lhs_span)
-      self.connect!(lhs=fir_lhs, ty~, value=fir_rhs, scope~, span~)
+      self.connect!(lhs=fir_lhs, value=fir_rhs, scope~)
     }
     Const(_) | For(_) | Scope(_) => {
       raise UnexpectedStmtDuringElaboration(span=stmt.span())
@@ -724,24 +687,32 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
               )
             }
 
-            let q_ref = Value::Expr(expr=get_port("q"), ty=UInt(width), span~).as_ref!(self, scope~)
+            scope.add_stmt(reg_stmt)
+
             let d_ref = Value::Expr(expr=get_port("d"), ty=UInt(width), span~).as_ref!(self, scope~)
 
-            scope.add_stmt(reg_stmt)
-            scope.add_stmt(Connect(q_ref, Reference(Id(reg_id))))
+            if uses_port("q") {
+              let q_ref = Value::Expr(expr=get_port("q"), ty=UInt(width), span~).as_ref!(self, scope~)
+              scope.add_stmt(Connect(q_ref, Reference(Id(reg_id))))
 
-            let en_stmt: @firrtl.Stmt = if uses_en {
-              @firrtl.Stmt::When({
-                cond: get_port("en"),
-                body: [Connect(Id(reg_id), Reference(d_ref))],
-                otherwise: None,
-              })
-            } else {
-              Connect(Id(reg_id), Reference(d_ref))
+              if accessed_ports.contains("q") {
+                scope.add_stmt(Connect(FieldAccess(lhs=Id(inst_name), field=id_of_str("q")), Reference(Id(reg_id))))
+              }
             }
 
-            scope.add_stmt(en_stmt)
-            scope.add_stmt(Connect(FieldAccess(lhs=Id(inst_name), field=id_of_str("q")), Reference(Id(reg_id))))
+            if uses_port("d") {
+              let en_stmt: @firrtl.Stmt = if uses_en {
+                @firrtl.Stmt::When({
+                  cond: get_port("en"),
+                  body: [Connect(Id(reg_id), Reference(d_ref))],
+                  otherwise: None,
+                })
+              } else {
+                Connect(Id(reg_id), Reference(d_ref))
+              }
+
+              scope.add_stmt(en_stmt)
+            }
           }
           { packages: [], member: "Memory" } => {
             raise ElaborationError::Unsupported(message="Memory instances are not supported yet", span~)
@@ -885,10 +856,10 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
             match sig.direction {
               Input => {
-                self.connect!(lhs=lhs.as_ref!(self, scope~), ty=sig.ty, value=rhs, scope~, span~)
+                self.connect!(lhs=lhs.as_ref!(self, scope~), value=rhs, scope~)
               }
               Output | Inout => {
-                self.connect!(lhs=rhs.as_ref!(self, scope~), ty=sig.ty, value=lhs, scope~, span~)
+                self.connect!(lhs=rhs.as_ref!(self, scope~), value=lhs, scope~)
               }
             }
           }

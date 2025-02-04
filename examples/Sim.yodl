@@ -1,14 +1,15 @@
-import Text
+import VGA
+import Life
 
-module Euler1(clk: uint<1>, rst: bool) -> (q: uint<18>, is_ready: bool) {
-    const N = 1000;
-    let counter = Reg<$clog2(N)>(clk, rst);
-    let is_active = counter.q <: N;
-    counter.d = counter.q + is_active;
-    let sum = Reg<18>(clk, en: is_active, rst, q);
-    let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0;
-    sum.d = sum.q + (is_divisible ? counter.q : 0);
-    is_ready = not is_active;
+// Fully parallel game of life simulation on a 640x480 VGA display (40 by 30 cells)
+// adapted from https://k155la3.blog/2020/10/09/conways-game-of-life-on-fpga/
+
+const CLOCK_FREQ = 25_000_000;
+
+module TicTac<Max>(clk: uint<1>, en: bool, rst: bool) -> (tick: bool, count: uint<$clog2(Max)>) {
+    let counter = Reg<$clog2(Max)>(clk, en, rst: rst or tick, q: count);
+    counter.d = counter.q + 1;
+    tick = counter.q == Max;
 }
 
 module TopSim(
@@ -22,24 +23,40 @@ module TopSim(
     g: uint<3>,
     b: uint<3>,
 ) {
-    let vga = VGA::SyncPulses(pixel_clk: clk);
-    let euler1 = Euler1(clk, rst);
-    let hex = Text::Hex<20>(n: uint({2'0, euler1.q}));
-    let text = Text::Text<Length: 40, X: 20, Y: 30>(
-        text: {"The solution to Project Euler 1 is ", hex.chars},
-        screen_x: vga.col,
-        screen_y: vga.row,
+    VGA::SyncPulses(
+        pixel_clk: clk,
+        is_active_area,
+        col: screen_x,
+        row: screen_y,
     );
 
-    let color = match vga.is_active_area and text.is_active {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => { r: 3'd1, g: 3'd3, b: 3'd6 },
+    const Rows = VGA::V_ACTIVE / 16;
+    const Cols = VGA::H_ACTIVE / 16;
+
+    let x = (screen_x / 16)[5:0];
+    let y = (screen_y / 16)[4:0];
+
+    let sim_clk = TicTac<CLOCK_FREQ / 100>(clk, en: true, rst).tick;
+    let grid = Life::GridInit<Rows, Cols>(
+        rst,
+        read_col: x,
+        read_row: y,
+    );
+
+    grid.clk = grid.ready ? sim_clk : clk;
+
+    let color = match is_active_area and grid.ready {
+        1'0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'1 => {
+            if grid.read_state {
+                { r: 3'd7, g: 3'd7, b: 3'd7 };
+            } else {
+                { r: 3'd1, g: 3'd3, b: 3'd6 };
+            }
+        },
     };
 
     r = color.r;
     g = color.g;
     b = color.b;
-    is_active_area = vga.is_active_area;
-    screen_x = vga.col;
-    screen_y = vga.row;
 }

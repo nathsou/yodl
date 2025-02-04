@@ -648,10 +648,10 @@ let builtin_functions: Map[String, BuiltinFunction] = {
 
       Expr::Natural(
         value=BigInt::from_octets(bits),
-        width=Some(bits.length()),
+        width=Some(bits.length() * 8),
         base=2,
         span~,
-        ty={ val: Some(Type::uint(bits.length())) }
+        ty={ val: Some(Type::uint(bits.length() * 8)) }
       )
     }
   },

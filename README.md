@@ -2,7 +2,8 @@
 
 Yet anOther (hardware) Description Language
 
-![Text Verilator + SDL Simulation](res/text_sim.png)
+<img src="res/text_sim.png" alt="Text Verilator + SDL Simulation" width="480px"/>
+<img src="res/gol.png" alt="Parallel Game Of Life" width="480px"/>
 
 ## Usage
 - Install [Moonbit](https://www.moonbitlang.com/)

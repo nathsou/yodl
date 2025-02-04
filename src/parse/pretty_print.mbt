@@ -9,7 +9,7 @@ pub fn AstEmitter::new(show_expr_types~: Bool = false) -> AstEmitter {
   { indent: 0, builder: StringBuilder::new(), show_expr_types }
 }
 
-let show_instance_accessed_ports = false
+let show_instance_accessed_ports = true
 
 pub impl Show for AstEmitter with output(self, logger) {
   logger.write_string(self.builder.to_string())
