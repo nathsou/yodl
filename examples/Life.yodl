@@ -1,4 +1,7 @@
 
+// Fully parallel game of life simulation
+// adapted from https://k155la3.blog/2020/10/09/conways-game-of-life-on-fpga/
+
 module Cell(
     clk: uint<1>,
     rst: bool,
@@ -15,16 +18,10 @@ module Cell(
 
     alive.d = if write_enable {
         write_state; // direct write during initialization
-    } else {
-        if count <= 3'd1 {
-            1'b0; // underpopulation
-        } else if count == 3'd2 {
-            alive.q; // stable
-        } else if count == 3'd3 {
-            1'b1; // reproduction
-        } else {
-            1'b0; // overpopulation
-        }
+    } else match count {
+        3'd2 => alive.q, // stable
+        3'd3 => 1'b1, // reproduction
+        _ => 1'b0, // overpopulation or underpopulation
     };
 }
 
@@ -45,12 +42,13 @@ module Grid<Rows, Cols>(
     for row in 0..<Rows {
         for col in 0..<Cols {
             let cell = cells[col][row];
-            let enable = (write_row == row) and (write_col == col);
+            let cell_active = (write_row == row) and (write_col == col);
 
-            cell.enable = write_enable ? enable : 1'b1;
-            cell.write_enable = write_enable and enable;
+            cell.enable = write_enable ? cell_active : 1'b1;
+            cell.write_enable = write_enable and cell_active;
             cell.write_state = write_enable ? write_state : 1'b0;
 
+            // wrap around
             const prev_row = row == 0 ? Rows - 1 : row - 1;
             const next_row = row == Rows - 1 ? 0 : row + 1;
             const prev_col = col == 0 ? Cols - 1 : col - 1;
@@ -75,49 +73,17 @@ module GridInit<Rows, Cols>(
     rst: bool,
     read_row: uint<$clog2(Rows)>,
     read_col: uint<$clog2(Cols)>,
+    pattern: bool[Cols][Rows],
 ) -> (
     read_state: bool,
     ready: bool,
 ) {
     let grid = Grid<Rows, Cols>(clk, rst, read_row, read_col, read_state);
     const PatternLen = Rows * Cols;
-    let pattern: uint<PatternLen> = uint({
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000010000000000000,
-        40'b0000000000000000000000001010000000000000,
-        40'b0000000000000011000000110000000000001100,
-        40'b0000000000000100010000110000000000001100,
-        40'b0011000000001000001000110000000000000000,
-        40'b0011000000001000101100001010000000000000,
-        40'b0000000000001000001000000010000000000000,
-        40'b0000000000000100010000000000000000000000,
-        40'b0000000000000011000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-        40'b0000000000000000000000000000000000000000,
-    });
-    
     let counter = Reg<$clog2(PatternLen)>(clk, rst);
     let row = Reg<$clog2(Rows)>(clk, rst);
     let col = Reg<$clog2(Cols)>(clk, rst);
-    let state = (pattern >> (PatternLen - counter.q - 1))[0];
+    let state = pattern[Rows - 1 - row.q][Cols - 1 - col.q];
 
     col.d = col.q;
     row.d = row.q;

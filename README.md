@@ -2,7 +2,6 @@
 
 Yet anOther (hardware) Description Language
 
-<img src="res/text_sim.png" alt="Text Verilator + SDL Simulation" width="480px"/>
 <img src="res/gol.png" alt="Parallel Game Of Life" width="480px"/>
 
 ## Usage
@@ -17,7 +16,7 @@ Yet anOther (hardware) Description Language
 - [x] Generic multi-port memories
 - [x] Imports (TODO: unqualified imports)
 - [x] Verilator + SDL graphics simulation example
-- [ ] Multi-dimensional vectors (uint<16>[4][8])
+- [x] Multi-dimensional vectors (uint<16>[4][8])
 - [ ] Optional module parameters (and register initial value)
 - [ ] Arbitrary port types
 - [ ] Testbench generation (or use cocotb?)

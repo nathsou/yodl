@@ -61,8 +61,8 @@ pub type! ElaborationError {
   UnknownModule(path~: @parse.Path, span~: @parse.Span)
   UnknownModulePort(module_path~: @parse.Path, port_name~: String, span~: @parse.Span)
   UnknownModuleParameter(name~: String, span~: @parse.Span)
-  InvalidMemoryInitValue(span~: @parse.Span, expected_size~: Int, actual_size~: Int?)
-  MissingConnectionsOnWriteableMemoryInstance(missing_connections~: Array[String], span~: @parse.Span)
+  // InvalidMemoryInitValue(span~: @parse.Span, expected_size~: Int, actual_size~: Int?)
+  // MissingConnectionsOnWriteableMemoryInstance(missing_connections~: Array[String], span~: @parse.Span)
   UnknownModuleMarkedAsInternal(path~: @parse.Path, span~: @parse.Span)
   Unsupported(message~: String, span~: @parse.Span)
   DynamicIntParam(span~: @parse.Span)
@@ -228,7 +228,7 @@ fn Value::ty(self: Value) -> @firrtl.Type {
 fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Expr! {
   match self {
     Expr(expr~, ..) => expr
-    Vector(elems~, ty~, span~) => {
+    Vector(elems~, ty~, span=_) => {
       let id = id_of_str("vec_\{elaborator.next_id()}")
       scope.add_stmt(Wire(id~, ty~))
       for i, elem in elems {
@@ -238,7 +238,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
 
       Reference(Id(id))
     }
-    Struct(fields~, ty~, span~) => {
+    Struct(fields~, ty~, span=_) => {
       let id = id_of_str(binding.or_else(fn() {"struct_\{elaborator.next_id()}"}))
 
       if binding.is_empty() {
@@ -336,7 +336,7 @@ fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: Ela
 
       env.declare!(path, Expr(expr=Reference(var), ty~, span~))
     }
-    Assign(lhs~, rhs~, span~) => {
+    Assign(lhs~, rhs~, span=_) => {
       let fir_lhs = self.lower_expr!(lhs, scope~, env~, binding=None).as_ref!(self, scope~, binding=None)
       let fir_rhs = self.lower_expr!(rhs, scope~, env~, binding=None)
       self.connect!(lhs=fir_lhs, value=fir_rhs, scope~)

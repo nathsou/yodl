@@ -504,8 +504,10 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
         }
       }
       Binary(op~, lhs~, rhs~, span~, ty~) => {
-        match (lhs.as_bigint?(), rhs.as_bigint?()) {
-          (Ok(lhs), Ok(rhs)) => {
+        let lhs_value = lhs.as_bigint?()
+        let rhs_value = rhs.as_bigint?()
+        match (lhs_value, rhs_value, lhs, rhs, op) {
+          (Ok(lhs), Ok(rhs), _, _, _) => {
             let value = match op {
               Add => lhs + rhs
               Sub => lhs - rhs
@@ -530,6 +532,24 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
             }
 
             Some(Natural(value~, width=None, base=10, span~, ty~))
+          }
+          (Ok(0), _, _, b, op) | (_, Ok(0), b, _, op) => {
+            match op {
+              And => Some(Expr::nat(0, span~))
+              Or | Xor => Some(b)
+              Nand => Some(Expr::nat(1, span~))
+              Xnor | Nor => Some(Expr::Unary(op=Not, expr=b, span~, ty~))
+              _ => None
+            }
+          }
+          (Ok(1), _, _, b, op) | (_, Ok(1), b, _, op) => {
+            match op {
+              And | Xnor => Some(b)
+              Or => Some(Expr::nat(1, span~))
+              Xor | Nand => Some(Expr::Unary(op=Not, expr=b, span~, ty~))
+              Nor => Some(Expr::nat(0, span~))
+              _ => None
+            }
           }
           _ => None
         }
