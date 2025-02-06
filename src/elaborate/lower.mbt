@@ -848,18 +848,24 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         for port_name, sig in ports_sig {
           if uses_port(port_name) {
             let lhs = Expr(expr=Reference(FieldAccess(lhs=Id(inst_id), field=id_of_str(port_name))), ty=sig.ty, span~)
-            let rhs = if accessed_ports.contains(port_name) {
-              Expr(expr=Reference(FieldAccess(lhs=Id(inst_name), field=id_of_str(port_name))), ty=sig.ty, span~)
-            } else {
-              Expr(expr=get_port(port_name), ty=sig.ty, span~)
+            let rhss = Array::new(capacity=2)
+
+            if accessed_ports.contains(port_name) {
+              rhss.push(Expr(expr=Reference(FieldAccess(lhs=Id(inst_name), field=id_of_str(port_name))), ty=sig.ty, span~))
+            }
+            
+            if inline_connections.contains(port_name) {
+              rhss.push(Expr(expr=get_port(port_name), ty=sig.ty, span~))
             }
 
-            match sig.direction {
-              Input => {
-                self.connect!(lhs=lhs.as_ref!(self, scope~), value=rhs, scope~)
-              }
-              Output | Inout => {
-                self.connect!(lhs=rhs.as_ref!(self, scope~), value=lhs, scope~)
+            for rhs in rhss {
+              match sig.direction {
+                Input => {
+                  self.connect!(lhs=lhs.as_ref!(self, scope~), value=rhs, scope~)
+                }
+                Output | Inout => {
+                  self.connect!(lhs=rhs.as_ref!(self, scope~), value=lhs, scope~)
+                }
               }
             }
           }
