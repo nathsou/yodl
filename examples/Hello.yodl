@@ -27,7 +27,7 @@ module Top(
     ];
 
     let msg_index = Timing::Counter<1>(clk, en: timer.q, rst: 1'b0).q;
-    let rand_color = LFSR::LFSR<32>(clk, enable: timer.q, seed_ready: 1'b0, seed_data: 32'd1998).q[8:0];
+    let rand_color = LFSR::LFSR<32>(clk, enable: timer.q).q[8:0];
     let y = Timing::Counter<6>(clk, en: timer2.q);
     y.rst = y.q >= (Text::Cols - 1);
 
