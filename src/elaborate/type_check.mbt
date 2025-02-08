@@ -20,7 +20,7 @@ type! TypeCheckerError {
     IndexedExpressionMustBeVector(span~: @parse.Span)
     UnknownModule(path~: @parse.Path, span~: @parse.Span)
     UnknownModulePort(module_path~: @parse.Path, port_name~: String, span~: @parse.Span)
-    InvalidFieldAccess(field~: String, span~: @parse.Span)
+    InvalidFieldAccess(field~: String, ty~: @parse.Type, span~: @parse.Span)
     InvalidSlicingRange(reason~: String, span~: @parse.Span)
     ExpectedConstantExpr(span~: @parse.Span)
     LetStmtMustHaveTypeOrValue(span~: @parse.Span)
@@ -34,6 +34,7 @@ type! TypeCheckerError {
     InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
     StringContainsNonAsciiChar(char~: Char, span~: @parse.Span)
     SpreadOutsideVector(span~: @parse.Span)
+    ExpectedLengthGotType(expected~: Int, got~: @parse.Type, span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -62,8 +63,8 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         UnknownModulePort(module_path~, port_name~, ..) => {
             logger.write_string("Unknown port '\{port_name}' in module '\{module_path}'")
         }
-        InvalidFieldAccess(field~, ..) => {
-            logger.write_string("Invalid field access '\{field}'")
+        InvalidFieldAccess(field~, ty~, ..) => {
+            logger.write_string("Invalid field access '\{field}' on type '\{ty}'")
         }
         InvalidSlicingRange(reason~, ..) => {
             logger.write_string("Invalid slicing range: \{reason}")
@@ -104,6 +105,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         SpreadOutsideVector(..) => {
             logger.write_string("Spread outside vector")
         }
+        ExpectedLengthGotType(expected~, got~, ..) => {
+            logger.write_string("Expected length '\{expected}', got type '\{got}'")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -133,10 +137,16 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidBinaryOpOperand(span~, ..) => span
         StringContainsNonAsciiChar(span~, ..) => span
         SpreadOutsideVector(span~, ..) => span
+        ExpectedLengthGotType(span~, ..) => span
     }
 }
 
-fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
+enum UnificationParam {
+    Int(Int)
+    Type(@parse.Type)
+}
+
+fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam]!TypeCheckerError {
     while not(eqs.is_empty()) {
         let (ty1, ty2) = eqs.pop().unwrap()
 
@@ -147,13 +157,16 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
         match (ty1, ty2) {
             (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(path={ packages: [], member }, ..)))) => {
                 match subst[member] {
-                    Some(len2) => {
+                    Some(Int(len2)) => {
                         if len != len2 {
                             raise IncompatibleTypes(ty1~, ty2~, span~)
                         }
                     }
+                    Some(Type(ty)) => {
+                        raise ExpectedLengthGotType(expected=len, got=ty, span~)
+                    }
                     None => {
-                        subst[member] = len
+                        subst[member] = Int(len)
                     }
                 }
 
@@ -191,7 +204,7 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
     subst
 }
 
-fn unify(ty1: @parse.Type, ty2: @parse.Type, span~: @parse.Span, subst~: Map[String, Int] = {}) -> Map[String, Int]!TypeCheckerError {
+fn unify(ty1: @parse.Type, ty2: @parse.Type, span~: @parse.Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam]!TypeCheckerError {
     unify_aux!([(ty1, ty2)], span~, subst~)
 }
 
@@ -359,23 +372,27 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                         None => raise InvalidStructField(name=port, span~)
                     }
                 }
-                _ => raise InvalidFieldAccess(field=port, span~)
+                ty => raise InvalidFieldAccess(field=port, ty~, span~)
             }
         }
         Instance(path~, params~, ports~, span~, ..) => {
             match self.modules[path] {
                 Some(sig) => {
                     let subst = {}
-                    let params_env = {}
+                    let params_env: Map[String, @parse.Param] = {}
                     let accessed_ports = Set::new()
                     let params_map = params.as_map!(names=sig.params)
 
                     for name, param in params_map {
-                        match param.as_int?() {
-                            Ok(n) => {
-                                subst[name] = n
+                        match param {
+                            Expr(name=_, value~) => {
+                                let n = value.as_int!()
+                                subst[name] = Int(n)
                             }
-                            _ => ()
+                            Type(name=_, value~, span~) => {
+                                let ty = self.resolve_ty!(value, span~)
+                                subst[name] = Type(ty)
+                            }
                         }
 
                         params_env[name] = param.as_param!()

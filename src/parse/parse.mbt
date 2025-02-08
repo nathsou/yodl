@@ -18,6 +18,7 @@ pub type! ParserError {
   InvalidPortOrTupleAccess(span~: Span)
   DuplicateStructField(name~: String, span~: Span)
   DidYouMean(received~: TokenType, suggestion~: String, span~: Span)
+  ExpectedExprOrType(received~: TokenType, span~: Span)
 } derive(Show)
 
 pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
@@ -477,6 +478,23 @@ fn parse_vector_expr(self: Parser) -> Expr! {
   Vector(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
+fn parse_instance_parameter(self: Parser, name~: String?) -> InstanceParam! {
+  let start_idx = self.index
+
+  match self.parse_expr?() {
+    Ok(expr) => InstanceParam::Expr(name~, value=expr)
+    Err(_) => {
+      self.index = start_idx
+      match self.parse_type?() {
+        Ok(ty) => {
+          InstanceParam::Type(name~, value=ty, span=self.span(start_idx))
+        }
+        Err(_) => raise ExpectedExprOrType(received=self.peek(), span=self.span(start_idx))
+      }
+    }
+  }
+}
+
 fn parse_instance_expr(self: Parser, path~: Path) -> Expr! {
   let start_idx = self.index
   let params = self.parse_module_parameters!(fn() {
@@ -485,14 +503,13 @@ fn parse_instance_expr(self: Parser, path~: Path) -> Expr! {
         if self.lookahead(1).kind == Colon {
           self.advance()
           self.advance()
-          let param = self.parse_expr!()
-          return { name: Some(name), value: param }
+          return self.parse_instance_parameter!(name=Some(name))
         }
       }
       _ => ()
     }
 
-    { name: None, value: self.parse_expr!() }
+    return self.parse_instance_parameter!(name=None)
   })
 
   self.expect!(Lparen, start_idx)

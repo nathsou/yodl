@@ -22,8 +22,8 @@ module SyncPulses(
     const V_BACK_PORCH = 33;
     const V_TOTAL = V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE + V_BACK_PORCH;
 
-    let col_reg = Reg<10>(clk: pixel_clk, q: col);
-    let row_reg = Reg<10>(clk: pixel_clk, q: row);
+    let col_reg = Reg<uint<10>>(clk: pixel_clk, q: col);
+    let row_reg = Reg<uint<10>>(clk: pixel_clk, q: row);
 
     let last_col = col_reg.q == H_TOTAL - 1;
     let last_row = row_reg.q == V_TOTAL - 1;

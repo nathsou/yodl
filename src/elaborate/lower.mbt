@@ -148,6 +148,40 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type! {
   }
 }
 
+fn default_value(ty: @firrtl.Type, span~: @parse.Span) -> Value! {
+  match ty {
+    Const(sub_ty) => default_value!(sub_ty, span~)
+    Clock | Reset | AsyncReset => Value::Expr(expr=Literal(UInt(width=1, radix=Some(2), value=0)), ty=UInt(1), span~)
+    UInt(width) => {
+      let value = BigInt::from_int(0)
+      Value::Expr(expr=Literal(UInt(width~, radix=Some(2), value~)), ty~, span~)
+    }
+    SInt(width) => {
+      let value = BigInt::from_int(0)
+      Value::Expr(expr=Literal(SInt(width~, radix=Some(2), value~)), ty~, span~)
+    }
+    Vec(elem_ty, len) => {
+      let elems = Array::new(capacity=len)
+
+      for _ in 0..<len {
+        elems.push(default_value!(elem_ty, span~))
+      }
+
+      Vector(elems~, ty~, span~)
+    }
+    Bundle(fields) => {
+      let values = Map::new(capacity=fields.length())
+
+      for field in fields {
+        values[field.id.inner()] = default_value!(field.ty, span~)
+      }
+
+      Struct(fields=values, ty~, span~)
+    }
+    UIntInferred | SIntInferred => raise ElaborationError::Unsupported(message="Cannot get init value of inferred integer type", span~)
+  }
+}
+
 fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let env = ElaboratorEnv::new()
 
@@ -646,7 +680,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       }
 
       if attributes.contains("internal") {
-        fn get_param(name: String) -> @parse.Expr! {
+        fn get_param(name: String) -> @parse.InstanceParam! {
           match params_map[name] {
             Some(param) => param
             None => raise UnknownModuleParameter(name~, span~)
@@ -655,15 +689,20 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
         match path {
           { packages: [], member: "Reg" | "RegAsyncReset" as internal_module_name } => {
-            let width = get_param!("Width").as_int!()
+            let reg_ty = match get_param!("T") {
+              Type(value=ty, ..) => lower_type!(ty, span~)
+              _ => raise ElaborationError::Unreachable(message="non-type parameter in Reg instance", span~)
+            }
+
             let sync_reset = internal_module_name == "Reg"
             let uses_rst = uses_port("rst")
             let uses_en = uses_port("en")
-            let reg_ty = @firrtl.Type::UInt(width)
             let reg_id = id_of_str("reg_\{self.next_idx()}")
             let clk = @firrtl.primop(AsClock, [get_port("clk")])
 
             let reg_stmt = if uses_rst {
+              let init = default_value!(reg_ty, span~).as_expr!(self, scope~)
+
               @firrtl.Stmt::RegReset(
                 id=reg_id,
                 ty=reg_ty,
@@ -677,7 +716,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
                     @firrtl.primop(AsAsyncReset, [rst])
                   }
                 },
-                init=Literal(UInt(width~, radix=Some(10), value=BigInt::from_int(0))),
+                init~,
               )
             } else {
               @firrtl.Stmt::Reg(
@@ -689,10 +728,10 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
             scope.add_stmt(reg_stmt)
 
-            let d_ref = Value::Expr(expr=get_port("d"), ty=UInt(width), span~).as_ref!(self, scope~)
+            let d_ref = Value::Expr(expr=get_port("d"), ty=reg_ty, span~).as_ref!(self, scope~)
 
             if uses_port("q") {
-              let q_ref = Value::Expr(expr=get_port("q"), ty=UInt(width), span~).as_ref!(self, scope~)
+              let q_ref = Value::Expr(expr=get_port("q"), ty=reg_ty, span~).as_ref!(self, scope~)
               scope.add_stmt(Connect(q_ref, Reference(Id(reg_id))))
 
               if accessed_ports.contains("q") {

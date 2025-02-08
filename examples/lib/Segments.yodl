@@ -28,7 +28,7 @@ module Multi(
     segs: uint<8>,
     sel: uint<4>,
 ) {
-    let counter = Reg<13>(clk, rst);
+    let counter = Reg<uint<13>>(clk, rst);
     counter.d = counter.q + 1;
 
     let active_seg = match counter.q[12:11] {

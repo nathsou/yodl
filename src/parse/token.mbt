@@ -6,13 +6,13 @@ enum TokenType {
   LchevronColon; RchevronColon
   Plus; Minus; Star; Slash
   Equal; EqualEqual; BangEqual; RightThinArrow; RightThickArrow
-  LchevronEqual; RchevronEqual; LchevronLchevron; RchevronRchevron
+  LchevronEqual; RchevronEqual
   DotDotLeftChevron; DotDotEqual; DotDot
   Percent; QuestionMark; At; Underscore; X // Replication operator
   Dollar; ColonColon; MinusColon
   // keywords
   Module; Let; UInt; SInt; Bool; In; For; Declare; Const
-  And; Or; Not; Xor; Nand; Nor; Xnor
+  And; Or; Not; Xor; Nand; Nor; Xnor; Shl; Shr
   Match; Package; Import; If; Else
   // literals
   Identifier(String); Natural(value~: BigInt, width~: Int?, base~: Int)
@@ -120,8 +120,8 @@ fn to_binop(self: TokenType) -> BinaryOp? {
     RchevronColon => Some(Gtr)
     LchevronEqual => Some(Leq)
     RchevronEqual => Some(Geq)
-    LchevronLchevron => Some(Shl)
-    RchevronRchevron => Some(Shr)
+    Shl => Some(Shl)
+    Shr => Some(Shr)
     QuestionMark => Some(Ternary)
     And => Some(And)
     Or => Some(Or)

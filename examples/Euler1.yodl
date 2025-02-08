@@ -2,10 +2,10 @@ import Text
 
 module Euler1(clk: uint<1>, rst: bool) -> (q: uint<18>, is_ready: bool) {
     const N = 1000;
-    let counter = Reg<$clog2(N)>(clk, rst);
+    let counter = Reg<uint<$clog2(N)>>(clk, rst);
     let is_active = counter.q <: N;
     counter.d = counter.q + is_active;
-    let sum = Reg<18>(clk, en: is_active, rst, q);
+    let sum = Reg<uint<18>>(clk, en: is_active, rst, q);
     let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0;
     sum.d = sum.q + (is_divisible ? counter.q : 0);
     is_ready = not is_active;

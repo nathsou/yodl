@@ -7,7 +7,7 @@ module ProgramCounter(
 ) -> (
     q: uint<16>,
 ) {
-    let pc = Reg<16>(clk, rst, q);
+    let pc = Reg<uint<16>>(clk, rst, q);
     pc.d = jump ? jump_addr : pc.q + 1'1;
 }
 
@@ -23,7 +23,7 @@ module RegisterFile<WIDTH, DEPTH>(
     reg1_data: uint<WIDTH>,
     read_data: uint<WIDTH>,
 ) {
-    let regs = DEPTH * [Reg<WIDTH>(clk, rst, d: write_data)];
+    let regs = DEPTH * [Reg<uint<WIDTH>>(clk, rst, d: write_data)];
 
     for i in 0..<DEPTH {
         regs[i].en = write_enable and (write_dest == i);

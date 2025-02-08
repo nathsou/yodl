@@ -20,6 +20,7 @@ Yet anOther (hardware) Description Language
 - [x] Multi-dimensional vectors (uint<16>[4][8])
 - [ ] Optional module parameters (and register initial value)
 - [x] Arbitrary port types
+- [x] Type parameters
 - [ ] Testbench generation (or use cocotb?)
 - [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export
 - [ ] Web tour/playground

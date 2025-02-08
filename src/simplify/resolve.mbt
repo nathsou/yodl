@@ -65,23 +65,23 @@ let builtin_decls: Array[@parse.Decl] = {
     #|const false = 1'b0;
     #|
     #|@internal
-    #|declare module Reg<Width>(
+    #|declare module Reg<T>(
     #|    clk: uint<1>,
-    #|    d: uint<Width>,
+    #|    d: T,
     #|    en?: bool,
     #|    rst?: bool,
     #|) -> (
-    #|    q: uint<Width>,
+    #|    q: T,
     #|)
     #|
     #|@internal
-    #|declare module RegAsyncReset<Width>(
+    #|declare module RegAsyncReset<T>(
     #|    clk: uint<1>,
-    #|    d: uint<Width>,
+    #|    d: T,
     #|    en?: bool,
     #|    rst?: bool,
     #|) -> (
-    #|    q: uint<Width>,
+    #|    q: T,
     #|)
     #|
     #|@internal

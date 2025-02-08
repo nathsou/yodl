@@ -11,7 +11,7 @@ module Cell(
 ) -> (
     state: bool,
 ) {
-    let alive = Reg<1>(clk, en: enable, q: state);
+    let alive = Reg<bool>(clk, rst, en: enable, q: state);
     let count: uint<3> = neighbors[0] + neighbors[1] + neighbors[2] + neighbors[3] +
                          neighbors[4] + neighbors[5] + neighbors[6] + neighbors[7];
 
@@ -79,9 +79,9 @@ module GridInit<Rows, Cols>(
 ) {
     let grid = Grid<Rows, Cols>(clk, rst, read_row, read_col, read_state);
     const PatternLen = Rows * Cols;
-    let counter = Reg<$clog2(PatternLen)>(clk, rst);
-    let row = Reg<$clog2(Rows)>(clk, rst);
-    let col = Reg<$clog2(Cols)>(clk, rst);
+    let counter = Reg<uint<$clog2(PatternLen)>>(clk, rst);
+    let row = Reg<uint<$clog2(Rows)>>(clk, rst);
+    let col = Reg<uint<$clog2(Cols)>>(clk, rst);
     let state = pattern[Rows - 1 - row.q][Cols - 1 - col.q];
 
     col.d = col.q;

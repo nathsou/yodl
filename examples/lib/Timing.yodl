@@ -2,7 +2,7 @@
 // outputs a 1 on `q` for one clock cycle once every `Cycles` clock cycles
 module Timer<Cycles>(clk: uint<1>) -> (q: bool, dffs: uint<$clog2(Cycles)>) {
     const Width = $clog2(Cycles);
-    let counter = Reg<Width>(clk);
+    let counter = Reg<uint<Width>>(clk);
     let end = counter.q == Cycles;
     counter.d = end ? uint(Width * {1'0}) : counter.q + 1;
     q = end;
@@ -10,7 +10,7 @@ module Timer<Cycles>(clk: uint<1>) -> (q: bool, dffs: uint<$clog2(Cycles)>) {
 }
 
 module Counter<Width>(clk: uint<1>, en: bool, rst: bool) -> (q: uint<Width>) {
-    let counter = Reg<Width>(clk, en, rst);
+    let counter = Reg<uint<Width>>(clk, en, rst);
     counter.d = counter.q + 1'1;
     q = counter.q;
 }

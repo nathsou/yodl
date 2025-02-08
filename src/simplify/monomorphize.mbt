@@ -26,6 +26,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
 pub type! MonomorphizerError {
   ModuleNotFound(path~: @parse.Path, span~: @parse.Span)
   InvalidModuleParameterCount(path~: @parse.Path, expected~: Int, actual~: Int, span~: @parse.Span)
+  ReceivedTypeParameterInsteadOfExpr(span~: @parse.Span)
 }
 
 pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
@@ -36,6 +37,9 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     InvalidModuleParameterCount(path~, expected~, actual~, ..) => {
       logger.write_string("Module '\{path}' expected \{expected} parameter(s), but got \{actual}")
     }
+    ReceivedTypeParameterInsteadOfExpr(..) => {
+      logger.write_string("Received type parameter instead of expression")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -45,6 +49,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
   match self {
     ModuleNotFound(span~, ..) => span
     InvalidModuleParameterCount(span~, ..) => span
+    ReceivedTypeParameterInsteadOfExpr(span~) => span
   }
 }
 
@@ -122,8 +127,11 @@ fn register_monomorphized_module(
   let params_map = {
     let map = Map::new(capacity=params._.length())
 
-    for name, expr in params.as_map!(names=mod_decl.params) {
-      map[name] = expr.partial_eval!(params=map).as_param!()
+    for name, param in params.as_map!(names=mod_decl.params) {
+      map[name] = match param {
+        Expr(value=expr, ..) => expr.partial_eval!(params=map).as_param!()
+        Type(value~, ..) => @parse.TypeParam(value)
+      }
     } 
 
     map
@@ -188,8 +196,9 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
     (match expr {
       Identifier(path~, span~, ty=_) => Some({
         match resolve_member(env, path~, packages~) {
-          Some((Param(Int(n)) | GenVar(n), _)) => @parse.Expr::nat(n, width=None, base=10, span~)
-          Some((Param(Val(value~, width~)), _)) => @parse.Expr::Natural(value~, width=Some(width), base=2, span~, ty={ val: None })
+          Some((Param(IntParam(n)) | GenVar(n), _)) => @parse.Expr::nat(n, width=None, base=10, span~)
+          Some((Param(ValParam(value~, width~)), _)) => @parse.Expr::Natural(value~, width=Some(width), base=2, span~, ty={ val: None })
+          Some((Param(TypeParam(_)), _)) => raise ReceivedTypeParameterInsteadOfExpr(span~)
           Some((Const(decl), _)) => decl.expr
           Some((Name(_), resolved_path)) => @parse.Expr::Identifier(path=resolved_path, span~, ty={ val: None })
           None => Identifier(path~, span~, ty={ val: None })
@@ -224,7 +233,10 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
 
           (mod.path, @parse.InstanceParams([]))
         } else {
-          let mono_params = params.map!(fn(expr) { self.monomorphize_expr!(expr, env~, packages~) })
+          let mono_params = params.map!(
+            map_expr=fn(expr) { self.monomorphize_expr!(expr, env~, packages~) },
+            map_type=fn(ty) { self.monomorphize_type!(ty, env~, packages~) },
+          )
           (resolved_path, mono_params)
         }
 
@@ -260,13 +272,18 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
         None => None
       }
 
-      match ty.val {
+      match mono_ty {
         Some(Name(path~, params~)) => {
           if params.length() > 0 {
             let _ = self.register_monomorphized_module!(
               path~,
               params=@parse.InstanceParams(
-                @utils.map!(params, fn(param) { { name: None, value: param.as_expr(span~) } })
+                @utils.map!(params, fn(param) { 
+                  match param {
+                    IntParam(_) | ValParam(_) => @parse.InstanceParam::Expr(name=None, value=param.as_expr!(span~))
+                    TypeParam(ty) => @parse.InstanceParam::Type(name=None, value=ty, span~)
+                  }
+                 })
               ),
               span~,
               packages~,

@@ -37,7 +37,7 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
       FieldAccess(expr~, field=port, span~, ty=clone_ty(ty))
     }
     Instance(path~, params~, ports~, span~, ty~) => {
-      let new_params = params.map!(fn!(expr) { rewrite_expr!(expr, rewr_expr~, rewr_stmt~) })
+      let new_params = params.map!(map_expr=fn!(expr) { rewrite_expr!(expr, rewr_expr~, rewr_stmt~) }, map_type=fn(ty) { ty.clone() })
       let new_ports = Map::new(capacity=ports.size())
 
       for port, expr in ports {
@@ -152,7 +152,7 @@ pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
   let res = match stmt {
     Expr(expr~, span~) => {
       let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)
-      Expr(expr~, span~)
+      Stmt::Expr(expr~, span~)
     }
     Const(decl~, span~) => {
       let new_decl: ConstDecl = {
@@ -231,7 +231,10 @@ pub fn visit_expr(expr: Expr, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Boo
       FieldAccess(expr~, field=_, span=_, ty=_) => visit_expr!(expr, on_expr~, on_stmt~)
       Instance(path=_, params~, ports~, span=_, ty=_) => {
         for param in params._ {
-          visit_expr!(param.value, on_expr~, on_stmt~)
+          match param {
+            Expr(name=_, value~) => visit_expr!(value, on_expr~, on_stmt~)
+            Type(_) => ()
+          }
         }
 
         for _, expr in ports {

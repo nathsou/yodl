@@ -271,8 +271,6 @@ fn next(self: Lexer) -> LexerResult[Token]! {
 
       if self.consumes('=') {
         Ok(LchevronEqual)
-      } else if self.consumes('<') {
-        Ok(LchevronLchevron)
       } else if self.consumes(':') {
         Ok(LchevronColon)
       } else {
@@ -284,8 +282,6 @@ fn next(self: Lexer) -> LexerResult[Token]! {
 
       if self.consumes('=') {
         Ok(RchevronEqual)
-      } else if self.consumes('>') {
-        Ok(RchevronRchevron)
       } else if self.consumes(':') {
         Ok(RchevronColon)
       } else {
@@ -418,6 +414,8 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           "nand" => Nand
           "nor" => Nor
           "xnor" => Xnor
+          "shl" => Shl
+          "shr" => Shr
           _ => Identifier(identifier)
         })
       } else {

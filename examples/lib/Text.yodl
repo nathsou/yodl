@@ -111,7 +111,7 @@ module CharAt<Length, IndexWidth>(
     is_out_of_bounds: bool,
 ) {
     is_out_of_bounds = index >= Length;
-    let shifted = uint(str) >> ((Length - 1 - index) * 8);
+    let shifted = uint(str) shr ((Length - 1 - index) * 8);
     char = is_out_of_bounds ? " "[0] : shifted[7:0];
 }
 
@@ -135,7 +135,7 @@ module Text<Length, X, Y>(
     let char = cell_idx >= StartIdx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " "[0];
     let bitmap = AsciiTable(char).q;
     let pixel_idx: uint<6> = y * 8 + x;
-    is_active = (bitmap >> pixel_idx)[0];
+    is_active = (bitmap shr pixel_idx)[0];
 }
 
 module TextDynamicPosition<Length>(
@@ -157,7 +157,7 @@ module TextDynamicPosition<Length>(
     let char = cell_idx >= start_idx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : " "[0];
     let bitmap = AsciiTable(char).q;
     let pixel_idx: uint<6> = y * 8 + x;
-    is_active = (bitmap >> pixel_idx)[0];
+    is_active = (bitmap shr pixel_idx)[0];
 }
 
 module Hex<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {

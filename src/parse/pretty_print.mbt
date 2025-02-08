@@ -42,12 +42,12 @@ pub impl Show for BinaryOp with output(op, logger) {
     Mod => "%"
     Equ => "=="
     Neq => "!="
-    Lss => "<"
-    Gtr => ">"
+    Lss => "<:"
+    Gtr => ">:"
     Leq => "<="
     Geq => ">="
-    Shl => "<<"
-    Shr => ">>"
+    Shl => "shl"
+    Shr => "shr"
     Ternary => "?:"
     And => "and"
     Or => "or"
@@ -144,20 +144,28 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
             self.write(", ")
           }
 
-          match param.name {
-            Some(name) => {
-              self.write(name)
-              self.write(": ")
-            }
-            None => ()
-          }
+          match param {
+            Expr(name~, value~) => {
+              match name {
+                Some(name) => {
+                  self.write(name)
+                  self.write(": ")
+                }
+                None => ()
+              }
 
-          match param.value.as_param?() {
-            Ok(param) => {
-              self.write(param.to_string())
+              self.emit_expr(value)
             }
-            _ => {
-              self.emit_expr(param.value)
+            Type(name~, value~, ..) => {
+              match name {
+                Some(name) => {
+                  self.write(name)
+                  self.write(": ")
+                }
+                None => ()
+              }
+
+              self.write(value.to_string())
             }
           }
         }

@@ -7,8 +7,8 @@ module LFSR<NumBits>(
     q: uint<NumBits>,
     done: bool,
 ) {
-    let r_xnor = Reg<1>(clk);
-    let r_lfsr = Reg<NumBits>(clk, en: enable, q);
+    let r_xnor = Reg<bool>(clk);
+    let r_lfsr = Reg<uint<NumBits>>(clk, en: enable, q);
     r_lfsr.d = uint({r_lfsr.q[NumBits - 2:0], r_xnor.q});
 
     // https://docs.amd.com/v/u/en-US/xapp052
