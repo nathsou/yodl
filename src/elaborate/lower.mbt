@@ -1,12 +1,24 @@
 
 pub struct Elaborator {
   mut autoidx: Int
+  circuit_name: String
   modules: Map[@parse.Path, @firrtl.Module]
+  annotations: Array[Json]
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
+  current_target: Array[String]
+  memories: Map[String, @firrtl.Id]
 }
 
-pub fn Elaborator::new() -> Elaborator {
-  { autoidx: 0, modules: {}, declared_modules: {} }
+pub fn Elaborator::new(circuit_name: String) -> Elaborator {
+  {
+    circuit_name,
+    autoidx: 0,
+    modules: {},
+    annotations: [],
+    declared_modules: {},
+    current_target: [circuit_name],
+    memories: {},
+  }
 }
 
 fn next_idx(self: Elaborator) -> Int {
@@ -68,6 +80,7 @@ pub type! ElaborationError {
   DynamicIntParam(span~: @parse.Span)
   InvalidCharacterInString(char~: Char, span~: @parse.Span)
   ExpctedIntLiteral(span~: @parse.Span)
+  InvalidMemoryReferenceInLoadMemory(mem_name~: String, span~: @parse.Span)
 } derive (Show)
 
 trait ScopeLike {
@@ -205,6 +218,7 @@ fn default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
 
 fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let env = ElaboratorEnv::new()
+  self.current_target.push(mod.path.member)
 
   let fir_mod: @firrtl.Module = {
     public: true,
@@ -235,6 +249,8 @@ fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   for stmt in mod.body {
     self.lower_stmt!(stmt, scope=fir_mod, env~)
   }
+
+  let _ = self.current_target.pop()
 }
 
 fn unwrap_type(ty: Ref[@parse.Type?], span~: @parse.Span) -> @parse.Type!ElaborationError {
@@ -798,6 +814,14 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             let write_ports = get_param!("WritePorts").as_int!()
 
             let mem_id = id_of_str("mem_\{self.next_idx()}")
+            
+            match binding {
+              Some(name) => {
+                self.memories[name] = mem_id
+              }
+              None => ()
+            }
+
             let readers = {
               let readers = Array::new(capacity=read_ports)
 
@@ -997,6 +1021,30 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let arg_ref = arg.as_ref!(self, scope~)
       let width = unwrap_type!(ty, span~).width!(span)
       Expr(expr=flat_uint!(arg_ref, arg.ty(), span~), ty=UInt(width), span~)
+    }
+    FunCall(name="$readmemb", args=[path, mem], span~, ..) => {
+      let path = path.expect_string!()
+      let mem_ref = self.lower_expr!(mem, scope~, env~).as_ref!(self, scope~)
+      let mem_name = match mem_ref {
+        Id(id) => id.inner()
+        _ => raise ElaborationError::Unsupported(message="Cannot reference indirect memory inside $readmemb", span~)
+      }
+
+      let mem_id = match self.memories[mem_name] {
+        Some(id) => id.inner()
+        None => raise InvalidMemoryReferenceInLoadMemory(mem_name~, span~)
+      }
+
+      let annotation = {
+        "class": "firrtl.annotations.LoadMemoryAnnotation",
+        "target": String::concat([..self.current_target, mem_id], separator="."),
+        "fileName": path,
+        "hexOrBinary": "b",
+        "originalMemoryNameOpt": mem_id,
+      }
+
+      self.annotations.push(annotation.to_json())
+      Empty(span~)
     }
     Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())

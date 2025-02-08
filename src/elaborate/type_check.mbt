@@ -36,6 +36,7 @@ type! TypeCheckerError {
     SpreadOutsideVector(span~: @parse.Span)
     ExpectedLengthGotType(expected~: Int, got~: @parse.Type, span~: @parse.Span)
     InvalidParameterInstantiation(name~: String, expected~: @parse.ModuleParameterAnnotation, ty~: @parse.Type, span~: @parse.Span)
+    InvalidMemoryArgumentInReadMemCall(ty~: @parse.Type, span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -112,6 +113,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidParameterInstantiation(name~, expected~, ty~, ..) => {
             logger.write_string("Invalid instantiation of parameter '\{name}' with type '\{ty}', expected '\{expected}'")
         }
+        InvalidMemoryArgumentInReadMemCall(ty~, ..) => {
+            logger.write_string("Invalid memory argument of type '\{ty}' in readmem call")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -143,6 +147,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         SpreadOutsideVector(span~, ..) => span
         ExpectedLengthGotType(span~, ..) => span
         InvalidParameterInstantiation(span~, ..) => span
+        InvalidMemoryArgumentInReadMemCall(span~, ..) => span
     }
 }
 
@@ -583,6 +588,23 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let arg_ty = self.check_expr!(arg, env)
             let width = arg_ty.width!(arg.span())
             @parse.Type::uint(width)
+        }
+        FunCall(name="$readmemb", args=[path, mem], span~, ..) => {
+            let _ = self.check_expr!(path, env)
+            let mem_ty = self.check_expr!(mem, env)
+
+            match mem_ty {
+                Instance(sig={
+                    path: { packages: [], member: "Memory" },
+                    span: { file: "builtin.yodl", .. },
+                    ..
+                }, ..) => ()
+                _ => {
+                    raise InvalidMemoryArgumentInReadMemCall(ty=mem_ty, span~)
+                }
+            }
+
+            @parse.Type::empty()
         }
         FunCall(span~, ..) => {
             raise FunCallAfterMonomorphization(span~)

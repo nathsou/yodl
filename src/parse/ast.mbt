@@ -687,7 +687,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
           raise InvalidFunCallArity(name~, expected=fun.arity, actual=args.length(), span~)
         }
 
-        Some((fun.apply)!(args, span))
+        (fun.apply)!(args, span)
       }
       _ => None
     }
@@ -715,7 +715,7 @@ impl Show for Arity with output(self, logger) {
 
 struct BuiltinFunction {
   arity: Arity
-  apply: (Array[Expr], Span) -> Expr!
+  apply: (Array[Expr], Span) -> Expr?!
 }
 
 let builtin_functions: Map[String, BuiltinFunction] = {
@@ -724,7 +724,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let arg = args[0].as_int!()
       let value = @utils.clog2(arg)
-      Expr::nat(value, span~)
+      Some(Expr::nat(value, span~))
     }
   },
   "$pow": {
@@ -732,7 +732,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let base = args[0].as_int!()
       let exp = args[1].as_int!()
-      Expr::nat(@utils.pow(base, exp), span~)
+      Some(Expr::nat(@utils.pow(base, exp), span~))
     }
   },
   "$cdiv": {
@@ -740,28 +740,18 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     apply: fn(args, span) {
       let dividend = args[0].as_int!()
       let divisor = args[1].as_int!()
-      Expr::nat(@utils.cdiv(dividend, divisor), span~)
+      Some(Expr::nat(@utils.cdiv(dividend, divisor), span~))
     }
   },
   "$readmemb": {
-    arity: Range(min=1, max=3),
+    arity: Range(min=2, max=2),
     apply: fn(args, span) {
-      let (path, start, end) = match args {
-        [path] => (path.expect_string!(), 0, None)
-        [path, start] => (path.expect_string!(), start.as_int!(), None)
-        [path, start, end] => (path.expect_string!(), start.as_int!(), Some(end.as_int!()))
-        _ => raise InvalidFunCallArity(name="$readmemb", expected=Range(min=1, max=3), actual=args.length(), span~)
+      match args {
+        [path, _mem] => { let _ = path.expect_string!() }
+        _ => raise InvalidFunCallArity(name="$readmemb", expected=Range(min=2, max=2), actual=args.length(), span~)
       }
 
-      let bits = parse_mem_file!(path, base=2, start~, end~)
-
-      Expr::Natural(
-        value=BigInt::from_octets(bits),
-        width=Some(bits.length() * 8),
-        base=2,
-        span~,
-        ty={ val: Some(Type::uint(bits.length() * 8)) }
-      )
+      None
     }
   },
 }

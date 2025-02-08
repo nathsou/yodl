@@ -21,7 +21,6 @@ module Top(
     let rand_color = LFSR::LFSR<3>(clk, enable: timer.q).q;
     let add_noise = button[0] or button[1] or button[2] or button[3];
 
-    // @initial($readmemb("res/york.mem"))
     let mem = Memory<
         T: uint<3>,
         Depth: (VGA::H_ACTIVE / 4) * (VGA::V_ACTIVE / 4),
@@ -31,6 +30,8 @@ module Top(
         read: [{ clk: clk, en: vga.is_active_area, addr: cell_idx }],
         write: [{ clk: clk, en: add_noise and timer.q, addr: rand_cell, data: rand_color }],
     );
+
+    $readmemb("res/york.mem", mem);
 
     let color_idx = mem.q[0];
 

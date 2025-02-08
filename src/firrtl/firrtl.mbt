@@ -1,4 +1,9 @@
 // FIRRTL https://github.com/chipsalliance/firrtl-spec
+
+pub fn version() -> (Int, Int, Int) {
+  (4, 1, 0)
+}
+
 pub(all) enum Id {
   Ident(String)
   Literal(String)
@@ -21,6 +26,7 @@ pub fn Id::join(self: Id, str: String) -> Id {
 pub(all) struct Circuit {
   version: (Int, Int, Int)
   id: Id
+  annotations: Array[Json]
   decls: Array[Decl]
 }
 
