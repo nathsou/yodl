@@ -11,21 +11,21 @@ module ProgramCounter(
     pc.d = jump ? jump_addr : pc.q + 1'1;
 }
 
-module RegisterFile<WIDTH, DEPTH>(
+module RegisterFile<Width: uint<1>, Depth: uint>(
     clk: uint<1>,
     rst: bool,
     write_enable: bool,
-    write_dest: uint<$clog2(DEPTH)>,
-    write_data: uint<WIDTH>,
-    read_src: uint<$clog2(DEPTH)>,
+    write_dest: uint<$clog2(Depth)>,
+    write_data: uint<Width>,
+    read_src: uint<$clog2(Depth)>,
 ) -> (
-    reg0_data: uint<WIDTH>,
-    reg1_data: uint<WIDTH>,
-    read_data: uint<WIDTH>,
+    reg0_data: uint<Width>,
+    reg1_data: uint<Width>,
+    read_data: uint<Width>,
 ) {
-    let regs = DEPTH * [Reg<uint<WIDTH>>(clk, rst, d: write_data)];
+    let regs = Depth * [Reg<uint<Width>>(clk, rst, d: write_data)];
 
-    for i in 0..<DEPTH {
+    for i in 0..<Depth {
         regs[i].en = write_enable and (write_dest == i);
     }
 

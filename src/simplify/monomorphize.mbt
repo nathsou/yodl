@@ -27,6 +27,7 @@ pub type! MonomorphizerError {
   ModuleNotFound(path~: @parse.Path, span~: @parse.Span)
   InvalidModuleParameterCount(path~: @parse.Path, expected~: Int, actual~: Int, span~: @parse.Span)
   ReceivedTypeParameterInsteadOfExpr(span~: @parse.Span)
+  InvalidParameterInstantiation(path~: @parse.Path, param~: String, span~: @parse.Span, param_span~: @parse.Span)
 }
 
 pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
@@ -40,6 +41,9 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     ReceivedTypeParameterInsteadOfExpr(..) => {
       logger.write_string("Received type parameter instead of expression")
     }
+    InvalidParameterInstantiation(path~, param~, param_span~, ..) => {
+      logger.write_string("Invalid instantiation of parameter '\{param}' in module '\{path}', declared at \{param_span}")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -50,6 +54,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
     ModuleNotFound(span~, ..) => span
     InvalidModuleParameterCount(span~, ..) => span
     ReceivedTypeParameterInsteadOfExpr(span~) => span
+    InvalidParameterInstantiation(span~, ..) => span
   }
 }
 
@@ -120,19 +125,27 @@ fn register_monomorphized_module(
     }
   }
 
-  if mod_decl.params.length() != params._.length() {
-    raise InvalidModuleParameterCount(path~, expected=mod_decl.params.length(), actual=params._.length(), span~)
+  if mod_decl.params.length() != params.params.length() {
+    raise InvalidModuleParameterCount(path~, expected=mod_decl.params.length(), actual=params.params.length(), span~)
   }
 
-  let params_map = {
-    let map = Map::new(capacity=params._.length())
+  let mod_sig = mod_decl.signature()
 
-    for name, param in params.as_map!(names=mod_decl.params) {
-      map[name] = match param {
-        Expr(value=expr, ..) => expr.partial_eval!(params=map).as_param!()
-        Type(value~, ..) => @parse.TypeParam(value)
+  let params_map = {
+    let map = Map::new(capacity=params.params.length())
+
+    for name, param in params.as_map!(names=mod_decl.params.map(fn(param) { param.name })) {
+      let param_sig = mod_sig.get_param(name).unwrap()
+
+      map[name] = match (param, param_sig.ty) {
+        (Expr(value=expr, ..), Type(ty)) => {
+          params.instantiated.push((expr, ty, expr.span()))
+          expr.partial_eval!(params=map).as_param!()
+        }
+        (Type(value~, ..), AnyType) => @parse.TypeParam(value)
+        _ => raise InvalidParameterInstantiation(path~, param=name, span=param.span(), param_span=param_sig.span)
       }
-    } 
+    }
 
     map
   }
@@ -223,7 +236,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
 
         self.instanciated_modules.add(resolved_path)
 
-        let (mono_path, mono_params) = if params._.length() > 0 && not(self.declared_modules.contains(path)) {
+        let (mono_path, mono_params) = if params.params.length() > 0 && not(self.declared_modules.contains(path)) {
           let mod = self.register_monomorphized_module!(
             path=resolved_path,
             params~,
@@ -231,7 +244,12 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
             packages~,
           )
 
-          (mod.path, @parse.InstanceParams([]))
+          let inst_params: @parse.InstanceParams = {
+            params: [],
+            instantiated: params.instantiated,
+          }
+
+          (mod.path, inst_params)
         } else {
           let mono_params = params.map!(
             map_expr=fn(expr) { self.monomorphize_expr!(expr, env~, packages~) },
@@ -277,7 +295,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
           if params.length() > 0 {
             let _ = self.register_monomorphized_module!(
               path~,
-              params=@parse.InstanceParams(
+              params=@parse.InstanceParams::new(
                 @utils.map!(params, fn(param) { 
                   match param {
                     IntParam(_) | ValParam(_) => @parse.InstanceParam::Expr(name=None, value=param.as_expr!(span~))

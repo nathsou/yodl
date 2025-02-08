@@ -579,7 +579,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       Value::Struct(fields=val, ty~, span~)
     }
     Instance(path~, params~, ports~, span~, ty=inst_ty) => {
-      if params._.length() > 0 && not(self.declared_modules.contains(path)) {
+      if params.params.length() > 0 && not(self.declared_modules.contains(path)) {
         raise ParametricInstanceDuringElaboration(span~)
       }
 
@@ -599,7 +599,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         None => match self.declared_modules[path] {
           Some(sig) => {
             let ports_sig = Map::new(capacity=sig.ports.length())
-            let params_map = params.as_map!(names=sig.params)
+            let params_map = params.as_map!(names=sig.params.map(fn(p) { p.name }))
             let params_env = Map::new(capacity=params_map.size())
 
             for name, param in params_map {

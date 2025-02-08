@@ -13,7 +13,7 @@ module FullAdder(
     carry_out = (carry_in and xor1) or (a and b);
 }
 
-module Adder<N>(
+module Adder<N: uint>(
     a: uint<N>,
     b: uint<N>,
     carry_in: bool,
@@ -45,7 +45,7 @@ module Top(
 ) -> (
     led: uint<16>,
 ) {
-    let counter = Reg<32>(clk);
+    let counter = Reg<uint<32>>(clk);
     let adder = Adder<32>(
         a: counter.q,
         b: 32'1,

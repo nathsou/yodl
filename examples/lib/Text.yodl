@@ -103,7 +103,7 @@ module AsciiTable(char: uint<8>) -> (q: uint<64>) {
     };
 }
 
-module CharAt<Length, IndexWidth>(
+module CharAt<Length: uint, IndexWidth: uint>(
     str: uint<8>[Length],
     index: uint<IndexWidth>,
 ) -> (
@@ -118,7 +118,7 @@ module CharAt<Length, IndexWidth>(
 const Rows = VGA::V_ACTIVE / 8;
 const Cols = VGA::H_ACTIVE / 8;
 
-module Text<Length, X, Y>(
+module Text<Length: uint, X: uint, Y: uint>(
     text: uint<8>[Length],
     screen_x: uint<10>,
     screen_y: uint<10>,
@@ -138,7 +138,7 @@ module Text<Length, X, Y>(
     is_active = (bitmap shr pixel_idx)[0];
 }
 
-module TextDynamicPosition<Length>(
+module TextDynamicPosition<Length: uint>(
     text: uint<8>[Length],
     x_offset: uint<$clog2(Cols)>,
     y_offset: uint<$clog2(Rows)>,
@@ -160,7 +160,7 @@ module TextDynamicPosition<Length>(
     is_active = (bitmap shr pixel_idx)[0];
 }
 
-module Hex<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
+module Hex<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
     const Len = $cdiv(Bits, 4);
     for i in 0..<Len {
         chars[i] = (match n[(i + 1) * 4 - 1 -: 4] {
@@ -184,7 +184,7 @@ module Hex<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
     }
 }
 
-module Dec<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
+module Dec<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
     const Len = $cdiv(Bits, 4);
     for i in 0..<Len {
         chars[i] = (match n[(i + 1) * 4 - 1 -: 4] {
@@ -202,7 +202,7 @@ module Dec<Bits>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
     }
 }
 
-module Bin<Bits>(n: uint<Bits>) -> (chars: uint<8>[Bits]) {
+module Bin<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[Bits]) {
     for i in 0..<Bits {
         chars[i] = (n[i] ? "1" : "0")[0];
     }

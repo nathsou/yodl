@@ -24,7 +24,7 @@ module Cell(
     };
 }
 
-module Grid<Rows, Cols>(
+module Grid<Rows: uint, Cols: uint>(
     clk: uint<1>,
     rst: bool,
     read_row: uint<$clog2(Rows)>,
@@ -67,7 +67,7 @@ module Grid<Rows, Cols>(
     read_state = cells[read_col][read_row].state;
 }
 
-module GridInit<Rows, Cols>(
+module GridInit<Rows: uint, Cols: uint>(
     clk: uint<1>,
     rst: bool,
     read_row: uint<$clog2(Rows)>,

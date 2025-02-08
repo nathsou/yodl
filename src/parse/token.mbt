@@ -13,7 +13,7 @@ enum TokenType {
   // keywords
   Module; Let; UInt; SInt; Bool; In; For; Declare; Const
   And; Or; Not; Xor; Nand; Nor; Xnor; Shl; Shr
-  Match; Package; Import; If; Else
+  Match; Package; Import; If; Else; Type
   // literals
   Identifier(String); Natural(value~: BigInt, width~: Int?, base~: Int)
   StringLiteral(String)

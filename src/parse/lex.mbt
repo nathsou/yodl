@@ -416,6 +416,7 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           "xnor" => Xnor
           "shl" => Shl
           "shr" => Shr
+          "type" => Type
           _ => Identifier(identifier)
         })
       } else {

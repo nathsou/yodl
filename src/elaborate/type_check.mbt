@@ -35,6 +35,7 @@ type! TypeCheckerError {
     StringContainsNonAsciiChar(char~: Char, span~: @parse.Span)
     SpreadOutsideVector(span~: @parse.Span)
     ExpectedLengthGotType(expected~: Int, got~: @parse.Type, span~: @parse.Span)
+    InvalidParameterInstantiation(name~: String, expected~: @parse.ModuleParameterAnnotation, ty~: @parse.Type, span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -108,6 +109,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         ExpectedLengthGotType(expected~, got~, ..) => {
             logger.write_string("Expected length '\{expected}', got type '\{got}'")
         }
+        InvalidParameterInstantiation(name~, expected~, ty~, ..) => {
+            logger.write_string("Invalid instantiation of parameter '\{name}' with type '\{ty}', expected '\{expected}'")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -138,6 +142,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         StringContainsNonAsciiChar(span~, ..) => span
         SpreadOutsideVector(span~, ..) => span
         ExpectedLengthGotType(span~, ..) => span
+        InvalidParameterInstantiation(span~, ..) => span
     }
 }
 
@@ -238,7 +243,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
                         raise InvalidInstanceTypeParameterCount(module_path=path, expected=sig.params.length(), actual=params.length(), span~)
                     }
 
-                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params, params)), accessed_ports=Set::new())
+                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params.map(fn(p) { p.name }), params)), accessed_ports=Set::new())
                 }
                 None => raise TypeCheckerError::UnknownModule(path~, span~)
             }
@@ -381,17 +386,37 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                     let subst = {}
                     let params_env: Map[String, @parse.Param] = {}
                     let accessed_ports = Set::new()
-                    let params_map = params.as_map!(names=sig.params)
+                    let params_map = params.as_map!(names=sig.params.map(fn(p) { p.name }))
+
+                    // check monomorphized (erased) parameters
+                    for param in params.instantiated {
+                        let (expr, ann, span) = param
+                        let expr_ty = self.check_expr!(expr, env)
+                        let expr_ty = self.resolve_ty!(expr_ty, span~)
+                        let _ = unify!(expr_ty, ann, span=span, subst~)
+                    }
 
                     for name, param in params_map {
-                        match param {
-                            Expr(name=_, value~) => {
+                        let param_sig = sig.get_param(name).unwrap()
+
+                        match (param, param_sig.ty) {
+                            (Expr(name=_, value~), Type(param_ty)) => {
+                                let expr_ty = self.check_expr!(value, env)
+                                let _ = unify!(param_ty, expr_ty, span=param_sig.span, subst~)
                                 let n = value.as_int!()
                                 subst[name] = Int(n)
                             }
-                            Type(name=_, value~, span~) => {
+                            (Type(name=_, value~, span~), AnyType) => {
                                 let ty = self.resolve_ty!(value, span~)
                                 subst[name] = Type(ty)
+                            }
+                            _ => {
+                                let ty = match param {
+                                    Expr(value~, ..) => unwrap_type!(value.ty(), span=value.span())
+                                    Type(value~, ..) => value
+                                }
+
+                                raise InvalidParameterInstantiation(name=name, expected=param_sig.ty, ty~, span=param.span())
                             }
                         }
 

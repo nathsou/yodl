@@ -136,10 +136,10 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
     Instance(path~, params~, ports~, ..) => {
       self.write(path.to_string())
 
-      if params._.length() > 0 {
+      if params.params.length() > 0 {
         self.write("<")
 
-        for i, param in params._ {
+        for i, param in params.params {
           if i > 0 {
             self.write(", ")
           }
@@ -654,6 +654,12 @@ pub impl Show for Attribute with output(attr, logger) {
   }
 }
 
+pub impl Show for ModuleParameter with output(param, logger) {
+  logger.write_string(param.name)
+  logger.write_string(": ")
+  logger.write_object(param.ty)
+}
+
 fn emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
   if sig.attributes.size() > 0 {
     for attr in sig.attributes.values() {
@@ -667,7 +673,7 @@ fn emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
 
   if sig.params.length() > 0 {
     self.write("<")
-    self.write(String::concat(sig.params, separator=", "))
+    self.write(String::concat(sig.params.map(Show::to_string), separator=", "))
     self.write(">")
   }
 

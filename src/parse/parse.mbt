@@ -534,7 +534,7 @@ fn parse_instance_expr(self: Parser, path~: Path) -> Expr! {
 
   Instance(
     path~,
-    params=InstanceParams(params),
+    params=InstanceParams::new(params),
     ports~,
     span=self.span(start_idx),
     ty={ val: None },
@@ -704,13 +704,16 @@ fn parse_type(self: Parser) -> Type! {
     }
     UInt => {
       self.advance()
-      self.expect!(Lchevron, start_idx)
-      let width = match self.parse_expr!() {
-        Natural(value~, width=_, ..) => IntParam::Fixed(value.to_int())
-        expr => Dynamic(expr)
+      if self.consumes(Lchevron) {
+        let width = match self.parse_expr!() {
+          Natural(value~, width=_, ..) => IntParam::Fixed(value.to_int())
+          expr => Dynamic(expr)
+        }
+        self.expect!(Rchevron, start_idx)
+        UInt(width)
+      } else {
+        Nat
       }
-      self.expect!(Rchevron, start_idx)
-      UInt(width)
     }
     SInt => {
       self.advance()
@@ -932,7 +935,18 @@ fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> 
   let start_idx = self.index
   self.expect!(Module, start_idx)
   let name = self.parse_identifier!()
-  let params = self.parse_module_parameters!(fn() { self.parse_identifier!() })
+  let params = self.parse_module_parameters!(fn() {
+    let param_start_idx = self.index
+    let name = self.parse_identifier!()
+    self.expect!(Colon, start_idx)
+    let ty = if self.consumes(Type) {
+      AnyType
+    } else {
+      Type(self.parse_type!())
+    }
+    
+    { name, ty, span: self.span(param_start_idx) }
+  })
   let inputs = self.parse_port_list!(dir=Input)
   self.expect!(RightThinArrow, start_idx)
   let outputs = self.parse_port_list!(dir=Output)

@@ -230,7 +230,7 @@ pub fn visit_expr(expr: Expr, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Boo
       }
       FieldAccess(expr~, field=_, span=_, ty=_) => visit_expr!(expr, on_expr~, on_stmt~)
       Instance(path=_, params~, ports~, span=_, ty=_) => {
-        for param in params._ {
+        for param in params.params {
           match param {
             Expr(name=_, value~) => visit_expr!(value, on_expr~, on_stmt~)
             Type(_) => ()

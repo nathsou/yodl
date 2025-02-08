@@ -82,7 +82,14 @@ pub fn as_param(self: InstanceParam) -> Param! {
   }
 }
 
-pub type InstanceParams Array[InstanceParam]
+pub(all) struct InstanceParams {
+  params: Array[InstanceParam]
+  instantiated: Array[(Expr, Type, Span)]
+}
+
+pub fn InstanceParams::new(params: Array[InstanceParam]) -> InstanceParams {
+  { params, instantiated: [] }
+}
 
 pub(all) struct Path {
   packages: Array[String]
@@ -117,9 +124,9 @@ pub fn prepend(self: Path, packages: Array[String]) -> Path {
 }
 
 pub fn map[E: Error](self: InstanceParams, map_expr~: (Expr) -> Expr!E, map_type~: (Type) -> Type!E) -> InstanceParams!E {
-  let new_list = Array::new(capacity=self._.length())
+  let new_list = Array::new(capacity=self.params.length())
 
-  for param in self._ {
+  for param in self.params {
     match param {
       Expr(name~, value~) => {
         let value = map_expr!(value)
@@ -132,7 +139,10 @@ pub fn map[E: Error](self: InstanceParams, map_expr~: (Expr) -> Expr!E, map_type
     }
   }
 
-  InstanceParams(new_list)
+  {
+    params: new_list,
+    instantiated: self.instantiated,
+  }
 }
 
 pub(all) enum UnaryOp {
@@ -182,9 +192,27 @@ pub(all) struct ForRange {
   inclusive: Bool
 }
 
+pub(all) enum ModuleParameterAnnotation {
+  Type(Type)
+  AnyType
+}
+
+pub impl Show for ModuleParameterAnnotation with output(self, logger) {
+  match self {
+    Type(ty) => logger.write_object(ty)
+    AnyType => logger.write_string("type")
+  }
+}
+
+pub(all) struct ModuleParameter {
+  name: String
+  ty: ModuleParameterAnnotation
+  span: Span
+}
+
 pub(all) struct ModuleSignature {
     path: Path
-    params: Array[String]
+    params: Array[ModuleParameter]
     attributes: Map[String, Attribute]
     ports: Array[Port]
     span: Span
@@ -192,6 +220,16 @@ pub(all) struct ModuleSignature {
 
 impl Eq for ModuleSignature with op_equal(self, other) {
   self.path == other.path && self.span.file == other.span.file
+}
+
+pub fn ModuleSignature::get_param(self: ModuleSignature, name: String) -> ModuleParameter? {
+  for param in self.params {
+    if param.name == name {
+      return Some(param)
+    }
+  }
+
+  None
 }
 
 pub(all) struct ConstDecl {
@@ -276,7 +314,6 @@ pub fn expect_fixed(self: IntParam, span: Span) -> Int! {
   match self {
     Fixed(value) => value
     Dynamic(_) => {
-      println("IntParam: \{self}")
       raise IntParamNotFixed(span~)
     }
   }
@@ -303,11 +340,9 @@ pub(all) struct Port {
   attributes: Map[String, Attribute]
 }
 
-pub typealias ModuleParams = Map[String, Param]
-
 pub(all) struct ModuleDecl {
     path: Path
-    params: Array[String]
+    params: Array[ModuleParameter]
     attributes: Map[String, Attribute]
     ports: Array[Port]
     body: Array[Stmt]
@@ -754,7 +789,6 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
     SInt(Fixed(width)) => width
     Vector(ty~, len=Fixed(len)) => ty.width!(span) * len
     UInt(Dynamic(_)) | SInt(Dynamic(_)) | Vector(ty=_, len=Dynamic(_)) => {
-      println("IntParam: \{self}")
       raise IntParamNotFixed(span~)
     }
     Instance(sig~, params~, accessed_ports~) => {
@@ -921,7 +955,7 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
     }
   }
 
-  for idx, param in self._ {
+  for idx, param in self.params {
     match param {
       Expr(name=Some(name), ..) | Type(name=Some(name), ..) => {
         checked_set!(name, param)
