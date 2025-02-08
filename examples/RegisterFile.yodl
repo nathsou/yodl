@@ -11,7 +11,7 @@ module ProgramCounter(
     pc.d = jump ? jump_addr : pc.q + 1'1;
 }
 
-module RegisterFile<Width: uint<1>, Depth: uint>(
+module RegisterFile<Width: uint, Depth: uint>(
     clk: uint<1>,
     rst: bool,
     write_enable: bool,

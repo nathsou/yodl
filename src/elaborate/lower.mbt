@@ -101,7 +101,7 @@ fn id_of_str(name: String) -> @firrtl.Id {
 
 fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type! {
   match ty {
-    Nat => UIntInferred
+    Nat(min_width=_) => UIntInferred
     UInt(Fixed(width)) => UInt(width)
     SInt(Fixed(width)) => SInt(width)
     Vector(ty~, len=Fixed(len)) => Vec(lower_type!(ty, span~), len)

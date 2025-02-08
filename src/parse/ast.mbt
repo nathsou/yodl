@@ -41,7 +41,7 @@ pub(all) enum Decl {
 pub const BITS_PER_CHAR = 8
 
 pub(all) enum Type {
-  Nat
+  Nat(min_width~: Int)
   UInt(IntParam)
   SInt(IntParam)
   Vector(ty~: Type, len~: IntParam)
@@ -539,7 +539,10 @@ pub fn Expr::as_param(self: Expr) -> Param!AstError {
 
 pub fn as_expr(self: Param, span~: Span) -> Expr! {
   match self {
-    IntParam(n) => Natural(value=BigInt::from_int(n), width=None, base=10, span=span, ty={ val: Some(Nat) })
+    IntParam(n) => {
+      let bn = BigInt::from_int(n)
+      Natural(value=bn, width=None, base=10, span=span, ty={ val: Some(Nat(min_width=@utils.significant_bits(bn))) })
+    }
     ValParam(value~, width~) => Natural(value~, width=Some(width), base=2, span=span, ty={ val: Some(Type::uint(width)) })
     TypeParam(_) => raise TypeParamInsteadOfExpr(span~)
   }
@@ -784,7 +787,7 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
 
 pub fn width(self: Type, span: Span) -> Int!AstError {
   match self {
-    Nat => 32
+    Nat(min_width~) => @math.maximum(min_width, 32)
     UInt(Fixed(width)) => width
     SInt(Fixed(width)) => width
     Vector(ty~, len=Fixed(len)) => ty.width!(span) * len
@@ -818,7 +821,7 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
 
 pub fn substitute(self: Type, params_env: Map[String, Param]) -> Type {
   match self {
-    Nat | String(_) => self
+    Nat(_) | String(_) => self
     UInt(Fixed(width)) => UInt(Fixed(width))
     SInt(Fixed(width)) => SInt(Fixed(width))
     UInt(Dynamic(expr)) | SInt(Dynamic(expr)) => {
@@ -909,7 +912,7 @@ pub fn inouts(self: ModuleSignature) -> Iter[Port] {
 
 pub fn is_numerical(self: Type) -> Bool {
   match self {
-    Nat | UInt(_) | SInt(_) => true
+    Nat(_) | UInt(_) | SInt(_) => true
     Vector(ty~, ..) => ty.is_numerical()
     _ => false
   }
@@ -917,7 +920,7 @@ pub fn is_numerical(self: Type) -> Bool {
 
 pub fn has_zero_width(self: Type) -> Bool {
   match self {
-    Nat => false
+    Nat(_) => false
     UInt(Fixed(width)) | SInt(Fixed(width)) => width == 0
     UInt(Dynamic(_)) | SInt(Dynamic(_)) => false
     Vector(ty~, len~) => match len {
@@ -934,7 +937,7 @@ pub fn has_zero_width(self: Type) -> Bool {
 pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
   let ty = match width {
     Some(width) => if n > 0 { Type::uint(width) } else { Type::uint(width) }
-    None => Nat
+    None => Nat(min_width=@utils.significant_bits(BigInt::from_int(n)))
   }
 
   Natural(value=BigInt::from_int(n), width~, base~, span~, ty={ val: Some(ty) })
@@ -975,7 +978,7 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
 
 pub fn clone(self: Type) -> Type {
   match self {
-    Nat => Nat
+    Nat(min_width~) => Nat(min_width~)
     UInt(width) => UInt(width)
     SInt(width) => SInt(width)
     Vector(ty~, len~) => Vector(ty=ty.clone(), len~)

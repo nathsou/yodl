@@ -177,7 +177,13 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
 
                 eqs.push((ty1_inner, ty2_inner))
             }
-            (UInt(_), Nat) | (Nat, UInt(_)) => ()
+            (UInt(Fixed(width)), Nat(min_width~)) | (Nat(min_width~), UInt(Fixed(width))) => {
+                if width < min_width {
+                    raise IncompatibleTypes(ty1~, ty2~, span~)
+                }
+            }
+            (UInt(_), Nat(_)) | (Nat(_), UInt(_)) => ()
+            (Nat(_), Nat(_)) => ()
             (Vector(ty=_, len=Dynamic(Identifier(_))), Vector(ty=_, len=Fixed(_))) => {
                 eqs.push((ty2, ty1))
             }
@@ -233,7 +239,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
     match ty {
         UInt(width) => UInt(width)
         SInt(width) => SInt(width)
-        Nat => Nat
+        Nat(min_width~) => Nat(min_width~)
         Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty!(inner_ty, span~), len~)
         Instance(_) => ty
         Name(path~, params~) => {
@@ -271,9 +277,9 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 }
             }
         }
-        Natural(width~, ..) => match width {
+        Natural(value~, width~, ..) => match width {
             Some(width) => @parse.Type::uint(width)
-            None => Nat
+            None => Nat(min_width=@utils.significant_bits(value))
         }
         String(value=str,  span~, ..) => {
             for char in str {
@@ -330,8 +336,9 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let start_ty = self.check_expr!(hi, env)
             let end_ty = self.check_expr!(lo, env)
 
-            if start_ty != @parse.Nat || end_ty != @parse.Nat {
-                raise InvalidSlicingRange(reason="start and end must be natural numbers", span~)
+            match (start_ty, end_ty) {
+                (Nat(_), Nat(_)) => ()
+                _ => raise InvalidSlicingRange(reason="start and end must be natural numbers", span~)
             }
 
             let hi = eval_const_expr!(hi)
@@ -558,7 +565,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Replicate(expr~, count~, concat~, span~, ..) => {
             let count_ty = self.check_expr!(count, env)
-            let _ = unify!(count_ty, @parse.Nat, span~)
+            let _ = unify!(count_ty, @parse.Nat(min_width=0), span~)
             let expr_ty = self.check_expr!(expr, env)
             let count = eval_const_expr!(count)
             

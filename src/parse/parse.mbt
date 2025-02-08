@@ -712,7 +712,7 @@ fn parse_type(self: Parser) -> Type! {
         self.expect!(Rchevron, start_idx)
         UInt(width)
       } else {
-        Nat
+        Nat(min_width=0)
       }
     }
     SInt => {
