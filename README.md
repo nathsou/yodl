@@ -5,7 +5,7 @@ Yet anOther (hardware) Description Language
 <img src="res/gol.png" alt="Parallel Game Of Life" width="480px"/>
 
 ## Usage
-- Install [Moonbit](https://www.moonbitlang.com/) and [firtool](https://github.com/llvm/circt/releases) (tested with version 1.104.0)
+- Install [Moonbit](https://www.moonbitlang.com/) and [firtool](https://github.com/llvm/circt/releases) (tested with version 1.105.0)
 - ```$ git clone https://github.com/nathsou/yodl.git yodl```
 - ```$ cd yodl```
 - ```$ moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"```

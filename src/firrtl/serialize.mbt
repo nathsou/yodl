@@ -288,6 +288,11 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
 
       self._.indent -= 1
     }
+    Invalidate(reference) => {
+      self._.write_indent()
+      self._.write("invalidate ")
+      self.emit_reference(reference)
+    }
     Skip => {
       self._.write_indent()
       self._.write("skip")

@@ -182,6 +182,27 @@ fn default_value(ty: @firrtl.Type, span~: @parse.Span) -> Value! {
   }
 }
 
+fn default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
+  match ty {
+    Const(ty) => default_mask(ty, span~)
+    Clock | Reset | AsyncReset | UInt(_) | SInt(_) | UIntInferred | SIntInferred => {
+      Value::Expr(expr=Literal(UInt(width=1, radix=Some(2), value=1)), ty=UInt(1), span~)
+    }
+    Vec(elem_ty, len) => {
+      Vector(elems=@utils.fill(len, default_mask(elem_ty, span~)), ty~, span~)
+    }
+    Bundle(fields) => {
+      let values = Map::new(capacity=fields.length())
+
+      for field in fields {
+        values[field.id.inner()] = default_mask(field.ty, span~)
+      }
+
+      Struct(fields=values, ty~, span~)
+    }
+  }
+}
+
 fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let env = ElaboratorEnv::new()
 
@@ -226,16 +247,33 @@ fn next_id(self: Elaborator) -> Int {
   idx
 }
 
-fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference! {
-  match self.as_expr!(elaborator, scope~, binding~) {
+fn expr_as_ref(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference {
+  match expr {
     Reference(value) => value
-    expr => {
+    _ => {
       let prefix = binding.or("temp")
-      let rhs_id = id_of_str("\{prefix}_\{elaborator.next_id()}")
+      let rhs_id = id_of_str("\{prefix}_\{self.next_id()}")
       scope.add_stmt(Node(id=rhs_id, expr~))
       Id(rhs_id)
     }
   }
+}
+
+fn expr_as_id(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Id {
+  match expr {
+    Reference(Id(id)) => id
+    _ => {
+      let prefix = binding.or("temp")
+      let rhs_id = id_of_str("\{prefix}_\{self.next_id()}")
+      scope.add_stmt(Node(id=rhs_id, expr~))
+      rhs_id
+    }
+  }
+}
+
+fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference! {
+  let expr = self.as_expr!(elaborator, scope~, binding~)
+  elaborator.expr_as_ref(expr, scope~, binding~)
 }
 
 fn connect(self: Elaborator, lhs~: @firrtl.Reference, value~: Value, scope~: &ScopeLike) -> Unit! {
@@ -754,129 +792,81 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             }
           }
           { packages: [], member: "Memory" } => {
-            raise ElaborationError::Unsupported(message="Memory instances are not supported yet", span~)
-            // let width = get_param!("Width").as_int!()
-            // let depth = get_param!("Depth").as_int!()
-            // let read_ports = get_param!("ReadPorts").as_int!()
-            // let write_ports = get_param!("WritePorts").as_int!()
-            // let clamped_write_ports = @utils.max(write_ports, 1)
-            // let abits = @utils.clog2(depth + 1)
+            let data_type = lower_type!(get_param!("T").as_type!(), span~)
+            let depth = get_param!("Depth").as_int!()
+            let read_ports = get_param!("ReadPorts").as_int!()
+            let write_ports = get_param!("WritePorts").as_int!()
 
-            // let init = match params_map["Init"] {
-            //   Some(Natural(bits~, width=Some(init_width), ..)) => {
-            //     if init_width != depth * width {
-            //       raise InvalidMemoryInitValue(
-            //         span~,
-            //         expected_size=depth * width,
-            //         actual_size=Some(init_width),
-            //       )
-            //     }
+            let mem_id = id_of_str("mem_\{self.next_idx()}")
+            let readers = {
+              let readers = Array::new(capacity=read_ports)
 
-            //     bits
-            //   }
-            //   _ => raise InvalidMemoryInitValue(
-            //     span~,
-            //     expected_size=depth * width,
-            //     actual_size=None,
-            //   )
-            // }
+              for i in 0..<read_ports {
+                readers.push(id_of_str(mem_id.inner() + "_reader\{i}"))
+              }
 
-            // let uses_data_in = uses_port("data_in")
-            // let uses_write_enable = uses_port("write_enable")
-            // let uses_write_addr = uses_port("write_addr")
-            // let is_writeable = uses_data_in || uses_write_enable || uses_write_addr
+              readers
+            }
 
-            // if is_writeable && not(uses_data_in && uses_write_enable && uses_write_addr) {
-            //   let missing_connections = []
+            let writers = {
+              let writers = Array::new(capacity=write_ports)
 
-            //   if not(uses_data_in) {
-            //     missing_connections.push("data_in")
-            //   }
+              for i in 0..<write_ports {
+                writers.push(id_of_str(mem_id.inner() + "_writer\{i}"))
+              }
 
-            //   if not(uses_write_enable) {
-            //     missing_connections.push("write_enable")
-            //   }
+              writers
+            }
 
-            //   if not(uses_write_addr) {
-            //     missing_connections.push("write_addr")
-            //   }
+            let mem_stmt = @firrtl.Mem(
+              id=mem_id,
+              data_type~,
+              depth~,
+              read_latency=1,
+              write_latency=1,
+              read_under_write=Undefined,
+              readers~,
+              writers~,
+              readwriters=[],
+            )
 
-            //   raise MissingConnectionsOnWriteableMemoryInstance(missing_connections~, span~)
-            // }
+            scope.add_stmt(mem_stmt)
 
-            // let read_addrs = Array::new(capacity=read_ports)
+            let data_out = Array::new(capacity=read_ports)
 
-            // for i in 0..<read_ports {
-            //   read_addrs.push(select(
-            //     expr=get_port("read_addr"),
-            //     offset=(read_ports - i) * abits - 1,
-            //     width=abits,
-            //     span~,
-            //   ))
-            // }
+            {
+              let ports = self.expr_as_ref(get_port("read"), scope~)
 
-            // let write_addrs = Array::new(capacity=clamped_write_ports)
+              for i in 0..<read_ports {
+                let reader = @firrtl.Indexing(lhs=ports, index=Int(BigInt::from_int(i)))
+                let reader_id = @firrtl.FieldAccess(lhs=Id(mem_id), field=readers[i])
+                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("addr")), Reference(FieldAccess(lhs=reader, field=id_of_str("addr")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("en")), Reference(FieldAccess(lhs=reader, field=id_of_str("en")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("clk")), @firrtl.primop(AsClock, [Reference(FieldAccess(lhs=reader, field=id_of_str("clk")))])))
+                data_out.push(@firrtl.FieldAccess(lhs=reader_id, field=id_of_str("data")))
+              }
+            }
 
-            // for i in 0..<write_ports {
-            //   write_addrs.push(select(
-            //     expr=get_port("write_addr"),
-            //     offset=(write_ports - i) * abits - 1,
-            //     width=abits,
-            //     span~,
-            //   ))
-            // }
+            {
+              let ports = self.expr_as_ref(get_port("write"), scope~)
 
-            // let write_enables = if uses_write_enable {
-            //   let write_enables = Array::new(capacity=write_ports)
+              for i in 0..<write_ports {
+                let writer = @firrtl.Indexing(lhs=ports, index=Int(BigInt::from_int(i)))
+                let writer_id = @firrtl.FieldAccess(lhs=Id(mem_id), field=writers[i])
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("addr")), Reference(FieldAccess(lhs=writer, field=id_of_str("addr")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("en")), Reference(FieldAccess(lhs=writer, field=id_of_str("en")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("clk")), @firrtl.primop(AsClock, [Reference(FieldAccess(lhs=writer, field=id_of_str("clk")))])))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("data")), Reference(FieldAccess(lhs=writer, field=id_of_str("data")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("mask")), default_mask(data_type, span~).as_expr!(self, scope~)))
+              }
+            }
 
-            //   for i in 0..<write_ports {
-            //     write_enables.push(select(
-            //       expr=get_port("write_enable"),
-            //       offset=i,
-            //       width=1,
-            //       span~,
-            //     ))
-            //   }
+            let q = self.expr_as_ref(get_port("q"), scope~)
 
-            //   Some(write_enables)
-            // } else {
-            //   None
-            // }
-
-            // let data_ins = Array::new(capacity=clamped_write_ports)
-
-            // for i in 0..<clamped_write_ports {
-            //   data_ins.push(select(
-            //     expr=get_port("data_in"),
-            //     offset=(clamped_write_ports - i) * width - 1,
-            //     width=width,
-            //     span~,
-            //   ))
-            // }
-
-            // let data_out = Array::new(capacity=read_ports)
-          
-            // for i in 0..<read_ports {
-            //   data_out.push(select(
-            //     expr=get_port("data_out"),
-            //     offset=(read_ports - i) * width - 1,
-            //     width=width,
-            //     span~,
-            //   ))
-            // }
-
-            // @yir.Stmt::Memory(
-            //   width~,
-            //   depth~,
-            //   init=Some(init),
-            //   clk=get_port("clk"),
-            //   read_addr=read_addrs,
-            //   write_addr=write_addrs,
-            //   write_enable=write_enables,
-            //   data_in=data_ins,
-            //   data_out=data_out,
-            //   span~, 
-            // )
+            for i, data in data_out {
+              let index = @firrtl.Expr::Int(BigInt::from_int(i))
+              scope.add_stmt(Connect(@firrtl.Reference::Indexing(lhs=q, index~), Reference(data)))
+            }
           }
           _ => raise UnknownModuleMarkedAsInternal(path~, span~)
         }

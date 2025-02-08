@@ -85,14 +85,11 @@ let builtin_decls: Array[@parse.Decl] = {
     #|)
     #|
     #|@internal
-    #|declare module Memory<Width: uint, Depth: uint, ReadPorts: uint, WritePorts: uint, Init: uint>(
-    #|    clk: uint<1>,
-    #|    read_addr: uint<$clog2(Depth) * ReadPorts>,
-    #|    write_addr: uint<$clog2(Depth) * WritePorts>,
-    #|    write_enable?: uint<WritePorts>,
-    #|    data_in?: uint<Width * WritePorts>,
+    #|declare module Memory<T: type, Depth: uint, ReadPorts: uint, WritePorts: uint, Init: uint>(
+    #|    read: { clk: uint<1>, en: bool, addr: uint<$clog2(Depth)> }[ReadPorts],
+    #|    write: { clk: uint<1>, en: bool, addr: uint<$clog2(Depth)>, data: T }[WritePorts],
     #|) -> (
-    #|    data_out: uint<Width * ReadPorts>,
+    #|    q: T[ReadPorts],
     #|)
   
   let lexer = @parse.Lexer::new(source, file="builtin.yodl")

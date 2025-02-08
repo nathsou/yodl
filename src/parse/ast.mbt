@@ -75,10 +75,24 @@ pub impl Spanned for InstanceParam with span(self) -> Span {
   }
 }
 
-pub fn as_param(self: InstanceParam) -> Param! {
+pub fn InstanceParam::as_param(self: InstanceParam) -> Param! {
   match self {
     Expr(value~, ..) => IntParam(value.as_int!())
     Type(value=ty, ..) => TypeParam(ty)
+  }
+}
+
+pub fn InstanceParam::as_int(self: InstanceParam) -> Int! {
+  match self {
+    Expr(value~, ..) => value.as_int!()
+    _ => raise Failure("Expected an integer parameter")
+  }
+}
+
+pub fn InstanceParam::as_type(self: InstanceParam) -> Type! {
+  match self {
+    Type(value~, ..) => value
+    _ => raise Failure("Expected a type parameter")
   }
 }
 
