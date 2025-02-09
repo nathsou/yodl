@@ -1,0 +1,141 @@
+// https://github.com/BrunoLevy/learn-fpga/blob/master/FemtoRV/TUTORIALS/FROM_BLINKER_TO_RISCV/README.md
+
+package Inst {
+    const ALU_REG = 7'b0110011; // rd <- rs1 OP rs2
+    const ALU_IMM = 7'b0010011; // rd <- rs1 OP Iimm
+    const BRANCH = 7'b1100011; // if(rs1 OP rs2) PC<-PC+Bimm
+    const JALR = 7'b1100111; // rd <- PC+4; PC<-rs1+Iimm
+    const JAL = 7'b1101111; // rd <- PC+4; PC<-PC+Jimm
+    const AUIPC = 7'b0010111; // rd <- PC + Uimm
+    const LUI = 7'b0110111; // rd <- Uimm
+    const LOAD = 7'b0000011; // rd <- mem[rs1+Iimm]
+    const STORE = 7'b0100011; // mem[rs1+Simm] <- rs2
+    const SYSTEM = 7'b1110011; // special
+}
+
+package Stage {
+    const FETCH_INST = 2'd0;
+    const FETCH_REGS = 2'd1;
+    const EXECUTE = 2'd2;
+    const HALT = 2'd3;
+}
+
+module Top(
+    clk: uint<1>,
+    rst_n: bool,
+) -> (
+    io_led: uint<24>,
+) {
+    let rst = not rst_n;
+    let slow_clk_reg = Reg<uint<27>>(clk);
+    slow_clk_reg.d = slow_clk_reg.q + 1'1;
+    let slow_clk = slow_clk_reg.q[26];
+
+    let inst = Reg<uint<32>>(clk: slow_clk, rst);
+    let opcode = inst.q[6:0];
+    let is_alu_reg = opcode == Inst::ALU_REG;
+    let is_alu_imm = opcode == Inst::ALU_IMM;
+    let is_branch = opcode == Inst::BRANCH;
+    let is_jalr = opcode == Inst::JALR;
+    let is_jal = opcode == Inst::JAL;
+    let is_auipc = opcode == Inst::AUIPC;
+    let is_lui = opcode == Inst::LUI;
+    let is_load = opcode == Inst::LOAD;
+    let is_store = opcode == Inst::STORE;
+    let is_system = opcode == Inst::SYSTEM;
+
+    let imm_u = uint({inst.q[31:12], 12*{1'b0}});
+    let imm_i = uint({21*{inst.q[31]}, inst.q[30:20]});
+    let imm_s = uint({21*{inst.q[31]}, inst.q[30:25], inst.q[11:7]});
+    let imm_b = uint({20*{inst.q[31]}, inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0});
+    let imm_j = uint({12*{inst.q[31]}, inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0});
+
+    let rs1_addr = inst.q[19:15];
+    let rs2_addr = inst.q[24:20];
+    let rd_addr = inst.q[11:7];
+
+    let funct3 = inst.q[14:12];
+    let funct7 = inst.q[31:25];
+    
+    let stage = Reg<uint<2>>(clk: slow_clk, rst);
+    let pc = Reg<uint<32>>(clk: slow_clk, rst);
+    let rs1 = Reg<uint<32>>(clk: slow_clk, rst);
+    let rs2 = Reg<uint<32>>(clk: slow_clk, rst);
+    // let rd = Reg<uint<32>>(clk: slow_clk, rst);
+    let regs = 32*[Reg<uint<32>>(clk: slow_clk, rst)];
+    let rom = [
+        // add x0, x0, x0
+        32'b0000000_00000_00000_000_00000_0110011,
+        // add x1, x0, x0
+        32'b0000000_00000_00000_000_00001_0110011,
+        // addi x1, x1, 1
+        32'b000000000001_00001_000_00001_0010011,
+        // addi x1, x1, 1
+        32'b000000000001_00001_000_00001_0010011,
+        // addi x1, x1, 1
+        32'b000000000001_00001_000_00001_0010011,
+        // addi x1, x1, 1
+        32'b000000000001_00001_000_00001_0010011,
+        // ebreak
+        32'b000000000001_00000_000_00000_1110011,
+    ];
+
+    // TODO: make this automatic
+    for i in 0..<32 {
+        regs[i].d = regs[i].q;
+    }
+
+    let alu_in1 = rs1.q;
+    let alu_in2 = is_alu_reg ? rs2.q : imm_i;
+    let shift_amount = is_alu_reg ? rs2.q[4:0] : inst.q[24:20];
+
+    let alu_out = match funct3 {
+        3'b000 => ((funct7[5] and inst.q[5]) ? alu_in1 - alu_in2 : alu_in1 + alu_in2)[31:0],
+        3'b001 => (alu_in1 shl shift_amount)[31:0],
+        3'b010 => sint(alu_in1) <: sint(alu_in2) ? 32'd1 : 32'd0,
+        3'b011 => alu_in1 <: alu_in2 ? 32'd1 : 32'd0,
+        3'b100 => alu_in1 xor alu_in2,
+        3'b101 => funct7[5] ? uint(sint(alu_in1) shr shift_amount) : alu_in1 shr shift_amount,
+        3'b110 => alu_in1 or alu_in2,
+        3'b111 => alu_in1 and alu_in2,
+    };
+
+    let write_back_enable = stage.q == Stage::EXECUTE and (is_alu_reg or is_alu_imm);
+    let write_back_data = alu_out;
+
+    pc.d = pc.q;
+    inst.d = inst.q;
+    stage.d = stage.q;
+    rs1.d = rs1.q;
+    rs2.d = rs2.q;
+
+    if rst {
+        pc.d = 32'd0;
+        stage.d = Stage::FETCH_INST;
+        inst.d = 32'b0000000_00000_00000_000_00000_0110011; // NOP
+    } else {
+        if write_back_enable and rd_addr != 5'd0 {
+            regs[rd_addr].d = write_back_data;
+        }
+
+        match stage.q {
+            Stage::FETCH_INST => {
+                inst.d = rom[6 - pc.q];
+                stage.d = Stage::FETCH_REGS;
+            },
+            Stage::FETCH_REGS => {
+                rs1.d = regs[rs1_addr].q;
+                rs2.d = regs[rs2_addr].q;
+                stage.d = Stage::EXECUTE;
+            },
+            Stage::EXECUTE => {
+                if not is_system {
+                    pc.d = pc.q + 1'1;
+                    stage.d = Stage::FETCH_INST;
+                }
+            },
+        }
+    }
+
+    io_led = uint({slow_clk, opcode, {6'd0, stage.q}, pc.q[7:0]});
+}

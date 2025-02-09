@@ -59,6 +59,10 @@ pub fn Type::uint(width: Int) -> Type {
   UInt(Fixed(width))
 }
 
+pub fn Type::sint(width: Int) -> Type {
+  SInt(Fixed(width))
+}
+
 pub fn Type::empty() -> Type {
   UInt(Fixed(0))
 }
@@ -286,6 +290,7 @@ pub type! AstError {
   ConflictingInstanceParameterValue(name~: String, span~: Span)
   UnknownModuleParameter(name~: String, span~: Span)
   TypeParamInsteadOfExpr(span~: Span)
+  UnknownFunction(name~: String, span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -305,6 +310,7 @@ pub impl Show for AstError with output(self, logger) {
     TypeParamInsteadOfExpr(_) => {
       logger.write_string("Received a type parameter instead of an expression")
     }
+    UnknownFunction(name~, ..) => logger.write_string("Unknown function '\{name}'")
   }
 
   logger.write_string(self.show_context())
@@ -321,6 +327,7 @@ pub impl Spanned for AstError with span(self) -> Span {
     ConflictingInstanceParameterValue(span~, ..) => span
     UnknownModuleParameter(span~, ..) => span
     TypeParamInsteadOfExpr(span~) => span
+    UnknownFunction(span~, ..) => span
   }
 }
 
@@ -678,7 +685,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
       FunCall(name~, args~, span~, ty=_) => {
         let fun = match builtin_functions[name] {
           Some(fun) => fun
-          None => return Some(expr)
+          None => raise UnknownFunction(name~, span~)
         }
 
         let (min_arity, max_arity) = fun.arity.as_range()
@@ -753,6 +760,14 @@ let builtin_functions: Map[String, BuiltinFunction] = {
 
       None
     }
+  },
+  "uint": {
+    arity: Fixed(1),
+    apply: fn(_, _) { None }
+  },
+  "sint": {
+    arity: Fixed(1),
+    apply: fn(_, _) { None }
   },
 }
 
@@ -874,31 +889,6 @@ pub fn signature(self: ModuleDecl) -> ModuleSignature {
     attributes: self.attributes,
     ports: self.ports,
     span: self.span,
-  }
-}
-
-pub fn output_width(self: BinaryOp, wa: Int, wb: Int) -> Int {
-  match self {
-    Add => @utils.max(wa, wb) + 1
-    Sub => @utils.max(wa, wb)
-    Mul => wa + wb
-    Div => wa
-    Mod => wb
-    Equ => 1
-    Neq => 1
-    Gtr => 1
-    Lss => 1
-    Geq => 1
-    Leq => 1
-    Shl => wa + @utils.pow2(wb)
-    Shr => wa
-    And => @utils.max(wa, wb)
-    Or => @utils.max(wa, wb)
-    Xor => @utils.max(wa, wb)
-    Nand => @utils.max(wa, wb)
-    Nor => @utils.max(wa, wb)
-    Xnor => @utils.max(wa, wb)
-    Ternary => @utils.max(wa, wb)
   }
 }
 

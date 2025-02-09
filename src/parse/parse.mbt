@@ -283,6 +283,7 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     DotDot => self.parse_spread_expr!()
     Dollar => { self.advance(); self.parse_function_call_expr!(None) }
     UInt => { self.advance(); self.parse_function_call_expr!(Some("uint")) }
+    SInt => { self.advance(); self.parse_function_call_expr!(Some("sint")) }
     Lchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '<', did you mean '<:' (less than operator) instead?")
     Rchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '>', did you mean '>:' (greater than operator) instead?")
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))

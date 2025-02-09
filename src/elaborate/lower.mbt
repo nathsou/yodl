@@ -369,16 +369,16 @@ fn concat(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr! {
     go!(list.tail(), exprs[0])
 }
 
-fn flat_uint(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Span) -> @firrtl.Expr! {
+fn flatten(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Span) -> @firrtl.Expr! {
   match ty {
-    Const(inner_ty) => flat_uint!(reference, inner_ty, span~)
+    Const(inner_ty) => flatten!(reference, inner_ty, span~)
     Vec(elem_ty, len) => {
       let refs = Array::new(capacity=len)
 
       for i in 0..<len {
         let index = @firrtl.Expr::Int(BigInt::from_int(i))
         let r = @firrtl.Reference::Indexing(lhs=reference, index=index)
-        refs.push(flat_uint!(r, elem_ty, span~))
+        refs.push(flatten!(r, elem_ty, span~))
       }
 
       concat!(refs)
@@ -388,12 +388,13 @@ fn flat_uint(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Span)
 
       for field in fields {
         let r = @firrtl.Reference::FieldAccess(lhs=reference, field=field.id)
-        refs.push(flat_uint!(r, field.ty, span~))
+        refs.push(flatten!(r, field.ty, span~))
       }
 
       concat!(refs)
     }
     UInt(_) => Reference(reference)
+    SInt(_) => Reference(reference)
     _ => raise ElaborationError::Unsupported(message="Cannot flatten value of type \{ty}", span~)
   }
 }
@@ -785,8 +786,13 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             let d_ref = Value::Expr(expr=get_port("d"), ty=reg_ty, span~).as_ref!(self, scope~)
 
             if uses_port("q") {
-              let q_ref = Value::Expr(expr=get_port("q"), ty=reg_ty, span~).as_ref!(self, scope~)
-              scope.add_stmt(Connect(q_ref, Reference(Id(reg_id))))
+              match connections["q"] {
+                Some(expr) => {
+                  let q_ref = Value::Expr(expr~, ty=reg_ty, span~).as_ref!(self, scope~)
+                  scope.add_stmt(Connect(q_ref, Reference(Id(reg_id))))
+                }
+                None => ()
+              }
 
               if accessed_ports.contains("q") {
                 scope.add_stmt(Connect(FieldAccess(lhs=Id(inst_name), field=id_of_str("q")), Reference(Id(reg_id))))
@@ -805,6 +811,14 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
               }
 
               scope.add_stmt(en_stmt)
+
+              // if uses_port("q") {
+              //   // connect d to q by default
+              //   scope.add_stmt(Connect(
+              //     FieldAccess(lhs=Id(inst_name), field=id_of_str("d")),
+              //     Reference(FieldAccess(lhs=Id(inst_name), field=id_of_str("q")))
+              //   ))
+              // }
             }
           }
           { packages: [], member: "Memory" } => {
@@ -1016,11 +1030,19 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       self.lower_expr!(Vector(elems=chars, span~, ty~), scope~, env~)
     }
-    FunCall(name="uint", args=[arg], ty~, span~, ..) => {
+    FunCall(name="uint" | "sint" as name, args=[arg], ty~, span~, ..) => {
       let arg = self.lower_expr!(arg, scope~, env~)
       let arg_ref = arg.as_ref!(self, scope~)
-      let width = unwrap_type!(ty, span~).width!(span)
-      Expr(expr=flat_uint!(arg_ref, arg.ty(), span~), ty=UInt(width), span~)
+      let ty = unwrap_type!(ty, span~)
+      let fir_ty = lower_type!(ty, span~)
+
+      match (name, arg.ty()) {
+        (_, Vec(_) | Bundle(_)) => Expr(expr=flatten!(arg_ref, arg.ty(), span~), ty=fir_ty, span~)
+        ("uint", UInt(_) | Clock | AsyncReset | Reset) | ("sint", SInt(_)) => arg
+        ("uint", SInt(_)) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
+        ("sint", UInt(_)) => Expr(expr=@firrtl.primop(AsSInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
+        _ => raise ElaborationError::Unsupported(message="Cannot convert type '\{arg.ty()}' to UInt or SInt", span~)
+      }
     }
     FunCall(name="$readmemb", args=[path, mem], span~, ..) => {
       let path = path.expect_string!()

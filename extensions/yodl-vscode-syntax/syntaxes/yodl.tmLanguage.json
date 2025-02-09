@@ -12,7 +12,7 @@
         },
         {
             "name": "storage.type.yodl",
-            "match": "\\b(uint|bool|type)\\b"
+            "match": "\\b(uint|sint|bool|type)\\b"
         },
         {
             "name": "constant.numeric.yodl",

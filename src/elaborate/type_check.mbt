@@ -32,6 +32,7 @@ type! TypeCheckerError {
     InvalidStructField(name~: String, span~: @parse.Span)
     InvalidUnaryOpOperand(op~: @parse.UnaryOp, ty~: @parse.Type, span~: @parse.Span)
     InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
+    InvalidBinaryOpOperands(op~: @parse.BinaryOp, lhs_ty~: @parse.Type, rhs_ty~: @parse.Type, span~: @parse.Span)
     StringContainsNonAsciiChar(char~: Char, span~: @parse.Span)
     SpreadOutsideVector(span~: @parse.Span)
     ExpectedLengthGotType(expected~: Int, got~: @parse.Type, span~: @parse.Span)
@@ -116,6 +117,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidMemoryArgumentInReadMemCall(ty~, ..) => {
             logger.write_string("Invalid memory argument of type '\{ty}' in readmem call")
         }
+        InvalidBinaryOpOperands(op~, lhs_ty~, rhs_ty~, ..) => {
+            logger.write_string("Invalid operands '\{lhs_ty}' and '\{rhs_ty}' for binary operator '\{op}'")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -148,6 +152,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         ExpectedLengthGotType(span~, ..) => span
         InvalidParameterInstantiation(span~, ..) => span
         InvalidMemoryArgumentInReadMemCall(span~, ..) => span
+        InvalidBinaryOpOperands(span~, ..) => span
     }
 }
 
@@ -182,12 +187,12 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
 
                 eqs.push((ty1_inner, ty2_inner))
             }
-            (UInt(Fixed(width)), Nat(min_width~)) | (Nat(min_width~), UInt(Fixed(width))) => {
+            (UInt(Fixed(width)) | SInt(Fixed(width)), Nat(min_width~)) | (Nat(min_width~), UInt(Fixed(width)) | SInt(Fixed(width))) => {
                 if width < min_width {
                     raise IncompatibleTypes(ty1~, ty2~, span~)
                 }
             }
-            (UInt(_), Nat(_)) | (Nat(_), UInt(_)) => ()
+            (UInt(_) | SInt(_), Nat(_)) | (Nat(_), UInt(_) | SInt(_)) => ()
             (Nat(_), Nat(_)) => ()
             (Vector(ty=_, len=Dynamic(Identifier(_))), Vector(ty=_, len=Fixed(_))) => {
                 eqs.push((ty2, ty1))
@@ -314,12 +319,60 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 raise InvalidBinaryOpOperand(op~, ty=lhs_ty, span~)   
             }
 
-            let wy = match expected_ty {
-                Some(expected_ty) => expected_ty.width!(span)
-                None => op.output_width(wa, wb)
-            }
+            match expected_ty {
+                Some(ty) => ty
+                _ => {
+                    let shift_amount = match op {
+                        Shl | Shr => match rhs {
+                            Natural(value~, ..) => Some(value.to_int())
+                            _ => None
+                        }
+                        _ => None
+                    }
 
-            @parse.Type::uint(wy)
+                    let lhs_ty = match lhs_ty {
+                        Nat(min_width~) => @parse.Type::UInt(Fixed(min_width))
+                        _ => lhs_ty
+                    }
+
+                    let rhs_ty = match rhs_ty {
+                        Nat(min_width~) => @parse.Type::UInt(Fixed(min_width))
+                        _ => rhs_ty
+                    }
+
+                    match (op, lhs_ty, rhs_ty) {
+                        (Add | Sub, UInt(_), UInt(_)) => @parse.Type::uint(@utils.max(wa, wb) + 1)
+                        (Add | Sub, SInt(_), SInt(_)) => @parse.Type::sint(@utils.max(wa, wb) + 1)
+                        (Mul, UInt(_), UInt(_)) => @parse.Type::uint(wa + wb)
+                        (Mul, SInt(_), SInt(_)) => @parse.Type::sint(wa + wb)
+                        (Div, UInt(_), UInt(_)) => @parse.Type::uint(wa)
+                        (Div, SInt(_), SInt(_)) => @parse.Type::sint(wa + 1)
+                        (Mod, UInt(_), UInt(_)) => @parse.Type::uint(@utils.min(wa, wb))
+                        (Mod, SInt(_), SInt(_)) => @parse.Type::sint(@utils.min(wa, wb))
+                        (Equ | Neq | Gtr | Lss | Geq | Leq, UInt(_), UInt(_)) => @parse.Type::uint(1)
+                        (Equ | Neq | Gtr | Lss | Geq | Leq, SInt(_), SInt(_)) => @parse.Type::uint(1)
+                        (Shl, UInt(_), UInt(_)) => match shift_amount {
+                            Some(amount) => @parse.Type::uint(wa + amount)
+                            None => @parse.Type::uint(wa + @utils.pow2(wb) - 1)
+                        }
+                        (Shl, SInt(_), UInt(_)) => match shift_amount {
+                            Some(amount) => @parse.Type::sint(wa + amount)
+                            None => @parse.Type::sint(wa + @utils.pow2(wb) - 1)
+                        }
+                        (Shr, UInt(_), UInt(_)) => match shift_amount {
+                            Some(amount) => @parse.Type::uint(@utils.max(wa - amount, 0))
+                            None => @parse.Type::uint(wa)
+                        }
+                        (Shr, SInt(_), UInt(_)) => match shift_amount {
+                            Some(amount) => @parse.Type::sint(@utils.max(wa - amount, 1))
+                            None => @parse.Type::sint(wa)
+                        }
+                        (And | Or | Xor | Nand | Nor | Xnor | Ternary, UInt(_), UInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
+                        (And | Or | Xor | Nand | Nor | Xnor | Ternary, SInt(_), SInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
+                        _ => raise InvalidBinaryOpOperands(op~, lhs_ty~, rhs_ty~, span~)
+                    }
+                }
+            }
         }
         Indexing(expr~, index~, span~, ..) => {
             let ty = self.check_expr!(expr, env)
@@ -447,6 +500,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                             }
                             None => raise TypeCheckerError::UnknownModulePort(module_path=path, port_name=port_name, span~)
                         }
+                    }
+
+                    if (path.member == "Reg" || path.member == "RegAsyncReset") && path.packages.is_empty() {
+                        accessed_ports.add("d")
+                        accessed_ports.add("q")
                     }
 
                     @parse.Type::Instance(sig~, params=params_env, accessed_ports~)
@@ -588,6 +646,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let arg_ty = self.check_expr!(arg, env)
             let width = arg_ty.width!(arg.span())
             @parse.Type::uint(width)
+        }
+        FunCall(name="sint", args=[arg], ..) => {
+            let arg_ty = self.check_expr!(arg, env)
+            let width = arg_ty.width!(arg.span())
+            @parse.Type::sint(width)
         }
         FunCall(name="$readmemb", args=[path, mem], span~, ..) => {
             let _ = self.check_expr!(path, env)
