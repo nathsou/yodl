@@ -27,9 +27,9 @@ module Top(
     io_led: uint<24>,
 ) {
     let rst = not rst_n;
-    let slow_clk_reg = Reg<uint<27>>(clk);
+    let slow_clk_reg = Reg<uint<26>>(clk);
     slow_clk_reg.d = slow_clk_reg.q + 1'1;
-    let slow_clk = slow_clk_reg.q[26];
+    let slow_clk = slow_clk_reg.q[25];
 
     let inst = Reg<uint<32>>(clk: slow_clk, rst);
     let opcode = inst.q[6:0];
@@ -120,7 +120,7 @@ module Top(
 
         match stage.q {
             Stage::FETCH_INST => {
-                inst.d = rom[6 - pc.q];
+                inst.d = rom[pc.q];
                 stage.d = Stage::FETCH_REGS;
             },
             Stage::FETCH_REGS => {
@@ -137,5 +137,5 @@ module Top(
         }
     }
 
-    io_led = uint({slow_clk, opcode, {6'd0, stage.q}, pc.q[7:0]});
+    io_led = uint({slow_clk, opcode, {6'd0, stage.q}, regs[1].q[7:0]});
 }

@@ -82,7 +82,7 @@ module GridInit<Rows: uint, Cols: uint>(
     let counter = Reg<uint<$clog2(PatternLen)>>(clk, rst);
     let row = Reg<uint<$clog2(Rows)>>(clk, rst);
     let col = Reg<uint<$clog2(Cols)>>(clk, rst);
-    let state = pattern[Rows - 1 - row.q][Cols - 1 - col.q];
+    let state = pattern[row.q][col.q];
 
     col.d = col.q;
     row.d = row.q;

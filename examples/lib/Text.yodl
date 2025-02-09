@@ -111,8 +111,7 @@ module CharAt<Length: uint, IndexWidth: uint>(
     is_out_of_bounds: bool,
 ) {
     is_out_of_bounds = index >= Length;
-    let shifted = uint(str) shr ((Length - 1 - index) * 8);
-    char = is_out_of_bounds ? " "[0] : shifted[7:0];
+    char = is_out_of_bounds ? " "[0] : str[index];
 }
 
 const Rows = VGA::V_ACTIVE / 8;
@@ -163,7 +162,7 @@ module TextDynamicPosition<Length: uint>(
 module Hex<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
     const Len = $cdiv(Bits, 4);
     for i in 0..<Len {
-        chars[i] = (match n[(i + 1) * 4 - 1 -: 4] {
+        chars[Len - 1 - i] = (match n[(i + 1) * 4 - 1 -: 4] {
             4'h0 => "0",
             4'h1 => "1",
             4'h2 => "2",
@@ -187,7 +186,7 @@ module Hex<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
 module Dec<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
     const Len = $cdiv(Bits, 4);
     for i in 0..<Len {
-        chars[i] = (match n[(i + 1) * 4 - 1 -: 4] {
+        chars[Len - 1 - i] = (match n[(i + 1) * 4 - 1 -: 4] {
             4'h0 => "0",
             4'h1 => "1",
             4'h2 => "2",
@@ -204,6 +203,6 @@ module Dec<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
 
 module Bin<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[Bits]) {
     for i in 0..<Bits {
-        chars[i] = (n[i] ? "1" : "0")[0];
+        chars[Bits - 1 - i] = (n[i] ? "1" : "0")[0];
     }
 }

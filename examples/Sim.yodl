@@ -13,11 +13,11 @@ module TopSim(
     b: uint<3>,
 ) {
    let vga = VGA::SyncPulses(
-    pixel_clk: clk,
-    is_active_area,
-    col: screen_x,
-    row: screen_y,
-);
+        pixel_clk: clk,
+        is_active_area,
+        col: screen_x,
+        row: screen_y,
+    );
 
     let life = Life::Life(
         clk,

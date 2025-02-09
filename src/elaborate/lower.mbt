@@ -320,7 +320,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       let id = id_of_str("vec_\{elaborator.next_id()}")
       scope.add_stmt(Wire(id~, ty~))
       for i, elem in elems {
-        let index = @firrtl.Expr::Int(BigInt::from_int(elems.length() -  i - 1))
+        let index = @firrtl.Expr::Int(BigInt::from_int(i))
         elaborator.connect!(lhs=Indexing(lhs=Id(id), index~), value=elem, scope~)
       }
 
@@ -369,16 +369,17 @@ fn concat(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr! {
     go!(list.tail(), exprs[0])
 }
 
-fn flatten(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Span) -> @firrtl.Expr! {
+fn flatten_int(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Span) -> @firrtl.Expr! {
   match ty {
-    Const(inner_ty) => flatten!(reference, inner_ty, span~)
+    Const(inner_ty) => flatten_int!(reference, inner_ty, span~)
     Vec(elem_ty, len) => {
       let refs = Array::new(capacity=len)
 
       for i in 0..<len {
-        let index = @firrtl.Expr::Int(BigInt::from_int(i))
-        let r = @firrtl.Reference::Indexing(lhs=reference, index=index)
-        refs.push(flatten!(r, elem_ty, span~))
+        // reverse the bits so that vec[0] becomes the most significant bit in a uint or sint
+        let index = @firrtl.Expr::Int(BigInt::from_int(len - i - 1))
+        let r = @firrtl.Reference::Indexing(lhs=reference, index~)
+        refs.push(flatten_int!(r, elem_ty, span~))
       }
 
       concat!(refs)
@@ -388,7 +389,7 @@ fn flatten(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Span) -
 
       for field in fields {
         let r = @firrtl.Reference::FieldAccess(lhs=reference, field=field.id)
-        refs.push(flatten!(r, field.ty, span~))
+        refs.push(flatten_int!(r, field.ty, span~))
       }
 
       concat!(refs)
@@ -511,7 +512,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             match val.ty() {
               Vec(elem_ty, len) => {
                 for i in 0..<len {
-                  let index = @firrtl.Expr::Int(BigInt::from_int(len - i - 1))
+                  let index = @firrtl.Expr::Int(BigInt::from_int(i))
                   values.push(Expr(expr=Reference(Indexing(lhs=reference, index~)), ty=elem_ty, span=elem.span()))
                 }
               }
@@ -1037,7 +1038,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let fir_ty = lower_type!(ty, span~)
 
       match (name, arg.ty()) {
-        (_, Vec(_) | Bundle(_)) => Expr(expr=flatten!(arg_ref, arg.ty(), span~), ty=fir_ty, span~)
+        (_, Vec(_)) => Expr(expr=flatten_int!(arg_ref, arg.ty(), span~), ty=fir_ty, span~)
         ("uint", UInt(_) | Clock | AsyncReset | Reset) | ("sint", SInt(_)) => arg
         ("uint", SInt(_)) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
         ("sint", UInt(_)) => Expr(expr=@firrtl.primop(AsSInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
