@@ -54,6 +54,7 @@ pub(all) enum Stmt {
   Connect(Reference, Expr)
   When(When)
   Invalidate(Reference)
+  Command(Command)
   Skip
 }
 
@@ -155,6 +156,10 @@ pub fn primop(op: PrimOp, args: Array[Expr]) -> Expr {
   }
 
   PrimOp(op~, args~)
+}
+
+pub(all) enum Command {
+  Printf(clk~: Expr, cond~: Expr, fmt~: String, args~: Array[Expr])
 }
 
 // FIRRTL spec 4.1.0, section 14.2:

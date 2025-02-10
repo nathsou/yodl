@@ -67,6 +67,24 @@ pub fn Type::empty() -> Type {
   UInt(Fixed(0))
 }
 
+pub fn Type::is_ground(self: Type) -> Bool {
+  match self {
+    Nat(_) | UInt(_) | SInt(_) => true
+    _ => false
+  }
+}
+
+pub fn Type::is_string(self: Type) -> Bool {
+  match self {
+    String(_) => true
+    Vector(ty~, ..) => match ty {
+      UInt(Fixed(BITS_PER_CHAR)) => true
+      _ => false
+    }
+    _ => false
+  }
+}
+
 pub(all) enum InstanceParam {
   Expr(name~: String?, value~: Expr)
   Type(name~: String?, value~: Type, span~: Span)
@@ -752,14 +770,18 @@ let builtin_functions: Map[String, BuiltinFunction] = {
   },
   "$readmemb": {
     arity: Range(min=2, max=2),
-    apply: fn(args, span) {
+    apply: fn(args, _) {
       match args {
         [path, _mem] => { let _ = path.expect_string!() }
-        _ => raise InvalidFunCallArity(name="$readmemb", expected=Range(min=2, max=2), actual=args.length(), span~)
+        _ => ()
       }
 
       None
     }
+  },
+  "$printf": {
+    arity: Range(min=3, max=@int.max_value),
+    apply: fn(_, _) { None }
   },
   "uint": {
     arity: Fixed(1),

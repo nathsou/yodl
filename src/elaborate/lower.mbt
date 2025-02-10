@@ -1069,6 +1069,19 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       self.annotations.push(annotation.to_json())
       Empty(span~)
     }
+    FunCall(name="$printf", args=[clk, cond, fmt, ..args], span~, ..) => {
+      let clk = self.lower_expr!(clk, scope~, env~).as_expr!(self, scope~)
+      let cond = self.lower_expr!(cond, scope~, env~).as_expr!(self, scope~)
+      let fmt = fmt.expect_string!()
+      let new_args = Array::new(capacity=args.length())
+
+      for arg in args {
+        new_args.push(self.lower_expr!(arg, scope~, env~).as_expr!(self, scope~))
+      }
+ 
+      scope.add_stmt(Command(Printf(clk=@firrtl.primop(AsClock, [clk]), cond~, fmt~, args=new_args)))
+      Empty(span~)
+    }
     Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())
     }

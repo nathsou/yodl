@@ -305,6 +305,30 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
       self._.write_indent()
       self._.write("skip")
     }
+    Command(command) => {
+      match command {
+        Printf(clk~, cond~, fmt~, args~) => {
+          self._.write_indent()
+          self._.write("printf(")
+          self.emit_expr(clk)
+          self._.write(", ")
+          self.emit_expr(cond)
+          self._.write(", \"")
+          self._.write(fmt)
+          self._.write("\", ")
+          
+          for idx, arg in args {
+            self.emit_expr(arg)
+
+            if idx < args.length() - 1 {
+              self._.write(", ")
+            }
+          }
+
+          self._.write(")\n")
+        }
+      }
+    }
   }
 }
 
