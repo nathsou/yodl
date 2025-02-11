@@ -64,10 +64,6 @@ fn Parser::consumes(self: Parser, token: TokenType) -> Bool {
   }
 }
 
-fn consumeIfPresent(self: Parser, token: TokenType) -> Unit {
-    let _ = self.consumes(token)
-}
-
 fn Parser::parse_identifier(self: Parser) -> String! {
   let token = self.peek()
   let start_idx = self.index
@@ -237,11 +233,16 @@ fn parse_if_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   self.expect!(If, self.index)
   let cond = self.parse_expr!()
-  let then = self.parse_expr!()
-  let else_ = if self.consumes(Else) {
-    Some(self.parse_expr!())
-  } else {
-    None
+  let then = stmt_list_to_block(self.parse_block!(), span=self.span(start_idx))
+  let mut else_ = None
+
+  while self.consumes(Else) {
+    if self.matches(If) {
+      else_ = Some(self.parse_if_expr!())
+    } else {
+      else_ = Some(stmt_list_to_block(self.parse_block!(), span=self.span(start_idx)))
+      break
+    }
   }
 
   If(cond~, then~, else_~, span=self.span(start_idx), ty={ val: None })
@@ -386,6 +387,18 @@ fn parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) -> Expr! {
   Vector(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
+fn stmt_list_to_block(body: Array[Stmt], span~: Span) -> Expr {
+  let last = match body.last() {
+      Some(Stmt::Expr(expr~, span=_)) => {
+        let _ = body.unsafe_pop()
+        Some(expr)
+      }
+      _ => None
+    }
+
+  Block(body~, last~, span~, ty={ val: None })
+}
+
 fn parse_struct_or_concat_or_block_expr(self: Parser) -> Expr! {
   let start_idx = self.index
   self.expect!(Lbrace, start_idx)
@@ -408,16 +421,7 @@ fn parse_struct_or_concat_or_block_expr(self: Parser) -> Expr! {
       }
 
       self.expect!(Rbrace, start_idx)
-
-      let last = match body.last() {
-        Some(Stmt::Expr(expr~, span=_)) => {
-          let _ = body.unsafe_pop()
-          Some(expr)
-        }
-        _ => None
-      }
-
-      Block(body~, last~, span=self.span(start_idx), ty={ val: None })
+      stmt_list_to_block(body, span=self.span(start_idx))
     }
     Err(_) => {
       // if we failed to parse a block, backtrack and try to parse a struct or concat expression

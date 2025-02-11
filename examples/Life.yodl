@@ -17,10 +17,12 @@ module Cell(
 
     alive.d = if write_enable {
         write_state; // direct write during initialization
-    } else match count {
-        3'd2 => alive.q, // stable
-        3'd3 => 1'b1, // reproduction
-        _ => 1'b0, // overpopulation or underpopulation
+    } else {
+        match count {
+            3'd2 => alive.q, // stable
+            3'd3 => 1'b1, // reproduction
+            _ => 1'b0, // overpopulation or underpopulation
+        }
     };
 }
 
