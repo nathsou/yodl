@@ -15,23 +15,42 @@ package Inst {
 
 package Stage {
     const FETCH_INST = 2'd0;
-    const FETCH_REGS = 2'd1;
-    const EXECUTE = 2'd2;
-    const HALT = 2'd3;
+    const WAIT_INST = 2'd1;
+    const FETCH_REGS = 2'd2;
+    const EXECUTE = 2'd3;
 }
 
-module Top(
+module RAM(
     clk: uint<1>,
-    rst_n: bool,
+    read_addr: uint<32>,
+    read_enable: bool,
 ) -> (
-    io_led: uint<24>,
+    q: uint<32>,
 ) {
-    let rst = not rst_n;
-    let slow_clk_reg = Reg<uint<26>>(clk);
-    slow_clk_reg.d = slow_clk_reg.q + 1'1;
-    let slow_clk = slow_clk_reg.q[25];
+    let mem = Memory<
+        T: uint<32>,
+        Depth: 256,
+        ReadPorts: 1,
+        WritePorts: 0,
+    >(
+        read: [{ clk: clk, en: read_enable, addr: read_addr[7:0] }],
+    );
 
-    let inst = Reg<uint<32>>(clk: slow_clk, rst);
+    $readmemb("/Volumes/S/code/moonbit/yodl/sim/riscv/riscv_prog.mem", mem);
+
+    q = mem.q[0];
+}
+
+module CPU(
+    clk: uint<1>,
+    rst: bool,
+    mem_data: uint<32>,
+) -> (
+    mem_addr: uint<32>,
+    mem_read_enable: bool,
+    status: uint<32>,
+) {
+    let inst = Reg<uint<32>>(clk, rst);
     let opcode = inst.q[6:0];
     let is_alu_reg = opcode == Inst::ALU_REG;
     let is_alu_imm = opcode == Inst::ALU_IMM;
@@ -57,28 +76,11 @@ module Top(
     let funct3 = inst.q[14:12];
     let funct7 = inst.q[31:25];
     
-    let stage = Reg<uint<2>>(clk: slow_clk, rst);
-    let pc = Reg<uint<32>>(clk: slow_clk, rst);
-    let rs1 = Reg<uint<32>>(clk: slow_clk, rst);
-    let rs2 = Reg<uint<32>>(clk: slow_clk, rst);
-    // let rd = Reg<uint<32>>(clk: slow_clk, rst);
-    let regs = 32*[Reg<uint<32>>(clk: slow_clk, rst)];
-    let rom = [
-        // add x0, x0, x0
-        32'b0000000_00000_00000_000_00000_0110011,
-        // add x1, x0, x0
-        32'b0000000_00000_00000_000_00001_0110011,
-        // addi x1, x1, 1
-        32'b000000000001_00001_000_00001_0010011,
-        // addi x1, x1, 1
-        32'b000000000001_00001_000_00001_0010011,
-        // addi x1, x1, 1
-        32'b000000000001_00001_000_00001_0010011,
-        // addi x1, x1, 1
-        32'b000000000001_00001_000_00001_0010011,
-        // ebreak
-        32'b000000000001_00000_000_00000_1110011,
-    ];
+    let stage = Reg<uint<2>>(clk, rst);
+    let pc = Reg<uint<32>>(clk, rst);
+    let rs1 = Reg<uint<32>>(clk, rst);
+    let rs2 = Reg<uint<32>>(clk, rst);
+    let regs = 32*[Reg<uint<32>>(clk, rst)];
 
     // TODO: make this automatic
     for i in 0..<32 {
@@ -100,8 +102,25 @@ module Top(
         3'b111 => alu_in1 and alu_in2,
     };
 
-    let write_back_enable = stage.q == Stage::EXECUTE and (is_alu_reg or is_alu_imm);
-    let write_back_data = alu_out;
+    let is_jump_inst = is_jal or is_jalr;
+    let next_addr: uint<32> = pc.q + 4;
+    let write_back_enable = stage.q == Stage::EXECUTE and (is_alu_reg or is_alu_imm or is_jump_inst or is_lui or is_auipc);
+    let write_back_data = is_jump_inst ? next_addr : is_lui ? imm_u : is_auipc ? (pc.q + imm_u)[31:0] : alu_out;
+
+    let take_branch = match funct3 {
+        3'b000 => rs1.q == rs2.q,
+        3'b001 => rs1.q != rs2.q,
+        3'b100 => sint(rs1.q) <: sint(rs2.q),
+        3'b101 => sint(rs1.q) >= sint(rs2.q),
+        3'b110 => rs1.q <: rs2.q,
+        3'b111 => rs1.q >= rs2.q,
+        _ => false,
+    };
+
+    let next_pc = is_branch and take_branch ? (pc.q + imm_b)[31:0] :
+                  is_jal ? (pc.q + imm_j)[31:0] :
+                  is_jalr ? (rs1.q + imm_i)[31:0] :
+                  next_addr;
 
     pc.d = pc.q;
     inst.d = inst.q;
@@ -112,7 +131,6 @@ module Top(
     if rst {
         pc.d = 32'd0;
         stage.d = Stage::FETCH_INST;
-        inst.d = 32'b0000000_00000_00000_000_00000_0110011; // NOP
     } else {
         if write_back_enable and rd_addr != 5'd0 {
             regs[rd_addr].d = write_back_data;
@@ -120,7 +138,11 @@ module Top(
 
         match stage.q {
             Stage::FETCH_INST => {
-                inst.d = rom[pc.q];
+                stage.d = Stage::WAIT_INST;
+            },
+            Stage::WAIT_INST => {
+                inst.d = mem_data;
+                $printf(clk, true, "inst: %b, pc: %h\n", mem_data, pc.q);
                 stage.d = Stage::FETCH_REGS;
             },
             Stage::FETCH_REGS => {
@@ -130,12 +152,35 @@ module Top(
             },
             Stage::EXECUTE => {
                 if not is_system {
-                    pc.d = pc.q + 1'1;
+                    pc.d = next_pc;
                     stage.d = Stage::FETCH_INST;
+                } else {
+                    $stop(clk, true, 0);
                 }
             },
         }
     }
 
-    io_led = uint({slow_clk, opcode, {6'd0, stage.q}, regs[1].q[7:0]});
+    mem_addr = uint({2'b0, pc.q[31:2]}); // divide by 4 (byte addr -> word addr)
+    mem_read_enable = stage.q == Stage::FETCH_INST;
+    status = uint({8'd0, clk, opcode, 6'd0, stage.q, regs[1].q[7:0]});
+}
+
+module Top(
+    clk: uint<1>,
+    rst_n: bool,
+) -> (
+    io_led: uint<24>,
+) {
+    let rst = not rst_n;
+    let ram = RAM(clk);
+    let cpu = CPU(
+        clk,
+        rst,
+        mem_addr: ram.read_addr,
+        mem_data: ram.q,
+        mem_read_enable: ram.read_enable,
+    );
+
+    io_led = cpu.status[23:0];
 }

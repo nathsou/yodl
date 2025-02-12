@@ -160,6 +160,7 @@ pub fn primop(op: PrimOp, args: Array[Expr]) -> Expr {
 
 pub(all) enum Command {
   Printf(clk~: Expr, cond~: Expr, fmt~: String, args~: Array[Expr])
+  Stop(clk~: Expr, cond~: Expr, code~: Int)
 }
 
 // FIRRTL spec 4.1.0, section 14.2:

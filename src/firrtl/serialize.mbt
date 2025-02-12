@@ -314,7 +314,7 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
           self._.write(", ")
           self.emit_expr(cond)
           self._.write(", \"")
-          self._.write(fmt)
+          self._.write(show_format_string(fmt))
           self._.write("\", ")
           
           for idx, arg in args {
@@ -327,9 +327,36 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
 
           self._.write(")\n")
         }
+        Stop(clk~, cond~, code~) => {
+          self._.write_indent()
+          self._.write("stop(")
+          self.emit_expr(clk)
+          self._.write(", ")
+          self.emit_expr(cond)
+          self._.write(", ")
+          self._.write(code)
+          self._.write(")\n")
+        }
       }
     }
   }
+}
+
+fn show_format_string(fmt: String) -> String {
+  let result = StringBuilder::new()
+  
+  for c in fmt {
+    match c {
+      '\\' => result.write_string("\\\\")
+      '"' => result.write_string("\\\"")
+      '\n' => result.write_string("\\n")
+      '\t' => result.write_string("\\t")
+      '\'' => result.write_string("\'")
+      _ => result.write_char(c)
+    }
+  }
+
+  result.to_string()
 }
 
 fn show_int(radix~: Int?, value: BigInt) -> String {

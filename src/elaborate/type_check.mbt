@@ -40,6 +40,7 @@ type! TypeCheckerError {
     InvalidMemoryArgumentInReadMemCall(ty~: @parse.Type, span~: @parse.Span)
     InvalidPrintfFormatString(span~: @parse.Span)
     InvalidPrintfArgument(index~: Int, span~: @parse.Span)
+    InvalidStopExitCode(exit_code_ty~: @parse.Type, span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -128,6 +129,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidPrintfArgument(index~, ..) => {
             logger.write_string("Invalid argument at index '\{index}' in printf call")
         }
+        InvalidStopExitCode(exit_code_ty~, ..) => {
+            logger.write_string("Invalid exit code type '\{exit_code_ty}' in stop statement, expected an integer")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -163,6 +167,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidBinaryOpOperands(span~, ..) => span
         InvalidPrintfFormatString(span~, ..) => span
         InvalidPrintfArgument(span~, ..) => span
+        InvalidStopExitCode(span~, ..) => span
     }
 }
 
@@ -694,6 +699,17 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 if not(arg_ty.is_ground()) {
                     raise InvalidPrintfArgument(index~, span~)
                 }
+            }
+
+            @parse.Type::empty()
+        }
+        FunCall(name="$stop", args=[clk, cond, exit_code], span~, ..) => {
+            let _ = self.check_expr!(clk, env, expected_ty=Some(@parse.Type::uint(1)))
+            let _ = self.check_expr!(cond, env, expected_ty=Some(@parse.Type::uint(1)))
+            let exit_code_ty = self.check_expr!(exit_code, env)
+
+            if not(exit_code_ty.is_numerical()) {
+                raise InvalidStopExitCode(exit_code_ty~, span~)
             }
 
             @parse.Type::empty()

@@ -100,7 +100,8 @@ pub fn sorted_keys[K: Eq + Hash + Compare, V](map: Map[K, V]) -> Map[K, V] {
 }
 
 pub fn is_ascii(c: Char) -> Bool {
-  c >= ' ' && c <= '~'
+  let n = c.to_int()
+  n >= 0 && n <= 255
 }
 
 pub fn filter_map[A, B](elems: Iter[A], f: (A) -> B?) -> Iter[B] {

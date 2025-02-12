@@ -783,6 +783,10 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Range(min=3, max=@int.max_value),
     apply: fn(_, _) { None }
   },
+  "$stop": {
+    arity: Fixed(3),
+    apply: fn(_, _) { None }
+  },
   "uint": {
     arity: Fixed(1),
     apply: fn(_, _) { None }

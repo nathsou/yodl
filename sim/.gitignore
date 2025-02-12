@@ -1,5 +1,6 @@
 output/
 obj_dir/
 *.v
+*.sv
 *.rtlil
 *.fir

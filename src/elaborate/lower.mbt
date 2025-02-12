@@ -1082,6 +1082,14 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       scope.add_stmt(Command(Printf(clk=@firrtl.primop(AsClock, [clk]), cond~, fmt~, args=new_args)))
       Empty(span~)
     }
+    FunCall(name="$stop", args=[clk, cond, code], span~, ..) => {
+      let clk = self.lower_expr!(clk, scope~, env~).as_expr!(self, scope~)
+      let cond = self.lower_expr!(cond, scope~, env~).as_expr!(self, scope~)
+      let code = self.lower_expr!(code, scope~, env~).as_int!().to_int()
+
+      scope.add_stmt(Command(Stop(clk=@firrtl.primop(AsClock, [clk]), cond~, code~)))
+      Empty(span~)
+    }
     Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())
     }
