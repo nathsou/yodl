@@ -20,8 +20,8 @@ module Cell(
     } else {
         match count {
             3'd2 => alive.q, // stable
-            3'd3 => 1'b1, // reproduction
-            _ => 1'b0, // overpopulation or underpopulation
+            3'd3 => true, // reproduction
+            _ => false, // overpopulation or underpopulation
         }
     };
 }

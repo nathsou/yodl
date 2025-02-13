@@ -41,6 +41,17 @@ module RAM(
     q = mem.q[0];
 }
 
+module Flip<N: uint>(d: uint<N>) -> (q: uint<N>) {
+    let flipped: bool[N];
+
+    for i in 0..<N {
+        flipped[i] = d[i];
+    }
+
+    // uint flips the bits from [0..N] to [N..0]
+    q = uint(flipped);
+}
+
 module CPU(
     clk: clock,
     rst: bool,
@@ -88,38 +99,46 @@ module CPU(
     }
 
     let alu_in1 = rs1.q;
-    let alu_in2 = is_alu_reg ? rs2.q : imm_i;
-    let shift_amount = is_alu_reg ? rs2.q[4:0] : inst.q[24:20];
+    let alu_in2 = is_alu_reg or is_branch ? rs2.q : imm_i;
+    let alu_plus = alu_in1 + alu_in2;
+    let alu_minus: uint<33> = uint({1'b0, alu_in1}) - uint({1'b0, alu_in2});
+    let alu_equ = alu_minus[31:0] == 32'b0;
+    let alu_lss_unsigned = alu_minus[32];
+    let alu_lss_signed = alu_in1[31] xor alu_in2[31] ? alu_in1[31] : alu_minus[31];
+    let shifter_in = funct3 == 3'd1 ? Flip<32>(d: alu_in1).q : alu_in1;
+    let shifter: uint<32> = sint({inst.q[30] and alu_in1[31], shifter_in}) shr alu_in2[4:0];
+    let left_shift = Flip<32>(d: shifter).q;
 
     let alu_out = match funct3 {
-        3'b000 => ((funct7[5] and inst.q[5]) ? alu_in1 - alu_in2 : alu_in1 + alu_in2)[31:0],
-        3'b001 => (alu_in1 shl shift_amount)[31:0],
-        3'b010 => sint(alu_in1) <: sint(alu_in2) ? 32'd1 : 32'd0,
-        3'b011 => alu_in1 <: alu_in2 ? 32'd1 : 32'd0,
+        3'b000 => (funct7[5] and inst.q[5] ? alu_minus : alu_plus)[31:0],
+        3'b001 => left_shift,
+        3'b010 => uint({31'b0, alu_lss_signed}),
+        3'b011 => uint({31'b0, alu_lss_unsigned}),
         3'b100 => alu_in1 xor alu_in2,
-        3'b101 => funct7[5] ? uint(sint(alu_in1) shr shift_amount) : alu_in1 shr shift_amount,
+        3'b101 => shifter,
         3'b110 => alu_in1 or alu_in2,
         3'b111 => alu_in1 and alu_in2,
     };
 
     let is_jump_inst = is_jal or is_jalr;
     let next_addr: uint<32> = pc.q + 4;
-    let write_back_enable = stage.q == Stage::EXECUTE and (is_alu_reg or is_alu_imm or is_jump_inst or is_lui or is_auipc);
-    let write_back_data = is_jump_inst ? next_addr : is_lui ? imm_u : is_auipc ? (pc.q + imm_u)[31:0] : alu_out;
+    let inst_imm = inst.q[3] ? imm_j : inst.q[4] ? imm_u : imm_b;
+    let pc_plus_imm: uint<32> = pc.q + inst_imm;
+    let write_back_enable = stage.q == Stage::EXECUTE and (not is_branch);
+    let write_back_data = is_jump_inst ? next_addr : is_lui ? imm_u : is_auipc ? pc_plus_imm : alu_out;
 
     let take_branch = match funct3 {
-        3'b000 => rs1.q == rs2.q,
-        3'b001 => rs1.q != rs2.q,
-        3'b100 => sint(rs1.q) <: sint(rs2.q),
-        3'b101 => sint(rs1.q) >= sint(rs2.q),
-        3'b110 => rs1.q <: rs2.q,
-        3'b111 => rs1.q >= rs2.q,
+        3'b000 => alu_equ,
+        3'b001 => not alu_equ,
+        3'b100 => alu_lss_signed,
+        3'b101 => not alu_lss_signed,
+        3'b110 => alu_lss_unsigned,
+        3'b111 => not alu_lss_unsigned,
         _ => false,
     };
-
-    let next_pc = is_branch and take_branch ? (pc.q + imm_b)[31:0] :
-                  is_jal ? (pc.q + imm_j)[31:0] :
-                  is_jalr ? (rs1.q + imm_i)[31:0] :
+    
+    let next_pc = (is_branch and take_branch) or is_jal ? pc_plus_imm :
+                  is_jalr ? uint({alu_plus[31:1], 1'b0}) :
                   next_addr;
 
     pc.d = pc.q;
@@ -142,7 +161,7 @@ module CPU(
             },
             Stage::WAIT_INST => {
                 inst.d = mem_data;
-                $printf(clk, true, "inst: %b, pc: %h\n", mem_data, pc.q);
+                $printf(clk, true, "inst: %b, pc: %h, status: %b\n", inst.q, pc.q, status);
                 stage.d = Stage::FETCH_REGS;
             },
             Stage::FETCH_REGS => {
