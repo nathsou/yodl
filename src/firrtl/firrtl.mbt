@@ -7,7 +7,7 @@ pub fn version() -> (Int, Int, Int) {
 pub(all) enum Id {
   Ident(String)
   Literal(String)
-}
+} derive(Eq)
 
 pub fn Id::inner(self: Id) -> String {
   match self {
@@ -115,13 +115,13 @@ pub(all) enum Type {
   SIntInferred
   Bundle(Array[BundleField])
   Vec(Type, Int)
-}
+} derive(Eq)
 
 pub(all) struct BundleField {
   id: Id
   flip: Bool
   ty: Type
-}
+} derive(Eq)
 
 pub(all) enum PrimOp {
   AsUInt; AsSInt; AsClock; AsAsyncReset; Cvt

@@ -73,14 +73,13 @@ pub type! ElaborationError {
   UnknownModule(path~: @parse.Path, span~: @parse.Span)
   UnknownModulePort(module_path~: @parse.Path, port_name~: String, span~: @parse.Span)
   UnknownModuleParameter(name~: String, span~: @parse.Span)
-  // InvalidMemoryInitValue(span~: @parse.Span, expected_size~: Int, actual_size~: Int?)
-  // MissingConnectionsOnWriteableMemoryInstance(missing_connections~: Array[String], span~: @parse.Span)
   UnknownModuleMarkedAsInternal(path~: @parse.Path, span~: @parse.Span)
   Unsupported(message~: String, span~: @parse.Span)
   DynamicIntParam(span~: @parse.Span)
   InvalidCharacterInString(char~: Char, span~: @parse.Span)
   ExpctedIntLiteral(span~: @parse.Span)
   InvalidMemoryReferenceInLoadMemory(mem_name~: String, span~: @parse.Span)
+  InvalidMaskType(expected~: @firrtl.Type, got~: @firrtl.Type, span~: @parse.Span)
 } derive (Show)
 
 trait ScopeLike {
@@ -897,7 +896,12 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("en")), Reference(FieldAccess(lhs=writer, field=id_of_str("en")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("clk")), Reference(FieldAccess(lhs=writer, field=id_of_str("clk")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("data")), Reference(FieldAccess(lhs=writer, field=id_of_str("data")))))
-                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("mask")), default_mask(data_type, span~).as_expr!(self, scope~)))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("mask")), Reference(FieldAccess(lhs=writer, field=id_of_str("mask")))))
+                let mask_ty = lower_type!(get_param!("Mask").as_type!(), span~)
+
+                if mask_ty != data_type.mask() {
+                  raise InvalidMaskType(expected=data_type.mask(), got=mask_ty, span~)
+                }
               }
             }
 

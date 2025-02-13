@@ -14,31 +14,42 @@ package Inst {
 }
 
 package Stage {
-    const FETCH_INST = 2'd0;
-    const WAIT_INST = 2'd1;
-    const FETCH_REGS = 2'd2;
-    const EXECUTE = 2'd3;
+    const FETCH_INST = 3'd0;
+    const WAIT_INST = 3'd1;
+    const FETCH_REGS = 3'd2;
+    const EXECUTE = 3'd3;
+    const LOAD = 3'd4;
+    const WAIT_DATA = 3'd5;
+    const STORE = 3'd6;
 }
 
 module RAM(
     clk: clock,
-    read_addr: uint<32>,
+    addr: uint<32>,
     read_enable: bool,
+    write_data: uint<8>[4],
+    mask: bool[4],
 ) -> (
     q: uint<32>,
 ) {
+    // divide addr by 4 (byte address to word address)
+    let word_addr = addr[9:2];
+
     let mem = Memory<
-        T: uint<32>,
+        T: uint<8>[4],
         Depth: 256,
         ReadPorts: 1,
-        WritePorts: 0,
+        WritePorts: 1,
+        Mask: bool[4],
     >(
-        read: [{ clk: clk, en: read_enable, addr: read_addr[7:0] }],
+        read: [{ clk: clk, en: read_enable, addr: word_addr }],
+        write: [{ clk: clk, en: true, addr: word_addr, data: write_data, mask: mask }],
     );
 
     $readmemb("/Volumes/S/code/moonbit/yodl/sim/riscv/riscv_prog.mem", mem);
 
-    q = mem.q[0];
+    let data = mem.q[0];
+    q = uint([data[3], data[2], data[1], data[0]]);
 }
 
 module Flip<N: uint>(d: uint<N>) -> (q: uint<N>) {
@@ -55,10 +66,12 @@ module Flip<N: uint>(d: uint<N>) -> (q: uint<N>) {
 module CPU(
     clk: clock,
     rst: bool,
-    mem_data: uint<32>,
+    mem_read_data: uint<32>,
 ) -> (
     mem_addr: uint<32>,
     mem_read_enable: bool,
+    mem_write_data: uint<8>[4],
+    mem_write_mask: bool[4],
     status: uint<32>,
 ) {
     let inst = Reg<uint<32>>(clk, rst);
@@ -87,7 +100,7 @@ module CPU(
     let funct3 = inst.q[14:12];
     let funct7 = inst.q[31:25];
     
-    let stage = Reg<uint<2>>(clk, rst);
+    let stage = Reg<uint<3>>(clk, rst);
     let pc = Reg<uint<32>>(clk, rst);
     let rs1 = Reg<uint<32>>(clk, rst);
     let rs2 = Reg<uint<32>>(clk, rst);
@@ -124,7 +137,7 @@ module CPU(
     let next_addr: uint<32> = pc.q + 4;
     let inst_imm = inst.q[3] ? imm_j : inst.q[4] ? imm_u : imm_b;
     let pc_plus_imm: uint<32> = pc.q + inst_imm;
-    let write_back_enable = stage.q == Stage::EXECUTE and (not is_branch);
+    let write_back_enable = (stage.q == Stage::EXECUTE and (not is_branch) and (not is_store) and (not is_load)) or stage.q == Stage::WAIT_DATA;
     let write_back_data = is_jump_inst ? next_addr : is_lui ? imm_u : is_auipc ? pc_plus_imm : alu_out;
 
     let take_branch = match funct3 {
@@ -140,6 +153,35 @@ module CPU(
     let next_pc = (is_branch and take_branch) or is_jal ? pc_plus_imm :
                   is_jalr ? uint({alu_plus[31:1], 1'b0}) :
                   next_addr;
+
+    let load_store_addr: uint<32> = rs1.q + (is_store ? imm_s : imm_i);
+    let load_half_word = load_store_addr[1] ? mem_read_data[31:16] : mem_read_data[15:0];
+    let load_byte = load_store_addr[0] ? load_half_word[15:8] : load_half_word[7:0];
+    let byte_access = funct3[1:0] == 2'd0;
+    let half_word_access = funct3[1:0] == 2'd1;
+    let load_sign = (not funct3[2]) and byte_access ? load_byte[7] : load_half_word[15];
+    let load_data = byte_access ? uint({24*{load_sign}, load_byte}) :
+        half_word_access ? uint({16*{load_sign}, load_half_word}) :
+        mem_read_data;
+
+    mem_write_data = [
+        load_store_addr[0] ? rs2.q[7:0] : load_store_addr[1] ? rs2.q[15:8] : rs2.q[31:24],
+        load_store_addr[1] ? rs2.q[7:0] : rs2.q[23:16],
+        load_store_addr[0] ? rs2.q[7:0] : rs2.q[15:8],
+        rs2.q[7:0],
+    ];
+
+    let mask = byte_access ?
+        (load_store_addr[1] ?
+            (load_store_addr[0] ? 4'b1000 : 4'b0100) :
+            (load_store_addr[0] ? 4'b0010 : 4'b0001)
+        ) : (
+            half_word_access ?
+            (load_store_addr[1] ? 4'b1100 : 4'b0011) :
+            4'b1111
+        );
+    
+    mem_write_mask = is_store ? [mask[3], mask[2], mask[1], mask[0]] : 4*[false];
 
     pc.d = pc.q;
     inst.d = inst.q;
@@ -160,7 +202,7 @@ module CPU(
                 stage.d = Stage::WAIT_INST;
             },
             Stage::WAIT_INST => {
-                inst.d = mem_data;
+                inst.d = mem_read_data;
                 $printf(clk, true, "inst: %b, pc: %h, status: %b\n", inst.q, pc.q, status);
                 stage.d = Stage::FETCH_REGS;
             },
@@ -172,17 +214,26 @@ module CPU(
             Stage::EXECUTE => {
                 if not is_system {
                     pc.d = next_pc;
-                    stage.d = Stage::FETCH_INST;
+                    stage.d = is_load ? Stage::LOAD : is_store ? Stage::STORE : Stage::FETCH_INST;
                 } else {
                     $stop(clk, true, 0);
                 }
             },
+            Stage::LOAD => {
+                stage.d = Stage::WAIT_DATA;
+            },
+            Stage::WAIT_DATA => {
+                stage.d = Stage::FETCH_INST;
+            },
+            Stage::STORE => {
+                stage.d = Stage::FETCH_INST;
+            },
         }
     }
 
-    mem_addr = uint({2'b0, pc.q[31:2]}); // divide by 4 (byte addr -> word addr)
-    mem_read_enable = stage.q == Stage::FETCH_INST;
-    status = uint({8'd0, uint(clk), opcode, 6'd0, stage.q, regs[1].q[7:0]});
+    mem_addr = stage.q == Stage::WAIT_INST or stage.q == Stage::FETCH_INST ? pc.q : load_store_addr;
+    mem_read_enable = stage.q == Stage::FETCH_INST or stage.q == Stage::LOAD;
+    status = uint({8'd0, uint(clk), opcode, 5'd0, stage.q, regs[1].q[7:0]});
 }
 
 module Top(
@@ -196,9 +247,11 @@ module Top(
     let cpu = CPU(
         clk,
         rst,
-        mem_addr: ram.read_addr,
-        mem_data: ram.q,
+        mem_addr: ram.addr,
+        mem_read_data: ram.q,
         mem_read_enable: ram.read_enable,
+        mem_write_data: ram.write_data,
+        mem_write_mask: ram.mask,
     );
 
     io_led = cpu.status[23:0];

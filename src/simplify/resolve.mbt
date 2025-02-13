@@ -85,9 +85,9 @@ let builtin_decls: Array[@parse.Decl] = {
     #|)
     #|
     #|@internal
-    #|declare module Memory<T: type, Depth: uint, ReadPorts: uint, WritePorts: uint, Init: uint>(
+    #|declare module Memory<T: type, Depth: uint, ReadPorts: uint, WritePorts: uint, Mask: type>(
     #|    read: { clk: clock, en: bool, addr: uint<$clog2(Depth)> }[ReadPorts],
-    #|    write: { clk: clock, en: bool, addr: uint<$clog2(Depth)>, data: T }[WritePorts],
+    #|    write: { clk: clock, en: bool, addr: uint<$clog2(Depth)>, data: T, mask: Mask }[WritePorts],
     #|) -> (
     #|    q: T[ReadPorts],
     #|)
