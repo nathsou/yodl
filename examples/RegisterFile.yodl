@@ -1,6 +1,6 @@
 
 module ProgramCounter(
-    clk: uint<1>,
+    clk: clock,
     rst: bool,
     jump: bool,
     jump_addr: uint<16>,
@@ -12,7 +12,7 @@ module ProgramCounter(
 }
 
 module RegisterFile<Width: uint, Depth: uint>(
-    clk: uint<1>,
+    clk: clock,
     rst: bool,
     write_enable: bool,
     write_dest: uint<$clog2(Depth)>,
@@ -35,7 +35,7 @@ module RegisterFile<Width: uint, Depth: uint>(
 }
 
 module Top(
-    clk: uint<1>,
+    clk: clock,
     rst: bool,
     write_enable: bool,
     write_dest: uint<3>,

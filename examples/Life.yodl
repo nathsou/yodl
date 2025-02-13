@@ -2,7 +2,7 @@
 // adapted from https://k155la3.blog/2020/10/09/conways-game-of-life-on-fpga/
 
 module Cell(
-    clk: uint<1>,
+    clk: clock,
     rst: bool,
     enable: bool,
     neighbors: bool[8],
@@ -27,7 +27,7 @@ module Cell(
 }
 
 module Grid<Rows: uint, Cols: uint>(
-    clk: uint<1>,
+    clk: clock,
     rst: bool,
     read_row: uint<$clog2(Rows)>,
     read_col: uint<$clog2(Cols)>,
@@ -70,7 +70,7 @@ module Grid<Rows: uint, Cols: uint>(
 }
 
 module GridInit<Rows: uint, Cols: uint>(
-    clk: uint<1>,
+    clk: clock,
     rst: bool,
     read_row: uint<$clog2(Rows)>,
     read_col: uint<$clog2(Cols)>,
@@ -115,7 +115,7 @@ module GridInit<Rows: uint, Cols: uint>(
 }
 
 module Life(
-    clk: uint<1>,
+    clk: clock,
     rst: bool,
     hsync: bool,
     vsync: bool,
@@ -171,7 +171,7 @@ module Life(
         pattern,
     );
 
-    grid.clk = grid.ready ? vsync : clk;
+    grid.clk = grid.ready ? clock(vsync) : clk;
 
     color = match grid.ready {
         1'0 => { r: 3'd0, g: 3'd0, b: 3'd0 },

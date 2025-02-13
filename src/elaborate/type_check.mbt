@@ -265,6 +265,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
         UInt(width) => UInt(width)
         SInt(width) => SInt(width)
         Nat(min_width~) => Nat(min_width~)
+        Clock => Clock
         Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty!(inner_ty, span~), len~)
         Instance(_) => ty
         Name(path~, params~) => {
@@ -666,6 +667,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let arg_ty = self.check_expr!(arg, env)
             let width = arg_ty.width!(arg.span())
             @parse.Type::sint(width)
+        }
+        FunCall(name="clock", args=[arg], ..) => {
+            let _ = self.check_expr!(arg, env, expected_ty=Some(@parse.Type::uint(1)))
+            @parse.Type::Clock
         }
         FunCall(name="$readmemb", args=[path, mem], span~, ..) => {
             let _ = self.check_expr!(path, env)

@@ -1,6 +1,6 @@
 import Text
 
-module Euler1(clk: uint<1>, rst: bool) -> (q: uint<18>, is_ready: bool) {
+module Euler1(clk: clock, rst: bool) -> (q: uint<18>, is_ready: bool) {
     const N = 1000;
     let counter = Reg<uint<$clog2(N)>>(clk, rst);
     let is_active = counter.q <: N;
@@ -12,7 +12,7 @@ module Euler1(clk: uint<1>, rst: bool) -> (q: uint<18>, is_ready: bool) {
 }
 
 module Top(
-    clk: uint<1>,
+    clk: clock,
     button: uint<4>,
 ) -> (
     led: uint<4>,

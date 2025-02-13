@@ -21,7 +21,7 @@ package Stage {
 }
 
 module RAM(
-    clk: uint<1>,
+    clk: clock,
     read_addr: uint<32>,
     read_enable: bool,
 ) -> (
@@ -42,7 +42,7 @@ module RAM(
 }
 
 module CPU(
-    clk: uint<1>,
+    clk: clock,
     rst: bool,
     mem_data: uint<32>,
 ) -> (
@@ -163,11 +163,11 @@ module CPU(
 
     mem_addr = uint({2'b0, pc.q[31:2]}); // divide by 4 (byte addr -> word addr)
     mem_read_enable = stage.q == Stage::FETCH_INST;
-    status = uint({8'd0, clk, opcode, 6'd0, stage.q, regs[1].q[7:0]});
+    status = uint({8'd0, uint(clk), opcode, 6'd0, stage.q, regs[1].q[7:0]});
 }
 
 module Top(
-    clk: uint<1>,
+    clk: clock,
     rst_n: bool,
 ) -> (
     io_led: uint<24>,

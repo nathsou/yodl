@@ -21,8 +21,8 @@ module SevenSegmentDecoder(char: uint<4>) -> (segs: uint<7>) {
 }
 
 module Multi(
-    clk: logic,
-    rst: logic,
+    clk: clock,
+    rst: bool,
     value: uint<16>,
 ) -> (
     segs: uint<8>,
@@ -39,5 +39,5 @@ module Multi(
     };
 
     sel = active_seg.sel;
-    segs = {1'b0, not SevenSegmentDecoder(char: active_seg.char).segs};
+    segs = uint({1'b0, not SevenSegmentDecoder(char: active_seg.char).segs});
 }

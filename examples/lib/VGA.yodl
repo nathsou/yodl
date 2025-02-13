@@ -3,7 +3,7 @@ const H_ACTIVE = 640;
 const V_ACTIVE = 480;
 
 module SyncPulses(
-    pixel_clk: uint<1>, // a roughly 25.2 MHz clock
+    pixel_clk: clock, // a roughly 25.2 MHz clock
 ) -> (
     hsync: bool,
     vsync: bool,

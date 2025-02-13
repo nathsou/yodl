@@ -117,6 +117,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type! {
     Nat(min_width=_) => UIntInferred
     UInt(Fixed(width)) => UInt(width)
     SInt(Fixed(width)) => SInt(width)
+    Clock => Clock
     Vector(ty~, len=Fixed(len)) => Vec(lower_type!(ty, span~), len)
     UInt(Dynamic(_)) | SInt(Dynamic(_)) | Vector(ty=_, len=Dynamic(_)) => {
       raise DynamicIntParam(span~)
@@ -754,7 +755,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             let uses_rst = uses_port("rst")
             let uses_en = uses_port("en")
             let reg_id = id_of_str("reg_\{self.next_idx()}")
-            let clk = @firrtl.primop(AsClock, [get_port("clk")])
+            let clk = get_port("clk")
 
             let reg_stmt = if uses_rst {
               let init = default_value!(reg_ty, span~).as_expr!(self, scope~)
@@ -881,7 +882,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
                 let reader_id = @firrtl.FieldAccess(lhs=Id(mem_id), field=readers[i])
                 scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("addr")), Reference(FieldAccess(lhs=reader, field=id_of_str("addr")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("en")), Reference(FieldAccess(lhs=reader, field=id_of_str("en")))))
-                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("clk")), @firrtl.primop(AsClock, [Reference(FieldAccess(lhs=reader, field=id_of_str("clk")))])))
+                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("clk")), Reference(FieldAccess(lhs=reader, field=id_of_str("clk")))))
                 data_out.push(@firrtl.FieldAccess(lhs=reader_id, field=id_of_str("data")))
               }
             }
@@ -894,7 +895,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
                 let writer_id = @firrtl.FieldAccess(lhs=Id(mem_id), field=writers[i])
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("addr")), Reference(FieldAccess(lhs=writer, field=id_of_str("addr")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("en")), Reference(FieldAccess(lhs=writer, field=id_of_str("en")))))
-                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("clk")), @firrtl.primop(AsClock, [Reference(FieldAccess(lhs=writer, field=id_of_str("clk")))])))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("clk")), Reference(FieldAccess(lhs=writer, field=id_of_str("clk")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("data")), Reference(FieldAccess(lhs=writer, field=id_of_str("data")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("mask")), default_mask(data_type, span~).as_expr!(self, scope~)))
               }
@@ -1039,11 +1040,18 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       match (name, arg.ty()) {
         (_, Vec(_)) => Expr(expr=flatten_int!(arg_ref, arg.ty(), span~), ty=fir_ty, span~)
-        ("uint", UInt(_) | Clock | AsyncReset | Reset) | ("sint", SInt(_)) => arg
+        ("uint", UInt(_) | AsyncReset | Reset) | ("sint", SInt(_)) => arg
         ("uint", SInt(_)) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
+        ("uint", Clock) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
         ("sint", UInt(_)) => Expr(expr=@firrtl.primop(AsSInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
         _ => raise ElaborationError::Unsupported(message="Cannot convert type '\{arg.ty()}' to UInt or SInt", span~)
       }
+    }
+    FunCall(name="clock", args=[clk], span~, ..) => {
+      let clk = self.lower_expr!(clk, scope~, env~)
+      let clk_ref = clk.as_ref!(self, scope~)
+
+      Expr(expr=@firrtl.primop(AsClock, [Reference(clk_ref)]), ty=Clock, span~)
     }
     FunCall(name="$readmemb", args=[path, mem], span~, ..) => {
       let path = path.expect_string!()
@@ -1079,7 +1087,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         new_args.push(self.lower_expr!(arg, scope~, env~).as_expr!(self, scope~))
       }
  
-      scope.add_stmt(Command(Printf(clk=@firrtl.primop(AsClock, [clk]), cond~, fmt~, args=new_args)))
+      scope.add_stmt(Command(Printf(clk~, cond~, fmt~, args=new_args)))
       Empty(span~)
     }
     FunCall(name="$stop", args=[clk, cond, code], span~, ..) => {
@@ -1087,7 +1095,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let cond = self.lower_expr!(cond, scope~, env~).as_expr!(self, scope~)
       let code = self.lower_expr!(code, scope~, env~).as_int!().to_int()
 
-      scope.add_stmt(Command(Stop(clk=@firrtl.primop(AsClock, [clk]), cond~, code~)))
+      scope.add_stmt(Command(Stop(clk~, cond~, code~)))
       Empty(span~)
     }
     Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {

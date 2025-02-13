@@ -2,7 +2,7 @@ import VGA
 import Life
 
 module TopSim(
-    clk: uint<1>,
+    clk: clock,
     rst: bool,
 ) -> (
     is_active_area: bool,

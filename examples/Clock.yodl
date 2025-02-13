@@ -21,15 +21,15 @@ module BCD2(bin: uint<6>) -> (q: uint<8>) {
     q = uint({1'b0, t[3], u[3], v, f});
 }
 
-module TicTac<Max: uint>(clk: uint<1>, en: bool, rst: bool) -> (tick: bool, count: uint<$clog2(Max)>) {
+module TicTac<Max: uint>(clk: clock, en: bool, rst: bool) -> (tick: bool, count: uint<$clog2(Max)>) {
     let counter = Reg<uint<$clog2(Max)>>(clk, en, rst: rst or tick, q: count);
     counter.d = counter.q + 1;
     tick = counter.q == Max;
 }
 
 module Clock(
-    clk: uint<1>,
-    pixel_clk: uint<1>,
+    clk: clock,
+    pixel_clk: clock,
     rst: bool,
 ) -> (
     is_active_area: bool,
@@ -77,7 +77,7 @@ module Clock(
 }
 
 module Top(
-    clk: uint<1>,
+    clk: clock,
     button: uint<4>,
 ) -> (
     led: uint<4>,

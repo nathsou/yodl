@@ -285,6 +285,7 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     Dollar => { self.advance(); self.parse_function_call_expr!(None) }
     UInt => { self.advance(); self.parse_function_call_expr!(Some("uint")) }
     SInt => { self.advance(); self.parse_function_call_expr!(Some("sint")) }
+    Clock => { self.advance(); self.parse_function_call_expr!(Some("clock")) }
     Lchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '<', did you mean '<:' (less than operator) instead?")
     Rchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '>', did you mean '>:' (greater than operator) instead?")
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
@@ -729,6 +730,10 @@ fn parse_type(self: Parser) -> Type! {
       }
       self.expect!(Rchevron, start_idx)
       SInt(width)
+    }
+    Clock => {
+      self.advance()
+      Clock
     }
     Identifier(name) => {
       self.advance()

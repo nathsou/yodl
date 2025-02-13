@@ -150,13 +150,13 @@ pub fn bin(n: Int, width~: Int) -> Iter[Bool] {
 
 pub fn bitwise_not(n: BigInt) -> BigInt {
   let bytes = n.to_octets()
-  let flipped_bytes = Bytes::new(bytes.length())
+  let flipped_bytes = Bytes::new(bytes.length()).to_fixedarray()
 
   for idx, byte in bytes {
     flipped_bytes[idx] = byte.to_uint().lnot().to_byte()
   }
 
-  BigInt::from_octets(flipped_bytes)
+  BigInt::from_octets(Bytes::from_fixedarray(flipped_bytes))
 }
 
 pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {

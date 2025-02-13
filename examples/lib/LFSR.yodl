@@ -1,7 +1,7 @@
 
 // Linear Feedback Shift Register
 module LFSR<NumBits: uint>(
-    clk: uint<1>,
+    clk: clock,
     enable: bool,
 ) -> (
     q: uint<NumBits>,

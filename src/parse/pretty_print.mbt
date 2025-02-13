@@ -529,6 +529,9 @@ pub impl Show for Type with output(ty, logger) {
     SInt(width) => {
       logger.write_string("sint<\{width}>")
     }
+    Clock => {
+      logger.write_string("clock")
+    }
     Vector(ty~, len~) => {
       logger.write_string(ty.to_string())
       logger.write_char('[')

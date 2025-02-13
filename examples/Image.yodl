@@ -3,7 +3,7 @@ import LFSR
 import Timing
 
 module Top(
-    clk: uint<1>,
+    clk: clock,
     button: uint<4>,
 ) -> (
     led: uint<4>,

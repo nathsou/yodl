@@ -2,7 +2,7 @@ import VGA
 import LFSR
 
 module Top(
-    clk: uint<1>,
+    clk: clock,
 ) -> (
     led: uint<4>,
     vga_hsync: bool,

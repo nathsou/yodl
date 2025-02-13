@@ -44,6 +44,7 @@ pub(all) enum Type {
   Nat(min_width~: Int)
   UInt(IntParam)
   SInt(IntParam)
+  Clock
   Vector(ty~: Type, len~: IntParam)
   Instance(sig~: ModuleSignature, params~: Map[String, Param], accessed_ports~: Set[String])
   Name(path~: Path, params~: Array[Param])
@@ -795,6 +796,10 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Fixed(1),
     apply: fn(_, _) { None }
   },
+  "clock": {
+    arity: Fixed(1),
+    apply: fn(_, _) { None }
+  },
 }
 
 pub fn Expr::as_int(self: Expr) -> Int! {
@@ -835,6 +840,7 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
     Nat(min_width~) => @math.maximum(min_width, 32)
     UInt(Fixed(width)) => width
     SInt(Fixed(width)) => width
+    Clock => 1
     Vector(ty~, len=Fixed(len)) => ty.width!(span) * len
     UInt(Dynamic(_)) | SInt(Dynamic(_)) | Vector(ty=_, len=Dynamic(_)) => {
       raise IntParamNotFixed(span~)
@@ -876,6 +882,7 @@ pub fn substitute(self: Type, params_env: Map[String, Param]) -> Type {
         _ => if is_unsigned { UInt(Dynamic(expr)) } else { SInt(Dynamic(expr)) }
       }
     }
+    Clock => Clock
     Vector(ty~, len=Dynamic(expr)) => {
       Vector(ty=ty.substitute(params_env), len=match expr.partial_eval?(params=params_env) {
         Ok(Natural(value~, ..)) => Fixed(value.to_int())
@@ -943,6 +950,7 @@ pub fn has_zero_width(self: Type) -> Bool {
     Nat(_) => false
     UInt(Fixed(width)) | SInt(Fixed(width)) => width == 0
     UInt(Dynamic(_)) | SInt(Dynamic(_)) => false
+    Clock => false
     Vector(ty~, len~) => match len {
       Fixed(0) => true
       _ => ty.has_zero_width()
@@ -1006,5 +1014,6 @@ pub fn clone(self: Type) -> Type {
     Name(path~, params~) => Name(path~, params~)
     Struct(fields) => Struct(@utils.map_values(fields, clone))
     String(len~) => String(len~)
+    Clock => Clock
   }
 }

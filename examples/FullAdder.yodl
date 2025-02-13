@@ -41,7 +41,7 @@ module Adder<N: uint>(
 
 // Nexys A7
 module Top(
-    clk: uint<1>,
+    clk: clock,
 ) -> (
     led: uint<16>,
 ) {
