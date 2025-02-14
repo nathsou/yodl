@@ -689,9 +689,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             @parse.Type::empty()
         }
-        FunCall(name="$printf", args=[clk, cond, format_str, ..varargs], span~, ..) => {
-            let _ = self.check_expr!(clk, env, expected_ty=Some(@parse.Type::uint(1)))
-            let _ = self.check_expr!(cond, env, expected_ty=Some(@parse.Type::uint(1)))
+        FunCall(name="$printf", args=[format_str, ..varargs], span~, ..) => {
             let format_str_ty = self.check_expr!(format_str, env)
 
             if not(format_str_ty.is_string()) {
@@ -708,13 +706,19 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             @parse.Type::empty()
         }
-        FunCall(name="$stop", args=[clk, cond, exit_code], span~, ..) => {
-            let _ = self.check_expr!(clk, env, expected_ty=Some(@parse.Type::uint(1)))
-            let _ = self.check_expr!(cond, env, expected_ty=Some(@parse.Type::uint(1)))
-            let exit_code_ty = self.check_expr!(exit_code, env)
+        FunCall(name="$stop", args~, span~, ..) => {
+            match args {
+                [] => ()
+                [exit_code] => {
+                    let exit_code_ty = self.check_expr!(exit_code, env)
 
-            if not(exit_code_ty.is_numerical()) {
-                raise InvalidStopExitCode(exit_code_ty~, span~)
+                    if not(exit_code_ty.is_numerical()) {
+                        raise InvalidStopExitCode(exit_code_ty~, span~)
+                    }
+                }
+                _ => {
+                    raise Failure("Invalid number of arguments for $stop")
+                }
             }
 
             @parse.Type::empty()

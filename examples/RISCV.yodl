@@ -203,7 +203,7 @@ module CPU(
             },
             Stage::WAIT_INST => {
                 inst.d = mem_read_data;
-                $printf(clk, true, "inst: %b, pc: %h, status: %b\n", inst.q, pc.q, status);
+                $printf("inst: %b, pc: %h, status: %b\n", inst.q, pc.q, status);
                 stage.d = Stage::FETCH_REGS;
             },
             Stage::FETCH_REGS => {
@@ -216,7 +216,7 @@ module CPU(
                     pc.d = next_pc;
                     stage.d = is_load ? Stage::LOAD : is_store ? Stage::STORE : Stage::FETCH_INST;
                 } else {
-                    $stop(clk, true, 0);
+                    $stop();
                 }
             },
             Stage::LOAD => {

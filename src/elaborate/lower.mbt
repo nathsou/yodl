@@ -7,6 +7,7 @@ pub struct Elaborator {
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
   current_target: Array[String]
   memories: Map[String, @firrtl.Id]
+  mut current_clock: @firrtl.Expr?
 }
 
 pub fn Elaborator::new(circuit_name: String) -> Elaborator {
@@ -18,6 +19,7 @@ pub fn Elaborator::new(circuit_name: String) -> Elaborator {
     declared_modules: {},
     current_target: [circuit_name],
     memories: {},
+    current_clock: None
   }
 }
 
@@ -80,6 +82,7 @@ pub type! ElaborationError {
   ExpctedIntLiteral(span~: @parse.Span)
   InvalidMemoryReferenceInLoadMemory(mem_name~: String, span~: @parse.Span)
   InvalidMaskType(expected~: @firrtl.Type, got~: @firrtl.Type, span~: @parse.Span)
+  NoClockFound(message~: String, span~: @parse.Span)
 } derive (Show)
 
 trait ScopeLike {
@@ -219,6 +222,7 @@ fn default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
 fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let env = ElaboratorEnv::new()
   self.current_target.push(mod.path.member)
+  self.current_clock = None
 
   let fir_mod: @firrtl.Module = {
     public: true,
@@ -228,15 +232,21 @@ fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
 
       for port in mod.ports {
         let fir_ty = lower_type!(port.ty, span=port.span)
+        let port_id = id_of_str(port.name)
+
+        // the first clock port is the module's default clock
+        if fir_ty == Clock && self.current_clock.is_empty() {
+          self.current_clock = Some(Reference(Id(port_id)))
+        }
 
         let fir_port: @firrtl.Port = {
           direction: port.direction,
-          id: id_of_str(port.name),
+          id: port_id,
           ty: fir_ty,
         }
         
         ports.push(fir_port)
-        env.declare!(@parse.Path::new([], port.name), Expr(expr=@firrtl.Reference(Id(id_of_str(port.name))), ty=fir_ty, span=port.span))
+        env.declare!(@parse.Path::new([], port.name), Expr(expr=@firrtl.Reference(Id(port_id)), ty=fir_ty, span=port.span))
       }
 
       ports
@@ -302,6 +312,10 @@ fn connect(self: Elaborator, lhs~: @firrtl.Reference, value~: Value, scope~: &Sc
   if not(same) {
     scope.add_stmt(Connect(lhs, Reference(rhs)))
   }
+}
+
+fn get_clock(self: Elaborator, source~: String, span~: @parse.Span) -> @firrtl.Expr! {
+  self.current_clock.or_error!(NoClockFound(message="No clock found in current module for \{source}", span~))
 }
 
 fn Value::ty(self: Value) -> @firrtl.Type {
@@ -1081,23 +1095,28 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       self.annotations.push(annotation.to_json())
       Empty(span~)
     }
-    FunCall(name="$printf", args=[clk, cond, fmt, ..args], span~, ..) => {
-      let clk = self.lower_expr!(clk, scope~, env~).as_expr!(self, scope~)
-      let cond = self.lower_expr!(cond, scope~, env~).as_expr!(self, scope~)
+    FunCall(name="$printf", args=[fmt, ..args], span~, ..) => {
       let fmt = fmt.expect_string!()
       let new_args = Array::new(capacity=args.length())
 
       for arg in args {
         new_args.push(self.lower_expr!(arg, scope~, env~).as_expr!(self, scope~))
       }
+
+      let clk = self.get_clock!(source="$printf", span~)
+      let cond = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
  
       scope.add_stmt(Command(Printf(clk~, cond~, fmt~, args=new_args)))
       Empty(span~)
     }
-    FunCall(name="$stop", args=[clk, cond, code], span~, ..) => {
-      let clk = self.lower_expr!(clk, scope~, env~).as_expr!(self, scope~)
-      let cond = self.lower_expr!(cond, scope~, env~).as_expr!(self, scope~)
-      let code = self.lower_expr!(code, scope~, env~).as_int!().to_int()
+    FunCall(name="$stop", args~, span~, ..) => {
+      let clk = self.get_clock!(source="$stop", span~)
+      let cond = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
+      let code = match args {
+        [] => 0
+        [code] => self.lower_expr!(code, scope~, env~).as_int!().to_int()
+        _ => raise Failure("Unexpected number of arguments to $stop")
+      }
 
       scope.add_stmt(Command(Stop(clk~, cond~, code~)))
       Empty(span~)

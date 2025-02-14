@@ -781,11 +781,11 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     }
   },
   "$printf": {
-    arity: Range(min=3, max=@int.max_value),
+    arity: Range(min=1, max=@int.max_value),
     apply: fn(_, _) { None }
   },
   "$stop": {
-    arity: Fixed(3),
+    arity: Range(min=0, max=1),
     apply: fn(_, _) { None }
   },
   "uint": {
