@@ -5,8 +5,8 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
     @sys.exit(1)
   }
 
-  if not(@fs.path_exists(path="output/")) {
-    @fs.create_dir(path="output/")
+  if not(@fs.path_exists("output/")) {
+    @fs.create_dir!("output/")
   }
 
   let resolver = @simplify.Resolver::new!(@utils.dir_name(path))
@@ -45,7 +45,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
 
         match path {
           Some(path) => {
-            @fs.write_string_to_file(path~, content=mono)
+            @fs.write_string_to_file!(path, mono)
           }
           None => {
             println(mono)
@@ -94,7 +94,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
 
         match path {
           Some(path) => {
-            @fs.write_string_to_file(path~, content=simplified)
+            @fs.write_string_to_file!(path, simplified)
           }
           None => {
             println(simplified)
@@ -147,7 +147,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
 
         match path {
           Some(path) => {
-            @fs.write_string_to_file(path~, content=emitter._.to_string())
+            @fs.write_string_to_file!(path, emitter._.to_string())
           }
           None => {
             println(emitter._.to_string())

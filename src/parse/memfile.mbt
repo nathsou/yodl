@@ -9,7 +9,7 @@ pub type! MemFileError {
 } derive(Show)
 
 pub fn parse_mem_file(path: String, base~: Int, start~: Int, end~: Int?) -> Bytes!MemFileError {
-  let contents = match @fs.read_file_to_string?(path~) {
+  let contents = match @fs.read_file_to_string?(path) {
     Ok(contents) => contents
     Err(err) => raise IOError(err)
   }

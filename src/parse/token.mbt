@@ -32,7 +32,7 @@ pub impl Show for Span with output(self, logger) {
 }
 
 pub fn context(self: Span, window_size~: Int = 3) -> String! {
-  let contents = @fs.read_file_to_string!(path=self.file)
+  let contents = @fs.read_file_to_string!(self.file)
   let window = StringBuilder::new(size_hint=window_size * 2)
   let max_line_number_digits = (self.end.0 + 1).to_string().length()
 

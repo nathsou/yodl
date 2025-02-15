@@ -780,6 +780,17 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       None
     }
   },
+  "$readmemh": {
+    arity: Range(min=2, max=2),
+    apply: fn(args, _) {
+      match args {
+        [path, _mem] => { let _ = path.expect_string!() }
+        _ => ()
+      }
+
+      None
+    }
+  },
   "$printf": {
     arity: Range(min=1, max=@int.max_value),
     apply: fn(_, _) { None }

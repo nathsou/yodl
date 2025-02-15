@@ -19,9 +19,9 @@ int main(int argc, char** argv) {
         top->clk = 0;
         top->eval();
         
-        if (++i > 100000) {
-            break;
-        }
+        // if (++i >= 200) {
+        //     break;
+        // }
     }
 
     top->final();

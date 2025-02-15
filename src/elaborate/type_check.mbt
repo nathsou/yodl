@@ -127,7 +127,7 @@ pub impl Show for TypeCheckerError with output(self, logger) {
             logger.write_string("Invalid printf format string")
         }
         InvalidPrintfArgument(index~, ..) => {
-            logger.write_string("Invalid argument at index '\{index}' in printf call")
+            logger.write_string("Invalid argument at index \{index} in printf call")
         }
         InvalidStopExitCode(exit_code_ty~, ..) => {
             logger.write_string("Invalid exit code type '\{exit_code_ty}' in stop statement, expected an integer")
@@ -672,7 +672,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let _ = self.check_expr!(arg, env, expected_ty=Some(@parse.Type::uint(1)))
             @parse.Type::Clock
         }
-        FunCall(name="$readmemb", args=[path, mem], span~, ..) => {
+        FunCall(name="$readmemb" | "$readmemh", args=[path, mem], span~, ..) => {
             let _ = self.check_expr!(path, env)
             let mem_ty = self.check_expr!(mem, env)
 
@@ -700,7 +700,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 let arg_ty = self.check_expr!(arg, env)
 
                 if not(arg_ty.is_ground()) {
-                    raise InvalidPrintfArgument(index~, span~)
+                    raise InvalidPrintfArgument(index=index + 1, span~)
                 }
             }
 

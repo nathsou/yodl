@@ -315,13 +315,16 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
           self.emit_expr(cond)
           self._.write(", \"")
           self._.write(show_format_string(fmt))
-          self._.write("\", ")
-          
-          for idx, arg in args {
-            self.emit_expr(arg)
+          self._.write("\"")
+          if args.length() > 0 {
+            self._.write(", ")
+            
+            for idx, arg in args {
+              self.emit_expr(arg)
 
-            if idx < args.length() - 1 {
-              self._.write(", ")
+              if idx < args.length() - 1 {
+                self._.write(", ")
+              }
             }
           }
 

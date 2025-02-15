@@ -4,3 +4,6 @@ obj_dir/
 *.sv
 *.rtlil
 *.fir
+riscv/tools
+*.o
+*.elf

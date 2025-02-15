@@ -30,7 +30,7 @@ fn extract_package_name_from_path(path: String) -> String!ResolutionError {
 }
 
 fn collect_packages(dir: String, acc~: Map[String, String] = {}) -> Map[String, String]!ResolutionError {
-  let entries = match @fs.read_dir?(path=dir) {
+  let entries = match @fs.read_dir?(dir) {
     Ok(entries) => entries
     Err(error) => raise IOError(error)
   }
@@ -38,7 +38,7 @@ fn collect_packages(dir: String, acc~: Map[String, String] = {}) -> Map[String, 
   for entry in entries {
     let path = @utils.join_paths(dir, entry)
 
-    match @fs.is_dir?(path~) {
+    match @fs.is_dir?(path) {
       Ok(true) => {
         let _ = collect_packages!(path, acc~)
       }
@@ -118,7 +118,7 @@ pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.P
     None => ()
   }
 
-  let source = match @fs.read_file_to_string?(path~) {
+  let source = match @fs.read_file_to_string?(path) {
     Ok(source) => source
     Err(error) => raise IOError(error)
   }

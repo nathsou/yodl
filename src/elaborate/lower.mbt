@@ -1071,12 +1071,12 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       Expr(expr=@firrtl.primop(AsClock, [Reference(clk_ref)]), ty=Clock, span~)
     }
-    FunCall(name="$readmemb", args=[path, mem], span~, ..) => {
+    FunCall(name="$readmemb" | "$readmemh" as name, args=[path, mem], span~, ..) => {
       let path = path.expect_string!()
       let mem_ref = self.lower_expr!(mem, scope~, env~).as_ref!(self, scope~)
       let mem_name = match mem_ref {
         Id(id) => id.inner()
-        _ => raise ElaborationError::Unsupported(message="Cannot reference indirect memory inside $readmemb", span~)
+        _ => raise ElaborationError::Unsupported(message="Cannot reference indirect memory inside \{name}", span~)
       }
 
       let mem_id = match self.memories[mem_name] {
@@ -1088,7 +1088,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         "class": "firrtl.annotations.LoadMemoryAnnotation",
         "target": String::concat([..self.current_target, mem_id], separator="."),
         "fileName": path,
-        "hexOrBinary": "b",
+        "hexOrBinary": if name == "$readmemh" { "h" } else { "b" },
         "originalMemoryNameOpt": mem_id,
       }
 
