@@ -1,6 +1,6 @@
 # Adapted from https://projectf.io/posts/verilog-sim-verilator-sdl/
 
-VFLAGS = -O3 --x-assign fast --x-initial fast --noassert
+VFLAGS = -O3 -DENABLE_INITIAL_MEM_ --x-assign fast --x-initial fast --noassert
 SDL_CFLAGS = `sdl2-config --cflags`
 SDL_LDFLAGS = `sdl2-config --libs`
 

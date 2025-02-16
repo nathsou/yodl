@@ -13,7 +13,7 @@ if [ $module == "RISCV" ]; then
     cp sim/riscv/prog.hex output/
 fi
 
-yosys -p "read_verilog -sv output/$module.sv; check -assert; synth_ice40 -top Top -json output/$module.json"
+yosys -p "verilog_defines -DENABLE_INITIAL_MEM_=1; read_verilog -sv output/$module.sv; check -assert; synth_ice40 -top Top -json output/$module.json"
 
 if [ $device == "cu" ]; then
     nextpnr-ice40 --hx8k --json output/$module.json --pcf examples/constraints/cu.pcf --package cb132 --freq 100 --asc output/$module.asc

@@ -1109,9 +1109,9 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       }
 
       let annotation = {
-        "class": "firrtl.annotations.LoadMemoryAnnotation",
+        "class": "firrtl.annotations.MemoryFileInlineAnnotation",
         "target": String::concat([..self.current_target, mem_id], separator="."),
-        "fileName": path,
+        "filename": path,
         "hexOrBinary": if name == "$readmemh" { "h" } else { "b" },
         "originalMemoryNameOpt": mem_id,
       }

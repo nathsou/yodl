@@ -21,6 +21,7 @@ module Transmitter<ClockFreq: uint, BaudRate: uint>(
         ready_reg.d = false;
     }
 
+    // if counter underflows
     if ready_reg.q or counter.q[WIDTH] {
         counter.d = START_VALUE;
     } else {
@@ -34,41 +35,4 @@ module Transmitter<ClockFreq: uint, BaudRate: uint>(
     }
 
     tx = data.q[0] or data.q == 0;
-}
-
-module Top(
-    clk: clock,
-    rst_n: bool,
-) -> (
-    usb_tx: uint<1>,
-    io_led: uint<24>,
-    led: uint<8>,
-) {
-    let rst = not rst_n;
-    let transmitter = Transmitter<
-        ClockFreq: 100_000_000, // 100 MHz
-        BaudRate: 57600,
-    >(
-        clk,
-        rst,
-        tx: usb_tx,
-    );
-
-    let char = Reg<uint<8>>(clk);
-    char.d = char.q;
-
-    if rst {
-        char.d = "a"[0];
-    } else if transmitter.ready {
-        if char.q == "z"[0] {
-            char.d = "a"[0];
-        } else {
-            char.d = char.q + 1'd1;
-        }
-    }
-
-    transmitter.data_in = char.q;
-    transmitter.data_valid = true;
-    led = uint(8*{transmitter.tx});
-    io_led = 24'd0;
 }
