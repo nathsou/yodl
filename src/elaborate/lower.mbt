@@ -871,12 +871,24 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
               writers
             }
 
+            let read_latency = if params_map.contains("ReadLatency") {
+              get_param!("ReadLatency").as_int!()
+            } else {
+              1
+            }
+
+            let write_latency = if params_map.contains("WriteLatency") {
+              get_param!("WriteLatency").as_int!()
+            } else {
+              1
+            }
+
             let mem_stmt = @firrtl.Mem(
               id=mem_id,
               data_type~,
               depth~,
-              read_latency=1,
-              write_latency=1,
+              read_latency~,
+              write_latency~,
               read_under_write=Undefined,
               readers~,
               writers~,
@@ -1120,6 +1132,19 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       scope.add_stmt(Command(Stop(clk~, cond~, code~)))
       Empty(span~)
+    }
+    FunCall(name="$flip", args=[arg], span~, ty~, ..) => {
+      let arg = self.lower_expr!(arg, scope~, env~)
+      let arg_ref = arg.as_ref!(self, scope~)
+      let width = unwrap_type!(ty, span~).width!(span)
+      let bits = Array::new(capacity=width)
+
+      for i in 0..<width {
+        let index = @firrtl.Expr::Int(BigInt::from_int(width - 1 - i))
+        bits.push(@firrtl.primop(Bits, [Reference(arg_ref), index, index]))
+      }
+
+       Value::Expr(expr=concat!(bits), ty=UInt(width), span~)
     }
     Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())

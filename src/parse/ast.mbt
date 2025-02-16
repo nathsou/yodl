@@ -769,6 +769,10 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       Some(Expr::nat(@utils.cdiv(dividend, divisor), span~))
     }
   },
+  "$flip": {
+    arity: Fixed(1),
+    apply: fn(_, _) { None }
+  },
   "$readmemb": {
     arity: Range(min=2, max=2),
     apply: fn(args, _) {

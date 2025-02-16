@@ -32,7 +32,6 @@ module RAM(
 ) -> (
     q: uint<32>,
 ) {
-    let write_enable = mask[0] or mask[1] or mask[2] or mask[3];
     let mem = Memory<
         T: uint<8>[4],
         Depth: (6 * 1024) / 4, // 6KB
@@ -41,7 +40,7 @@ module RAM(
         Mask: bool[4],
     >(
         read: [{ clk: clk, en: read_enable, addr: addr[10:0] }],
-        write: [{ clk: clk, en: write_enable, addr: addr[10:0], data: write_data, mask: mask }],
+        write: [{ clk: clk, en: true, addr: addr[10:0], data: write_data, mask: mask }],
     );
 
     $readmemh("prog.hex", mem);
@@ -50,15 +49,37 @@ module RAM(
     q = uint({data[3], data[2], data[1], data[0]});
 }
 
-module Flip<N: uint>(d: uint<N>) -> (q: uint<N>) {
-    let flipped: bool[N];
+module RegisterFile(
+    clk: clock,
+    rs1_addr: uint<5>,
+    rs2_addr: uint<5>,
+    rd_addr: uint<5>,
+    rd_data: uint<32>,
+    write_enable: bool,
+) -> (
+    rs1: uint<32>,
+    rs2: uint<32>,
+) {
+    let regs = Memory<
+        T: uint<32>,
+        Depth: 32,
+        ReadPorts: 2,
+        WritePorts: 1,
+        Mask: bool,
+        ReadLatency: 0,
+        WriteLatency: 1,
+    >(
+        read: [
+            { clk: clk, en: true, addr: rs1_addr },
+            { clk: clk, en: true, addr: rs2_addr },
+        ],
+        write: [
+            { clk: clk, en: write_enable, addr: rd_addr, data: rd_data, mask: true },
+        ],
+    );
 
-    for i in 0..<N {
-        flipped[i] = d[i];
-    }
-
-    // uint flips the bits from [0..N] to [N..0]
-    q = uint(flipped);
+    rs1 = regs.q[0];
+    rs2 = regs.q[1];
 }
 
 module CPU(
@@ -102,12 +123,7 @@ module CPU(
     let pc = Reg<uint<32>>(clk, rst);
     let rs1 = Reg<uint<32>>(clk, rst);
     let rs2 = Reg<uint<32>>(clk, rst);
-    let regs = 32*[Reg<uint<32>>(clk, rst)];
-
-    // TODO: make this automatic
-    for i in 0..<32 {
-        regs[i].d = regs[i].q;
-    }
+    let regs = RegisterFile(clk, rs1_addr, rs2_addr, rd_addr);
 
     let alu_in1 = rs1.q;
     let alu_in2 = is_alu_reg or is_branch ? rs2.q : imm_i;
@@ -116,9 +132,9 @@ module CPU(
     let alu_equ = alu_minus[31:0] == 32'b0;
     let alu_lss_unsigned = alu_minus[32];
     let alu_lss_signed = alu_in1[31] xor alu_in2[31] ? alu_in1[31] : alu_minus[32];
-    let shifter_in = funct3 == 3'd1 ? Flip<32>(d: alu_in1).q : alu_in1;
+    let shifter_in = funct3 == 3'd1 ? $flip(alu_in1) : alu_in1;
     let shifter: uint<32> = sint({inst.q[30] and alu_in1[31], shifter_in}) shr alu_in2[4:0];
-    let left_shift = Flip<32>(d: shifter).q;
+    let left_shift = $flip(shifter);
 
     let alu_out = match funct3 {
         3'b000 => (funct7[5] and inst.q[5] ? alu_minus : alu_plus)[31:0],
@@ -185,6 +201,8 @@ module CPU(
         );
     
     mem_write_mask = stage.q == Stage::STORE ? {mask} : 4*[false];
+    regs.rd_data = write_back_data;
+    regs.write_enable = write_back_enable and rd_addr != 5'd0;
 
     pc.d = pc.q;
     inst.d = inst.q;
@@ -196,49 +214,20 @@ module CPU(
         pc.d = 32'd0;
         stage.d = Stage::FETCH_INST;
     } else {
-        if write_back_enable and rd_addr != 5'd0 {
-            regs[rd_addr].d = write_back_data;
-        }
-
         match stage.q {
             Stage::FETCH_INST => {
                 stage.d = Stage::WAIT_INST;
             },
             Stage::WAIT_INST => {
                 inst.d = mem_read_data;
-                // $printf("inst: %h pc: %h\n", mem_read_data, pc.q);
                 stage.d = Stage::FETCH_REGS;
             },
             Stage::FETCH_REGS => {
-                rs1.d = regs[rs1_addr].q;
-                rs2.d = regs[rs2_addr].q;
+                rs1.d = regs.rs1;
+                rs2.d = regs.rs2;
                 stage.d = Stage::EXECUTE;
             },
             Stage::EXECUTE => {
-                // if is_alu_reg {
-                //     $printf("alu: %h %h %b -> %h\n", rs1.q, rs2.q, funct3, alu_out);
-                // } else if is_alu_imm {
-                //     $printf("alu: %h %h %b -> %h\n", rs1.q, imm_i, funct3, alu_out);
-                // } else if is_branch {
-                //     $printf("branch: a: %h b: %h op: %b, taken: %b, target: %h\n", rs1.q, rs2.q, funct3, take_branch, pc_plus_imm);
-                // } else if is_jalr {
-                //     $printf("jalr: %h %h\n", rs1.q, imm_i);
-                // } else if is_jal {
-                //     $printf("jal: %h\n", imm_j);
-                // } else if is_auipc {
-                //     $printf("auipc %h\n", pc_plus_imm);
-                // } else if is_lui {
-                //     $printf("lui: %h\n", imm_u);
-                // } else if is_load {
-                //     $printf("load: %h -> %h\n", load_store_addr, load_data);
-                // } else if is_store {
-                //     $printf("store: %h %h -> %h\n", load_store_addr, rs2.q, uint({mem_write_data}));
-                // } else if is_system {
-                //     $printf("system\n");
-                // } else {
-                //     $printf("unknown opcode %b\n", opcode);
-                // }
-
                 if not is_system {
                     pc.d = next_pc;
                     stage.d = is_load ? Stage::LOAD : is_store ? Stage::STORE : Stage::FETCH_INST;
@@ -253,7 +242,6 @@ module CPU(
                 stage.d = Stage::FETCH_INST;
             },
             Stage::STORE => {
-                $printf("store: mem[%h] = %h, mask: %b\n", mem_addr, uint({mem_write_data}), uint({mask}));
                 stage.d = Stage::FETCH_INST;
             },
         }
@@ -262,7 +250,6 @@ module CPU(
     mem_addr = stage.q == Stage::WAIT_INST or stage.q == Stage::FETCH_INST ? pc.q : load_store_addr;
     mem_read_enable = stage.q == Stage::FETCH_INST or stage.q == Stage::LOAD;
     status = uint({uint(clk), opcode, 5'd0, stage.q, pc.q[7:0]});
-    $printf("status: %h\n", status);
 }
 
 // One-hot encoding of MMIO devices
@@ -297,12 +284,13 @@ module Top(
     ram.read_enable = is_ram and cpu.mem_read_enable;
     ram.write_data = cpu.mem_write_data;
     ram.mask = is_ram ? cpu.mem_write_mask : 4*{false};
+    let write_enable = cpu.mem_write_mask[0] or cpu.mem_write_mask[1] or cpu.mem_write_mask[2] or cpu.mem_write_mask[3];
 
     // devices
     let leds = Reg<uint<32>>(clk: slow_clk, rst);
     leds.d = leds.q;
 
-    if is_io and word_addr[MemoryMappedIO::LEDs] {
+    if is_io and write_enable and word_addr[MemoryMappedIO::LEDs] {
         leds.d = uint({cpu.mem_write_data});
     }
 
