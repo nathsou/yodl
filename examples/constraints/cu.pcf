@@ -3,6 +3,9 @@ set_io clk P7
 # Reset
 set_io rst_n P8
 
+# UART
+set_io usb_tx M9
+
 # Onboard LEDs, bottom to top
 set_io led[7] J11
 set_io led[6] K11

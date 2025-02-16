@@ -10,7 +10,7 @@ firtool --format=fir -O=release --verilog \
     output/$module.fir -o output/$module.sv
 
 if [ $module == "RISCV" ]; then
-    cp ../sim/riscv/prog.hex output/
+    cp sim/riscv/prog.hex output/
 fi
 
 yosys -p "read_verilog -sv output/$module.sv; check -assert; synth_ice40 -top Top -json output/$module.json"

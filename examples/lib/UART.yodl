@@ -1,0 +1,74 @@
+
+// https://gist.github.com/olofk/e91fba2572396f55525f8814f05fb33d
+module Transmitter<ClockFreq: uint, BaudRate: uint>(
+    clk: clock,
+    rst: bool,
+    data_in: uint<8>,
+    data_valid: bool, 
+) -> (
+    tx: uint<1>,
+    ready: bool,
+) {
+    const START_VALUE = ClockFreq / BaudRate;
+    const WIDTH = $clog2(START_VALUE);
+    let counter = Reg<uint<WIDTH + 1>>(clk);
+    let data = Reg<uint<10>>(clk);
+    let ready_reg = Reg<bool>(clk, q: ready);
+
+    if counter.q[WIDTH] and data.q == 0 {
+        ready_reg.d = true;
+    } else if data_valid and ready_reg.q {
+        ready_reg.d = false;
+    }
+
+    if ready_reg.q or counter.q[WIDTH] {
+        counter.d = START_VALUE;
+    } else {
+        counter.d = counter.q - 1'd1;
+    }
+
+    if counter.q[WIDTH] {
+        data.d = uint({1'b0, data.q[9:1]});
+    } else if data_valid and ready_reg.q {
+        data.d = uint({1'b1, data_in, 1'b0});
+    }
+
+    tx = data.q[0] or data.q == 0;
+}
+
+module Top(
+    clk: clock,
+    rst_n: bool,
+) -> (
+    usb_tx: uint<1>,
+    io_led: uint<24>,
+    led: uint<8>,
+) {
+    let rst = not rst_n;
+    let transmitter = Transmitter<
+        ClockFreq: 100_000_000, // 100 MHz
+        BaudRate: 57600,
+    >(
+        clk,
+        rst,
+        tx: usb_tx,
+    );
+
+    let char = Reg<uint<8>>(clk);
+    char.d = char.q;
+
+    if rst {
+        char.d = "a"[0];
+    } else if transmitter.ready {
+        if char.q == "z"[0] {
+            char.d = "a"[0];
+        } else {
+            char.d = char.q + 1'd1;
+        }
+    }
+
+    transmitter.data_in = char.q;
+    transmitter.data_valid = true;
+    led = uint(8*{transmitter.tx});
+    io_led = 24'd0;
+}

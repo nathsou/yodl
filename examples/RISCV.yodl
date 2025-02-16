@@ -1,3 +1,5 @@
+import UART
+
 // https://github.com/BrunoLevy/learn-fpga/blob/master/FemtoRV/TUTORIALS/FROM_BLINKER_TO_RISCV/README.md
 
 package Inst {
@@ -204,12 +206,6 @@ module CPU(
     regs.rd_data = write_back_data;
     regs.write_enable = write_back_enable and rd_addr != 5'd0;
 
-    pc.d = pc.q;
-    inst.d = inst.q;
-    stage.d = stage.q;
-    rs1.d = rs1.q;
-    rs2.d = rs2.q;
-
     if rst {
         pc.d = 32'd0;
         stage.d = Stage::FETCH_INST;
@@ -255,27 +251,26 @@ module CPU(
 // One-hot encoding of MMIO devices
 package MemoryMappedIO {
     const LEDs = 0;
+    const UART_DATA = 1;
+    const UART_BUSY = 2;
 }
 
 module Top(
     clk: clock,
     rst_n: bool,
 ) -> (
+    usb_tx: uint<1>,
     led: uint<8>,
     io_led: uint<24>,
 ) {
     let rst = not rst_n;
     let slow_clk = {
-        let counter = Reg<uint<22>>(clk, rst);
+        let counter = Reg<uint<2>>(clk, rst);
         counter.d = counter.q + 1'b1;
-        clock(counter.q[21]);
+        clock(counter.q[1]);
     };
     let ram = RAM(clk: slow_clk);
-    let cpu = CPU(
-        clk: slow_clk,
-        rst,
-        mem_read_data: ram.q,
-    );
+    let cpu = CPU(clk: slow_clk, rst);
 
     let word_addr = uint({2'b0, cpu.mem_addr[31:2]}); // divide by 4
     ram.addr = word_addr;
@@ -290,9 +285,26 @@ module Top(
     let leds = Reg<uint<32>>(clk: slow_clk, rst);
     leds.d = leds.q;
 
+    let uart_transmitter = UART::Transmitter<
+        ClockFreq: 100_000_000, // 100 MHz
+        BaudRate: 57600,
+    >(
+        clk,
+        rst,
+        tx: usb_tx,
+        data_in: uint({cpu.mem_write_data})[7:0],
+        data_valid: is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA],
+    );
+
     if is_io and write_enable and word_addr[MemoryMappedIO::LEDs] {
         leds.d = uint({cpu.mem_write_data});
     }
+
+    let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?
+        uint({22'b0, not(uart_transmitter.ready), 9'b0}) :
+        32'd0;
+
+    cpu.mem_read_data = is_ram ? ram.q : io_read_data;
 
     led = leds.q[7:0];
     io_led = cpu.status;

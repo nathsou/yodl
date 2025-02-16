@@ -827,13 +827,13 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
               scope.add_stmt(en_stmt)
 
-              // if uses_port("q") {
-              //   // connect d to q by default
-              //   scope.add_stmt(Connect(
-              //     FieldAccess(lhs=Id(inst_name), field=id_of_str("d")),
-              //     Reference(FieldAccess(lhs=Id(inst_name), field=id_of_str("q")))
-              //   ))
-              // }
+              if uses_port("q") {
+                // connect d to q by default
+                scope.add_stmt(Connect(
+                  FieldAccess(lhs=Id(inst_name), field=id_of_str("d")),
+                  Reference(FieldAccess(lhs=Id(inst_name), field=id_of_str("q")))
+                ))
+              }
             }
           }
           { packages: [], member: "Memory" } => {
@@ -1018,7 +1018,19 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
           let expr = val.as_expr!(self, scope~)
           Expr(expr=@firrtl.primop(Bits, [expr, Int(hi), Int(lo)]), ty~, span~)
         }
-        _ => raise ElaborationError::Unsupported(message="Slicing is only supported on UInt, SInt types", span~)
+        Vec(elem_ty, _) => {
+          let slice_len = (hi + 1 - lo).to_int()
+          let elems = Array::new(capacity=slice_len)
+          let lhs = val.as_ref!(self, scope~)
+
+          for i in lo.to_int()..=hi.to_int() {
+            let index = @firrtl.Expr::Int(BigInt::from_int(i))
+            elems.push(Expr(expr=Reference(Indexing(lhs~, index~)), ty=elem_ty, span~))
+          }
+
+          Vector(elems~, ty=Vec(elem_ty, slice_len), span~)
+        }
+        ty => raise ElaborationError::Unsupported(message="Slicing is not support on value of type '\{ty}'", span~)
       }
     }
     FieldAccess(expr=accessed_expr, field~, span~, ty=_) => {

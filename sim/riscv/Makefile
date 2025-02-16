@@ -22,14 +22,17 @@ RISCV.sv: RISCV.fir
 prog.hex: prog.bram.elf
 	tools/firmware_words prog.bram.elf -ram 6144 -max_addr 6144 -out prog.hex
 
-prog.bram.elf: prog.o start.o bram.ld
-	riscv64-elf-ld prog.o -o prog.bram.elf -T bram.ld -m elf32lriscv -nostdlib --no-relax-gp
+prog.bram.elf: prog.o start.o putchar.o bram.ld
+	riscv64-elf-ld prog.o putchar.o -o prog.bram.elf -T bram.ld -m elf32lriscv -nostdlib --no-relax-gp
 
 prog.o: prog.s
 	riscv64-elf-as -march=rv32i -mabi=ilp32 -mno-relax prog.s -o prog.o
 
 start.o: start.s
 	riscv64-elf-as -march=rv32i -mabi=ilp32 -mno-relax start.s -o start.o
+
+putchar.o: putchar.s
+	riscv64-elf-as -march=rv32i -mabi=ilp32 -mno-relax putchar.s -o putchar.o
 
 clean:
 	rm -rf ./obj_dir RISCV.sv RISCV.fir
