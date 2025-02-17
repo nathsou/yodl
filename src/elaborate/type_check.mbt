@@ -875,18 +875,18 @@ fn is_valid_assignment_target(expr: @parse.Expr) -> Bool {
 }
 
 enum AttributeValueType {
-    Str
+    // Str
     // Int
 }
 
 let module_attribute_signatures: Map[String, Array[AttributeValueType]] = {
     "internal": [],
-    "alias": [Str],
+    "inline": [],
+    "flatten": [],
+    // "alias": [Str],
 }
 
-let port_attribute_signatures: Map[String, Array[AttributeValueType]] = {
-    "inout": [],
-}
+let port_attribute_signatures: Map[String, Array[AttributeValueType]] = {}
 
 fn check_attribute(attr: @parse.Attribute, signatures~: Map[String, Array[AttributeValueType]]) -> Unit!TypeCheckerError {
     match signatures[attr.name] {
@@ -898,12 +898,12 @@ fn check_attribute(attr: @parse.Attribute, signatures~: Map[String, Array[Attrib
             for arg, expected in @utils.zip2(attr.args, expected) {
                 match (arg, expected) {
                     // (Int(_), Int) => ()
-                    (String(_), Str) => ()
+                    // (String(_), Str) => ()
                     _ => raise InvalidAttributeArgs(name=attr.name, args=attr.args, span=attr.span)
                 }
             }
         }
-        None => raise InvalidAttribute(name=attr.name, span=attr.span)
+        None => raise TypeCheckerError::InvalidAttribute(name=attr.name, span=attr.span)
     }
 }
 

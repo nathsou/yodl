@@ -83,6 +83,7 @@ pub type! ElaborationError {
   InvalidMemoryReferenceInLoadMemory(mem_name~: String, span~: @parse.Span)
   InvalidMaskType(expected~: @firrtl.Type, got~: @firrtl.Type, span~: @parse.Span)
   NoClockFound(message~: String, span~: @parse.Span)
+  InvalidAttribute(name~: String, span~: @parse.Span)
 } derive (Show)
 
 trait ScopeLike {
@@ -255,6 +256,27 @@ fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   }
 
   self.modules[mod.path] = fir_mod
+
+  for attr in mod.attributes.values() {
+    match attr {
+      { name: "inline", args: [], .. } => {
+        self.annotations.push({
+          "class": "firrtl.passes.InlineAnnotation",
+          "target": String::concat(self.current_target, separator=".").to_json(),
+        })
+      }
+      { name: "flatten", args: [], .. } => {
+        self.annotations.push({
+          "class": "firrtl.transforms.FlattenAnnotation",
+          "target": String::concat(self.current_target, separator=".").to_json(),
+        })
+      }
+      { name: "internal", args: [], .. } => ()
+      { span, .. } => {
+        raise ElaborationError::InvalidAttribute(name=attr.name, span~)
+      }
+    }
+  }
 
   for stmt in mod.body {
     self.lower_stmt!(stmt, scope=fir_mod, env~)
