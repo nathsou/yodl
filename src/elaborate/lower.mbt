@@ -222,7 +222,7 @@ fn default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
 
 fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let env = ElaboratorEnv::new()
-  self.current_target.push(mod.path.member)
+  self.current_target.push(String::concat([..mod.path.packages, mod.path.member], separator="_"))
   self.current_clock = None
 
   let fir_mod: @firrtl.Module = {
