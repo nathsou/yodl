@@ -34,6 +34,8 @@ module RAM(
 ) -> (
     q: uint<32>,
 ) {
+    let mask_rev = [mask[3], mask[2], mask[1], mask[0]];
+    let data_rev = [write_data[3], write_data[2], write_data[1], write_data[0]];
     let mem = Memory<
         T: uint<8>[4],
         Depth: (6 * 1024) / 4, // 6KB
@@ -42,7 +44,7 @@ module RAM(
         Mask: bool[4],
     >(
         read: [{ clk: clk, en: read_enable, addr: addr[10:0] }],
-        write: [{ clk: clk, en: true, addr: addr[10:0], data: write_data, mask: mask }],
+        write: [{ clk: clk, en: true, addr: addr[10:0], data: data_rev, mask: mask_rev }],
     );
 
     $readmemh("prog.hex", mem);
@@ -172,7 +174,7 @@ module CPU(
     let load_byte = load_store_addr[0] ? load_half_word[15:8] : load_half_word[7:0];
     let byte_access = funct3[1:0] == 2'd0;
     let half_word_access = funct3[1:0] == 2'd1;
-    let load_sign = (not funct3[2]) and byte_access ? load_byte[7] : load_half_word[15];
+    let load_sign = (not funct3[2]) and (byte_access ? load_byte[7] : load_half_word[15]);
     let load_data = byte_access ? uint({24*{load_sign}, load_byte}) :
         half_word_access ? uint({16*{load_sign}, load_half_word}) :
         mem_read_data;
@@ -265,9 +267,9 @@ module Top(
 ) {
     let rst = not rst_n;
     let slow_clk = {
-        let counter = Reg<uint<2>>(clk, rst);
+        let counter = Reg<uint<4>>(clk, rst);
         counter.d = counter.q + 1'b1;
-        clock(counter.q[1]);
+        clock(counter.q[3]);
     };
     let ram = RAM(clk: slow_clk);
     let cpu = CPU(clk: slow_clk, rst);
@@ -283,21 +285,25 @@ module Top(
 
     // devices
     let leds = Reg<uint<32>>(clk: slow_clk, rst);
-    leds.d = leds.q;
+    let uart_valid = is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA];
 
     let uart_transmitter = UART::Transmitter<
         ClockFreq: 100_000_000, // 100 MHz
-        BaudRate: 57600,
+        BaudRate: 9600,
     >(
         clk,
         rst,
         tx: usb_tx,
         data_in: uint({cpu.mem_write_data})[7:0],
-        data_valid: is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA],
+        data_valid: uart_valid,
     );
 
     if is_io and write_enable and word_addr[MemoryMappedIO::LEDs] {
         leds.d = uint({cpu.mem_write_data});
+    }
+
+    if is_io and uart_valid and uart_transmitter.ready {
+        $printf("%c", uint({cpu.mem_write_data})[7:0]);
     }
 
     let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?
