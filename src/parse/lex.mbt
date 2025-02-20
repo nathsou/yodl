@@ -418,6 +418,9 @@ fn next(self: Lexer) -> LexerResult[Token]! {
           "shr" => Shr
           "type" => Type
           "clock" => Clock
+          "andr" => Andr
+          "orr" => Orr
+          "xorr" => Xorr
           _ => Identifier(identifier)
         })
       } else {

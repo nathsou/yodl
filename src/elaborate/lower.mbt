@@ -496,6 +496,9 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let fir_expr = self.lower_expr!(expr, scope~, env~).as_expr!(self, scope~)
       let primop: @firrtl.PrimOp = match op {
         Not => Not
+        Andr => Andr
+        Orr => Orr
+        Xorr => Xorr
       }
 
       Expr(expr=@firrtl.primop(primop, [fir_expr]), ty~, span~)

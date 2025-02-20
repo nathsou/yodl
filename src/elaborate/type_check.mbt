@@ -101,10 +101,10 @@ pub impl Show for TypeCheckerError with output(self, logger) {
             logger.write_string("Invalid struct field '\{name}'")
         }
         InvalidUnaryOpOperand(op~, ty~, ..) => {
-            logger.write_string("Invalid operand '\{ty}' for unary operator '\{op}'")
+            logger.write_string("Invalid operand type '\{ty}' for unary operator '\{op}, expected uint or sint")
         }
         InvalidBinaryOpOperand(op~, ty~, ..) => {
-            logger.write_string("Invalid operand '\{ty}' for binary operator '\{op}'")
+            logger.write_string("Invalid operand type '\{ty}' for binary operator '\{op}'")
         }
         StringContainsNonAsciiChar(char~, ..) => {
             logger.write_string("String contains non-ASCII character '\{char}'")
@@ -323,12 +323,15 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Unary(op~, expr~, span~, ..) => {
             let ty = self.check_expr!(expr, env, expected_ty~)
-
+ 
             if not(ty.is_numerical()) {
                 raise InvalidUnaryOpOperand(op~, ty~, span~)
             }
-            
-            ty
+
+            match op {
+                Not => ty
+                Andr | Orr | Xorr => @parse.Type::uint(1)
+            }
         }
         Binary(op~, lhs~, rhs~, span~, ..) => {
             let lhs_ty = self.check_expr!(lhs, env, expected_ty~)

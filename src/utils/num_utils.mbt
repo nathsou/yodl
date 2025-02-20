@@ -148,6 +148,11 @@ pub fn bin(n: Int, width~: Int) -> Iter[Bool] {
   })
 }
 
+pub fn bits(n: Int) -> Iter[Bool] {
+  let width = clog2(n)
+  bin(n, width~)
+}
+
 pub fn bitwise_not(n: BigInt) -> BigInt {
   let bytes = n.to_octets()
   let flipped_bytes = Bytes::new(bytes.length()).to_fixedarray()

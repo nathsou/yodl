@@ -30,6 +30,9 @@ pub fn write(self: AstEmitter, s: String) -> Unit {
 pub impl Show for UnaryOp with output(op, logger) {
   logger.write_string(match op {
     Not => "not"
+    Andr => "andr"
+    Orr => "orr"
+    Xorr => "xorr"
   })
 }
 

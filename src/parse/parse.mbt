@@ -271,10 +271,18 @@ fn parse_primary_expr(self: Parser) -> Expr! {
       self.advance()
       String(value=str, span=self.span(start_idx), ty={ val: None })
     }
-    Not => {
+    Not | Andr | Orr | Xorr as op => {
       self.advance()
       let expr = self.parse_expr!()
-      Unary(op=Not, expr~, span=self.span(start_idx), ty={ val: None })
+      let unop: UnaryOp = match op {
+        Not => Not
+        Andr => Andr
+        Orr => Orr
+        Xorr => Xorr
+        _ => raise @utils.unreachable()
+      }
+
+      Unary(op=unop, expr~, span=self.span(start_idx), ty={ val: None })
     }
     Lparen => self.parse_tuple_or_paren_expr!()
     Lbracket => self.parse_vector_expr!()

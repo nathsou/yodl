@@ -229,8 +229,6 @@ module CPU(
                 if not is_system {
                     pc.d = next_pc;
                     stage.d = is_load ? Stage::LOAD : is_store ? Stage::STORE : Stage::FETCH_INST;
-                } else {
-                    $stop();
                 }
             },
             Stage::LOAD => {
@@ -267,9 +265,9 @@ module Top(
 ) {
     let rst = not rst_n;
     let slow_clk = {
-        let counter = Reg<uint<4>>(clk, rst);
+        let counter = Reg<uint<2>>(clk, rst);
         counter.d = counter.q + 1'b1;
-        clock(counter.q[3]);
+        clock(counter.q[1]);
     };
     let ram = RAM(clk: slow_clk);
     let cpu = CPU(clk: slow_clk, rst);
@@ -280,8 +278,8 @@ module Top(
     let is_ram = not is_io;
     ram.read_enable = is_ram and cpu.mem_read_enable;
     ram.write_data = cpu.mem_write_data;
-    ram.mask = is_ram ? cpu.mem_write_mask : 4*{false};
-    let write_enable = cpu.mem_write_mask[0] or cpu.mem_write_mask[1] or cpu.mem_write_mask[2] or cpu.mem_write_mask[3];
+    ram.mask = is_ram ? cpu.mem_write_mask : 4*[false];
+    let write_enable = orr uint(cpu.mem_write_mask);
 
     // devices
     let leds = Reg<uint<32>>(clk: slow_clk, rst);
@@ -289,21 +287,17 @@ module Top(
 
     let uart_transmitter = UART::Transmitter<
         ClockFreq: 100_000_000, // 100 MHz
-        BaudRate: 9600,
+        BaudRate: 57600,
     >(
         clk,
         rst,
         tx: usb_tx,
-        data_in: uint({cpu.mem_write_data})[7:0],
+        data_in: uint(cpu.mem_write_data)[7:0],
         data_valid: uart_valid,
     );
 
     if is_io and write_enable and word_addr[MemoryMappedIO::LEDs] {
-        leds.d = uint({cpu.mem_write_data});
-    }
-
-    if is_io and uart_valid and uart_transmitter.ready {
-        $printf("%c", uint({cpu.mem_write_data})[7:0]);
+        leds.d = uint(cpu.mem_write_data);
     }
 
     let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?

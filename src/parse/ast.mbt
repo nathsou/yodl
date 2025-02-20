@@ -183,7 +183,7 @@ pub fn map[E: Error](self: InstanceParams, map_expr~: (Expr) -> Expr!E, map_type
 }
 
 pub(all) enum UnaryOp {
-  Not
+  Not; Andr; Orr; Xorr
 } derive(Eq)
 
 pub(all) enum BinaryOp {
@@ -611,6 +611,9 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
           Ok(value) => {
             let value = match op {
               Not => if value == 0 { 1 } else { 0 }
+              Andr => @utils.bits(value).all(fn(b) { b }).to_int()
+              Orr => @utils.bits(value).any(fn(b) { b }).to_int()
+              Xorr => @utils.bits(value).fold(init=0, fn(acc, b) { acc ^ b.to_int() })
             }
 
             Some(Natural(value=BigInt::from_int(value), width=None, base=10, span~, ty~))
@@ -955,7 +958,6 @@ pub fn inouts(self: ModuleSignature) -> Iter[Port] {
 pub fn is_numerical(self: Type) -> Bool {
   match self {
     Nat(_) | UInt(_) | SInt(_) => true
-    Vector(ty~, ..) => ty.is_numerical()
     _ => false
   }
 }
