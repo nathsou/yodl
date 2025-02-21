@@ -42,6 +42,7 @@ type! TypeCheckerError {
     InvalidPrintfArgument(index~: Int, span~: @parse.Span)
     InvalidStopExitCode(exit_code_ty~: @parse.Type, span~: @parse.Span)
     InvalidFlipOperand(ty~: @parse.Type, span~: @parse.Span)
+    ImplicitWidening(from~: Int, to~: Int, span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -136,6 +137,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidFlipOperand(ty~, ..) => {
             logger.write_string("Invalid operand '\{ty}' for flip operator")
         }
+        ImplicitWidening(from~, to~, ..) => {
+            logger.write_string("Implicit widening from \{from} to \{to}")
+        }
     }
 
     logger.write_string(self.show_context())
@@ -173,6 +177,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidPrintfArgument(span~, ..) => span
         InvalidStopExitCode(span~, ..) => span
         InvalidFlipOperand(span~, ..) => span
+        ImplicitWidening(span~, ..) => span
     }
 }
 
@@ -333,7 +338,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 Andr | Orr | Xorr => @parse.Type::uint(1)
             }
         }
-        Binary(op~, lhs~, rhs~, span~, ..) => {
+        Binary(op~, lhs~, rhs~, output_width~, span~, ..) => {
             let lhs_ty = self.check_expr!(lhs, env, expected_ty~)
             let rhs_ty = self.check_expr!(rhs, env, expected_ty~)
             let wa = lhs_ty.width!(lhs.span())
@@ -343,59 +348,72 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 raise InvalidBinaryOpOperand(op~, ty=lhs_ty, span~)   
             }
 
-            match expected_ty {
-                Some(ty) => ty
-                _ => {
-                    let shift_amount = match op {
-                        Shl | Shr => match rhs {
-                            Natural(value~, ..) => Some(value.to_int())
-                            _ => None
-                        }
-                        _ => None
-                    }
+            let shift_amount = match op {
+                Shl | Shr => match rhs {
+                    Natural(value~, ..) => Some(value.to_int())
+                    _ => None
+                }
+                _ => None
+            }
 
-                    let lhs_ty = match lhs_ty {
-                        Nat(min_width~) => @parse.Type::UInt(Fixed(min_width))
-                        _ => lhs_ty
-                    }
+            let lhs_ty = match lhs_ty {
+                Nat(min_width~) => @parse.Type::UInt(Fixed(min_width))
+                _ => lhs_ty
+            }
 
-                    let rhs_ty = match rhs_ty {
-                        Nat(min_width~) => @parse.Type::UInt(Fixed(min_width))
-                        _ => rhs_ty
-                    }
+            let rhs_ty = match rhs_ty {
+                Nat(min_width~) => @parse.Type::UInt(Fixed(min_width))
+                _ => rhs_ty
+            }
 
-                    match (op, lhs_ty, rhs_ty) {
-                        (Add | Sub, UInt(_), UInt(_)) => @parse.Type::uint(@utils.max(wa, wb) + 1)
-                        (Add | Sub, SInt(_), SInt(_)) => @parse.Type::sint(@utils.max(wa, wb) + 1)
-                        (Mul, UInt(_), UInt(_)) => @parse.Type::uint(wa + wb)
-                        (Mul, SInt(_), SInt(_)) => @parse.Type::sint(wa + wb)
-                        (Div, UInt(_), UInt(_)) => @parse.Type::uint(wa)
-                        (Div, SInt(_), SInt(_)) => @parse.Type::sint(wa + 1)
-                        (Mod, UInt(_), UInt(_)) => @parse.Type::uint(@utils.min(wa, wb))
-                        (Mod, SInt(_), SInt(_)) => @parse.Type::sint(@utils.min(wa, wb))
-                        (Equ | Neq | Gtr | Lss | Geq | Leq, UInt(_), UInt(_)) => @parse.Type::uint(1)
-                        (Equ | Neq | Gtr | Lss | Geq | Leq, SInt(_), SInt(_)) => @parse.Type::uint(1)
-                        (Shl, UInt(_), UInt(_)) => match shift_amount {
-                            Some(amount) => @parse.Type::uint(wa + amount)
-                            None => @parse.Type::uint(wa + @utils.pow2(wb) - 1)
-                        }
-                        (Shl, SInt(_), UInt(_)) => match shift_amount {
-                            Some(amount) => @parse.Type::sint(wa + amount)
-                            None => @parse.Type::sint(wa + @utils.pow2(wb) - 1)
-                        }
-                        (Shr, UInt(_), UInt(_)) => match shift_amount {
-                            Some(amount) => @parse.Type::uint(@utils.max(wa - amount, 0))
-                            None => @parse.Type::uint(wa)
-                        }
-                        (Shr, SInt(_), UInt(_)) => match shift_amount {
-                            Some(amount) => @parse.Type::sint(@utils.max(wa - amount, 1))
-                            None => @parse.Type::sint(wa)
-                        }
-                        (And | Or | Xor | Nand | Nor | Xnor | Ternary, UInt(_), UInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
-                        (And | Or | Xor | Nand | Nor | Xnor | Ternary, SInt(_), SInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
-                        _ => raise InvalidBinaryOpOperands(op~, lhs_ty~, rhs_ty~, span~)
+            let out_ty = match (op, lhs_ty, rhs_ty) {
+                (Add | Sub, UInt(_), UInt(_)) => @parse.Type::uint(@utils.max(wa, wb) + 1)
+                (Add | Sub, SInt(_), SInt(_)) => @parse.Type::sint(@utils.max(wa, wb) + 1)
+                (Mul, UInt(_), UInt(_)) => @parse.Type::uint(wa + wb)
+                (Mul, SInt(_), SInt(_)) => @parse.Type::sint(wa + wb)
+                (Div, UInt(_), UInt(_)) => @parse.Type::uint(wa)
+                (Div, SInt(_), SInt(_)) => @parse.Type::sint(wa + 1)
+                (Mod, UInt(_), UInt(_)) => @parse.Type::uint(@utils.min(wa, wb))
+                (Mod, SInt(_), SInt(_)) => @parse.Type::sint(@utils.min(wa, wb))
+                (Equ | Neq | Gtr | Lss | Geq | Leq, UInt(_), UInt(_)) => @parse.Type::uint(1)
+                (Equ | Neq | Gtr | Lss | Geq | Leq, SInt(_), SInt(_)) => @parse.Type::uint(1)
+                (Shl, UInt(_), UInt(_)) => match shift_amount {
+                    Some(amount) => @parse.Type::uint(wa + amount)
+                    None => @parse.Type::uint(wa + @utils.pow2(wb) - 1)
+                }
+                (Shl, SInt(_), UInt(_)) => match shift_amount {
+                    Some(amount) => @parse.Type::sint(wa + amount)
+                    None => @parse.Type::sint(wa + @utils.pow2(wb) - 1)
+                }
+                (Shr, UInt(_), UInt(_)) => match shift_amount {
+                    Some(amount) => @parse.Type::uint(@utils.max(wa - amount, 0))
+                    None => @parse.Type::uint(wa)
+                }
+                (Shr, SInt(_), UInt(_)) => {
+                    match shift_amount {
+                        Some(amount) => @parse.Type::sint(@utils.max(wa - amount, 1))
+                        None => @parse.Type::sint(wa)
                     }
                 }
+                (And | Or | Xor | Nand | Nor | Xnor | Ternary, UInt(_), UInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
+                (And | Or | Xor | Nand | Nor | Xnor | Ternary, SInt(_), SInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
+                _ => raise InvalidBinaryOpOperands(op~, lhs_ty~, rhs_ty~, span~)
+            }
+
+            let wy = out_ty.width!(span)
+            output_width.val = Some(wy)
+
+            match expected_ty {
+                Some(expected_ty) => {
+                    let expected_width = expected_ty.width!(span)
+
+                    if wy < expected_width {
+                        raise ImplicitWidening(from=wy, to=expected_width, span~)
+                    } else {
+                        expected_ty
+                    } 
+                }
+                None => out_ty
             }
         }
         Indexing(expr~, index~, span~, ..) => {

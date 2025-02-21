@@ -503,7 +503,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       Expr(expr=@firrtl.primop(primop, [fir_expr]), ty~, span~)
     }
-    Binary(op~, lhs~, rhs~, span~, ty=_) => {
+    Binary(op~, lhs~, rhs~, output_width~, span~, ty=bin_ty) => {
       let fir_lhs = self.lower_expr!(lhs, scope~, env~).as_expr!(self, scope~)
       let fir_rhs = self.lower_expr!(rhs, scope~, env~).as_expr!(self, scope~)
       let is_rhs_int = rhs.as_int?().is_ok()
@@ -535,6 +535,16 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       if negate { 
         res = @firrtl.primop(Not, [res])
+      }
+
+
+      if output_width.val is Some(output_width) {
+        let width = unwrap_type!(bin_ty, span~).width!(span)
+        if width < output_width {
+          res = @firrtl.primop(Bits, [res, @firrtl.Expr::Int(BigInt::from_int(output_width - 1)), @firrtl.Expr::Int(BigInt::from_int(0))])
+        } else if width > output_width {
+          raise Failure("Implicit widening is not allowed")
+        }
       }
 
       Expr(expr=res, ty~, span~) 
@@ -1106,7 +1116,11 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let fir_ty = lower_type!(ty, span~)
 
       match (name, arg.ty()) {
-        (_, Vec(_)) => Expr(expr=flatten_int!(arg_ref, arg.ty(), span~), ty=fir_ty, span~)
+        ("uint", Vec(_)) => Expr(expr=flatten_int!(arg_ref, arg.ty(), span~), ty=fir_ty, span~)
+        ("sint", Vec(_)) => {
+          let flattened = flatten_int!(arg_ref, arg.ty(), span~)
+          Expr(expr=@firrtl.primop(AsSInt, [flattened]), ty=fir_ty, span~)
+        }
         ("uint", UInt(_) | AsyncReset | Reset) | ("sint", SInt(_)) => arg
         ("uint", SInt(_)) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
         ("uint", Clock) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)

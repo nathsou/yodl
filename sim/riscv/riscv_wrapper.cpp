@@ -11,17 +11,14 @@ int main(int argc, char** argv) {
 
     top->rst_n = 1;
     top->clk = 0;
-    int i = 0;
+    unsigned long i = 0L;
 
     while (!contextp->gotFinish()) {
         top->clk = 1;
         top->eval();
         top->clk = 0;
         top->eval();
-        
-        // if (++i >= 200) {
-        //     break;
-        // }
+        i++;
     }
 
     top->final();

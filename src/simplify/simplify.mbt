@@ -60,8 +60,8 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
           None => None
         }
       }
-      Binary(op=Nand, lhs~, rhs~, span~, ty~) => Some(
-        @parse.Expr::Unary(op=Not, expr=Binary(op=And, lhs~, rhs~, span~, ty~), span~, ty~)
+      Binary(op=Nand, lhs~, rhs~, output_width~, span~, ty~) => Some(
+        @parse.Expr::Unary(op=Not, expr=Binary(op=And, lhs~, rhs~, output_width~, span~, ty~), span~, ty~)
       )
       Tuple(elems~, span~, ty=_) => Some({
         let fields = Map::new(capacity=elems.length())

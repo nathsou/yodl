@@ -16,10 +16,10 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
       let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)
       Unary(op~, expr~, span~, ty=clone_ty(ty))
     }
-    Binary(op~, lhs~, rhs~, span~, ty~) => {
+    Binary(op~, lhs~, rhs~, output_width~, span~, ty~) => {
       let lhs = rewrite_expr!(lhs, rewr_expr~, rewr_stmt~)
       let rhs = rewrite_expr!(rhs, rewr_expr~, rewr_stmt~)
-      Binary(op~, lhs~, rhs~, span~, ty=clone_ty(ty))
+      Binary(op~, lhs~, rhs~, output_width=@ref.new(output_width.val), span~, ty=clone_ty(ty))
     }
     Indexing(expr~, index~, span~, ty~) => {
       let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)
@@ -215,7 +215,7 @@ pub fn visit_expr(expr: Expr, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Boo
       Natural(_) => ()
       Identifier(_) => ()
       Unary(expr~, op=_, span=_, ty=_) => visit_expr!(expr, on_expr~, on_stmt~)
-      Binary(lhs~, rhs~, op=_, span=_, ty=_) => {
+      Binary(lhs~, rhs~, op=_, output_width=_, span=_, ty=_) => {
         visit_expr!(lhs, on_expr~, on_stmt~)
         visit_expr!(rhs, on_expr~, on_stmt~)
       }

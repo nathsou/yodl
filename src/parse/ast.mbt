@@ -3,7 +3,7 @@ pub(all) enum Expr {
   Natural(value~: BigInt, width~: Int?, base~: Int, span~: Span, ty~: Ref[Type?])
   Identifier(path~: Path, span~: Span, ty~: Ref[Type?])
   Unary(op~: UnaryOp, expr~: Expr, span~: Span, ty~: Ref[Type?])
-  Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, span~: Span, ty~: Ref[Type?])
+  Binary(op~: BinaryOp, lhs~: Expr, rhs~: Expr, output_width~: Ref[Int?], span~: Span, ty~: Ref[Type?])
   Indexing(expr~: Expr, index~: Expr, span~: Span, ty~: Ref[Type?])
   Slicing(expr~: Expr, hi~: Expr, lo~: Expr, kind~: PartSelect, span~: Span, ty~: Ref[Type?])
   FieldAccess(expr~: Expr, field~: String, span~: Span, ty~: Ref[Type?])
@@ -621,7 +621,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
           _ => None
         }
       }
-      Binary(op~, lhs~, rhs~, span~, ty~) => {
+      Binary(op~, lhs~, rhs~, output_width=_, span~, ty~) => {
         let lhs_value = lhs.as_bigint?()
         let rhs_value = rhs.as_bigint?()
         match (lhs_value, rhs_value, lhs, rhs, op) {

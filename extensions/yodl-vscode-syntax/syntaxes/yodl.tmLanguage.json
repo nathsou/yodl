@@ -28,7 +28,7 @@
         },
         {
             "name": "keyword.operator.yodl",
-            "match": "(and|or|not|xor|nand|nor|xnor|shl|shr|==|!=|<=|>=|<:|>:|\\+|-|\\*|\\/|%|\\.{3}|=>|\\?|:|\\.)"
+            "match": "(and|or|not|xor|nand|nor|xnor|shl|shr|andr|orr|xorr|==|!=|<=|>=|<:|>:|\\+|-|\\*|\\/|%|\\.{3}|=>|\\?|:|\\.)"
         },
         {
             "name": "keyword.other.yodl",

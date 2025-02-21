@@ -131,7 +131,7 @@ fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr! {
             _ => {
               // left-associative
               let rhs = self.precedence_climbing!(precedence + 1)
-              lhs = Binary(op~, lhs~, rhs~, span=self.span(start_idx), ty={ val: None })
+              lhs = Binary(op~, lhs~, rhs~, output_width=@ref.new(None), span=self.span(start_idx), ty=@ref.new(None))
             }
           }
 
