@@ -18,7 +18,8 @@ RISCV.sv: RISCV.fir
 	firtool -O=release --format=fir --verilog -disable-all-randomization -strip-debug-info RISCV.fir -o RISCV.sv
 
 prog.hex: prog.bram.elf
-	tools/firmware_words prog.bram.elf -ram 6144 -max_addr 6144 -out prog.hex
+	riscv64-elf-objcopy -O binary prog.bram.elf prog.bin
+	hexdump -v -e '1/4 "%08x\n"' prog.bin > prog.hex
 
 prog.bram.elf: prog.o start.o putchar.o bram.ld
 	riscv64-elf-ld prog.o putchar.o -o prog.bram.elf -T bram.ld -m elf32lriscv -nostdlib --no-relax-gp
@@ -33,6 +34,6 @@ putchar.o: putchar.s
 	riscv64-elf-as -march=rv32i -mabi=ilp32 -mno-relax putchar.s -o putchar.o
 
 clean:
-	rm -rf ./obj_dir RISCV.sv RISCV.fir
+	rm -rf ./obj_dir RISCV.sv RISCV.fir prog.hex prog.bin prog.bram.elf
 
 .PHONY: all VTop

@@ -9,3 +9,4 @@ riscv/tools
 *.elf
 tests/
 *.hex
+*.bin
