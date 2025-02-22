@@ -17,13 +17,10 @@ package Inst {
 }
 
 package Stage {
-    const FETCH_INST = 3'd0;
-    const WAIT_INST = 3'd1;
-    const FETCH_REGS = 3'd2;
-    const EXECUTE = 3'd3;
-    const LOAD = 3'd4;
-    const WAIT_DATA = 3'd5;
-    const STORE = 3'd6;
+    const FETCH_INST = 2'd0;
+    const WAIT_INST = 2'd1;
+    const EXECUTE = 2'd2;
+    const WAIT_DATA = 2'd3;
 }
 
 module RAM(
@@ -91,6 +88,7 @@ module CPU(
     clk: clock,
     rst: bool,
     mem_read_data: uint<32>,
+    mem_read_busy: bool,
 ) -> (
     mem_addr: uint<32>,
     mem_read_enable: bool,
@@ -117,14 +115,14 @@ module CPU(
     let imm_b = uint({20*{inst.q[31]}, inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0});
     let imm_j = uint({12*{inst.q[31]}, inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0});
 
-    let rs1_addr = inst.q[19:15];
-    let rs2_addr = inst.q[24:20];
+    let stage = Reg<uint<2>>(clk, rst);
+    let rs1_addr = (stage.q == Stage::WAIT_INST ? mem_read_data : inst.q)[19:15];
+    let rs2_addr = (stage.q == Stage::WAIT_INST ? mem_read_data : inst.q)[24:20];
     let rd_addr = inst.q[11:7];
 
     let funct3 = inst.q[14:12];
     let funct7 = inst.q[31:25];
     
-    let stage = Reg<uint<3>>(clk, rst);
     let pc = Reg<uint<32>>(clk, rst);
     let rs1 = Reg<uint<32>>(clk, rst);
     let rs2 = Reg<uint<32>>(clk, rst);
@@ -205,7 +203,7 @@ module CPU(
             4'b1111
         );
     
-    mem_write_mask = stage.q == Stage::STORE ? {mask} : 4*[false];
+    mem_write_mask = stage.q == Stage::EXECUTE and is_store ? {mask} : 4*[false];
     regs.rd_data = write_back_data;
     regs.write_enable = write_back_enable and rd_addr != 5'd0;
 
@@ -219,9 +217,6 @@ module CPU(
             },
             Stage::WAIT_INST => {
                 inst.d = mem_read_data;
-                stage.d = Stage::FETCH_REGS;
-            },
-            Stage::FETCH_REGS => {
                 rs1.d = regs.rs1;
                 rs2.d = regs.rs2;
                 stage.d = Stage::EXECUTE;
@@ -229,26 +224,22 @@ module CPU(
             Stage::EXECUTE => {
                 if not is_system {
                     pc.d = next_pc;
-                    stage.d = is_load ? Stage::LOAD : is_store ? Stage::STORE : Stage::FETCH_INST;
+                    stage.d = is_load ? Stage::WAIT_DATA : Stage::FETCH_INST;
                 } else {
                     $stop();
                 }
             },
-            Stage::LOAD => {
-                stage.d = Stage::WAIT_DATA;
-            },
             Stage::WAIT_DATA => {
-                stage.d = Stage::FETCH_INST;
-            },
-            Stage::STORE => {
-                stage.d = Stage::FETCH_INST;
+                if not mem_read_busy {
+                    stage.d = Stage::FETCH_INST;
+                }
             },
         }
     }
 
     mem_addr = stage.q == Stage::WAIT_INST or stage.q == Stage::FETCH_INST ? pc.q : load_store_addr;
-    mem_read_enable = stage.q == Stage::FETCH_INST or stage.q == Stage::LOAD;
-    status = uint({uint(clk), opcode, 5'd0, stage.q, pc.q[7:0]});
+    mem_read_enable = stage.q == Stage::FETCH_INST or (stage.q == Stage::EXECUTE and is_load);
+    status = uint({uint(clk), opcode, 6'd0, stage.q, pc.q[7:0]});
 }
 
 // One-hot encoding of MMIO devices
@@ -277,8 +268,7 @@ module Top(
         clock(counter.q[1]);
     };
     let ram = RAM(clk: slow_clk);
-    let cpu = CPU(clk: slow_clk, rst);
-
+    let cpu = CPU(clk: slow_clk, rst, mem_read_busy: false);
     let word_addr = uint({2'b0, cpu.mem_addr[31:2]}); // divide by 4
     ram.addr = word_addr;
     let is_io = cpu.mem_addr[22];
