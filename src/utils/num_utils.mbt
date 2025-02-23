@@ -184,7 +184,15 @@ pub fn bools_to_bigint(bools: Iter[Bool]) -> BigInt {
   BigInt::from_octets(bools_to_bytes(bools))
 }
 
-pub fn significant_bits(n: BigInt) -> Int {
+pub fn significant_bits(n: BigInt, is_signed~: Bool = false) -> Int {
+  if n == 0 {
+    return 1
+  }
+
+  if n < 0 {
+    return significant_bits(-n, is_signed=true)
+  }
+
   let bytes = n.to_octets()
   let head = n.to_octets()[0].to_uint()
   let mut leading_zeros = 0
@@ -198,5 +206,5 @@ pub fn significant_bits(n: BigInt) -> Int {
     }
   }
 
-  bytes.length() * 8 - leading_zeros
+  bytes.length() * 8 - leading_zeros + is_signed.to_int()
 }

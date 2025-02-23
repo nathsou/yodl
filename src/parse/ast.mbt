@@ -183,7 +183,7 @@ pub fn map[E: Error](self: InstanceParams, map_expr~: (Expr) -> Expr!E, map_type
 }
 
 pub(all) enum UnaryOp {
-  Not; Andr; Orr; Xorr
+  Not; Neg; Andr; Orr; Xorr
 } derive(Eq)
 
 pub(all) enum BinaryOp {
@@ -581,7 +581,13 @@ pub fn as_expr(self: Param, span~: Span) -> Expr! {
   match self {
     IntParam(n) => {
       let bn = BigInt::from_int(n)
-      Natural(value=bn, width=None, base=10, span=span, ty={ val: Some(Nat(min_width=@utils.significant_bits(bn))) })
+      Natural(
+        value=bn,
+        width=None,
+        base=10,
+        span~,
+        ty={ val: Some(Nat(min_width=@utils.significant_bits(bn))) },
+      )
     }
     ValParam(value~, width~) => Natural(value~, width=Some(width), base=2, span=span, ty={ val: Some(Type::uint(width)) })
     TypeParam(_) => raise TypeParamInsteadOfExpr(span~)
@@ -606,6 +612,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
           None => None
         }
       }
+      Unary(op=Neg, ..) => None
       Unary(op~, expr~, span~, ty~) => {
         match expr.as_int?() {
           Ok(value) => {
@@ -614,6 +621,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
               Andr => @utils.bits(value).all(fn(b) { b }).to_int()
               Orr => @utils.bits(value).any(fn(b) { b }).to_int()
               Xorr => @utils.bits(value).fold(init=0, fn(acc, b) { acc ^ b.to_int() })
+              Neg => raise @utils.unreachable()
             }
 
             Some(Natural(value=BigInt::from_int(value), width=None, base=10, span~, ty~))

@@ -271,11 +271,12 @@ fn parse_primary_expr(self: Parser) -> Expr! {
       self.advance()
       String(value=str, span=self.span(start_idx), ty={ val: None })
     }
-    Not | Andr | Orr | Xorr as op => {
+    Not | Minus | Andr | Orr | Xorr as op => {
       self.advance()
       let expr = self.parse_expr!()
       let unop: UnaryOp = match op {
         Not => Not
+        Minus => Neg
         Andr => Andr
         Orr => Orr
         Xorr => Xorr

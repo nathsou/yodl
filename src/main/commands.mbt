@@ -1,6 +1,5 @@
 
 enum Command {
-  WriteVerilog(path~: String?)
   WriteSource
   WriteMono(path~: String?)
   WriteTyped
@@ -173,15 +172,6 @@ fn parse_commands(source: String) -> Array[Command]!CommandParserError {
         }
 
         WriteSimplified(path~)
-      }
-      "write_verilog" => {
-        let path = match cmd.args {
-          [] => None
-          [path] => Some(path)
-          _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
-        }
-
-        WriteVerilog(path~)
       }
       "write_firrtl" => {
         let path = match cmd.args {

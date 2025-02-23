@@ -481,7 +481,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
     Natural(value~, width~, base~, span~, ty=_) => {
       let width = match width {
         Some(width) => width
-        None => @utils.significant_bits(value)
+        None => @utils.significant_bits(value, is_signed=false)
       }
       
       Expr(expr=Literal(UInt(width~, radix=Some(base), value~)), ty~, span~)
@@ -496,6 +496,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let fir_expr = self.lower_expr!(expr, scope~, env~).as_expr!(self, scope~)
       let primop: @firrtl.PrimOp = match op {
         Not => Not
+        Neg => Neg
         Andr => Andr
         Orr => Orr
         Xorr => Xorr

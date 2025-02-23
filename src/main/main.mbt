@@ -162,7 +162,7 @@ fn run(path~: String, commands~: Array[Command]) -> Unit! {
 fn main {
   match @env.args() {
     [_, _, path] => {
-      match run?(path~, commands=[WriteVerilog(path=Some(path.replace(old=".yodl", new=".v")))]) {
+      match run?(path~, commands=[WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")))]) {
         Ok(_) => ()
         Err(error) => {
           println(error)

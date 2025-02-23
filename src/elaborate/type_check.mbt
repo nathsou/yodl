@@ -315,7 +315,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Natural(value~, width~, ..) => match width {
             Some(width) => @parse.Type::uint(width)
-            None => Nat(min_width=@utils.significant_bits(value))
+            None => Nat(min_width=@utils.significant_bits(value, is_signed=false))
         }
         String(value=str,  span~, ..) => {
             for char in str {
@@ -335,6 +335,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             match op {
                 Not => ty
+                Neg => SInt(Fixed(ty.width!(span) + 1))
                 Andr | Orr | Xorr => @parse.Type::uint(1)
             }
         }
