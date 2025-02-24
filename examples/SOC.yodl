@@ -1,0 +1,100 @@
+import RISCV
+import UART
+import Reset
+
+module RAM(
+    clk: clock,
+    addr: uint<32>,
+    read_enable: bool,
+    write_data: uint<8>[4],
+    mask: bool[4],
+) -> (
+    q: uint<32>,
+) {
+    let mask_rev = [mask[3], mask[2], mask[1], mask[0]];
+    let data_rev = [write_data[3], write_data[2], write_data[1], write_data[0]];
+    let mem = Memory<
+        T: uint<8>[4],
+        Depth: (6 * 1024) / 4, // 6KB
+        ReadPorts: 1,
+        WritePorts: 1,
+        Mask: bool[4],
+    >(
+        read: [{ clk: clk, en: read_enable, addr: addr[10:0] }],
+        write: [{ clk: clk, en: true, addr: addr[10:0], data: data_rev, mask: mask_rev }],
+    );
+
+    $readmemh("prog.hex", mem);
+
+    let data = mem.q[0];
+    q = uint({data[3], data[2], data[1], data[0]});
+}
+
+// One-hot encoding of MMIO devices
+package MemoryMappedIO {
+    const LEDs = 0;
+    const UART_DATA = 1;
+    const UART_BUSY = 2;
+}
+
+const CLOCK_FREQ = 100_000_000; // 100 MHz
+
+module Top(
+    clk: clock,
+    rst_n: bool,
+) -> (
+    usb_tx: uint<1>,
+    led: uint<8>,
+    io_led: uint<24>,
+) {
+    // wait 125 ms for the FPGA to configure
+    let power_reset = Reset::PowerOnReset<CLOCK_FREQ / 8>(clk);
+    let rst = power_reset.rst or (not rst_n);
+    let slow_clk = {
+        let counter = Reg<uint<2>>(clk, rst);
+        counter.d = counter.q + 1'b1;
+        clock(counter.q[1]);
+    };
+    let ram = RAM(clk: slow_clk);
+    let cpu = RISCV::CPU(clk: slow_clk, rst, mem_read_busy: false);
+    let word_addr = uint({2'b0, cpu.mem_addr[31:2]}); // divide by 4
+    ram.addr = word_addr;
+    let is_io = cpu.mem_addr[22];
+    let is_ram = not is_io;
+    ram.read_enable = is_ram and cpu.mem_read_enable;
+    ram.write_data = cpu.mem_write_data;
+    ram.mask = is_ram ? cpu.mem_write_mask : 4*[false];
+    let write_enable = orr uint(cpu.mem_write_mask);
+
+    // devices
+    let leds = Reg<uint<32>>(clk: slow_clk, rst);
+    let uart_valid = is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA];
+
+    let uart_transmitter = UART::Transmitter<
+        ClockFreq: CLOCK_FREQ,
+        BaudRate: 921600,
+    >(
+        clk,
+        rst,
+        tx: usb_tx,
+        data_in: uint(cpu.mem_write_data)[7:0],
+        data_valid: uart_valid,
+    );
+
+    if is_io and write_enable and word_addr[MemoryMappedIO::LEDs] {
+        leds.d = uint(cpu.mem_write_data);
+    }
+
+    if is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA] and uart_transmitter.ready {
+        $printf("%c", uint(cpu.mem_write_data)[7:0]);
+    }
+
+    let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?
+        uint({22'b0, not uart_transmitter.ready, 9'b0}) :
+        32'd0;
+
+    cpu.mem_read_data = is_ram ? ram.q : io_read_data;
+
+    led = leds.q[7:0];
+    io_led = cpu.status;
+}
