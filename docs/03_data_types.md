@@ -23,8 +23,9 @@ let c: sint<32> = sint(32'd11);
 ```
 
 Integer literals can be specified in decimal, binary, octal, or hexadecimal format.
+The syntax is `<width in bits>'[base prefix]<value>`
 
-The decimal value `1621` can be represented as follows:
+The decimal value `1621` which requires at least 11 bits can be represented as follows:
 
 | prefix | base | example    |
 |-------------|------|------------|
@@ -35,7 +36,7 @@ The decimal value `1621` can be represented as follows:
 
 ### Booleans
 
-The `bool` type is an aliases for the `uint<1>` type.
+The `bool` type is an alias for the `uint<1>` type.
 
 For readability, the `true` and `false` keywords are supported and correspond to `1'b1` and `1'b0` respectively. 
 
@@ -48,7 +49,7 @@ let is_yodl_neat: bool = true;
 The `clock` type is required for clock signals used in `Reg` and `Memory` module instances.
 
 ```yodl
-module Counter(clk: Clock) -> (count: uint<24>) {
+module Counter(clk: clock) -> (count: uint<24>) {
     let counter = Reg<uint<24>>(clk);
     counter.d = counter.q + 1'd1;
     count = counter.q;
