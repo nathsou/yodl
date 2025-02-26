@@ -1,0 +1,13 @@
+[book]
+authors = ["Nathan Soufflet"]
+language = "en"
+multilingual = false
+src = "src"
+title = "yodl"
+
+[build]
+create-missing = false
+
+[output.html]
+additional-js = ["theme/yodl-highlight.js"]
+git-repository-url = "https://github.com/nathsou/yodl"

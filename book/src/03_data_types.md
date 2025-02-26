@@ -58,7 +58,7 @@ module Counter(clk: clock) -> (count: uint<24>) {
 
 ## Aggregate Types
 
-Groud types can be combined to create more complex data structures.
+Ground types can be combined to create more complex data structures.
 
 ## Vectors
 

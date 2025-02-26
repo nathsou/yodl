@@ -147,7 +147,7 @@ module Top(clk: clock, rst: bool) -> () {
 
 ```yodl
 let message1: string<3>;
-message1 = "Yo!;
+message1 = "Yo!";
 
 let message2 = "Hi!";
 let message3: string<3> = "Hey";

@@ -12,7 +12,7 @@ VTop: VTop.mk
 	make -C ./obj_dir -f VTop.mk
 
 RISCV.fir: prog.hex
-	cd ../.. && moon run src/main examples/RISCV.yodl "write_firrtl sim/riscv/RISCV.fir"
+	cd ../.. && moon run src/main examples/SOC.yodl "write_firrtl sim/riscv/RISCV.fir"
 
 RISCV.sv: RISCV.fir
 	firtool -O=release --format=fir --verilog -disable-all-randomization -strip-debug-info RISCV.fir -o RISCV.sv

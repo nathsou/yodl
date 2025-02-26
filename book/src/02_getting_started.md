@@ -3,7 +3,7 @@
 
 ## Installation
 
-To build and run Yodl, install [Moonbit](https://www.moonbitlang.com/)
+To build and run Yodl, install [Moonbit](https://www.moonbitlang.com/download/#moonbit-cli-tools)
 
 ```bash
 git clone https://github.com/nathsou/yodl.git yodl

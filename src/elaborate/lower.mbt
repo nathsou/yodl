@@ -542,9 +542,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       if output_width.val is Some(output_width) {
         let width = unwrap_type!(bin_ty, span~).width!(span)
         if width < output_width {
-          res = @firrtl.primop(Bits, [res, @firrtl.Expr::Int(BigInt::from_int(output_width - 1)), @firrtl.Expr::Int(BigInt::from_int(0))])
-        } else if width > output_width {
-          raise Failure("Implicit widening is not allowed")
+          res = @firrtl.primop(Bits, [res, @firrtl.Expr::Int(BigInt::from_int(width - 1)), @firrtl.Expr::Int(BigInt::from_int(0))])
         }
       }
 

@@ -22,6 +22,6 @@ Yet anOther (hardware) Description Language
 - [x] Arbitrary port types
 - [x] Type parameters
 - [ ] Source Maps
-- [ ] Testbench generation (or use cocotb?)
+- [ ] Test Benches
 - [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export
 - [ ] Web tour/playground

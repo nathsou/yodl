@@ -42,7 +42,6 @@ type! TypeCheckerError {
     InvalidPrintfArgument(index~: Int, span~: @parse.Span)
     InvalidStopExitCode(exit_code_ty~: @parse.Type, span~: @parse.Span)
     InvalidFlipOperand(ty~: @parse.Type, span~: @parse.Span)
-    ImplicitWidening(from~: Int, to~: Int, span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -137,9 +136,6 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidFlipOperand(ty~, ..) => {
             logger.write_string("Invalid operand '\{ty}' for flip operator")
         }
-        ImplicitWidening(from~, to~, ..) => {
-            logger.write_string("Implicit widening from \{from} to \{to}")
-        }
     }
 
     logger.write_string(self.show_context())
@@ -177,7 +173,6 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidPrintfArgument(span~, ..) => span
         InvalidStopExitCode(span~, ..) => span
         InvalidFlipOperand(span~, ..) => span
-        ImplicitWidening(span~, ..) => span
     }
 }
 
@@ -405,15 +400,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             output_width.val = Some(wy)
 
             match expected_ty {
-                Some(expected_ty) => {
-                    let expected_width = expected_ty.width!(span)
-
-                    if wy < expected_width {
-                        raise ImplicitWidening(from=wy, to=expected_width, span~)
-                    } else {
-                        expected_ty
-                    } 
-                }
+                Some(expected_ty) => expected_ty
                 None => out_ty
             }
         }
