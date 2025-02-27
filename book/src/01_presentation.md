@@ -1,7 +1,7 @@
 # Presentation
 
 Yodl is a simple and modern behavioural [Hardware Description Language](https://en.wikipedia.org/wiki/Hardware_description_language) (HDL) which acts as a lightweight abstraction
-layer over the [FIRRTL](https://github.com/chipsalliance/firrtl-spec) intermediate representation.
+layer over the [FIRRTL](https://github.com/chipsalliance/firrtl-spec) intermediate representation to describe digital circuits.
 
 ## Design goals
 

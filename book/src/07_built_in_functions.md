@@ -77,6 +77,8 @@ let reversed = $flip(5'b11100); // Results in 5'b00111
 
 ## Memory Functions
 
+Yodl provides familiar [`$readmemb` and `$readmemh`](https://projectf.io/posts/initialize-memory-in-verilog/) functions to initialize Memory instances from files.
+
 ### `$readmemb(file, memory)`
 
 Initializes a memory from a binary format file.

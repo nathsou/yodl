@@ -76,7 +76,7 @@ The range syntax uses:
 
 ## Block Expressions
 
-Block expressions group multiple statements and optionally return a value:
+Block expressions group multiple statements in a new lexical scope and optionally return a value:
 
 ```yodl
 let result = {

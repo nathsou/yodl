@@ -101,6 +101,25 @@ There are two forms of bit slicing:
 1. `[high:low]` - Extract bits from position `high` down to `low` (inclusive)
 2. `[start-:width]` - Extract `width` bits starting from position `start`
 
+
+Note:
+
+- Integers are indexed from the least significant bit (LSB) to the most significant bit (MSB) (right to left).
+- Vectors follow standard array-indexing conventions, with the first element at index 0 (left to right).
+
+When a bit vector (`bool[N]` i.e. `uint<1>[N]`) is used as the argument of the `uint` and `sint` built-in functions,
+the first element of the vector becomes the MSB of the resulting integer:
+
+```yodl
+let n = uint([1'b1, 1'b0, 1'b0]); // 3'b100
+```
+
+If you instead want the first element to be the LSB, you can use the `$flip` built-in function:
+
+```yodl
+let n = $flip(uint([1'b1, 1'b0, 1'b0])); // 3'b001
+```
+
 ## Replication
 
 Replication expressions `<uint>*[<expr-list>]` and `<uint>*{<expr-list>}` can be used to create a vector by repeating a value multiple times:
