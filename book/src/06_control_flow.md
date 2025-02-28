@@ -74,24 +74,11 @@ The range syntax uses:
     For loops are fully unrolled during compilation, so they must have compile-time constant bounds.
 </div>
 
-## Block Expressions
-
-Block expressions group multiple statements in a new lexical scope and optionally return a value:
-
-```yodl
-let result = {
-    let a = 5;
-    let b = 10;
-    a + b  // Last expression becomes the block's value
-};
-```
-
 ## When to Use Each Control Flow Construct
 
 - **If Expressions**: Use for simple binary decisions, especially when the logic is straightforward.
 - **Match Expressions**: Use when you need to handle multiple distinct cases based on a single value.
 - **For Loops**: Use to repeat operations a known number of times, especially when manipulating vectors or generating parallel hardware.
-- **Block Expressions**: Use to group statements and provide a scoped context for intermediate variables.
 
 ## Control Flow in Hardware Context
 

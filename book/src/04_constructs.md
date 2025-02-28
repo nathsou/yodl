@@ -171,3 +171,15 @@ let a: uint<4> = 8'd15; // a = 4'd15
 let sum1: uint<8> = 8'd255 + 8'd1; // sum1 = 8'd0
 let sum2 = 8'd255 + 8'd1; // sum2 = 9'd256;
 ```
+
+## Block Expressions
+
+Block expressions group multiple statements in a new lexical scope and optionally return a value:
+
+```yodl
+let result = {
+    let a = 5;
+    let b = 10;
+    a + b  // Last expression becomes the block's value
+};
+```
