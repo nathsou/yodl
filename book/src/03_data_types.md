@@ -105,6 +105,18 @@ Individual characters can be accessed using the following syntax:
 let first_char = message1[0];
 ```
 
+## Tuples
+
+Tuples group a fixed number of ordered values of potentially different types.
+
+```yodl
+let pair: (bool, uint<8>) = (true, 8'hFF);
+let triplet: ({ a: uint<4>, b: bool }, (bool, uint<8>), uint<1>) = ({ a: [4'd1], b: false }, pair, 1'b0);
+
+let first: bool = pair.1; // true
+let second: uint<8> = pair.2; // 8'hFF
+```
+
 ## Structs
 
 Structures (also known as Bundles in Chisel/FIRRTL) group multiple named values under a single name.
