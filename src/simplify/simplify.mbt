@@ -237,6 +237,7 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
     }
     Package(_) => None
     Import(_) => None
+    TypeAlias(_) => None
   }
 }
 

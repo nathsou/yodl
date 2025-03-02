@@ -8,6 +8,7 @@ pub struct Monomorphizer {
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
   instanciated_modules: Set[@parse.Path]
   constants: Map[@parse.Path, @parse.ConstDecl]
+  type_aliases: Map[@parse.Path, @parse.TypeAliasDecl]
   top_env: MonoEnv
 }
 
@@ -19,6 +20,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
     declared_modules: {},
     instanciated_modules: Set::new(),
     constants: {},
+    type_aliases: {},
     top_env: @elaborate.Scope::new(),
   }
 }
@@ -28,6 +30,8 @@ pub type! MonomorphizerError {
   InvalidModuleParameterCount(path~: @parse.Path, expected~: Int, actual~: Int, span~: @parse.Span)
   ReceivedTypeParameterInsteadOfExpr(span~: @parse.Span)
   InvalidParameterInstantiation(path~: @parse.Path, param~: String, span~: @parse.Span, param_span~: @parse.Span)
+  InvalidTypeAliasParameters(path~: @parse.Path, exptected~: Int, actual~: Int, span~: @parse.Span)
+  UnresolvedNamedType(path~: @parse.Path, span~: @parse.Span)
 }
 
 pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
@@ -44,6 +48,12 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     InvalidParameterInstantiation(path~, param~, param_span~, ..) => {
       logger.write_string("Invalid instantiation of parameter '\{param}' in module '\{path}', declared at \{param_span}")
     }
+    InvalidTypeAliasParameters(path~, exptected~, actual~, span~) => {
+      logger.write_string("Invalid number of parameters for type alias '\{path}', expected \{exptected}, received \{actual} at \{span}")
+    }
+    UnresolvedNamedType(path~, span~) => {
+      logger.write_string("Unresolved module or type alias '\{path}' at \{span}")
+    }
   }
 
   logger.write_string(self.show_context())
@@ -55,6 +65,8 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
     InvalidModuleParameterCount(span~, ..) => span
     ReceivedTypeParameterInsteadOfExpr(span~) => span
     InvalidParameterInstantiation(span~, ..) => span
+    InvalidTypeAliasParameters(span~, ..) => span
+    UnresolvedNamedType(span~, ..) => span
   }
 }
 
@@ -86,18 +98,74 @@ fn monomorphize_int_param(self: Monomorphizer, param: @parse.IntParam, env~: Mon
   }
 }
 
-fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packages~: Array[String]) -> @parse.Type! {
-  match ty {
+struct TypeInfo {
+  ty: @parse.Type
+  is_type_alias: Bool 
+}
+
+fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packages~: Array[String]) -> TypeInfo! {
+  let mono_ty: @parse.Type = match ty {
     UInt(width) => UInt(self.monomorphize_int_param!(width, env~, packages~))
     SInt(width) => SInt(self.monomorphize_int_param!(width, env~, packages~))
     Vector(ty~, len~) => {
-      let mono_ty = self.monomorphize_type!(ty, env~, packages~)
+      let mono_ty = self.monomorphize_type!(ty, env~, packages~).ty
       let len = self.monomorphize_int_param!(len, env~, packages~)
 
       @parse.Type::Vector(ty=mono_ty, len~)
     }
-    _ => ty
+    Struct(fields) => {
+      let mono_fields = {}
+
+      for name, ty in fields {
+        mono_fields[name] = self.monomorphize_type!(ty, env~, packages~).ty
+      }
+
+      @parse.Type::Struct(mono_fields)
+    }
+    Name(path~, params~) => {
+      fn substitute(type_alias: @parse.TypeAliasDecl) -> TypeInfo! {
+        if type_alias.parameters.length() != params.length() {
+          raise InvalidTypeAliasParameters(
+            path~,
+            exptected=type_alias.parameters.length(),
+            actual=params.length(),
+            span=type_alias.span,
+          )
+        }
+
+        let subst: Map[String, @parse.Param] = {}
+
+        for name, param in @utils.zip2(type_alias.parameters, params) {
+          subst[name] = param
+        }
+        
+        { ty: type_alias.ty.substitute(subst), is_type_alias: true }
+      }
+
+      if self.type_aliases[path] is Some(type_alias) {
+        return substitute!(type_alias)
+      }
+
+      let subpath = @parse.Path::new([], path.member)
+
+      for package in packages {
+        if self.type_aliases[subpath] is Some(type_alias) {
+          return substitute!(type_alias)
+        } else {
+          subpath.packages.push(package)
+        }
+      }
+
+      if self.type_aliases[subpath] is Some(type_alias) {
+        return substitute!(type_alias)
+      } else {
+        ty
+      }
+    }
+    Clock | Nat(_) | Instance(_) | String(_) => ty
   }
+
+  { ty: mono_ty, is_type_alias: false }
 }
 
 fn hash_params(params: Iter[@parse.Param]) -> UInt {
@@ -121,7 +189,7 @@ fn register_monomorphized_module(
     Some(mod_decl) => mod_decl
     None => match self.modules[path] {
       Some(mod_decl) => mod_decl
-      None => raise MonomorphizerError::ModuleNotFound(path~, span~)
+      None => raise UnresolvedNamedType(path~, span~)
     }
   }
 
@@ -173,7 +241,7 @@ fn register_monomorphized_module(
   mono_mod
 }
 
-fn resolve_member(env: MonoEnv, path~: @parse.Path, packages~: Array[String]) -> (MonoEnvEntry, @parse.Path)? {
+fn resolve_member[T](env: @elaborate.Scope[@parse.Path, T], path~: @parse.Path, packages~: Array[String]) -> (T, @parse.Path)? {
   // attempt to resolve the identifier in all the subpackages top-down
   match env.resolve(path) {
     Some(entry) => Some((entry, path))
@@ -253,7 +321,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
         } else {
           let mono_params = params.map!(
             map_expr=fn(expr) { self.monomorphize_expr!(expr, env~, packages~) },
-            map_type=fn(ty) { self.monomorphize_type!(ty, env~, packages~) },
+            map_type=fn(ty) { self.monomorphize_type!(ty, env~, packages~).ty },
           )
           (resolved_path, mono_params)
         }
@@ -285,14 +353,20 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
         None => None
       }
 
+      let mut is_type_alias = false
+
       let mono_ty = match ty.val {
-        Some(ty) => Some(self.monomorphize_type!(ty, env~, packages~))
+        Some(ty) => {
+          let ty_info = self.monomorphize_type!(ty, env~, packages~)
+          is_type_alias = ty_info.is_type_alias
+          Some(ty_info.ty)
+        }
         None => None
       }
 
       match mono_ty {
         Some(Name(path~, params~)) => {
-          if params.length() > 0 {
+          if not(is_type_alias) && params.length() > 0 {
             let _ = self.register_monomorphized_module!(
               path~,
               params=@parse.InstanceParams::new(
@@ -361,7 +435,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
     Const(decl~, span~) => {
       let mono_expr = self.monomorphize_expr!(decl.expr, env~, packages~)
       let mono_ty = match decl.ty {
-        Some(ty) => Some(self.monomorphize_type!(ty, env~, packages~))
+        Some(ty) => Some(self.monomorphize_type!(ty, env~, packages~).ty)
         None => None
       }
 
@@ -391,7 +465,7 @@ fn monomorphize_module(
   for port in mod.ports {
     mono_ports.push({
       name: port.name,
-      ty: self.monomorphize_type!(port.ty, env=child_env, packages=full_path.packages),
+      ty: self.monomorphize_type!(port.ty, env=child_env, packages=full_path.packages).ty,
       direction: port.direction,
       optional: port.optional,
       span: port.span,
@@ -439,7 +513,7 @@ pub fn monomorphize(self: Monomorphizer, decls~: Array[@parse.Decl], packages~: 
       Const(decl) => {
         let mono_expr = self.monomorphize_expr!(decl.expr, env=self.top_env, packages~)
         let mono_ty = match decl.ty {
-          Some(ty) => Some(self.monomorphize_type!(ty, env=self.top_env, packages~))
+          Some(ty) => Some(self.monomorphize_type!(ty, env=self.top_env, packages~).ty)
           None => None
         }
 
@@ -452,6 +526,16 @@ pub fn monomorphize(self: Monomorphizer, decls~: Array[@parse.Decl], packages~: 
         let _ = self.monomorphize!(decls=body, packages=packages + [name])
       }
       Import(_) => ()
+      TypeAlias({ name, parameters, ty, span }) => {
+        let path = @parse.Path::new(packages, name)
+        let mono_ty = self.monomorphize_type!(ty, env=self.top_env, packages~).ty
+        self.type_aliases[path] = {
+          name,
+          parameters,
+          ty: mono_ty,
+          span,
+        }
+      }
     }
   }
 

@@ -36,6 +36,7 @@ pub(all) enum Decl {
   Const(ConstDecl)
   Package(PackageDecl)
   Import(ImportDecl)
+  TypeAlias(TypeAliasDecl)
 }
 
 pub const BITS_PER_CHAR = 8
@@ -273,6 +274,13 @@ pub(all) struct ConstDecl {
   path: Path
   ty: Type?
   expr: Expr
+  span: Span
+}
+
+pub(all) struct TypeAliasDecl {
+  name: String
+  parameters: Array[String]
+  ty: Type
   span: Span
 }
 

@@ -1211,7 +1211,7 @@ pub fn lower(self: Elaborator, decls: Iter[@parse.Decl]) -> Unit! {
       ModuleDeclaration(sig) => {
         self.declared_modules[sig.path] = sig
       }
-      Const(_) | Package(_) | Import(_) => ()
+      Const(_) | Package(_) | Import(_) | TypeAlias(_) => ()
     }
   }
 }

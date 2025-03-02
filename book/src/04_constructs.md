@@ -52,6 +52,27 @@ const CLOCK_FREQ = 100 * 1_000_000; // 100 MHz
 const CYCLES_PER_BIT = CLOCK_FREQ / BAUD_RATE;
 ```
 
+## Type Alias Declarations
+
+Type aliases are used to give a name to a commonly used type.
+
+```yodl
+type U8 = uint<8>;
+type RGB = { r: U8, g: U8, b: U8 };
+```
+
+### Parameterised type aliases
+
+Type aliases can be parameterised by providing a list of type parameters.
+
+```yodl
+type Triplet<T> = (T, T, T);
+
+module Top() -> () {
+    let triplet: Triplet<bool> = (true, false, false);
+}
+```
+
 ## Module Declarations
 
 - Modules enable hierarchical design by encapsulating reusable functionality.

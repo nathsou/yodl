@@ -61,8 +61,8 @@ pub fn merge[K: Eq + Hash, V](map1: Map[K, V], map2: Map[K, V]) -> Map[K, V] {
 pub fn map[A, B, E: Error](values: Array[A], f: (A) -> B!E) -> Array[B]!E {
   let mapped = Array::new(capacity=values.length())
 
-  for index, value in values {
-    mapped[index] = f!(value)
+  for value in values {
+    mapped.push(f!(value))
   }
   
   mapped

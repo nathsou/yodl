@@ -695,6 +695,32 @@ fn parse_import_decl(self: Parser) -> ImportDecl! {
   { packages, span: self.span(start_idx) }
 }
 
+fn parse_type_alias_decl(self: Parser) -> TypeAliasDecl! {
+  let start_idx = self.index
+  self.expect!(Type, start_idx)
+  let name = self.parse_identifier!()
+  let parameters: Array[String] = []
+  
+  if self.consumes(Lchevron) {
+    while not(self.matches(Rchevron)) {
+      let param = self.parse_identifier!()
+      parameters.push(param)
+
+      if not(self.consumes(Comma)) {
+        break
+      }
+    }
+
+    self.expect!(Rchevron, start_idx)
+  }
+
+  self.expect!(Equal, start_idx)
+  let ty = self.parse_type!()
+  self.expect!(Semicolon, start_idx)
+
+  { name, parameters, ty, span: self.span(start_idx) }
+}
+
 fn parse_path(self: Parser, first: String) -> Path! {
   let packages = [first]
 
@@ -747,7 +773,22 @@ fn parse_type(self: Parser) -> Type! {
     Identifier(name) => {
       self.advance()
       let path = parse_path!(self, name)
-      Type::Name(path~, params=[])
+      let params: Array[Param] = []
+
+      if self.consumes(Lchevron) {
+        while not(self.matches(Rchevron)) {
+          let param = self.parse_type!()
+          params.push(TypeParam(param))
+
+          if not(self.consumes(Comma)) {
+            break
+          }
+        }
+
+        self.expect!(Rchevron, start_idx)
+      }
+
+      Type::Name(path~, params~)
     }
     Lparen => {
       self.advance()
@@ -1006,6 +1047,7 @@ fn parse_decl(self: Parser) -> Decl! {
     Const => Decl::Const(self.parse_const_decl!())
     Package => Decl::Package(self.parse_package_decl!())
     Import => Decl::Import(self.parse_import_decl!())
+    Type => Decl::TypeAlias(self.parse_type_alias_decl!())
     token => raise ExpectedDecl(received=token, span=self.span(self.index))
   }
 }

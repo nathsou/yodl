@@ -717,5 +717,16 @@ pub fn emit_decl(self: AstEmitter, decl: Decl) -> Unit {
       self.write("import ")
       self.write(String::concat(packages, separator="::"))
     }
+    TypeAlias({ name, parameters, ty, span: _ }) => {
+      self.write("type \{name}")
+      
+      if parameters.length() > 0 {
+        self.write("<")
+        self.write(String::concat(parameters, separator=", "))
+        self.write(">")
+      }
+
+      self.write(" = \{ty};")
+    }
   }
 }

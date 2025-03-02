@@ -971,5 +971,6 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit! {
         }
         Package(_) => ()
         Import(_) => ()
+        TypeAlias(_) => ()
     }
 }
