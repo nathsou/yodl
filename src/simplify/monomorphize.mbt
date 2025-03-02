@@ -146,21 +146,18 @@ fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packag
         return substitute!(type_alias)
       }
 
-      let subpath = @parse.Path::new([], path.member)
+      let sub_pkgs = []
 
       for package in packages {
+        sub_pkgs.push(package)
+        let subpath = @parse.Path::new([..sub_pkgs, ..path.packages], path.member)
+
         if self.type_aliases[subpath] is Some(type_alias) {
           return substitute!(type_alias)
-        } else {
-          subpath.packages.push(package)
         }
       }
 
-      if self.type_aliases[subpath] is Some(type_alias) {
-        return substitute!(type_alias)
-      } else {
-        ty
-      }
+      ty
     }
     Clock | Nat(_) | Instance(_) | String(_) => ty
   }
