@@ -88,11 +88,27 @@ When applied to integer values represented by `N` bits (`uint<N>`, `sint<N>`), t
 let bits = {4'b1011}; // [1'b1, 1'b0, 1'b1, 1'b1] 
 ```
 
-## Strings
+## Characters and Strings
 
-Strings use the ISO 8601 encoding (extended ASCII) to represent characters.
+Characters use the ISO 8601 encoding (extended ASCII).
 
-Each character is 8-bits wide and `string<Length>` is equivalent to `uint<8>[Length]`.
+```yodl
+let char: uint<8> = 'a';
+let newline = '\n';
+```
+
+### Escape sequences
+
+| Sequence | Description |
+|----------|-------------|
+| `\n`     | Newline     |
+| `\t`     | Tab         |
+| `\\`     | Backslash   |
+| `\'`     | Single quote|
+
+### Strings
+
+Strings are fixed-length vectors of characters.
 
 ```yodl
 let message1: string<9> = "Yo, Yodl!";
@@ -152,7 +168,6 @@ Yodl's type system is structural (except for instance types), which means that t
 | Type A | Type B | Compatible? |
 |--------|--------|-------------|
 | `uint<8>` | `uint<8>` | Yes |
-| `string<3>` | `uint<8>[3]` | Yes |
 | `uint<1>` | `bool` | Yes | 
 | `{ a: uint<16>, b: bool }` | `{ b: bool, a: uint<16> }` | Yes |
 | `{ a: uint<16>, b: bool }` | `{ a: uint<16> }` | No |

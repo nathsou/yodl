@@ -45,6 +45,10 @@
         {
             "name": "string.quoted.double.yodl",
             "match": "\"(?:\\\\\"|[^\"])*\""
+        },
+        {
+            "name": "string.quoted.single.yodl",
+            "match": "'(?:\\\\'|[^'])*'"
         }
     ],
     "fileTypes": [

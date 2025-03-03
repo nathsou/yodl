@@ -8,7 +8,6 @@ pub type! ParserError {
   UnexpectedToken(expected~: TokenType, received~: TokenType, span~: Span)
   ExpectedIdentifier(received~: TokenType, span~: Span)
   ExpectedInteger(received~: TokenType, span~: Span)
-  ExpectedStringLiteral(received~: TokenType, span~: Span)
   ExpectedExpr(received~: TokenType, span~: Span)
   ExpectedStmt(received~: TokenType, span~: Span)
   ExpectedType(received~: TokenType, span~: Span)
@@ -87,19 +86,6 @@ fn Parser::parse_integer(self: Parser) -> ParsedInteger!ParserError {
       { value, width, base }
     }
     _ => raise ExpectedInteger(received=token, span=self.span(start_idx))
-  }
-}
-
-fn parse_string_literal(self: Parser) -> String! {
-  let token = self.peek()
-  let start_idx = self.index
-
-  match token {
-    StringLiteral(str) => {
-      self.advance()
-      str
-    }
-    _ => raise ExpectedStringLiteral(received=token, span=self.span(start_idx))
   }
 }
 
@@ -270,6 +256,12 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     StringLiteral(str) => {
       self.advance()
       String(value=str, span=self.span(start_idx), ty={ val: None })
+    }
+    CharacterLiteral(char) => {
+      self.advance()
+      let span = self.span(start_idx)
+      let str = Expr::String(value=char.to_string(), span~, ty={ val: None })
+      Indexing(expr=str, index=Expr::nat(0, span~, width=None, base=10), span~, ty={ val: None })
     }
     Not | Minus | Andr | Orr | Xorr as op => {
       self.advance()

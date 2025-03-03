@@ -351,7 +351,28 @@ fn next(self: Lexer) -> LexerResult[Token]! {
     }
     '\'' => {
       self.advance()
-      Ok(SingleQuote)
+
+      if self.peek() == '\\' {
+        self.advance()
+        let escaped = match self.peek() {
+          'n' => '\n'
+          'r' => '\r'
+          't' => '\t'
+          '\\' => '\\'
+          '\'' => '\''
+          c => c
+        }
+        
+        self.advance()
+        Ok(CharacterLiteral(escaped))
+      } else if self.lookahead(1) == '\'' {
+        let char = self.peek()
+        self.advance()
+        self.advance()
+        Ok(CharacterLiteral(char))
+      } else {
+        Ok(SingleQuote)
+      }
     }
     '"' => {
       let builder = StringBuilder::new()

@@ -1,6 +1,6 @@
 // Highlight.js language definition for yodl
 
-hljs.registerLanguage('yodl', function(hljs) {
+hljs.registerLanguage('yodl', function (hljs) {
   return {
     name: 'yodl',
     aliases: ['yodl'],
@@ -17,6 +17,14 @@ hljs.registerLanguage('yodl', function(hljs) {
         className: 'string',
         begin: /"/,
         end: /"/,
+        illegal: /\n/,
+        contains: [hljs.BACKSLASH_ESCAPE]
+      },
+      // Characters
+      {
+        className: 'string',
+        begin: /'/,
+        end: /'/,
         illegal: /\n/,
         contains: [hljs.BACKSLASH_ESCAPE]
       },

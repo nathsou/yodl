@@ -17,7 +17,7 @@ enum TokenType {
   Andr; Orr; Xorr
   // literals
   Identifier(String); Natural(value~: BigInt, width~: Int?, base~: Int)
-  StringLiteral(String)
+  StringLiteral(String); CharacterLiteral(Char)
 } derive(Eq, Show)
 
 pub(all) struct Span {
