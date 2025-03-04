@@ -70,7 +70,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
   }
 }
 
-enum MonoEnvEntry {
+pub enum MonoEnvEntry {
   Param(@parse.Param)
   Const(@parse.ConstDecl)
   Name(packages~: Array[String])
@@ -98,7 +98,7 @@ fn monomorphize_int_param(self: Monomorphizer, param: @parse.IntParam, env~: Mon
   }
 }
 
-struct TypeInfo {
+priv struct TypeInfo {
   ty: @parse.Type
   is_type_alias: Bool 
 }

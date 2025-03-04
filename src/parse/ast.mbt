@@ -758,7 +758,7 @@ impl Show for Arity with output(self, logger) {
   }
 }
 
-struct BuiltinFunction {
+priv struct BuiltinFunction {
   arity: Arity
   apply: (Array[Expr], Span) -> Expr?!
 }

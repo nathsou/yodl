@@ -176,7 +176,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
     }
 }
 
-enum UnificationParam {
+priv enum UnificationParam {
     Int(Int)
     Type(@parse.Type)
 }
@@ -883,7 +883,7 @@ fn is_valid_assignment_target(expr: @parse.Expr) -> Bool {
     }
 }
 
-enum AttributeValueType {
+priv enum AttributeValueType {
     // Str
     // Int
 }

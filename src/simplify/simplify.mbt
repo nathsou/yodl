@@ -17,7 +17,7 @@ impl Show for UniqueName with output(self, logger) {
   }
 }
 
-enum SimplifierEnvEntry {
+pub enum SimplifierEnvEntry {
   Name(UniqueName)
   Const(@parse.Expr)
 }

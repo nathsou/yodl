@@ -122,7 +122,7 @@ fn parse_uint(s: String, base~: Int) -> BigInt {
   }
 }
 
-struct ParsedInteger {
+priv struct ParsedInteger {
   value: BigInt
   width: Int?
   base: Int
@@ -181,7 +181,7 @@ fn advance(self: Lexer) -> Unit {
   self.index += 1
 }
 
-enum LexerResult[T] {
+priv enum LexerResult[T] {
   Ok(T)
   Err(LexerError)
   EOF

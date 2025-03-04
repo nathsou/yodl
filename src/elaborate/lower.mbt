@@ -86,7 +86,7 @@ pub type! ElaborationError {
   InvalidAttribute(name~: String, span~: @parse.Span)
 } derive (Show)
 
-trait ScopeLike {
+priv trait ScopeLike {
   add_stmt(Self, @firrtl.Stmt) -> Unit
 }
 
@@ -94,7 +94,7 @@ impl ScopeLike for @firrtl.Module with add_stmt(self, stmt) {
   self.body.push(stmt)
 }
 
-type StmtContainer Array[@firrtl.Stmt]
+priv type StmtContainer Array[@firrtl.Stmt]
 
 fn StmtContainer::new() -> StmtContainer {
   Array::new()
@@ -1216,7 +1216,7 @@ pub fn lower(self: Elaborator, decls: Iter[@parse.Decl]) -> Unit! {
   }
 }
 
-struct PortSignature {
+priv struct PortSignature {
   direction: @parse.PortDirection
   ty: @firrtl.Type
 }

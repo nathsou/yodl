@@ -498,7 +498,7 @@ pub fn emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
   }
 }
 
-struct StructField {
+priv struct StructField {
   name: String
   ty: Type
 }
