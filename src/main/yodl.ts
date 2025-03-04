@@ -1,5 +1,6 @@
-import type * as MoonBit from "../../target/js/release/build/lib/driver/moonbit";
-import * as yodl from "../../target/js/release/build/lib/driver/driver";
+import type * as MoonBit from "../../target/js/release/build/lib/driver/moonbit.js";
+import * as yodl from "../../target/js/release/build/lib/driver/driver.js";
+import { getExampleFiles } from "./examples.ts" with { type: "macro" };
 
 type Result<T> = MoonBit.Result<T, string>;
 
@@ -88,8 +89,11 @@ function dirName(path: string): string | undefined {
     return parsePath(path).at(-1);
 }
 
-function createInMemoryFileSystem(root: TreeNode): FileSystem {
+function createInMemoryFileSystem(files: Record<string, string>): FileSystem & { root: DirectoryNode } {
+    const root = createTree(files);
+
     return {
+        root,
         path_exists: (path: string) => {
             return resolvePath(root, path) !== null;
         },
@@ -146,7 +150,7 @@ function createInMemoryFileSystem(root: TreeNode): FileSystem {
     };
 }
 
-function createTree(files: Record<string, string>): TreeNode {
+function createTree(files: Record<string, string>): DirectoryNode {
     const root: DirectoryNode = {
         type: 'dir',
         name: '<root>',
@@ -154,7 +158,6 @@ function createTree(files: Record<string, string>): TreeNode {
     };
 
     for (const [path, content] of Object.entries(files)) {
-        const parent = resolveParentDirectory(root, path);
         const parts = parsePath(path);
         let node: TreeNode = root;
 
@@ -194,22 +197,6 @@ function createTree(files: Record<string, string>): TreeNode {
     return root;
 }
 
-const tree = createTree({
-    'examples/Timing.yodl': `
-        module Counter<N: uint>(clk: clock, rst: bool) -> (q: uint<N>) {
-            let counter = Reg<uint<N>>(clk, rst, q);
-            counter.d = counter.q + 1'd1;
-        }
-    `,
-    'examples/Yolo.yodl': `
-        import Timing
-
-        module Yolo(clk: clock, rst: bool) -> (leds: uint<8>) {
-            leds = Timing::Counter<25>(clk, rst).q[24-:8];
-        }
-    `,
-});
-
 function unwrap<T>(result: MoonBit.Result<T, any>): T {
     if (result.$tag === 0) {
         throw new Error(JSON.stringify(result._0));
@@ -218,9 +205,10 @@ function unwrap<T>(result: MoonBit.Result<T, any>): T {
     return result._0;
 }
 
-const fs = createInMemoryFileSystem(tree);
+const fs = createInMemoryFileSystem(getExampleFiles());
+console.log(fs.root);
 
-const commands = unwrap(yodl.parse_commands("write_firrtl output/Yolo.fir"));
-unwrap(yodl.run('examples/Yolo.yodl', commands, fs));
+const commands = unwrap(yodl.parse_commands('write_firrtl output/SOC.fir'));
+unwrap(yodl.run('examples/SOC.yodl', commands, fs));
 
-console.log(unwrap(fs.read_file_to_string('output/Yolo.fir')));
+console.log(unwrap(fs.read_file_to_string('output/SOC.fir')));
