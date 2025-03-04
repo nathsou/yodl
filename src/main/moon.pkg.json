@@ -1,11 +1,8 @@
 {
   "is-main": true,
   "import": [
-    "nathsou/yodl/parse",
-    "nathsou/yodl/elaborate",
-    "nathsou/yodl/simplify",
     "nathsou/yodl/utils",
-    "nathsou/yodl/firrtl",
+    "nathsou/yodl/driver",
     "moonbitlang/x/fs",
     "moonbitlang/x/sys"
   ]

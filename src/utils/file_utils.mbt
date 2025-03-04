@@ -1,3 +1,13 @@
+
+pub(all) struct FileSystem {
+  path_exists: (String) -> Bool
+  create_dir: (String) -> Unit!
+  write_string_to_file: (String, String) -> Unit!
+  read_dir: (String) -> Array[String]!
+  is_dir: (String) -> Bool!
+  read_file_to_string: (String) -> String!
+}
+
 // TODO: Support Windows paths
 
 pub fn file_name(path: String) -> String {

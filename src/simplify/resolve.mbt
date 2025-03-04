@@ -3,6 +3,7 @@ pub struct Resolver {
   resolved_packages: Map[String, @parse.PackageDecl]
   available_packages: Map[String, String]
   imports: Set[String]
+  fs: @utils.FileSystem
 }
 
 pub type! ResolutionError {
@@ -15,8 +16,13 @@ pub type! ResolutionError {
   MultiLevelImportNotSupportedYet(packages~: Array[String])
 } derive(Show)
 
-pub fn Resolver::new(packages_dir: String) -> Resolver!ResolutionError {
-  { resolved_packages: {}, available_packages: collect_packages!(packages_dir), imports: Set::new() }
+pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem) -> Resolver!ResolutionError {
+  {
+    resolved_packages: {},
+    available_packages: collect_packages!(packages_dir, fs~),
+    imports: Set::new(),
+    fs,
+  }
 }
 
 fn extract_package_name_from_path(path: String) -> String!ResolutionError {
@@ -29,8 +35,8 @@ fn extract_package_name_from_path(path: String) -> String!ResolutionError {
   }
 }
 
-fn collect_packages(dir: String, acc~: Map[String, String] = {}) -> Map[String, String]!ResolutionError {
-  let entries = match @fs.read_dir?(dir) {
+fn collect_packages(dir: String, fs~: @utils.FileSystem, acc~: Map[String, String] = {}) -> Map[String, String]!ResolutionError {
+  let entries = match (fs.read_dir)?(dir) {
     Ok(entries) => entries
     Err(error) => raise IOError(error)
   }
@@ -38,9 +44,9 @@ fn collect_packages(dir: String, acc~: Map[String, String] = {}) -> Map[String, 
   for entry in entries {
     let path = @utils.join_paths(dir, entry)
 
-    match @fs.is_dir?(path) {
+    match (fs.is_dir)?(path) {
       Ok(true) => {
-        let _ = collect_packages!(path, acc~)
+        let _ = collect_packages!(path, fs~, acc~)
       }
       Ok(false) => {
         if entry.ends_with(".yodl") {
@@ -100,7 +106,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|    q: T[ReadPorts],
     #|)
   
-  let lexer = @parse.Lexer::new(source, file="builtin.yodl")
+  let lexer = @parse.Lexer::new(source, file="builtin.yodl", file_content=source)
   let tokens = match lexer.lex?() {
     Ok(tokens) => tokens
     Err(error) => {
@@ -109,7 +115,7 @@ let builtin_decls: Array[@parse.Decl] = {
     }
   }
   
-  let parser = @parse.Parser::new(tokens, file="builtin.yodl")
+  let parser = @parse.Parser::new(tokens, file="builtin.yodl", file_content=source)
 
   match parser.parse?() {
     Ok(decls) => decls
@@ -126,17 +132,17 @@ pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.P
     None => ()
   }
 
-  let source = match @fs.read_file_to_string?(path) {
+  let source = match (self.fs.read_file_to_string)?(path) {
     Ok(source) => source
     Err(error) => raise IOError(error)
   }
 
-  let tokens = match @parse.Lexer::new(source, file=path).lex?() {
+  let tokens = match @parse.Lexer::new(source, file=path, file_content=source).lex?() {
     Ok(tokens) => tokens
     Err(error) => raise LexerError(error)
   }
 
-  let parser = @parse.Parser::new(tokens, file=path)
+  let parser = @parse.Parser::new(tokens, file=path, file_content=source)
 
   let decls = match parser.parse?() {
     Ok(decls) => {

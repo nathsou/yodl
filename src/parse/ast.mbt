@@ -434,14 +434,8 @@ impl Spanned with show_context(self) -> String {
   builder.write_string("\x1b[4m")
   builder.write_string("\{span}")
   builder.write_string("\x1b[0m")
-  
-  match span.context?() {
-    Ok(ctx) => {
-      builder.write_string("\n\n")
-      builder.write_string(ctx)
-    }
-    Err(_) => ()
-  }
+  builder.write_string("\n\n")
+  builder.write_string(span.context())
 
   builder.to_string()
 }

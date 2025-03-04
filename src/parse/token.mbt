@@ -22,6 +22,7 @@ enum TokenType {
 
 pub(all) struct Span {
   file: String
+  file_content: String
   start: (Int, Int)
   end: (Int, Int)
 }
@@ -32,12 +33,11 @@ pub impl Show for Span with output(self, logger) {
   logger.write_string("\{self.start.0}.\{self.start.1}-\{self.end.0}.\{self.end.1}")
 }
 
-pub fn context(self: Span, window_size~: Int = 3) -> String! {
-  let contents = @fs.read_file_to_string!(self.file)
+pub fn context(self: Span, window_size~: Int = 3) -> String {
   let window = StringBuilder::new(size_hint=window_size * 2)
   let max_line_number_digits = (self.end.0 + 1).to_string().length()
 
-  contents.split("\n").eachi(fn(index, line) {
+  self.file_content.split("\n").eachi(fn(index, line) {
     if index >= self.start.0 - window_size && index <= self.end.0 + window_size {
       let line_nb = "\{index + 1}".pad_end(max_line_number_digits, ' ')
       let is_inside_span = index >= (self.start.0 - 1) && index < self.end.0

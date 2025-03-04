@@ -1,5 +1,5 @@
 
-enum Command {
+pub enum Command {
   WriteSource
   WriteMono(path~: String?)
   WriteTyped
@@ -7,7 +7,7 @@ enum Command {
   WriteSimplified(path~: String?)
 } derive(Show)
 
-struct ParsedCommand {
+priv struct ParsedCommand {
   name: String
   args: Array[String]
 } derive(Show)
@@ -20,7 +20,7 @@ type! CommandParserError {
   UnexepectedChar(char~: Char)
 } derive(Show)
 
-enum CommandToken {
+priv enum CommandToken {
   Literal(String)
   Semicolon
   EOF
@@ -74,7 +74,7 @@ fn lex_commands(source: String) -> Array[CommandToken]!CommandParserError {
   tokens
 }
 
-fn parse_commands(source: String) -> Array[Command]!CommandParserError {
+pub fn parse_commands(source: String) -> Array[Command]!CommandParserError {
   let tokens = lex_commands!(source)
   let mut idx = 0
 

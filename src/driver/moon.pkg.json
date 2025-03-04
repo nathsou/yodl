@@ -1,0 +1,10 @@
+{
+  "is-main": false,
+  "import": [
+    "nathsou/yodl/parse",
+    "nathsou/yodl/elaborate",
+    "nathsou/yodl/simplify",
+    "nathsou/yodl/utils",
+    "nathsou/yodl/firrtl"
+  ]
+}

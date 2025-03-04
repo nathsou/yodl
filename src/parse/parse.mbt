@@ -2,6 +2,7 @@ pub struct Parser {
   tokens: Array[Token]
   mut index: Int
   file: String
+  file_content: String
 }
 
 pub type! ParserError {
@@ -20,8 +21,8 @@ pub type! ParserError {
   ExpectedExprOrType(received~: TokenType, span~: Span)
 } derive(Show)
 
-pub fn Parser::new(tokens: Array[Token], file~: String) -> Parser {
-  { tokens, index: 0, file }
+pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: String) -> Parser {
+  { tokens, index: 0, file, file_content }
 }
 
 fn Parser::peek(self: Parser) -> TokenType {
@@ -92,7 +93,7 @@ fn Parser::parse_integer(self: Parser) -> ParsedInteger!ParserError {
 pub fn Parser::span(self: Parser, start_idx: Int) -> Span {
   let start = self.tokens[start_idx].span.start
   let end = self.tokens[@utils.clamp(self.index - 1, min=0, max=self.tokens.length() - 1)].span.end
-  { file: self.file, start, end }
+  { file: self.file, file_content: self.file_content, start, end }
 }
 
 fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr! {

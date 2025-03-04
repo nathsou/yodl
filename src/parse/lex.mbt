@@ -5,6 +5,7 @@ pub struct Lexer {
   mut line: Int
   mut column: Int
   file: String
+  file_content: String
 }
 
 pub type! LexerError {
@@ -27,8 +28,8 @@ pub impl Spanned for LexerError with span(self: LexerError) -> Span {
   }
 }
 
-pub fn Lexer::new(input: String, file~: String) -> Lexer {
-  { input, index: 0, line: 1, column: 1, file }
+pub fn Lexer::new(input: String, file~: String, file_content~: String) -> Lexer {
+  { input, index: 0, line: 1, column: 1, file, file_content }
 }
 
 fn peek(self: Lexer) -> Char {
@@ -129,7 +130,7 @@ priv struct ParsedInteger {
 }
 
 fn span(self: Lexer, start: (Int, Int)) -> Span {
-  { start, end: (self.line, self.column), file: self.file }
+  { start, end: (self.line, self.column), file: self.file, file_content: self.file_content }
 } 
 
 fn parse_integer(self: Lexer) -> ParsedInteger {
@@ -454,7 +455,7 @@ fn next(self: Lexer) -> LexerResult[Token]! {
   let end = (self.line, self.column)
 
   match val {
-    Ok(token) => Ok({ kind: token, span: { file: self.file, start, end } })
+    Ok(token) => Ok({ kind: token, span: { file: self.file, file_content: self.file_content, start, end } })
     Err(error) => Err(error)
     EOF => EOF
   }

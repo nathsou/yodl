@@ -2,7 +2,6 @@
     "import": [
       "nathsou/yodl/parse",
       "nathsou/yodl/elaborate",
-      "nathsou/yodl/utils",
-      "moonbitlang/x/fs"
+      "nathsou/yodl/utils"
     ]
 }
