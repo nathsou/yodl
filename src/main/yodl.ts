@@ -1,5 +1,5 @@
 import type * as MoonBit from "../../target/js/release/build/lib/driver/moonbit.js";
-import * as yodl from "../../target/js/release/build/lib/driver/driver.js";
+export * as yodl from "../../target/js/release/build/lib/driver/driver.js";
 import { getExampleFiles } from "./examples.ts" with { type: "macro" };
 
 type Result<T> = MoonBit.Result<T, string>;
@@ -197,7 +197,7 @@ function createTree(files: Record<string, string>): DirectoryNode {
     return root;
 }
 
-function unwrap<T>(result: MoonBit.Result<T, any>): T {
+export function unwrap<T>(result: MoonBit.Result<T, any>): T {
     if (result.$tag === 0) {
         throw new Error(JSON.stringify(result._0));
     }
@@ -205,10 +205,4 @@ function unwrap<T>(result: MoonBit.Result<T, any>): T {
     return result._0;
 }
 
-const fs = createInMemoryFileSystem(getExampleFiles());
-console.log(fs.root);
-
-const commands = unwrap(yodl.parse_commands('write_firrtl output/SOC.fir'));
-unwrap(yodl.run('examples/SOC.yodl', commands, fs));
-
-console.log(unwrap(fs.read_file_to_string('output/SOC.fir')));
+export const fs = createInMemoryFileSystem(getExampleFiles());

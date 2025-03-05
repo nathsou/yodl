@@ -1,11 +1,11 @@
 
 pub(all) struct FileSystem {
   path_exists: (String) -> Bool
-  create_dir: (String) -> Unit!
-  write_string_to_file: (String, String) -> Unit!
-  read_dir: (String) -> Array[String]!
-  is_dir: (String) -> Bool!
-  read_file_to_string: (String) -> String!
+  create_dir: (String) -> Unit!Failure
+  write_string_to_file: (String, String) -> Unit!Failure
+  read_dir: (String) -> Array[String]!Failure
+  is_dir: (String) -> Bool!Failure
+  read_file_to_string: (String) -> String!Failure
 }
 
 // TODO: Support Windows paths

@@ -1,5 +1,5 @@
 
-pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> Unit! {
+pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> Unit!Failure {
   if not(path.ends_with(".yodl")) {
     raise Failure("Input file must have a .yodl extension")
   }
@@ -8,12 +8,19 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
     (fs.create_dir)!("output/")
   }
 
-  let resolver = @simplify.Resolver::new!(@utils.dir_name(path), fs~)
-  let pkg = resolver.resolve!(path~, is_top_package=true)
+  let resolver = match @simplify.Resolver::new?(@utils.dir_name(path), fs~) {
+    Err(err) => raise Failure(err.to_string())
+    Ok(resolver) => resolver
+  }
+
+  let pkg = match resolver.resolve?(path~, is_top_package=true) {
+    Err(err) => raise Failure(err.to_string())
+    Ok(pkg) => pkg 
+  }
 
   for cmd in commands {
     match cmd {
-      WriteSource => {
+      WriteSource(path~) => {
         let emitter = @parse.AstEmitter::new()
 
         for decl in pkg.body {
@@ -21,14 +28,26 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
           emitter.emit("\n")
         }
 
-        println(emitter.to_string())
+        let source = emitter.to_string()
+
+        match path {
+          Some(path) => {
+            (fs.write_string_to_file)!(path, source)
+          }
+          None => {
+            println(source)
+          }
+        }
       }
       _ => ()
     }
   }
 
   let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = monomorphizer.monomorphize!(decls=pkg.body, packages=[])
+  let mono_decls = match monomorphizer.monomorphize?(decls=pkg.body, packages=[]) {
+    Err(err) => raise Failure(err.to_string())
+    Ok(mono_decls) => mono_decls
+  }
 
   for cmd in commands {
     match cmd {
@@ -58,12 +77,14 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   let checker = @elaborate.TypeChecker::new()
 
   for decl in mono_decls {
-    checker.check_decl!(decl)
+    if checker.check_decl?(decl) is Err(err) {
+      raise Failure(err.to_string())
+    }
   }
 
   for cmd in commands {
     match cmd {
-      WriteTyped => {
+      WriteTyped(path~) => {
         let emitter = @parse.AstEmitter::new(show_expr_types=true)
 
         for decl in mono_decls {
@@ -71,13 +92,23 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
           emitter.emit("\n")
         }
 
-        println(emitter.to_string())
+        match path {
+          Some(path) => {
+            (fs.write_string_to_file)!(path, emitter.to_string())
+          }
+          None => {
+            println(emitter.to_string())
+          }
+        }
       }
       _ => ()
     }
   }
 
-  let simplified_decls = @simplify.simplify_decls!(mono_decls)
+  let simplified_decls = match @simplify.simplify_decls?(mono_decls) {
+    Err(err) => raise Failure(err.to_string())
+    Ok(simplified_decls) => simplified_decls
+  }
 
   for cmd in commands {
     match cmd {
@@ -129,7 +160,11 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
 
   let firrtl = {
     let low = @elaborate.Elaborator::new(top)
-    low.lower!(simplified_decls.iter())
+
+    if low.lower?(simplified_decls.iter()) is Err(err) {
+      raise Failure(err.to_string())
+    }
+
     low
   }
 

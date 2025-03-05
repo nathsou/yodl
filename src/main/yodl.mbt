@@ -2,14 +2,33 @@
 fn main {
   let fs: @utils.FileSystem = {
     path_exists: @fs.path_exists,
-    create_dir: @fs.create_dir,
-    write_string_to_file: fn (path, content) {
-      @fs.write_string_to_file!(path, content)
+    create_dir: fn (path) {
+      if @fs.create_dir?(path) is Err(err) {
+        raise Failure(err.to_string())
+      }
     },
-    read_dir: @fs.read_dir,
-    is_dir: @fs.is_dir,
+    write_string_to_file: fn (path, content) {
+      if @fs.write_string_to_file?(path, content) is Err(err) {
+        raise Failure(err.to_string())
+      }
+    },
+    read_dir: fn(path) {
+      match @fs.read_dir?(path) {
+        Err(err) => raise Failure(err.to_string())
+        Ok(files) => files
+      }
+    },
+    is_dir: fn (path) {
+      match @fs.is_dir?(path) {
+        Err(err) => raise Failure(err.to_string())
+        Ok(is_dir) => is_dir
+      }
+    },
     read_file_to_string: fn(path) {
-      @fs.read_file_to_string!(path)
+      match @fs.read_file_to_string?(path) {
+        Err(err) => raise Failure(err.to_string())
+        Ok(content) => content
+      }
     },
   }
 

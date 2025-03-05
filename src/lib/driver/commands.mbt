@@ -1,8 +1,8 @@
 
 pub enum Command {
-  WriteSource
+  WriteSource(path~: String?)
   WriteMono(path~: String?)
-  WriteTyped
+  WriteTyped(path~: String?)
   WriteFIRRTL(path~: String?)
   WriteSimplified(path~: String?)
 } derive(Show)
@@ -140,12 +140,13 @@ pub fn parse_commands(source: String) -> Array[Command]!CommandParserError {
   for cmd in cmds {
     let command = match cmd.name {
       "write_source" => {
-        match cmd.args.length() {
-          0 => ()
+        let path = match cmd.args {
+          [] => None
+          [path] => Some(path)
           _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
         }
 
-        WriteSource
+        WriteSource(path~)
       }
       "write_mono" => {
         let path = match cmd.args {
@@ -157,12 +158,13 @@ pub fn parse_commands(source: String) -> Array[Command]!CommandParserError {
         WriteMono(path~)
       }
       "write_typed" => {
-        match cmd.args.length() {
-          0 => ()
+        let path = match cmd.args {
+          [] => None
+          [path] => Some(path)
           _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
         }
 
-        WriteTyped
+        WriteTyped(path~)
       }
       "write_simplified" => {
         let path = match cmd.args {
