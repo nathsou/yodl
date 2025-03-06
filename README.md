@@ -4,6 +4,11 @@ Yet anOther (hardware) Description Language
 
 <img src="res/gol.png" alt="Parallel Game Of Life" width="480px"/>
 
+## Quick links
+
+- [Documentation](https://nathsou.github.io/yodl/book/)
+- [Playground](https://nathsou.github.io/yodl/playground.html)
+
 ## Usage
 - Install [Moonbit](https://www.moonbitlang.com/) and [firtool](https://github.com/llvm/circt/releases) (tested with version 1.105.0)
 - ```$ git clone https://github.com/nathsou/yodl.git yodl```
