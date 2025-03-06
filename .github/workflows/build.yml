@@ -1,0 +1,38 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker Image
+        run: docker build -f .github/Dockerfile -t yodl-builder .
+
+      - name: Extract Artifacts from Docker
+        run: |
+          # Create a temporary directory to store artifacts
+          mkdir -p ./dist
+          
+          # Run container and copy artifacts out
+          docker run --name yodl-container yodl-builder
+          docker cp yodl-container:/app/artifacts/. ./dist/
+          docker rm yodl-container
+
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: dist
+          branch: gh-pages
+          clean: true
