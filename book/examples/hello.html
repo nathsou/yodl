@@ -1,0 +1,476 @@
+<!DOCTYPE HTML>
+<html lang="en" class="light sidebar-visible" dir="ltr">
+    <head>
+        <!-- Book generated using mdBook -->
+        <meta charset="UTF-8">
+        <title>Hello - yodl</title>
+
+
+        <!-- Custom HTML head -->
+
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#ffffff">
+
+        <link rel="icon" href="../favicon.svg">
+        <link rel="shortcut icon" href="../favicon.png">
+        <link rel="stylesheet" href="../css/variables.css">
+        <link rel="stylesheet" href="../css/general.css">
+        <link rel="stylesheet" href="../css/chrome.css">
+        <link rel="stylesheet" href="../css/print.css" media="print">
+
+        <!-- Fonts -->
+        <link rel="stylesheet" href="../FontAwesome/css/font-awesome.css">
+        <link rel="stylesheet" href="../fonts/fonts.css">
+
+        <!-- Highlight.js Stylesheets -->
+        <link rel="stylesheet" href="../highlight.css">
+        <link rel="stylesheet" href="../tomorrow-night.css">
+        <link rel="stylesheet" href="../ayu-highlight.css">
+
+        <!-- Custom theme stylesheets -->
+
+
+        <!-- Provide site root to javascript -->
+        <script>
+            var path_to_root = "../";
+            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
+        </script>
+        <!-- Start loading toc.js asap -->
+        <script src="../toc.js"></script>
+    </head>
+    <body>
+    <div id="body-container">
+        <!-- Work around some values being stored in localStorage wrapped in quotes -->
+        <script>
+            try {
+                var theme = localStorage.getItem('mdbook-theme');
+                var sidebar = localStorage.getItem('mdbook-sidebar');
+
+                if (theme.startsWith('"') && theme.endsWith('"')) {
+                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
+                }
+
+                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
+                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
+                }
+            } catch (e) { }
+        </script>
+
+        <!-- Set the theme before any content is loaded, prevents flash -->
+        <script>
+            var theme;
+            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
+            if (theme === null || theme === undefined) { theme = default_theme; }
+            const html = document.documentElement;
+            html.classList.remove('light')
+            html.classList.add(theme);
+            html.classList.add("js");
+        </script>
+
+        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
+
+        <!-- Hide / unhide sidebar before it is displayed -->
+        <script>
+            var sidebar = null;
+            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
+            if (document.body.clientWidth >= 1080) {
+                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
+                sidebar = sidebar || 'visible';
+            } else {
+                sidebar = 'hidden';
+            }
+            sidebar_toggle.checked = sidebar === 'visible';
+            html.classList.remove('sidebar-visible');
+            html.classList.add("sidebar-" + sidebar);
+        </script>
+
+        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
+            <!-- populated by js -->
+            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
+            <noscript>
+                <iframe class="sidebar-iframe-outer" src="../toc.html"></iframe>
+            </noscript>
+            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
+                <div class="sidebar-resize-indicator"></div>
+            </div>
+        </nav>
+
+        <div id="page-wrapper" class="page-wrapper">
+
+            <div class="page">
+                <div id="menu-bar-hover-placeholder"></div>
+                <div id="menu-bar" class="menu-bar sticky">
+                    <div class="left-buttons">
+                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
+                            <i class="fa fa-bars"></i>
+                        </label>
+                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
+                            <i class="fa fa-paint-brush"></i>
+                        </button>
+                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
+                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
+                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
+                        </ul>
+                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
+                            <i class="fa fa-search"></i>
+                        </button>
+                    </div>
+
+                    <h1 class="menu-title">yodl</h1>
+
+                    <div class="right-buttons">
+                        <a href="../print.html" title="Print this book" aria-label="Print this book">
+                            <i id="print-button" class="fa fa-print"></i>
+                        </a>
+                        <a href="https://github.com/nathsou/yodl" title="Git repository" aria-label="Git repository">
+                            <i id="git-repository-button" class="fa fa-github"></i>
+                        </a>
+
+                    </div>
+                </div>
+
+                <div id="search-wrapper" class="hidden">
+                    <form id="searchbar-outer" class="searchbar-outer">
+                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
+                    </form>
+                    <div id="searchresults-outer" class="searchresults-outer hidden">
+                        <div id="searchresults-header" class="searchresults-header"></div>
+                        <ul id="searchresults">
+                        </ul>
+                    </div>
+                </div>
+
+                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
+                <script>
+                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
+                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
+                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
+                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
+                    });
+                </script>
+
+                <div id="content" class="content">
+                    <main>
+                        <h1 id="hello"><a class="header" href="#hello">Hello</a></h1>
+<p>In the previous example, we saw how to generate correctly timed signals for a VGA interface. In this example, we will display some text on the screen.</p>
+<pre><code class="language-yodl">import VGA
+import LFSR
+import Timing
+
+type Char = uint&lt;8&gt;;
+
+module AsciiTable(char: Char) -&gt; (q: uint&lt;64&gt;) {
+    q = match char[6:0] {
+        7'h21 =&gt; 64'h000C000C0C1E1E0C,
+        7'h22 =&gt; 64'h0000000000363636,
+        7'h23 =&gt; 64'h0036367F367F3636,
+        7'h24 =&gt; 64'h000C1F301E033E0C,
+        7'h25 =&gt; 64'h0063660C18336300,
+        7'h26 =&gt; 64'h006E333B6E1C361C,
+        7'h27 =&gt; 64'h0000000000030606,
+        7'h28 =&gt; 64'h00180C0606060C18,
+        7'h29 =&gt; 64'h00060C1818180C06,
+        7'h2a =&gt; 64'h0000663CFF3C6600,
+        7'h2b =&gt; 64'h00000C0C3F0C0C00,
+        7'h2c =&gt; 64'h060C0C0000000000,
+        7'h2d =&gt; 64'h000000003F000000,
+        7'h2e =&gt; 64'h000C0C0000000000,
+        7'h2f =&gt; 64'h000103060C183060,
+        7'h30 =&gt; 64'h003E676F7B73633E,
+        7'h31 =&gt; 64'h003F0C0C0C0C0E0C,
+        7'h32 =&gt; 64'h003F33061C30331E,
+        7'h33 =&gt; 64'h001E33301C30331E,
+        7'h34 =&gt; 64'h0078307F33363C38,
+        7'h35 =&gt; 64'h001E3330301F033F,
+        7'h36 =&gt; 64'h001E33331F03061C,
+        7'h37 =&gt; 64'h000C0C0C1830333F,
+        7'h38 =&gt; 64'h001E33331E33331E,
+        7'h39 =&gt; 64'h000E18303E33331E,
+        7'h3a =&gt; 64'h000C0C00000C0C00,
+        7'h3b =&gt; 64'h060C0C00000C0C00,
+        7'h3c =&gt; 64'h00180C0603060C18,
+        7'h3d =&gt; 64'h00003F00003F0000,
+        7'h3e =&gt; 64'h00060C1830180C06,
+        7'h3f =&gt; 64'h000C000C1830331E,
+        7'h40 =&gt; 64'h001E037B7B7B633E,
+        7'h41 =&gt; 64'h0033333F33331E0C,
+        7'h42 =&gt; 64'h003F66663E66663F,
+        7'h43 =&gt; 64'h003C66030303663C,
+        7'h44 =&gt; 64'h001F36666666361F,
+        7'h45 =&gt; 64'h007F46161E16467F,
+        7'h46 =&gt; 64'h000F06161E16467F,
+        7'h47 =&gt; 64'h007C66730303663C,
+        7'h48 =&gt; 64'h003333333F333333,
+        7'h49 =&gt; 64'h001E0C0C0C0C0C1E,
+        7'h4a =&gt; 64'h001E333330303078,
+        7'h4b =&gt; 64'h006766361E366667,
+        7'h4c =&gt; 64'h007F66460606060F,
+        7'h4d =&gt; 64'h0063636B7F7F7763,
+        7'h4e =&gt; 64'h006363737B6F6763,
+        7'h4f =&gt; 64'h001C36636363361C,
+        7'h50 =&gt; 64'h000F06063E66663F,
+        7'h51 =&gt; 64'h00381E3B3333331E,
+        7'h52 =&gt; 64'h006766363E66663F,
+        7'h53 =&gt; 64'h001E33180C06331E,
+        7'h54 =&gt; 64'h001E0C0C0C0C2D3F,
+        7'h55 =&gt; 64'h003F333333333333,
+        7'h56 =&gt; 64'h000C1E3333333333,
+        7'h57 =&gt; 64'h0063777F6B636363,
+        7'h58 =&gt; 64'h0063361C1C366363,
+        7'h59 =&gt; 64'h001E0C0C1E333333,
+        7'h5a =&gt; 64'h007F664C1831637F,
+        7'h5b =&gt; 64'h001E06060606061E,
+        7'h5c =&gt; 64'h00406030180C0603,
+        7'h5d =&gt; 64'h001E18181818181E,
+        7'h5e =&gt; 64'h0000000063361C08,
+        7'h5f =&gt; 64'hFF00000000000000,
+        7'h60 =&gt; 64'h0000000000180C0C,
+        7'h61 =&gt; 64'h006E333E301E0000,
+        7'h62 =&gt; 64'h003B66663E060607,
+        7'h63 =&gt; 64'h001E3303331E0000,
+        7'h64 =&gt; 64'h006E33333E303038,
+        7'h65 =&gt; 64'h001E033F331E0000,
+        7'h66 =&gt; 64'h000F06060F06361C,
+        7'h67 =&gt; 64'h1F303E33336E0000,
+        7'h68 =&gt; 64'h006766666E360607,
+        7'h69 =&gt; 64'h001E0C0C0C0E000C,
+        7'h6a =&gt; 64'h1E33333030300030,
+        7'h6b =&gt; 64'h0067361E36660607,
+        7'h6c =&gt; 64'h001E0C0C0C0C0C0E,
+        7'h6d =&gt; 64'h00636B7F7F330000,
+        7'h6e =&gt; 64'h00333333331F0000,
+        7'h6f =&gt; 64'h001E3333331E0000,
+        7'h70 =&gt; 64'h0F063E66663B0000,
+        7'h71 =&gt; 64'h78303E33336E0000,
+        7'h72 =&gt; 64'h000F06666E3B0000,
+        7'h73 =&gt; 64'h001F301E033E0000,
+        7'h74 =&gt; 64'h00182C0C0C3E0C08,
+        7'h75 =&gt; 64'h006E333333330000,
+        7'h76 =&gt; 64'h000C1E3333330000,
+        7'h77 =&gt; 64'h00367F7F6B630000,
+        7'h78 =&gt; 64'h0063361C36630000,
+        7'h79 =&gt; 64'h1F303E3333330000,
+        7'h7a =&gt; 64'h003F260C193F0000,
+        7'h7b =&gt; 64'h00380C0C070C0C38,
+        7'h7c =&gt; 64'h0018181800181818,
+        7'h7d =&gt; 64'h00070C0C380C0C07,
+        7'h7e =&gt; 64'h0000000000003B6E,
+        7'h7f =&gt; 64'h007F6363361C0800,
+        _ =&gt; 64'h0000000000000000,
+    };
+}
+
+module CharAt&lt;Length: uint, IndexWidth: uint&gt;(
+    str: Char[Length],
+    index: uint&lt;IndexWidth&gt;,
+) -&gt; (
+    char: Char,
+    is_out_of_bounds: bool,
+) {
+    is_out_of_bounds = index &gt;= Length;
+    char = is_out_of_bounds ? ' ' : str[index];
+}
+
+const Rows = VGA::V_ACTIVE / 8;
+const Cols = VGA::H_ACTIVE / 8;
+
+module Text&lt;Length: uint, X: uint, Y: uint&gt;(
+    text: Char[Length],
+    screen_x: uint&lt;10&gt;,
+    screen_y: uint&lt;10&gt;,
+) -&gt; (
+    is_active: bool,
+) {
+    const StartIdx = Y * Cols + X;
+    let x_div = screen_x[9:3];
+    let y_div = screen_y[9:3];
+    let x = screen_x[2:0];
+    let y = screen_y[2:0];
+    let cell_idx: uint&lt;13&gt; = y_div * Cols + x_div;
+    let diff: uint&lt;13&gt; = cell_idx - StartIdx;
+    let char = cell_idx &gt;= StartIdx ? CharAt&lt;Length: Length, IndexWidth: 13&gt;(str: text, index: diff).char : ' ';
+    let bitmap = AsciiTable(char).q;
+    let pixel_idx: uint&lt;6&gt; = y * 8 + x;
+    is_active = (bitmap shr pixel_idx)[0];
+}
+
+module TextDynamicPosition&lt;Length: uint&gt;(
+    text: Char[Length],
+    x_offset: uint&lt;$clog2(Cols)&gt;,
+    y_offset: uint&lt;$clog2(Rows)&gt;,
+    screen_x: uint&lt;10&gt;,
+    screen_y: uint&lt;10&gt;,
+) -&gt; (
+    is_active: bool,
+) {
+    let x_div = screen_x[9:3];
+    let y_div = screen_y[9:3];
+    let x = screen_x[2:0];
+    let y = screen_y[2:0];
+    let start_idx: uint&lt;13&gt; = y_offset * Cols + x_offset;
+    let cell_idx: uint&lt;13&gt; = y_div * Cols + x_div;
+    let diff: uint&lt;13&gt; = cell_idx - start_idx;
+    let char = cell_idx &gt;= start_idx ? CharAt&lt;Length: Length, IndexWidth: 13&gt;(str: text, index: diff).char : ' ';
+    let bitmap = AsciiTable(char).q;
+    let pixel_idx: uint&lt;6&gt; = y * 8 + x;
+    is_active = (bitmap shr pixel_idx)[0];
+}
+
+module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: Char[$cdiv(Bits, 4)]) {
+    const Len = $cdiv(Bits, 4);
+    for i in 0..&lt;Len {
+        chars[Len - 1 - i] = (match n[(i + 1) * 4 - 1 -: 4] {
+            4'h0 =&gt; '0',
+            4'h1 =&gt; '1',
+            4'h2 =&gt; '2',
+            4'h3 =&gt; '3',
+            4'h4 =&gt; '4',
+            4'h5 =&gt; '5',
+            4'h6 =&gt; '6',
+            4'h7 =&gt; '7',
+            4'h8 =&gt; '8',
+            4'h9 =&gt; '9',
+            4'hA =&gt; 'A',
+            4'hB =&gt; 'B',
+            4'hC =&gt; 'C',
+            4'hD =&gt; 'D',
+            4'hE =&gt; 'E',
+            4'hF =&gt; 'F',
+        });
+    }
+}
+
+module Dec&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: Char[$cdiv(Bits, 4)]) {
+    const Len = $cdiv(Bits, 4);
+    for i in 0..&lt;Len {
+        chars[Len - 1 - i] = (match n[(i + 1) * 4 - 1 -: 4] {
+            4'h0 =&gt; '0',
+            4'h1 =&gt; '1',
+            4'h2 =&gt; '2',
+            4'h3 =&gt; '3',
+            4'h4 =&gt; '4',
+            4'h5 =&gt; '5',
+            4'h6 =&gt; '6',
+            4'h7 =&gt; '7',
+            4'h8 =&gt; '8',
+            _ =&gt; '9',
+        });
+    }
+}
+
+module Bin&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: Char[Bits]) {
+    for i in 0..&lt;Bits {
+        chars[Bits - 1 - i] = n[i] ? '1' : '0';
+    }
+}
+</code></pre>
+<p>Now we can use modules from the <code>Text</code> package to display a simple some scrolling messages on the screen with a random colour.</p>
+<pre><code class="language-yodl">import Timing
+import LFSR
+import Text
+
+module Top(
+    clk: clock,
+) -&gt; (
+    led: uint&lt;4&gt;,
+    vga_hsync: bool,
+    vga_vsync: bool,
+    vga_red: uint&lt;3&gt;,
+    vga_green: uint&lt;3&gt;,
+    vga_blue: uint&lt;3&gt;,
+) {
+    let vga = VGA::SyncPulses(
+        pixel_clk: clk,
+        hsync: vga_hsync,
+        vsync: vga_vsync,
+    );
+
+    const MsgLen = 69;
+    let timer = Timing::Timer&lt;100_000_000&gt;(clk);
+    let timer2 = Timing::Timer&lt;5_000_000&gt;(clk);
+    let messages = [
+        "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!",
+        "Visit https://github.com/nathsou/yodl for more information :)        ",
+    ];
+
+    let msg_index = Timing::Counter&lt;1&gt;(clk, en: timer.q, rst: 1'b0).q;
+    let rand_color = LFSR::LFSR&lt;32&gt;(clk, enable: timer.q).q[8:0];
+    let y = Timing::Counter&lt;6&gt;(clk, en: timer2.q);
+    y.rst = y.q &gt;= (Text::Cols - 1);
+
+    let text = Text::TextDynamicPosition&lt;MsgLen&gt;(
+        text: messages[msg_index],
+        x_offset: 7'd5,
+        y_offset: y.q,
+        screen_x: vga.col,
+        screen_y: vga.row,
+    );
+
+    let color = match vga.is_active_area and text.is_active {
+        1'b0 =&gt; { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'b1 =&gt; { r: rand_color[2:0], g: rand_color[5:3], b: rand_color[8:6] },
+    };
+
+    vga_red = color.r;
+    vga_green = color.g;
+    vga_blue = color.b;
+    led = 4'd0;
+}
+</code></pre>
+
+                    </main>
+
+                    <nav class="nav-wrapper" aria-label="Page navigation">
+                        <!-- Mobile navigation buttons -->
+                            <a rel="prev" href="../examples/noise.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                                <i class="fa fa-angle-left"></i>
+                            </a>
+
+                            <a rel="next prefetch" href="../examples/image.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                                <i class="fa fa-angle-right"></i>
+                            </a>
+
+                        <div style="clear: both"></div>
+                    </nav>
+                </div>
+            </div>
+
+            <nav class="nav-wide-wrapper" aria-label="Page navigation">
+                    <a rel="prev" href="../examples/noise.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                        <i class="fa fa-angle-left"></i>
+                    </a>
+
+                    <a rel="next prefetch" href="../examples/image.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                        <i class="fa fa-angle-right"></i>
+                    </a>
+            </nav>
+
+        </div>
+
+
+
+
+        <script>
+            window.playground_copyable = true;
+        </script>
+
+
+        <script src="../elasticlunr.min.js"></script>
+        <script src="../mark.min.js"></script>
+        <script src="../searcher.js"></script>
+
+        <script src="../clipboard.min.js"></script>
+        <script src="../highlight.js"></script>
+        <script src="../book.js"></script>
+
+        <!-- Custom JS scripts -->
+        <script src="../theme/yodl-highlight.js"></script>
+
+
+    </div>
+    </body>
+</html>
