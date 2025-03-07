@@ -340,7 +340,7 @@ pub impl Show for AstError with output(self, logger) {
     UnknownFunction(name~, ..) => logger.write_string("Unknown function '\{name}'")
   }
 
-  logger.write_string(self.show_context())
+  logger.write_string(self.show_context(use_ansi_colors=false))
 }
 
 pub impl Spanned for AstError with span(self) -> Span {
@@ -423,19 +423,27 @@ pub fn ty(self: Expr) -> Ref[Type?] {
 
 pub(open) trait Spanned {
   span(Self) -> Span
-  show_context(Self) -> String
+  show_context(Self, use_ansi_colors~: Bool) -> String
 }
 
-impl Spanned with show_context(self) -> String {
+impl Spanned with show_context(self, use_ansi_colors~: Bool) -> String {
   let span = self.span()
   let builder = StringBuilder::new()
 
   builder.write_string(", ")
-  builder.write_string("\x1b[4m")
+
+  if use_ansi_colors {
+    builder.write_string("\x1b[4m")
+  }
+
   builder.write_string("\{span}")
-  builder.write_string("\x1b[0m")
+  
+  if use_ansi_colors {
+    builder.write_string("\x1b[0m")
+  }
+
   builder.write_string("\n\n")
-  builder.write_string(span.context())
+  builder.write_string(span.context(use_ansi_colors~))
 
   builder.to_string()
 }

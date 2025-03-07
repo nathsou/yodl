@@ -56,7 +56,7 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     }
   }
 
-  logger.write_string(self.show_context())
+  logger.write_string(self.show_context(use_ansi_colors=false))
 }
 
 pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {

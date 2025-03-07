@@ -138,7 +138,7 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         }
     }
 
-    logger.write_string(self.show_context())
+    logger.write_string(self.show_context(use_ansi_colors=false))
 }
 
 pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {

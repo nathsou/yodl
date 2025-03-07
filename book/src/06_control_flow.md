@@ -44,24 +44,24 @@ The `for` loop iterates over a range of values:
 module Hex<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
     const Len = $cdiv(Bits, 4);
     for i in 0..<Len {
-        chars[Len - 1 - i] = (match n[(i + 1) * 4 - 1 -: 4] {
-            4'h0 => "0",
-            4'h1 => "1",
-            4'h2 => "2",
-            4'h3 => "3",
-            4'h4 => "4",
-            4'h5 => "5",
-            4'h6 => "6",
-            4'h7 => "7",
-            4'h8 => "8",
-            4'h9 => "9",
-            4'hA => "A",
-            4'hB => "B",
-            4'hC => "C",
-            4'hD => "D",
-            4'hE => "E",
-            4'hF => "F",
-        })[0];
+        chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
+            4'h0 => '0',
+            4'h1 => '1',
+            4'h2 => '2',
+            4'h3 => '3',
+            4'h4 => '4',
+            4'h5 => '5',
+            4'h6 => '6',
+            4'h7 => '7',
+            4'h8 => '8',
+            4'h9 => '9',
+            4'hA => 'A',
+            4'hB => 'B',
+            4'hC => 'C',
+            4'hD => 'D',
+            4'hE => 'E',
+            4'hF => 'F',
+        };
     }
 }
 ```

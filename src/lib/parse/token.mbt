@@ -33,7 +33,7 @@ pub impl Show for Span with output(self, logger) {
   logger.write_string("\{self.start.0}.\{self.start.1}-\{self.end.0}.\{self.end.1}")
 }
 
-pub fn context(self: Span, window_size~: Int = 3) -> String {
+pub fn context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool = false) -> String {
   let window = StringBuilder::new(size_hint=window_size * 2)
   let max_line_number_digits = (self.end.0 + 1).to_string().length()
 
@@ -86,13 +86,17 @@ pub fn context(self: Span, window_size~: Int = 3) -> String {
             @utils.min(col + 1, line_end)
           }
 
-          window.write_string("\x1b[1;31m")
+          if use_ansi_colors {
+            window.write_string("\x1b[1;31m")
+          }
 
           for _ in 0..=(last_non_whitespace_col - first_non_whitespace_col) {
             window.write_char('^')
           }
 
-          window.write_string("\x1b[0m")
+          if use_ansi_colors {
+            window.write_string("\x1b[0m")
+          }
         }
       }
 
