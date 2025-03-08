@@ -87,45 +87,12 @@ pub fn Type::is_string(self: Type) -> Bool {
   }
 }
 
-pub(all) enum InstanceParam {
-  Expr(name~: String?, value~: Expr)
-  Type(name~: String?, value~: Type, span~: Span)
-}
-
-pub impl Spanned for InstanceParam with span(self) -> Span {
-  match self {
-    Expr(value~, ..) => value.span()
-    Type(span~, ..) => span
-  }
-}
-
-pub fn InstanceParam::as_param(self: InstanceParam) -> Param! {
-  match self {
-    Expr(value~, ..) => IntParam(value.as_int!())
-    Type(value=ty, ..) => TypeParam(ty)
-  }
-}
-
-pub fn InstanceParam::as_int(self: InstanceParam) -> Int! {
-  match self {
-    Expr(value~, ..) => value.as_int!()
-    _ => raise Failure("Expected an integer parameter")
-  }
-}
-
-pub fn InstanceParam::as_type(self: InstanceParam) -> Type! {
-  match self {
-    Type(value~, ..) => value
-    _ => raise Failure("Expected a type parameter")
-  }
-}
-
 pub(all) struct InstanceParams {
-  params: Array[InstanceParam]
+  params: Array[(String?, Param)]
   instantiated: Array[(Expr, Type, Span)]
 }
 
-pub fn InstanceParams::new(params: Array[InstanceParam]) -> InstanceParams {
+pub fn InstanceParams::new(params: Array[(String?, Param)]) -> InstanceParams {
   { params, instantiated: [] }
 }
 
@@ -165,14 +132,25 @@ pub fn map[E: Error](self: InstanceParams, map_expr~: (Expr) -> Expr!E, map_type
   let new_list = Array::new(capacity=self.params.length())
 
   for param in self.params {
-    match param {
-      Expr(name~, value~) => {
-        let value = map_expr!(value)
-        new_list.push(InstanceParam::Expr(name~, value~))
+    let name = param.0
+    match param.1 {
+      Resolved(TypeParam(ty~, span~)) => {
+        let new_ty = map_type!(ty)
+        new_list.push((name, Resolved(TypeParam(ty=new_ty, span~))))
       }
-      Type(name~, value~, span~) => {
-        let value = map_type!(value)
-        new_list.push(InstanceParam::Type(name~, value~, span~))
+      Unresolved(PathParam(path~, span~)) => {
+        new_list.push((name, Unresolved(PathParam(path~, span~))))
+      }
+      Unresolved(ExprParam(expr)) => {
+        let new_expr = map_expr!(expr)
+        new_list.push((name, Unresolved(ExprParam(new_expr))))
+      }
+      Unresolved(TypeParam(ty~, span~)) => {
+        let new_ty = map_type!(ty)
+        new_list.push((name, Resolved(TypeParam(ty=new_ty, span~))))
+      }
+      Resolved(param) => {
+        new_list.push((name, Resolved(param)))
       }
     }
   }
@@ -318,6 +296,10 @@ pub type! AstError {
   UnknownModuleParameter(name~: String, span~: Span)
   TypeParamInsteadOfExpr(span~: Span)
   UnknownFunction(name~: String, span~: Span)
+  UnresolvedParameter(name~: String, span~: Span)
+  CannotMixNamedAndOrderedModuleParameters(span~: Span)
+  ExpectedTypeParameter(span~: Span)
+  ExpectedIntParameter(span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -338,6 +320,10 @@ pub impl Show for AstError with output(self, logger) {
       logger.write_string("Received a type parameter instead of an expression")
     }
     UnknownFunction(name~, ..) => logger.write_string("Unknown function '\{name}'")
+    UnresolvedParameter(name~, ..) => logger.write_string("Unresolved parameter '\{name}'")
+    CannotMixNamedAndOrderedModuleParameters(_) => logger.write_string("Cannot mix named and ordered module parameters")
+    ExpectedTypeParameter(_) => logger.write_string("Expected a type parameter")
+    ExpectedIntParameter(_) => logger.write_string("Expected an integer parameter")
   }
 
   logger.write_string(self.show_context(use_ansi_colors=false))
@@ -355,6 +341,10 @@ pub impl Spanned for AstError with span(self) -> Span {
     UnknownModuleParameter(span~, ..) => span
     TypeParamInsteadOfExpr(span~) => span
     UnknownFunction(span~, ..) => span
+    UnresolvedParameter(span~, ..) => span
+    CannotMixNamedAndOrderedModuleParameters(span~) => span
+    ExpectedTypeParameter(span~) => span
+    ExpectedIntParameter(span~) => span
   }
 }
 
@@ -536,85 +526,137 @@ pub fn is_constant_expr(self: Expr) -> Bool {
   }
 }
 
-pub(all) enum Param {
-  IntParam(Int)
-  ValParam(value~: BigInt, width~: Int)
-  TypeParam(Type)
+pub(all) enum UnresolvedParam {
+  PathParam(path~: Path, span~: Span)
+  ExprParam(Expr)
+  TypeParam(ty~: Type, span~: Span)
+}
+
+pub(all) enum ResolvedParam {
+  ConstParam(value~: ConstValue, span~: Span)
+  TypeParam(ty~: Type, span~: Span)
+}
+
+pub(all) enum ConstValue {
+  Natural(value~: BigInt, width~: Int?, base~: Int, span~: Span)
+  String(value~: String, span~: Span)
 } derive(Eq)
 
-pub impl Show for Param with output(self, logger) -> Unit {
+pub fn ConstValue::from(expr: Expr) -> ConstValue? {
+  match expr {
+    Natural(value~, width~, base~, span~, ty=_) => Some(Natural(value~, width~, base~, span~))
+    String(value~, span~, ty=_) => Some(String(value~, span~))
+    _ => None
+  }
+}
+
+pub(all) enum Param {
+  Unresolved(UnresolvedParam)
+  Resolved(ResolvedParam)
+} derive(Eq)
+
+pub impl Eq for ResolvedParam with op_equal(self, other) {
+  match (self, other) {
+    (ConstParam(value=a, ..), ConstParam(value=b, ..)) => a == b
+    (TypeParam(ty=a, ..), TypeParam(ty=b, ..)) => a == b
+    _ => false
+  }
+}
+
+pub impl Eq for UnresolvedParam with op_equal(self, other) {
+  match (self, other) {
+    (PathParam(path=a, ..), PathParam(path=b, ..)) => a == b
+    (ExprParam(_), ExprParam(_)) => false
+    (TypeParam(ty=a, ..), TypeParam(ty=b, ..)) => a == b
+    _ => false
+  }
+}
+
+pub impl Hash for ResolvedParam with hash_combine(self, hasher) {
   match self {
-    IntParam(n) => logger.write_string(n.to_string())
-    ValParam(value~, width~) => {
-      logger.write_string("\{width}'b")
-      let bytes = value.to_octets()
+    ConstParam(value~, ..) => {
+      match value {
+        Natural(value~, width~, base=_, span=_) => {
+          for byte in value.to_octets() {
+            hasher.combine(byte)
+          }
 
-      if bytes.length() <= 4 {
-        for byte in bytes {
-          logger.write_string(byte.to_string())
+          hasher.combine(width)
         }
-      } else {
-        for i in 0..<3 {
-          logger.write_string(bytes[i].to_string())
-        }
-
-        logger.write_string("...")
+        String(value~, span=_) => hasher.combine(value)
       }
     }
-    TypeParam(ty) => logger.write_string(ty.to_string())
+    TypeParam(ty~, ..) => hasher.combine(ty.to_string())
   }
 }
 
-pub impl Hash for Param with hash_combine(self, hasher) {
+pub impl Spanned for Param with span(self) -> Span {
   match self {
-    IntParam(n) => hasher.combine(n)
-    ValParam(value~, width~) => {
-      for byte in value.to_octets() {
-        hasher.combine(byte)
-      }
-
-      hasher.combine(width)
+    Unresolved(param) => match param {
+      PathParam(span~, ..) => span
+      ExprParam(expr) => expr.span()
+      TypeParam(span~, ..) => span
     }
-    TypeParam(ty) => hasher.combine(ty.to_string())
-  }
-}
-
-pub fn Expr::as_param(self: Expr) -> Param!AstError {
-  match self {
-    Natural(value~, width=Some(width), ..) => ValParam(value~, width~)
-    Natural(value~, width=None, ..) => IntParam(value.to_int())
-    _ => raise InvalidModuleParameter(span=self.span())
-  }
-}
-
-pub fn as_expr(self: Param, span~: Span) -> Expr! {
-  match self {
-    IntParam(n) => {
-      let bn = BigInt::from_int(n)
-      Natural(
-        value=bn,
-        width=None,
-        base=10,
-        span~,
-        ty={ val: Some(Nat(min_width=@utils.significant_bits(bn))) },
-      )
+    Resolved(param) => match param {
+      ConstParam(span~, ..) => span
+      TypeParam(span~, ..) => span
     }
-    ValParam(value~, width~) => Natural(value~, width=Some(width), base=2, span=span, ty={ val: Some(Type::uint(width)) })
-    TypeParam(_) => raise TypeParamInsteadOfExpr(span~)
   }
+}
+
+pub fn Param::as_type(self: Param) -> Type! {
+  match self {
+    Unresolved(TypeParam(ty~, ..)) => ty
+    Resolved(TypeParam(ty~, ..)) => ty
+    _ => raise ExpectedTypeParameter(span=self.span())
+  }
+}
+
+pub fn Param::as_int(self: Param) -> Int! {
+  match self {
+    Unresolved(ExprParam(expr)) => expr.as_int!()
+    Resolved(ConstParam(value=Natural(value~, ..), span=_)) => value.to_int()
+    _ => raise ExpectedIntParameter(span=self.span())
+  }
+}
+
+pub fn ConstValue::as_expr(self: ConstValue) -> Expr {
+  match self {
+    Natural(value~, width~, base~, span~) => Natural(value~, width~, base~, span~, ty={ val: None })
+    String(value~, span~) => String(value~, span~, ty={ val: None })
+  }
+}
+
+pub fn ResolvedParam::as_expr(self: ResolvedParam) -> Expr! {
+  match self {
+    ConstParam(value~, span=_) => value.as_expr()
+    TypeParam(span~, ..) => raise TypeParamInsteadOfExpr(span~)
+  }
+}
+
+pub fn keep_and_check_resolved(params: Map[String, Param], span~: Span) -> Map[String, ResolvedParam]!AstError {
+  let resolved_params = {}
+
+  for name, param in params {
+    if param is Resolved(p) {
+      resolved_params[name] = p
+    } else {
+      
+      raise UnresolvedParameter(name~, span~)
+    }
+  }
+
+  resolved_params
 }
 
 // perform partial evaluation on the expression
-pub fn partial_eval(self: Expr, params~: Map[String, Param] = {}) -> Expr! {
+pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Expr! {
   rewrite_expr!(self, rewr_stmt=fn(stmt) { Iter::singleton(stmt) }, rewr_expr=fn!(expr) {
     match expr {
       Identifier(path={ packages: [], member }, ..) => {
         match params[member] {
-          Some(IntParam(n)) => {
-            Some(Natural(value=BigInt::from_int(n), width=None, base=10, span=expr.span(), ty=expr.ty()))
-          }
-          Some(ValParam(value~, width~)) => {
-            Some(Natural(value~, width=Some(width), base=2, span=expr.span(), ty=expr.ty()))
+          Some(ConstParam(value~, span=_)) => {
+            Some(value.as_expr())
           }
           Some(TypeParam(_)) => {
             raise TypeParamInsteadOfExpr(span=expr.span())
@@ -883,10 +925,11 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
     }
     Instance(sig~, params~, accessed_ports~) => {
       let mut width = 0
+      let resolved_params = keep_and_check_resolved!(params, span~)
 
       for port in sig.ports {
         if accessed_ports.contains(port.name) {
-          width += port.ty.substitute(params).width!(span)
+          width += port.ty.substitute(resolved_params).width!(span)
         }
       }
 
@@ -906,7 +949,7 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
   }
 }
 
-pub fn substitute(self: Type, params_env: Map[String, Param]) -> Type {
+pub fn substitute(self: Type, params_env: Map[String, ResolvedParam]) -> Type {
   match self {
     Nat(_) | String(_) => self
     UInt(Fixed(width)) => UInt(Fixed(width))
@@ -931,7 +974,7 @@ pub fn substitute(self: Type, params_env: Map[String, Param]) -> Type {
 
       for name, value in params {
         new_params[name] = match params_env[name] {
-          Some(new_value) => new_value
+          Some(new_value) => Resolved(new_value)
           None => value
         }
       }
@@ -941,8 +984,8 @@ pub fn substitute(self: Type, params_env: Map[String, Param]) -> Type {
     Name(path~, params~) => {
       match path.packages {
         [] => match params_env[path.member] {
-          Some(TypeParam(ty)) => ty.substitute(params_env)
-          None | Some(IntParam(_) | ValParam(_)) => Name(path~, params~)
+          Some(TypeParam(ty~, ..)) => ty.substitute(params_env)
+          None | Some(ConstParam(_)) => Name(path~, params~)
         }
         _ => Name(path~, params~)
       }
@@ -1006,10 +1049,10 @@ pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> E
   Natural(value=BigInt::from_int(n), width~, base~, span~, ty={ val: Some(ty) })
 }
 
-pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Map[String, InstanceParam]!AstError {
+pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Map[String, Param]!AstError {
   let map = Map::new(capacity=names.length())
 
-  fn checked_set(name: String, param: InstanceParam) -> Unit!AstError {
+  fn checked_set(name: String, param: Param) -> Unit!AstError {
     if not(names.contains(name)) {
       raise UnknownModuleParameter(name~, span=param.span())
     }
@@ -1021,12 +1064,19 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
     }
   }
 
-  for idx, param in self.params {
-    match param {
-      Expr(name=Some(name), ..) | Type(name=Some(name), ..) => {
+  let mut ordered = false
+  let mut named = false
+
+  for idx, entry in self.params {
+    let (name, param) = entry
+
+    match name {
+      Some(name) => {
+        named = true
         checked_set!(name, param)
       }
       _ => {
+        ordered = true
         if idx >= names.length() {
           raise InvalidModuleParameter(span=param.span())
         }
@@ -1034,8 +1084,11 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
         checked_set!(names[idx], param)
       }
     }
-  }
 
+    if ordered && named {
+      raise CannotMixNamedAndOrderedModuleParameters(span=param.span())
+    }
+  }
   map
 }
 

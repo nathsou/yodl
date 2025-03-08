@@ -62,6 +62,80 @@ pub impl Show for BinaryOp with output(op, logger) {
   })
 }
 
+pub impl Show for ConstValue with output(value, logger) {
+  match value {
+    Natural(value~, width~, base~, span=_) => {
+      logger.write_string(show_natural(value~, base~, width~))
+    }
+    String(value~, ..) => {
+      logger.write_string(value)
+    }
+  }
+}
+
+pub impl Show for ResolvedParam with output(param, logger) {
+  match param {
+    ConstParam(value~, span=_) => {
+      logger.write_string(value.to_string())
+    }
+    TypeParam(ty~, span=_) => {
+      logger.write_string(ty.to_string())
+    }
+  }
+}
+
+pub impl Show for UnresolvedParam with output(param, logger) {
+  match param {
+    PathParam(path~, span=_) => {
+      logger.write_string(path.to_string())
+    }
+    ExprParam(expr) => {
+      let emitter = AstEmitter::new()
+      emitter.emit_expr(expr)
+      logger.write_string(emitter.to_string())
+    }
+    TypeParam(ty~, span=_) => {
+      logger.write_string(ty.to_string())
+    }
+  }
+}
+
+pub impl Show for Param with output(param, logger) {
+  match param {
+    Unresolved(param) => {
+      logger.write_string("Unresolved(\{param})")
+    }
+    Resolved(param) => {
+      logger.write_string("Resolved(\{param})")
+    }
+  }
+}
+
+pub fn show_natural(value~: BigInt, base~: Int, width~: Int?) -> String {
+  match width {
+    Some(width) => {
+      let builder = StringBuilder::new()
+      builder.write_string(width.to_string())
+      builder.write_char('\'')
+
+      let base_prefix = match base {
+        2 => 'b'
+        8 => 'o'
+        10 => 'd'
+        16 => 'h'
+        _ => '?'
+      }
+
+      builder.write_char(base_prefix)
+      builder.write_string(@utils.show_nat(value, base~, width=Some(width)))
+      builder.to_string()
+    }
+    None => {
+      @utils.show_nat(value, base~, width=None)
+    }
+  }
+}
+
 pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
   if indent {
     self.write_indent()
@@ -73,26 +147,7 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
 
   match expr {
     Natural(value~, width~, base~, ..) => {
-      match width {
-        Some(width) => {
-          self.write(width.to_string())
-          self.write("'")
-
-          let base_prefix = match base {
-            2 => 'b'
-            8 => 'o'
-            10 => 'd'
-            16 => 'h'
-            _ => '?'
-          }
-
-          self.builder.write_char(base_prefix)
-          self.write(@utils.show_nat(value, base~, width=Some(width)))
-        }
-        None => {
-          self.write(@utils.show_nat(value, base~, width=None))
-        }
-      }
+      self.write(show_natural(value~, base~, width~))
     }
     Identifier(path~, ..) => {
       self.write(path.to_string())
@@ -143,35 +198,19 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
       if params.params.length() > 0 {
         self.write("<")
 
-        for i, param in params.params {
+        for i, entry in params.params {
           if i > 0 {
             self.write(", ")
           }
 
-          match param {
-            Expr(name~, value~) => {
-              match name {
-                Some(name) => {
-                  self.write(name)
-                  self.write(": ")
-                }
-                None => ()
-              }
+          let (name, param) = entry
 
-              self.emit_expr(value)
-            }
-            Type(name~, value~, ..) => {
-              match name {
-                Some(name) => {
-                  self.write(name)
-                  self.write(": ")
-                }
-                None => ()
-              }
-
-              self.write(value.to_string())
-            }
+          if name is Some(name) {
+            self.write(name)
+            self.write(": ")
           }
+
+          self.write(param.to_string())
         }
 
         self.write(">")

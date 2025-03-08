@@ -1,4 +1,3 @@
-// yosys -p "read_rtlil output/FullAdder.rtlil; check -assert; write_verilog output/FullAdder.v"
 
 module FullAdder(
     a: bool,
@@ -39,7 +38,6 @@ module Adder<N: uint>(
     sum = uint(bits);
 }
 
-// Nexys A7
 module Top(
     clk: clock,
 ) -> (

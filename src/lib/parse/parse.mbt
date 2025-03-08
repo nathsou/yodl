@@ -486,16 +486,16 @@ fn parse_vector_expr(self: Parser) -> Expr! {
   Vector(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_instance_parameter(self: Parser, name~: String?) -> InstanceParam! {
+fn parse_instance_parameter(self: Parser) -> Param! {
   let start_idx = self.index
-
   match self.parse_expr?() {
-    Ok(expr) => InstanceParam::Expr(name~, value=expr)
+    Ok(Identifier(path~, span~, ..)) => Unresolved(PathParam(path~, span~))
+    Ok(expr) => Unresolved(ExprParam(expr))
     Err(_) => {
       self.index = start_idx
       match self.parse_type?() {
         Ok(ty) => {
-          InstanceParam::Type(name~, value=ty, span=self.span(start_idx))
+          Unresolved(TypeParam(ty~, span=self.span(start_idx)))
         }
         Err(_) => raise ExpectedExprOrType(received=self.peek(), span=self.span(start_idx))
       }
@@ -505,19 +505,19 @@ fn parse_instance_parameter(self: Parser, name~: String?) -> InstanceParam! {
 
 fn parse_instance_expr(self: Parser, path~: Path) -> Expr! {
   let start_idx = self.index
-  let params = self.parse_module_parameters!(fn() {
+  let params: Array[(String?, Param)] = self.parse_module_parameters!(fn() {
     match self.lookahead(0).kind {
       Identifier(name) => {
         if self.lookahead(1).kind == Colon {
           self.advance()
           self.advance()
-          return self.parse_instance_parameter!(name=Some(name))
+          return (Some(name), self.parse_instance_parameter!())
         }
       }
       _ => ()
     }
 
-    return self.parse_instance_parameter!(name=None)
+    return (None, self.parse_instance_parameter!())
   })
 
   self.expect!(Lparen, start_idx)
@@ -771,7 +771,7 @@ fn parse_type(self: Parser) -> Type! {
       if self.consumes(Lchevron) {
         while not(self.matches(Rchevron)) {
           let param = self.parse_type!()
-          params.push(TypeParam(param))
+          params.push(Unresolved(TypeParam(ty=param, span=self.span(start_idx))))
 
           if not(self.consumes(Comma)) {
             break
@@ -840,7 +840,7 @@ fn parse_type(self: Parser) -> Type! {
 
   if self.consumes(Lchevron) {
     while not(self.matches(Rchevron)) {
-      params.push(self.parse_expr!().as_param!())
+      params.push(Unresolved(ExprParam(self.parse_expr!())))
 
       if not(self.consumes(Comma)) {
         break

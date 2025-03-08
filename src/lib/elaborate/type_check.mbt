@@ -458,10 +458,12 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         FieldAccess(expr~, field=port, span~, ..) => {
             match self.check_expr!(expr, env) {
                 Instance(sig~, params~, accessed_ports~) => {
+                    let resolved_params = @parse.keep_and_check_resolved!(params, span~)
+
                     match sig.get_port(port) {
                         Some(port_def) => {
                             accessed_ports.add(port)
-                            port_def.ty.substitute(params)
+                            port_def.ty.substitute(resolved_params)
                         }
                         None => raise TypeCheckerError::UnknownModulePort(module_path=sig.path, port_name=port, span~)
                     }
@@ -478,8 +480,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         Instance(path~, params~, ports~, span~, ..) => {
             match self.modules[path] {
                 Some(sig) => {
-                    let subst = {}
-                    let params_env: Map[String, @parse.Param] = {}
+                    let subst: Map[String, UnificationParam] = {}
+                    let params_env: Map[String, @parse.ResolvedParam] = {}
                     let accessed_ports = Set::new()
                     let params_map = params.as_map!(names=sig.params.map(fn(p) { p.name }))
 
@@ -495,27 +497,35 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                         let param_sig = sig.get_param(name).unwrap()
 
                         match (param, param_sig.ty) {
-                            (Expr(name=_, value~), Type(param_ty)) => {
-                                let expr_ty = self.check_expr!(value, env)
-                                let _ = unify!(param_ty, expr_ty, span=param_sig.span, subst~)
-                                let n = value.as_int!()
-                                subst[name] = Int(n)
-                            }
-                            (Type(name=_, value~, span~), AnyType) => {
-                                let ty = self.resolve_ty!(value, span~)
-                                subst[name] = Type(ty)
-                            }
-                            _ => {
-                                let ty = match param {
-                                    Expr(value~, ..) => unwrap_type!(value.ty(), span=value.span())
-                                    Type(value~, ..) => value
+                            (Resolved(ConstParam(value~, ..) as cnst_param), Type(param_ty)) => {
+                                let value_ty = self.check_expr!(value.as_expr(), env)
+                                let _ = unify!(param_ty, value_ty, span=param_sig.span, subst~)
+
+                                match value {
+                                    Natural(value=n, ..) => {
+                                        subst[name] = Int(n.to_int())
+                                    }
+                                    _ => ()
                                 }
 
-                                raise InvalidParameterInstantiation(name=name, expected=param_sig.ty, ty~, span=param.span())
+                                params_env[name] = cnst_param
+                            }
+                            (Resolved(TypeParam(ty~, span~)) | Unresolved(TypeParam(ty~, span~)), AnyType) => {
+                                let ty = self.resolve_ty!(ty, span~)
+                                subst[name] = Type(ty)
+                                params_env[name] = TypeParam(ty~, span~)
+                            }
+                            (Unresolved(_), _) => raise Failure("Unresolved parameter '\{name}'")
+                            _ => {
+                                let ty = match param {
+                                    Unresolved(_) => raise @utils.unreachable()
+                                    Resolved(ConstParam(value~, ..)) => self.check_expr!(value.as_expr(), env)
+                                    Resolved(TypeParam(ty~, span~)) => self.resolve_ty!(ty, span~)
+                                }
+
+                                raise InvalidParameterInstantiation(name~, expected=param_sig.ty, ty~, span=param.span())
                             }
                         }
-
-                        params_env[name] = param.as_param!()
                     }
 
                     for port_name, port_expr in ports {
@@ -537,7 +547,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                         accessed_ports.add("q")
                     }
 
-                    @parse.Type::Instance(sig~, params=params_env, accessed_ports~)
+                    @parse.Type::Instance(sig~, params=params_map, accessed_ports~)
                 }
                 None => raise TypeCheckerError::UnknownModule(path~, span~)
             }

@@ -127,13 +127,14 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type! {
     }
     Instance(sig~, params~, accessed_ports~) => {
       let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.size())
+      let resolved_params = @parse.keep_and_check_resolved!(params, span~)
 
       for port in accessed_ports {
         let port_sig = sig.get_port(port).or_error!(ElaborationError::UnknownModulePort(module_path=sig.path, port_name=port, span~))
 
         let field: @firrtl.BundleField = {
           id: id_of_str(port),
-          ty: lower_type!(port_sig.ty.substitute(params), span~),
+          ty: lower_type!(port_sig.ty.substitute(resolved_params), span~),
           flip: port_sig.direction == Input,
         }
 
@@ -704,14 +705,10 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
           Some(sig) => {
             let ports_sig = Map::new(capacity=sig.ports.length())
             let params_map = params.as_map!(names=sig.params.map(fn(p) { p.name }))
-            let params_env = Map::new(capacity=params_map.size())
-
-            for name, param in params_map {
-              params_env[name] = param.as_param!()
-            }
+            let resolved_params = @parse.keep_and_check_resolved!(params_map, span~)
 
             for port in sig.ports {
-              let ty = lower_type!(port.ty.substitute(params_env), span~)
+              let ty = lower_type!(port.ty.substitute(resolved_params), span~)
               ports_sig[port.name] = {
                 ty,
                 direction: port.direction,
@@ -784,7 +781,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       }
 
       if attributes.contains("internal") {
-        fn get_param(name: String) -> @parse.InstanceParam! {
+        fn get_param(name: String) -> @parse.Param! {
           match params_map[name] {
             Some(param) => param
             None => raise UnknownModuleParameter(name~, span~)
@@ -794,7 +791,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         match path {
           { packages: [], member: "Reg" | "RegAsyncReset" as internal_module_name } => {
             let reg_ty = match get_param!("T") {
-              Type(value=ty, ..) => lower_type!(ty, span~)
+              Resolved(TypeParam(ty~, ..)) => lower_type!(ty, span~)
               _ => raise ElaborationError::Unreachable(message="non-type parameter in Reg instance", span~)
             }
 

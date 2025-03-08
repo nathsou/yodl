@@ -27,6 +27,10 @@ pub(all) struct Span {
   end: (Int, Int)
 }
 
+pub impl Eq for Span with op_equal(self, other) {
+  self.file == other.file && self.start == other.start && self.end == other.end
+}
+
 pub impl Show for Span with output(self, logger) {
   logger.write_string(self.file)
   logger.write_char(':')
