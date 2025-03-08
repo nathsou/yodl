@@ -919,7 +919,6 @@ $readmemh("rom_data.hex", rom);
 <tr><td><code>Depth</code></td><td>uint</td><td>Number of entries</td></tr>
 <tr><td><code>ReadPorts</code></td><td>uint</td><td>Number of read ports</td></tr>
 <tr><td><code>WritePorts</code></td><td>uint</td><td>Number of write ports</td></tr>
-<tr><td><code>Mask</code></td><td>type</td><td>Type of the write mask</td></tr>
 <tr><td><code>ReadLatency</code></td><td>uint</td><td>Cycles to read</td></tr>
 <tr><td><code>WriteLatency</code></td><td>uint</td><td>Cycles to write</td></tr>
 </tbody></table>
@@ -927,7 +926,7 @@ $readmemh("rom_data.hex", rom);
 <h3 id="ports-1"><a class="header" href="#ports-1">Ports</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Port</th><th>Direction</th><th>Type</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>read</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;$clog2(Depth)&gt;</code>}[<code>ReadPorts</code>]</td><td>Read port(s)</td></tr>
-<tr><td><code>write</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;$clog2(Depth)&gt;</code>, <code>data</code>: <code>T</code>, <code>mask</code>: <code>Mask</code>}[<code>WritePorts</code>]</td><td>Write port(s)</td></tr>
+<tr><td><code>write</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;$clog2(Depth)&gt;</code>, <code>data</code>: <code>T</code>, <code>mask</code>: <code>MemoryMask&lt;T&gt;</code>}[<code>WritePorts</code>]</td><td>Write port(s)</td></tr>
 <tr><td><code>q</code></td><td>Output</td><td><code>T</code>[<code>ReadPorts</code>]</td><td>Read data port(s)</td></tr>
 </tbody></table>
 </div>
@@ -945,7 +944,6 @@ $readmemh("rom_data.hex", rom);
         Depth: 1024,          // Number of entries
         ReadPorts: 1,         // Number of read ports
         WritePorts: 1,        // Number of write ports
-        Mask: bool,           // Type of write mask
         ReadLatency: 1,       // Cycles to read
         WriteLatency: 1,      // Cycles to write
     &gt;(
@@ -972,7 +970,6 @@ $readmemh("rom_data.hex", rom);
         Depth: 1024,
         ReadPorts: 1,
         WritePorts: 1,
-        Mask: bool[4],
         ReadLatency: 1,
         WriteLatency: 1,
     &gt;(
@@ -984,14 +981,14 @@ $readmemh("rom_data.hex", rom);
 }
 </code></pre>
 <h4 id="mask-type"><a class="header" href="#mask-type">Mask Type</a></h4>
-<p>Intuitively, the mask type <code>Mask&lt;T&gt;</code> of a data type <code>T</code> matches the structure of <code>T</code> with each ground type (e.g. <code>uint&lt;N&gt;</code>, <code>sint&lt;N&gt;</code>, ..) replaced by <code>bool</code>.</p>
+<p>Intuitively, the mask type <code>MemoryMask&lt;T&gt;</code> of a data type <code>T</code> matches the structure of <code>T</code> with each ground type (e.g. <code>uint&lt;N&gt;</code>, <code>sint&lt;N&gt;</code>, ..) replaced with <code>bool</code>.</p>
 <p>Examples:</p>
 <div class="table-wrapper"><table><thead><tr><th>Data Type</th><th>Mask Type</th></tr></thead><tbody>
 <tr><td><code>bool</code></td><td><code>bool</code></td></tr>
 <tr><td><code>uint&lt;8&gt;</code></td><td><code>bool</code></td></tr>
 <tr><td><code>uint&lt;32&gt;[4]</code></td><td><code>bool[4]</code></td></tr>
 <tr><td><code>{a: uint&lt;8&gt;, b: uint&lt;8&gt;}</code></td><td><code>{a: bool, b: bool}</code></td></tr>
-<tr><td><code>{a: { b: uint&lt;16&gt;[64], c: bool}}</code></td><td><code>{a: { b: bool[64], c: bool}}</code></td></tr>
+<tr><td><code>{a: {b: uint&lt;16&gt;[64], c: bool}}</code></td><td><code>{a: {b: bool[64], c: bool}}</code></td></tr>
 </tbody></table>
 </div><div class="warning">
     Portions of an integer cannot directly be masked in Yodl, just like in Chisel.
@@ -1421,7 +1418,6 @@ module Top(
         Depth: (VGA::H_ACTIVE / 4) * (VGA::V_ACTIVE / 4),
         ReadPorts: 1,
         WritePorts: 1,
-        Mask: bool,
     &gt;(
         read: [{ clk: clk, en: vga.is_active_area, addr: cell_idx }],
         write: [{ clk: clk, en: add_noise and timer.q, addr: rand_cell, data: rand_color, mask: true }],
@@ -1721,7 +1717,6 @@ module RegisterFile(
         Depth: 32,
         ReadPorts: 2,
         WritePorts: 1,
-        Mask: bool,
         ReadLatency: 0,
         WriteLatency: 1,
     &gt;(
@@ -1917,7 +1912,6 @@ module RAM(
         Depth: (6 * 1024) / 4, // 6KB
         ReadPorts: 1,
         WritePorts: 1,
-        Mask: bool[4],
     &gt;(
         read: [{ clk: clk, en: read_enable, addr: addr[10:0] }],
         write: [{ clk: clk, en: true, addr: addr[10:0], data: data_rev, mask: mask_rev }],
