@@ -29,6 +29,7 @@ pub type! MonomorphizerError {
   ModuleNotFound(path~: @parse.Path, span~: @parse.Span)
   InvalidModuleParameterCount(path~: @parse.Path, expected~: Int, actual~: Int, span~: @parse.Span)
   ReceivedTypeParameterInsteadOfExpr(span~: @parse.Span)
+  ReceivedTypeAliasInsteadOfExpr(span~: @parse.Span)
   InvalidParameterInstantiation(path~: @parse.Path, param~: String, span~: @parse.Span, param_span~: @parse.Span)
   InvalidTypeAliasParameters(path~: @parse.Path, exptected~: Int, actual~: Int, span~: @parse.Span)
   UnresolvedNamedType(path~: @parse.Path, span~: @parse.Span)
@@ -54,6 +55,9 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     UnresolvedNamedType(path~, span~) => {
       logger.write_string("Unresolved module name, constant or type alias '\{path}' at \{span}")
     }
+    ReceivedTypeAliasInsteadOfExpr(..) => {
+      logger.write_string("Received type alias instead of expression")
+    }
   }
 
   logger.write_string(self.show_context(use_ansi_colors=false))
@@ -67,12 +71,14 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
     InvalidParameterInstantiation(span~, ..) => span
     InvalidTypeAliasParameters(span~, ..) => span
     UnresolvedNamedType(span~, ..) => span
+    ReceivedTypeAliasInsteadOfExpr(span~) => span
   }
 }
 
 pub enum MonoEnvEntry {
   Param(@parse.ResolvedParam)
   Const(@parse.ConstDecl)
+  Type(@parse.TypeAliasDecl)
   Name(packages~: Array[String])
   GenVar(Int)
 }
@@ -81,6 +87,7 @@ fn ctor(self: MonoEnvEntry) -> String {
   match self {
     Param(_) => "Param"
     Const(_) => "Const"
+    Type(_) => "Type"
     Name(_) => "Name"
     GenVar(_) => "GenVar"
   }
@@ -115,6 +122,7 @@ fn resolve_param(self: Monomorphizer, param~: @parse.Param, env~: MonoEnv, packa
               None => raise Failure("Non-constant expression in parameter")
             }
           }
+          Some((Type(decl), _)) => TypeParam(ty=decl.ty, span~)
           Some((Name(_), _)) => raise Failure("Name parameters are not supported")
           Some((GenVar(_), _)) => raise Failure("GenVar parameters are not supported")
           None => {
@@ -179,19 +187,8 @@ fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packag
         { ty: type_alias.ty.substitute(subst), is_type_alias: true }
       }
 
-      if self.type_aliases[path] is Some(type_alias) {
+      if resolve_member(env, path~, packages~) is Some((Type(type_alias), _)) {
         return substitute!(type_alias)
-      }
-
-      let sub_pkgs = []
-
-      for package in packages {
-        sub_pkgs.push(package)
-        let subpath = @parse.Path::new([..sub_pkgs, ..path.packages], path.member)
-
-        if self.type_aliases[subpath] is Some(type_alias) {
-          return substitute!(type_alias)
-        }
       }
 
       ty
@@ -317,6 +314,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
           Some((Param(ConstParam(value~, span=_)), _)) => value.as_expr()
           Some((Param(TypeParam(_)), _)) => raise ReceivedTypeParameterInsteadOfExpr(span~)
           Some((Const(decl), _)) => decl.expr
+          Some((Type(_), _)) => raise ReceivedTypeAliasInsteadOfExpr(span~)
           Some((Name(_), resolved_path)) => @parse.Expr::Identifier(path=resolved_path, span~, ty={ val: None })
           None => Identifier(path~, span~, ty={ val: None })
         }
@@ -565,9 +563,10 @@ pub fn monomorphize(self: Monomorphizer, decls~: Array[@parse.Decl], packages~: 
         let _ = self.monomorphize!(decls=body, packages=packages + [name])
       }
       Import(_) => ()
-      TypeAlias({ name, parameters, ty, span }) => {
+      TypeAlias({ name, parameters, ty, span } as decl) => {
         let path = @parse.Path::new(packages, name)
         let mono_ty = self.monomorphize_type!(ty, env=self.top_env, packages~).ty
+        self.top_env.declare!(path, Type(decl))
         self.type_aliases[path] = {
           name,
           parameters,

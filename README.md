@@ -10,7 +10,7 @@ Yet anOther (hardware) Description Language
 - [Playground](https://nathsou.github.io/yodl/playground.html)
 
 ## Usage
-- Install [Moonbit](https://www.moonbitlang.com/) and [firtool](https://github.com/llvm/circt/releases) (tested with version 1.105.0)
+- Install [Moonbit](https://www.moonbitlang.com/) and [firtool](https://github.com/llvm/circt/releases) (tested with version 1.108.0)
 - ```$ git clone https://github.com/nathsou/yodl.git yodl```
 - ```$ cd yodl```
 - ```$ moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"```

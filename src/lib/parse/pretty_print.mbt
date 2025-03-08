@@ -103,10 +103,10 @@ pub impl Show for UnresolvedParam with output(param, logger) {
 pub impl Show for Param with output(param, logger) {
   match param {
     Unresolved(param) => {
-      logger.write_string("Unresolved(\{param})")
+      logger.write_string(param.to_string())
     }
     Resolved(param) => {
-      logger.write_string("Resolved(\{param})")
+      logger.write_string(param.to_string())
     }
   }
 }

@@ -90,7 +90,7 @@ module Top(
     Clock(
         clk,
         pixel_clk: clk,
-        rst: button[0] or button[1] or button[2] or button[3],
+        rst: orr button,
         vga_hsync,
         vga_vsync,
         vga_red,
