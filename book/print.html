@@ -1395,6 +1395,8 @@ module Top(
 import LFSR
 import Timing
 
+type u3 = uint&lt;3&gt;;
+
 module Top(
     clk: clock,
     button: uint&lt;4&gt;,
@@ -1402,9 +1404,9 @@ module Top(
     led: uint&lt;4&gt;,
     vga_hsync: bool,
     vga_vsync: bool,
-    vga_red: uint&lt;3&gt;,
-    vga_green: uint&lt;3&gt;,
-    vga_blue: uint&lt;3&gt;,
+    vga_red: u3,
+    vga_green: u3,
+    vga_blue: u3,
 ) {
     let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync);
     let div = { x: vga.col[9:2], y: vga.row[9:2] };
@@ -1412,10 +1414,10 @@ module Top(
     let timer = Timing::Timer&lt;100_000&gt;(clk);
     let rand_cell = LFSR::LFSR&lt;15&gt;(clk, enable: timer.q).q;
     let rand_color = LFSR::LFSR&lt;3&gt;(clk, enable: timer.q).q;
-    let add_noise = button[0] or button[1] or button[2] or button[3];
+    let add_noise = orr button;
 
     let mem = Memory&lt;
-        T: uint&lt;3&gt;,
+        T: u3,
         Depth: (VGA::H_ACTIVE / 4) * (VGA::V_ACTIVE / 4),
         ReadPorts: 1,
         WritePorts: 1,
