@@ -104,7 +104,6 @@ Some configurations may be synthesised as block RAMs in FPGAs.
 | `Depth` | uint | Number of entries |
 | `ReadPorts` | uint | Number of read ports |
 | `WritePorts` | uint | Number of write ports |
-| `Mask` | type | Type of the write mask |
 | `ReadLatency` | uint | Cycles to read |
 | `WriteLatency` | uint | Cycles to write |
 
@@ -113,7 +112,7 @@ Some configurations may be synthesised as block RAMs in FPGAs.
 | Port | Direction | Type | Description |
 |------|-----|------|-------------|
 | `read` | Input | {`clk`: `clock`, `en`: `bool`, `addr`: `uint<$clog2(Depth)>`}[`ReadPorts`] | Read port(s) |
-| `write` | Input | {`clk`: `clock`, `en`: `bool`, `addr`: `uint<$clog2(Depth)>`, `data`: `T`, `mask`: `Mask`}[`WritePorts`] | Write port(s) |
+| `write` | Input | {`clk`: `clock`, `en`: `bool`, `addr`: `uint<$clog2(Depth)>`, `data`: `T`, `mask`: `MemoryMask<T>`}[`WritePorts`] | Write port(s) |
 | `q` | Output | `T`[`ReadPorts`] | Read data port(s) |
 
 ### Basic Memory
@@ -132,7 +131,6 @@ module RAM(
         Depth: 1024,          // Number of entries
         ReadPorts: 1,         // Number of read ports
         WritePorts: 1,        // Number of write ports
-        Mask: bool,           // Type of write mask
         ReadLatency: 1,       // Cycles to read
         WriteLatency: 1,      // Cycles to write
     >(
@@ -163,7 +161,6 @@ module ByteAddressableRAM(
         Depth: 1024,
         ReadPorts: 1,
         WritePorts: 1,
-        Mask: bool[4],
         ReadLatency: 1,
         WriteLatency: 1,
     >(
@@ -177,7 +174,7 @@ module ByteAddressableRAM(
 
 #### Mask Type
 
-Intuitively, the mask type `Mask<T>` of a data type `T` matches the structure of `T` with each ground type (e.g. `uint<N>`, `sint<N>`, ..) replaced by `bool`.
+Intuitively, the mask type `MemoryMask<T>` of a data type `T` matches the structure of `T` with each ground type (e.g. `uint<N>`, `sint<N>`, ..) replaced with `bool`.
 
 Examples:
 
@@ -187,7 +184,7 @@ Examples:
 | `uint<8>` | `bool` |
 | `uint<32>[4]` | `bool[4]` |
 | `{a: uint<8>, b: uint<8>}` | `{a: bool, b: bool}` |
-| `{a: { b: uint<16>[64], c: bool}}` | `{a: { b: bool[64], c: bool}}` |
+| `{a: {b: uint<16>[64], c: bool}}` | `{a: {b: bool[64], c: bool}}` |
 
 <div class="warning">
     Portions of an integer cannot directly be masked in Yodl, just like in Chisel.

@@ -18,7 +18,6 @@ module RAM(
         Depth: (6 * 1024) / 4, // 6KB
         ReadPorts: 1,
         WritePorts: 1,
-        Mask: bool[4],
     >(
         read: [{ clk: clk, en: read_enable, addr: addr[10:0] }],
         write: [{ clk: clk, en: true, addr: addr[10:0], data: data_rev, mask: mask_rev }],

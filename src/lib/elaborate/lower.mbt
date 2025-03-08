@@ -81,7 +81,6 @@ pub type! ElaborationError {
   InvalidCharacterInString(char~: Char, span~: @parse.Span)
   ExpctedIntLiteral(span~: @parse.Span)
   InvalidMemoryReferenceInLoadMemory(mem_name~: String, span~: @parse.Span)
-  InvalidMaskType(expected~: @firrtl.Type, got~: @firrtl.Type, span~: @parse.Span)
   NoClockFound(message~: String, span~: @parse.Span)
   InvalidAttribute(name~: String, span~: @parse.Span)
 } derive (Show)
@@ -134,7 +133,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type! {
 
         let field: @firrtl.BundleField = {
           id: id_of_str(port),
-          ty: lower_type!(port_sig.ty.substitute(resolved_params), span~),
+          ty: lower_type!(port_sig.ty.substitute!(resolved_params, span~), span~),
           flip: port_sig.direction == Input,
         }
 
@@ -708,7 +707,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             let resolved_params = @parse.keep_and_check_resolved!(params_map, span~)
 
             for port in sig.ports {
-              let ty = lower_type!(port.ty.substitute(resolved_params), span~)
+              let ty = lower_type!(port.ty.substitute!(resolved_params, span~), span~)
               ports_sig[port.name] = {
                 ty,
                 direction: port.direction,
@@ -954,11 +953,6 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("clk")), Reference(FieldAccess(lhs=writer, field=id_of_str("clk")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("data")), Reference(FieldAccess(lhs=writer, field=id_of_str("data")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("mask")), Reference(FieldAccess(lhs=writer, field=id_of_str("mask")))))
-                let mask_ty = lower_type!(get_param!("Mask").as_type!(), span~)
-
-                if mask_ty != data_type.mask() {
-                  raise InvalidMaskType(expected=data_type.mask(), got=mask_ty, span~)
-                }
               }
             }
 

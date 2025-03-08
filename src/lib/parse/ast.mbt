@@ -87,6 +87,29 @@ pub fn Type::is_string(self: Type) -> Bool {
   }
 }
 
+// FIRRTL spec 4.1.0, section 14.2:
+// Intuitively, the mask type
+// mirrors the aggregate structure of the element type except with all ground types replaced
+// with a single bit unsigned integer type. The non-masked portion of the data value is defined
+// as the set of data value leaf sub-elements where the corresponding mask leaf sub-element is
+// high.
+pub fn Type::mask(self: Type, span~: Span) -> Type! {
+  match self {
+    UInt(_) | SInt(_) | Nat(_) | Clock | String(_) => UInt(Fixed(1))
+    Vector(ty~, len~) => Vector(ty=ty.mask!(span~), len~)
+    Struct(fields) => Struct({
+      let new_fields = Map::new(capacity=fields.size())
+
+      for name, ty in fields {
+        new_fields[name] = ty.mask!(span~)
+      }
+
+      new_fields
+    })
+    Instance(_) | Name(_) => raise NonStorableType(ty=self, span~)
+  }
+}
+
 pub(all) struct InstanceParams {
   params: Array[(String?, Param)]
   instantiated: Array[(Expr, Type, Span)]
@@ -300,6 +323,7 @@ pub type! AstError {
   CannotMixNamedAndOrderedModuleParameters(span~: Span)
   ExpectedTypeParameter(span~: Span)
   ExpectedIntParameter(span~: Span)
+  NonStorableType(ty~: Type, span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -324,6 +348,7 @@ pub impl Show for AstError with output(self, logger) {
     CannotMixNamedAndOrderedModuleParameters(_) => logger.write_string("Cannot mix named and ordered module parameters")
     ExpectedTypeParameter(_) => logger.write_string("Expected a type parameter")
     ExpectedIntParameter(_) => logger.write_string("Expected an integer parameter")
+    NonStorableType(ty~, ..) => logger.write_string("Type '\{ty}' is not storable")
   }
 
   logger.write_string(self.show_context(use_ansi_colors=false))
@@ -345,6 +370,7 @@ pub impl Spanned for AstError with span(self) -> Span {
     CannotMixNamedAndOrderedModuleParameters(span~) => span
     ExpectedTypeParameter(span~) => span
     ExpectedIntParameter(span~) => span
+    NonStorableType(span~, ..) => span
   }
 }
 
@@ -929,7 +955,7 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
 
       for port in sig.ports {
         if accessed_ports.contains(port.name) {
-          width += port.ty.substitute(resolved_params).width!(span)
+          width += port.ty.substitute!(resolved_params, span~).width!(span)
         }
       }
 
@@ -949,7 +975,7 @@ pub fn width(self: Type, span: Span) -> Int!AstError {
   }
 }
 
-pub fn substitute(self: Type, params_env: Map[String, ResolvedParam]) -> Type {
+pub fn substitute(self: Type, params_env: Map[String, ResolvedParam], span~: Span) -> Type!AstError {
   match self {
     Nat(_) | String(_) => self
     UInt(Fixed(width)) => UInt(Fixed(width))
@@ -963,12 +989,12 @@ pub fn substitute(self: Type, params_env: Map[String, ResolvedParam]) -> Type {
     }
     Clock => Clock
     Vector(ty~, len=Dynamic(expr)) => {
-      Vector(ty=ty.substitute(params_env), len=match expr.partial_eval?(params=params_env) {
+      Vector(ty=ty.substitute!(params_env, span~), len=match expr.partial_eval?(params=params_env) {
         Ok(Natural(value~, ..)) => Fixed(value.to_int())
         _ => Dynamic(expr)
       })
     }
-    Vector(ty~, len~) => Vector(ty=ty.substitute(params_env), len~)
+    Vector(ty~, len~) => Vector(ty=ty.substitute!(params_env, span~), len~)
     Instance(sig~, params~, accessed_ports~) => {
       let new_params = Map::new(capacity=params.size()) 
 
@@ -982,15 +1008,44 @@ pub fn substitute(self: Type, params_env: Map[String, ResolvedParam]) -> Type {
       Instance(sig~, params=new_params, accessed_ports~)
     }
     Name(path~, params~) => {
+      let new_params = Array::new(capacity=params.length())
+
+      for param in params {
+        match param {
+          Unresolved(PathParam(path~, span~)) => {
+            new_params.push(Unresolved(PathParam(path~, span~)))
+          }
+          Resolved(TypeParam(ty~, span~)) | Unresolved(TypeParam(ty~, span~)) => {
+            let new_ty = ty.substitute!(params_env, span~)
+            new_params.push(Resolved(TypeParam(ty=new_ty, span~)))
+          }
+          _ => new_params.push(param)
+        }
+      }
+
+      if path is { packages: [], member: "MemoryMask" } && new_params is [Resolved(TypeParam(ty~, ..))] {
+        if ty.mask?(span~) is Ok(mask) {
+          return mask
+        }
+      }
+
       match path.packages {
         [] => match params_env[path.member] {
-          Some(TypeParam(ty~, ..)) => ty.substitute(params_env)
-          None | Some(ConstParam(_)) => Name(path~, params~)
+          Some(TypeParam(ty~, ..)) => ty.substitute!(params_env, span~)
+          None | Some(ConstParam(_)) => Name(path~, params=new_params)
         }
-        _ => Name(path~, params~)
+        _ => Name(path~, params=new_params)
       }
     }
-    Struct(fields) => Struct(@utils.map_values(fields, fn(ty) { ty.substitute(params_env) }))
+    Struct(fields) => Struct({
+      let new_fields = Map::new(capacity=fields.size())
+
+      for name, ty in fields {
+        new_fields[name] = ty.substitute!(params_env, span~)
+      }
+
+      new_fields
+    })
   }
 }
 

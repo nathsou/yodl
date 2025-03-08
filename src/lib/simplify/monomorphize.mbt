@@ -139,18 +139,18 @@ fn resolve_param(self: Monomorphizer, param~: @parse.Param, env~: MonoEnv, packa
           raise Failure("Non-constant expression in parameter")
         }
       }
-      TypeParam(ty~, span~) => @parse.ResolvedParam::TypeParam(ty=self.monomorphize_type!(ty, env~, packages~).ty, span~)
+      TypeParam(ty~, span~) => @parse.ResolvedParam::TypeParam(ty=self.monomorphize_type!(ty, env~, packages~, span~).ty, span~)
     }
     Resolved(param) => param
   }
 }
 
-fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packages~: Array[String]) -> TypeInfo! {
+fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packages~: Array[String], span~: @parse.Span) -> TypeInfo! {
   let mono_ty: @parse.Type = match ty {
     UInt(width) => UInt(self.monomorphize_int_param!(width, env~, packages~))
     SInt(width) => SInt(self.monomorphize_int_param!(width, env~, packages~))
     Vector(ty~, len~) => {
-      let mono_ty = self.monomorphize_type!(ty, env~, packages~).ty
+      let mono_ty = self.monomorphize_type!(ty, env~, packages~, span~).ty
       let len = self.monomorphize_int_param!(len, env~, packages~)
 
       @parse.Type::Vector(ty=mono_ty, len~)
@@ -159,7 +159,7 @@ fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packag
       let mono_fields = {}
 
       for name, ty in fields {
-        mono_fields[name] = self.monomorphize_type!(ty, env~, packages~).ty
+        mono_fields[name] = self.monomorphize_type!(ty, env~, packages~, span~).ty
       }
 
       @parse.Type::Struct(mono_fields)
@@ -184,7 +184,7 @@ fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packag
           }
         }
         
-        { ty: type_alias.ty.substitute(subst), is_type_alias: true }
+        { ty: type_alias.ty.substitute!(subst, span~), is_type_alias: true }
       }
 
       if resolve_member(env, path~, packages~) is Some((Type(type_alias), _)) {
@@ -356,7 +356,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
         } else {
           let mono_params = params.map!(
             map_expr=fn(expr) { self.monomorphize_expr!(expr, env~, packages~) },
-            map_type=fn(ty) { self.monomorphize_type!(ty, env~, packages~).ty },
+            map_type=fn(ty) { self.monomorphize_type!(ty, env~, packages~, span~).ty },
           )
 
           let resolved_params = []
@@ -400,7 +400,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
 
       let mono_ty = match ty.val {
         Some(ty) => {
-          let ty_info = self.monomorphize_type!(ty, env~, packages~)
+          let ty_info = self.monomorphize_type!(ty, env~, packages~, span~)
           is_type_alias = ty_info.is_type_alias
           Some(ty_info.ty)
         }
@@ -472,7 +472,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
     Const(decl~, span~) => {
       let mono_expr = self.monomorphize_expr!(decl.expr, env~, packages~)
       let mono_ty = match decl.ty {
-        Some(ty) => Some(self.monomorphize_type!(ty, env~, packages~).ty)
+        Some(ty) => Some(self.monomorphize_type!(ty, env~, packages~, span~).ty)
         None => None
       }
 
@@ -502,7 +502,7 @@ fn monomorphize_module(
   for port in mod.ports {
     mono_ports.push({
       name: port.name,
-      ty: self.monomorphize_type!(port.ty, env=child_env, packages=full_path.packages).ty,
+      ty: self.monomorphize_type!(port.ty, env=child_env, packages=full_path.packages, span=mod.span).ty,
       direction: port.direction,
       optional: port.optional,
       span: port.span,
@@ -550,7 +550,7 @@ pub fn monomorphize(self: Monomorphizer, decls~: Array[@parse.Decl], packages~: 
       Const(decl) => {
         let mono_expr = self.monomorphize_expr!(decl.expr, env=self.top_env, packages~)
         let mono_ty = match decl.ty {
-          Some(ty) => Some(self.monomorphize_type!(ty, env=self.top_env, packages~).ty)
+          Some(ty) => Some(self.monomorphize_type!(ty, env=self.top_env, packages~, span=decl.span).ty)
           None => None
         }
 
@@ -565,7 +565,7 @@ pub fn monomorphize(self: Monomorphizer, decls~: Array[@parse.Decl], packages~: 
       Import(_) => ()
       TypeAlias({ name, parameters, ty, span } as decl) => {
         let path = @parse.Path::new(packages, name)
-        let mono_ty = self.monomorphize_type!(ty, env=self.top_env, packages~).ty
+        let mono_ty = self.monomorphize_type!(ty, env=self.top_env, packages~, span~).ty
         self.top_env.declare!(path, Type(decl))
         self.type_aliases[path] = {
           name,

@@ -463,7 +463,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                     match sig.get_port(port) {
                         Some(port_def) => {
                             accessed_ports.add(port)
-                            port_def.ty.substitute(resolved_params)
+                            port_def.ty.substitute!(resolved_params, span~)
                         }
                         None => raise TypeCheckerError::UnknownModulePort(module_path=sig.path, port_name=port, span~)
                     }
@@ -531,8 +531,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                     for port_name, port_expr in ports {
                         match sig.get_port(port_name) {
                             Some(port_def) => {
-                                let expr_ty = self.check_expr!(port_expr, env).substitute(params_env)
-                                let _ = unify!(port_def.ty.substitute(params_env), expr_ty, span=port_expr.span(), subst~)
+                                let expr_ty = self.check_expr!(port_expr, env).substitute!(params_env, span~)
+                                let _ = unify!(port_def.ty.substitute!(params_env, span~), expr_ty, span=port_expr.span(), subst~)
 
                                 if port_def.direction != Input && not(is_valid_assignment_target(port_expr)) {
                                     raise InvalidAssignmentTarget(span=port_expr.span())

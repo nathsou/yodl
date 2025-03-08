@@ -162,20 +162,3 @@ pub(all) enum Command {
   Printf(clk~: Expr, cond~: Expr, fmt~: String, args~: Array[Expr])
   Stop(clk~: Expr, cond~: Expr, code~: Int)
 }
-
-// FIRRTL spec 4.1.0, section 14.2:
-// Intuitively, the mask type
-// mirrors the aggregate structure of the element type except with all ground types replaced
-// with a single bit unsigned integer type. The non-masked portion of the data value is defined
-// as the set of data value leaf sub-elements where the corresponding mask leaf sub-element is
-// high.
-pub fn Type::mask(self: Type) -> Type {
-  match self {
-    Const(ty) => Const(ty.mask())
-    Clock | Reset | AsyncReset | UInt(_) | SInt(_) | UIntInferred(_) | SIntInferred => UInt(1)
-    Bundle(fields) => Bundle(fields.map(fn(field) {
-      { id: field.id, ty: field.ty.mask(), flip: field.flip }
-    }))
-    Vec(ty, size) => Vec(ty.mask(), size)
-  }
-}
