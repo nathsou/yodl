@@ -36,7 +36,7 @@ fn main {
     [_, _, path] => {
       match @driver.run?(path~, commands=[@driver.WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")))], fs~) {
         Ok(_) => ()
-        Err(error) => {
+        Err(Failure(error)) => {
           println(error)
           @sys.exit(1)
         }
@@ -47,7 +47,7 @@ fn main {
         Ok(commands) => {
           match @driver.run?(path~, commands~, fs~) {
             Ok(_) => ()
-            Err(error) => {
+            Err(Failure(error)) => {
               println(error)
               @sys.exit(1)
             }
