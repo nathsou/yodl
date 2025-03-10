@@ -42,6 +42,7 @@ type! TypeCheckerError {
     InvalidPrintfArgument(index~: Int, span~: @parse.Span)
     InvalidStopExitCode(exit_code_ty~: @parse.Type, span~: @parse.Span)
     InvalidFlipOperand(ty~: @parse.Type, span~: @parse.Span)
+    InvalidRevOperand(ty~: @parse.Type, span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -134,7 +135,10 @@ pub impl Show for TypeCheckerError with output(self, logger) {
             logger.write_string("Invalid exit code type '\{exit_code_ty}' in stop statement, expected an integer")
         }
         InvalidFlipOperand(ty~, ..) => {
-            logger.write_string("Invalid operand '\{ty}' for flip operator")
+            logger.write_string("Invalid operand '\{ty}' for $flip operator")
+        }
+        InvalidRevOperand(ty~, ..) => {
+            logger.write_string("Invalid operand '\{ty}' for $rev operator, expected a vector")
         }
     }
 
@@ -173,6 +177,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidPrintfArgument(span~, ..) => span
         InvalidStopExitCode(span~, ..) => span
         InvalidFlipOperand(span~, ..) => span
+        InvalidRevOperand(span~, ..) => span
     }
 }
 
@@ -746,6 +751,16 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
 
             @parse.Type::empty()
+        }
+        FunCall(name="$rev", args=[arg], span~, ..) => {
+            let arg_ty = self.check_expr!(arg, env)
+
+            match arg_ty {
+                Vector(_) => arg_ty
+                _ => {
+                    raise InvalidRevOperand(ty=arg_ty, span~)
+                }
+            }
         }
         FunCall(name="$flip", args=[arg], span~, ..) => {
             let arg_ty = self.check_expr!(arg, env)

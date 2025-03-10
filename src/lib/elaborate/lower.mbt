@@ -1174,6 +1174,22 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       scope.add_stmt(Command(Stop(clk~, cond~, code~)))
       Empty(span~)
     }
+    FunCall(name="$rev", args=[arg], span~, ty={val: Some(Vector(ty=elem_ty, len=Fixed(len)))}, ..) => {
+      let arg = self.lower_expr!(arg, scope~, env~)
+      let arg_ref = arg.as_ref!(self, scope~)
+      let elems = Array::new(capacity=len)
+      let fir_elem_ty = lower_type!(elem_ty, span~)
+
+      for i in 0..<len {
+        let index = @firrtl.Expr::Int(BigInt::from_int(len - 1 - i))
+        let elem = @firrtl.Reference::Indexing(lhs=arg_ref, index~)
+        let val = Value::Expr(expr=Reference(elem), ty=fir_elem_ty, span~)
+        elems.push(val)
+      }
+
+
+      Value::Vector(elems~, ty=@firrtl.Type::Vec(fir_elem_ty, len), span~)
+    }
     FunCall(name="$flip", args=[arg], span~, ty~, ..) => {
       let arg = self.lower_expr!(arg, scope~, env~)
       let arg_ref = arg.as_ref!(self, scope~)

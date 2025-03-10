@@ -154,12 +154,12 @@ module CPU(
         is_load ? load_data :
         alu_out;
 
-    mem_write_data = [
+    mem_write_data = $rev([
         load_store_addr[0] ? rs2.q[7:0] : load_store_addr[1] ? rs2.q[15:8] : rs2.q[31:24],
         load_store_addr[1] ? rs2.q[7:0] : rs2.q[23:16],
         load_store_addr[0] ? rs2.q[7:0] : rs2.q[15:8],
         rs2.q[7:0],
-    ];
+    ]);
 
     let mask = byte_access ?
         (load_store_addr[1] ?
@@ -171,7 +171,7 @@ module CPU(
             4'b1111
         );
     
-    mem_write_mask = stage.q == Stage::EXECUTE and is_store ? {mask} : 4*[false];
+    mem_write_mask = $rev(stage.q == Stage::EXECUTE and is_store ? {mask} : 4*[false]);
     regs.rd_data = write_back_data;
     regs.write_enable = write_back_enable and rd_addr != 5'd0;
 

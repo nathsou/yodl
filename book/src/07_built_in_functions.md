@@ -75,6 +75,19 @@ Reverses the bit order of `x`.
 let reversed = $flip(5'b11100); // Results in 5'b00111
 ```
 
+## Array Functions
+
+### `$rev(vec)`
+
+Reverses the order of elements in a vector.
+
+Particularly useful when constructing a bit vector from a list of bits from most to least significant
+since vectors are indexed from least to most significant, i.e. `vec[0]` is the first element.
+
+```yodl
+let reversed = $rev([1'1, 1'0, 1'0, 1'0, 1'0]); // Results in [1'0, 1'0, 1'0, 1'0, 1'1]
+```
+
 ## Memory Functions
 
 Yodl provides familiar [`$readmemb` and `$readmemh`](https://projectf.io/posts/initialize-memory-in-verilog/) functions to initialize Memory instances from files.

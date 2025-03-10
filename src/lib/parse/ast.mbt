@@ -858,6 +858,17 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       Some(Expr::nat(@utils.cdiv(dividend, divisor), span~))
     }
   },
+  "$rev": {
+    arity: Fixed(1),
+    apply: fn(args, _span) {
+      match args[0] {
+        Vector(elems~, span~, ty~) => {
+          Some(Vector(elems=elems.rev(), span~, ty~))
+        }
+        _ => None
+      }
+    }
+  },
   "$flip": {
     arity: Fixed(1),
     apply: fn(_, _) { None }

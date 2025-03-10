@@ -11,8 +11,6 @@ module RAM(
 ) -> (
     q: uint<32>,
 ) {
-    let mask_rev = [mask[3], mask[2], mask[1], mask[0]];
-    let data_rev = [write_data[3], write_data[2], write_data[1], write_data[0]];
     let mem = Memory<
         T: uint<8>[4],
         Depth: (6 * 1024) / 4, // 6KB
@@ -20,13 +18,12 @@ module RAM(
         WritePorts: 1,
     >(
         read: [{ clk: clk, en: read_enable, addr: addr[10:0] }],
-        write: [{ clk: clk, en: true, addr: addr[10:0], data: data_rev, mask: mask_rev }],
+        write: [{ clk: clk, en: true, addr: addr[10:0], data: write_data, mask: mask }],
     );
 
     $readmemh("prog.hex", mem);
 
-    let data = mem.q[0];
-    q = uint({data[3], data[2], data[1], data[0]});
+    q = uint($rev(mem.q[0]));
 }
 
 // One-hot encoding of MMIO devices
@@ -76,7 +73,7 @@ module Top(
         clk,
         rst,
         tx: usb_tx,
-        data_in: uint(cpu.mem_write_data)[7:0],
+        data_in: cpu.mem_write_data[0],
         data_valid: uart_valid,
     );
 
@@ -85,7 +82,7 @@ module Top(
     }
 
     if is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA] and uart_transmitter.ready {
-        $printf("%c", uint(cpu.mem_write_data)[7:0]);
+        $printf("%c", cpu.mem_write_data[0]);
     }
 
     let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?
