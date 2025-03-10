@@ -314,12 +314,12 @@ module CPU(
         is_load ? load_data :
         alu_out;
 
-    mem_write_data = [
+    mem_write_data = $rev([
         load_store_addr[0] ? rs2.q[7:0] : load_store_addr[1] ? rs2.q[15:8] : rs2.q[31:24],
         load_store_addr[1] ? rs2.q[7:0] : rs2.q[23:16],
         load_store_addr[0] ? rs2.q[7:0] : rs2.q[15:8],
         rs2.q[7:0],
-    ];
+    ]);
 
     let mask = byte_access ?
         (load_store_addr[1] ?
@@ -331,7 +331,7 @@ module CPU(
             4'b1111
         );
     
-    mem_write_mask = stage.q == Stage::EXECUTE and is_store ? {mask} : 4*[false];
+    mem_write_mask = $rev(stage.q == Stage::EXECUTE and is_store ? {mask} : 4*[false]);
     regs.rd_data = write_back_data;
     regs.write_enable = write_back_enable and rd_addr != 5'd0;
 
@@ -384,8 +384,6 @@ module RAM(
 ) -&gt; (
     q: uint&lt;32&gt;,
 ) {
-    let mask_rev = [mask[3], mask[2], mask[1], mask[0]];
-    let data_rev = [write_data[3], write_data[2], write_data[1], write_data[0]];
     let mem = Memory&lt;
         T: uint&lt;8&gt;[4],
         Depth: (6 * 1024) / 4, // 6KB
@@ -393,13 +391,12 @@ module RAM(
         WritePorts: 1,
     &gt;(
         read: [{ clk: clk, en: read_enable, addr: addr[10:0] }],
-        write: [{ clk: clk, en: true, addr: addr[10:0], data: data_rev, mask: mask_rev }],
+        write: [{ clk: clk, en: true, addr: addr[10:0], data: write_data, mask: mask }],
     );
 
     $readmemh("prog.hex", mem);
 
-    let data = mem.q[0];
-    q = uint({data[3], data[2], data[1], data[0]});
+    q = uint($rev(mem.q[0]));
 }
 
 // One-hot encoding of MMIO devices
@@ -449,7 +446,7 @@ module Top(
         clk,
         rst,
         tx: usb_tx,
-        data_in: uint(cpu.mem_write_data)[7:0],
+        data_in: cpu.mem_write_data[0],
         data_valid: uart_valid,
     );
 
@@ -458,7 +455,7 @@ module Top(
     }
 
     if is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA] and uart_transmitter.ready {
-        $printf("%c", uint(cpu.mem_write_data)[7:0]);
+        $printf("%c", cpu.mem_write_data[0]);
     }
 
     let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?
