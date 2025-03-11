@@ -60,7 +60,7 @@ module Clock(
             let seconds_dec = Text::Dec<8>(n: BCD2(bin: seconds.count).q).chars;
             let minutes_dec = Text::Dec<8>(n: BCD2(bin: minutes.count).q).chars;
             let hours_dec = Text::Dec<8>(n: BCD2(bin: {1'b0, hours.count}).q).chars;
-            {hours_dec, ":", minutes_dec, ":", seconds_dec};
+            [..hours_dec, ':', ..minutes_dec, ':', ..seconds_dec];
         },
         screen_x,
         screen_y,
