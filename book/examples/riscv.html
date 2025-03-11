@@ -237,11 +237,11 @@ module CPU(
     let is_store = opcode == Inst::STORE;
     let is_system = opcode == Inst::SYSTEM;
 
-    let imm_u = uint({inst.q[31], inst.q[30:12], 12*{1'b0}});
-    let imm_i = uint({21*{inst.q[31]}, inst.q[30:20]});
-    let imm_s = uint({21*{inst.q[31]}, inst.q[30:25], inst.q[11:7]});
-    let imm_b = uint({20*{inst.q[31]}, inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0});
-    let imm_j = uint({12*{inst.q[31]}, inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0});
+    let imm_u = {inst.q[31], inst.q[30:12], 12'0};
+    let imm_i = {uint(21*{inst.q[31]}), inst.q[30:20]};
+    let imm_s = {uint(21*{inst.q[31]}), inst.q[30:25], inst.q[11:7]};
+    let imm_b = {uint(20*{inst.q[31]}), inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0};
+    let imm_j = {uint(12*{inst.q[31]}), inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0};
 
     let stage = Reg&lt;uint&lt;2&gt;&gt;(clk, rst);
     let rs1_addr = (stage.q == Stage::WAIT_INST ? mem_read_data : inst.q)[19:15];
@@ -259,7 +259,7 @@ module CPU(
     let alu_in1 = rs1.q;
     let alu_in2 = is_alu_reg or is_branch ? rs2.q : imm_i;
     let alu_plus = alu_in1 + alu_in2;
-    let alu_minus: uint&lt;33&gt; = uint({1'b1, not alu_in2}) + uint({1'b0, alu_in1}) + 33'b1;
+    let alu_minus: uint&lt;33&gt; = {1'b1, not alu_in2} + {1'b0, alu_in1} + 33'b1;
     let alu_equ = alu_minus[31:0] == 32'b0;
     let alu_lss_unsigned = alu_minus[32];
     let alu_lss_signed = alu_in1[31] xor alu_in2[31] ? alu_in1[31] : alu_minus[32];
@@ -270,8 +270,8 @@ module CPU(
     let alu_out = match funct3 {
         3'b000 =&gt; (funct7[5] and inst.q[5] ? alu_minus : alu_plus)[31:0],
         3'b001 =&gt; left_shift,
-        3'b010 =&gt; uint({31'b0, alu_lss_signed}),
-        3'b011 =&gt; uint({31'b0, alu_lss_unsigned}),
+        3'b010 =&gt; {31'b0, alu_lss_signed},
+        3'b011 =&gt; {31'b0, alu_lss_unsigned},
         3'b100 =&gt; alu_in1 xor alu_in2,
         3'b101 =&gt; shifter,
         3'b110 =&gt; alu_in1 or alu_in2,
@@ -293,7 +293,7 @@ module CPU(
     };
     
     let next_pc = (is_branch and take_branch) or is_jal ? pc_plus_imm :
-                  is_jalr ? uint({alu_plus[31:1], 1'b0}) :
+                  is_jalr ? {alu_plus[31:1], 1'b0} :
                   next_addr;
 
     let load_store_addr: uint&lt;32&gt; = rs1.q + (is_store ? imm_s : imm_i);
@@ -302,8 +302,8 @@ module CPU(
     let byte_access = funct3[1:0] == 2'd0;
     let half_word_access = funct3[1:0] == 2'd1;
     let load_sign = (not funct3[2]) and (byte_access ? load_byte[7] : load_half_word[15]);
-    let load_data = byte_access ? uint({24*{load_sign}, load_byte}) :
-        half_word_access ? uint({16*{load_sign}, load_half_word}) :
+    let load_data = byte_access ? {uint(24*{load_sign}), load_byte} :
+        half_word_access ? {uint(16*{load_sign}), load_half_word} :
         mem_read_data;
 
     let write_back_enable = (stage.q == Stage::EXECUTE and (not is_branch) and (not is_store) and (not is_load)) or stage.q == Stage::WAIT_DATA;
@@ -331,7 +331,7 @@ module CPU(
             4'b1111
         );
     
-    mem_write_mask = $rev(stage.q == Stage::EXECUTE and is_store ? {mask} : 4*[false]);
+    mem_write_mask = stage.q == Stage::EXECUTE and is_store ? [..mask] : 4*[false];
     regs.rd_data = write_back_data;
     regs.write_enable = write_back_enable and rd_addr != 5'd0;
 
@@ -367,7 +367,7 @@ module CPU(
 
     mem_addr = stage.q == Stage::WAIT_INST or stage.q == Stage::FETCH_INST ? pc.q : load_store_addr;
     mem_read_enable = stage.q == Stage::FETCH_INST or (stage.q == Stage::EXECUTE and is_load);
-    status = uint({uint(clk), opcode, 6'd0, stage.q, pc.q[7:0]});
+    status = {uint(clk), opcode, 6'd0, stage.q, pc.q[7:0]};
 }
 </code></pre>
 <p>Here is an example of how this core can be instanciated:</p>
@@ -396,7 +396,8 @@ module RAM(
 
     $readmemh("prog.hex", mem);
 
-    q = uint($rev(mem.q[0]));
+    let data = mem.q[0];
+    q = {data[3], data[2], data[1], data[0]};
 }
 
 // One-hot encoding of MMIO devices
@@ -426,7 +427,7 @@ module Top(
     };
     let ram = RAM(clk: slow_clk);
     let cpu = RISCV::CPU(clk: slow_clk, rst, mem_read_busy: false);
-    let word_addr = uint({2'b0, cpu.mem_addr[31:2]}); // divide by 4
+    let word_addr = {2'b0, cpu.mem_addr[31:2]}; // divide by 4
     ram.addr = word_addr;
     let is_io = cpu.mem_addr[22];
     let is_ram = not is_io;
@@ -459,7 +460,7 @@ module Top(
     }
 
     let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?
-        uint({22'b0, not uart_transmitter.ready, 9'b0}) :
+        {22'b0, not uart_transmitter.ready, 9'b0} :
         32'd0;
 
     cpu.mem_read_data = is_ram ? ram.q : io_read_data;

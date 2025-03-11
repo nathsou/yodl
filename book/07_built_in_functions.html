@@ -163,9 +163,10 @@
 <pre><code class="language-yodl">let a: sint&lt;8&gt; = -7'd11;
 let b: uint&lt;8&gt; = uint(a); // 8'd11
 </code></pre>
-<p>When applied to a vector of bits, it concatenates them into a single unsigned integer:</p>
-<pre><code class="language-yodl">let bits = [1'1, 1'0, 1'1, 1'0, 1'1, 1'0, 1'1, 1'0];
-let value: uint&lt;8&gt; = uint(bits); // Results in 8'b10101010
+<p>When applied to a vector of bits, it concatenates them into a single unsigned integer.</p>
+<p>Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer.</p>
+<pre><code class="language-yodl">let bits = [true, false, true, true];
+let value: uint&lt;4&gt; = uint(bits); // Results in 4'b1101
 </code></pre>
 <h3 id="sintx"><a class="header" href="#sintx"><code>sint(x)</code></a></h3>
 <p>Reinterprets a value as a signed integer.</p>
@@ -179,8 +180,7 @@ let value: uint&lt;8&gt; = uint(bits); // Results in 8'b10101010
 <h3 id="clog2n"><a class="header" href="#clog2n"><code>$clog2(n)</code></a></h3>
 <p>Computes the ceiling of the base-2 logarithm of <code>n</code>.</p>
 <p>Often used to determine the minimum number of bits required to represent a value.</p>
-<pre><code class="language-yodl">let addr_width = $clog2(Depth);
-let addr: uint&lt;$clog2(1024)&gt;; // uint&lt;10&gt;
+<pre><code class="language-yodl">let addr: uint&lt;$clog2(1024)&gt;; // uint&lt;10&gt;
 </code></pre>
 <h3 id="powbase-exp"><a class="header" href="#powbase-exp"><code>$pow(base, exp)</code></a></h3>
 <p>Computes the power of <code>base</code> raised to <code>exp</code>.</p>

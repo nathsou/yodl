@@ -209,7 +209,7 @@ module LFSR&lt;NumBits: uint&gt;(
 ) {
     let r_xnor = Reg&lt;bool&gt;(clk);
     let r_lfsr = Reg&lt;uint&lt;NumBits&gt;&gt;(clk, en: enable, q);
-    r_lfsr.d = uint({r_lfsr.q[NumBits - 2:0], r_xnor.q});
+    r_lfsr.d = {r_lfsr.q[NumBits - 2:0], r_xnor.q};
 
     // https://docs.amd.com/v/u/en-US/xapp052
     r_xnor.d = match NumBits {
