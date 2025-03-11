@@ -30,9 +30,9 @@ module Top(
     );
 
     let euler1 = Euler1(clk, rst);
-    let hex = Text::Hex<20>(n: uint({2'0, euler1.q}));
+    let hex = Text::Hex<20>(n: {2'0, euler1.q});
     let text = Text::Text<Length: 40, X: 20, Y: 30>(
-        text: {"The solution to Project Euler 1 is ", hex.chars},
+        text: [.."The solution to Project Euler 1 is ", ..hex.chars],
         screen_x: vga.col,
         screen_y: vga.row,
     );

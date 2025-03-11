@@ -59,6 +59,15 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr?!, rewr_stmt~: (Stmt)
       let expr = rewrite_expr!(expr, rewr_expr~, rewr_stmt~)
       Spread(expr~, span~, ty=clone_ty(ty))
     }
+    Concat(elems~, span~, ty~) => {
+      let new_elems = Array::new(capacity=elems.length())
+
+      for elem in elems {
+        new_elems.push(rewrite_expr!(elem, rewr_expr~, rewr_stmt~))
+      }
+
+      Concat(elems=new_elems, span~, ty=clone_ty(ty))
+    }
     Ternary(cond~, then~, else_~, span~, ty~) => {
       let cond = rewrite_expr!(cond, rewr_expr~, rewr_stmt~)
       let then = rewrite_expr!(then, rewr_expr~, rewr_stmt~)
@@ -243,7 +252,7 @@ pub fn visit_expr(expr: Expr, on_expr~: (Expr) -> Bool!, on_stmt~: (Stmt) -> Boo
           visit_expr!(expr, on_expr~, on_stmt~)
         }
       }
-      Vector(elems~, span=_, ty=_) => {
+      Vector(elems~, span=_, ty=_) | Concat(elems~, ..) => {
         for elem in elems {
           visit_expr!(elem, on_expr~, on_stmt~)
         }

@@ -43,6 +43,8 @@ type! TypeCheckerError {
     InvalidStopExitCode(exit_code_ty~: @parse.Type, span~: @parse.Span)
     InvalidFlipOperand(ty~: @parse.Type, span~: @parse.Span)
     InvalidRevOperand(ty~: @parse.Type, span~: @parse.Span)
+    InvalidConcatElement(ty~: @parse.Type, span~: @parse.Span)
+    CannotMixUnsignedAndSignedIntegersInConcatExpr(span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -140,6 +142,12 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidRevOperand(ty~, ..) => {
             logger.write_string("Invalid operand '\{ty}' for $rev operator, expected a vector")
         }
+        InvalidConcatElement(ty~, ..) => {
+            logger.write_string("Invalid element of type '\{ty}' in concatenation expression")
+        }
+        CannotMixUnsignedAndSignedIntegersInConcatExpr(..) => {
+            logger.write_string("Cannot mix unsigned and signed integers in a concatenation expression")
+        }
     }
 
     logger.write_string(self.show_context(use_ansi_colors=false))
@@ -178,6 +186,8 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidStopExitCode(span~, ..) => span
         InvalidFlipOperand(span~, ..) => span
         InvalidRevOperand(span~, ..) => span
+        InvalidConcatElement(span~, ..) => span
+        CannotMixUnsignedAndSignedIntegersInConcatExpr(span~, ..) => span
     }
 }
 
@@ -611,6 +621,32 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Spread(span~, ..) => {
             raise SpreadOutsideVector(span~)
+        }
+        Concat(elems~, ..) => {
+            let mut len = 0
+            let mut is_signed = false
+
+            for index, elem in elems {
+                let ty = self.check_expr!(elem, env)
+                len += ty.width!(elem.span())
+                let is_elem_signed = match ty {
+                    UInt(_) => false
+                    SInt(_) => true
+                    _ => raise InvalidConcatElement(ty~, span=elem.span())
+                }
+
+                if index == 0 {
+                    is_signed = is_elem_signed
+                } else if is_signed != is_elem_signed {
+                    raise CannotMixUnsignedAndSignedIntegersInConcatExpr(span=elem.span())
+                }
+            }
+
+            if is_signed {
+                @parse.Type::sint(len)
+            } else {
+                @parse.Type::uint(len)
+            }
         }
         Ternary(cond~, then~, else_~, span~, ..) => {
             let cond_ty = self.check_expr!(cond, env, expected_ty=Some(@parse.Type::uint(1)))

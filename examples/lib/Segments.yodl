@@ -39,5 +39,5 @@ module Multi(
     };
 
     sel = active_seg.sel;
-    segs = uint({1'b0, not SevenSegmentDecoder(char: active_seg.char).segs});
+    segs = {1'b0, not SevenSegmentDecoder(char: active_seg.char).segs};
 }

@@ -122,7 +122,7 @@ let n = $flip(uint([1'b1, 1'b0, 1'b0])); // 3'b001
 
 ## Replication
 
-Replication expressions `<uint>*[<expr-list>]` and `<uint>*{<expr-list>}` can be used to create a vector by repeating a value multiple times:
+Replication expressions `<uint>*[<expr-list>]` and `<uint>*{<expr-list>}` create a vector by repeating a value multiple times:
 
 ```yodl
 let zeros = 4*[1'b0];        // Creates [1'b0, 1'b0, 1'b0, 1'b0]
@@ -134,6 +134,27 @@ The repeated expressions can contain any value, including instances:
 ```yodl
 // initialise a Rows by Cols grid of cells
 let cells = Cols * [Rows * [Cell(clk, rst)]];
+```
+
+## Concatenation
+
+Concatenation expressions `{<expr-list>}` create an integer from a list of smaller integers.
+The width of the resulting integer is the sum of the widths of the operands.
+
+If any operand is a signed integer (sint), then all operands are required to be signed.
+
+```yodl
+let word: uint<32> = {16'hBABA, 16'hFABE}; // 32'hBABAFABE
+```
+
+## Spread
+
+The spread operator `..` can only appear inside a vector expression and is used to decompose a value into its individual elements.
+
+```yodl
+let bits: uint<4> = [..4'b1100]; // [1'b0, 1'b0, 1'b1, 1'b1]
+let chars: uint<8>[3] = [.."Yo!"]; // [8'h59, 8'h6F, 8'h21]
+let flat: uint<2>[3] = [..[2'd1, 2'd2], 2'd3]; // [2'd1, 2'd2, 2'd3]
 ```
 
 ## Operator Precedence

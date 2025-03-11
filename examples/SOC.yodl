@@ -23,7 +23,8 @@ module RAM(
 
     $readmemh("prog.hex", mem);
 
-    q = uint($rev(mem.q[0]));
+    let data = mem.q[0];
+    q = {data[3], data[2], data[1], data[0]};
 }
 
 // One-hot encoding of MMIO devices
@@ -53,7 +54,7 @@ module Top(
     };
     let ram = RAM(clk: slow_clk);
     let cpu = RISCV::CPU(clk: slow_clk, rst, mem_read_busy: false);
-    let word_addr = uint({2'b0, cpu.mem_addr[31:2]}); // divide by 4
+    let word_addr = {2'b0, cpu.mem_addr[31:2]}; // divide by 4
     ram.addr = word_addr;
     let is_io = cpu.mem_addr[22];
     let is_ram = not is_io;
@@ -86,7 +87,7 @@ module Top(
     }
 
     let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?
-        uint({22'b0, not uart_transmitter.ready, 9'b0}) :
+        {22'b0, not uart_transmitter.ready, 9'b0} :
         32'd0;
 
     cpu.mem_read_data = is_ram ? ram.q : io_read_data;

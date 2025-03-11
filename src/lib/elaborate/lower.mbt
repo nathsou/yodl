@@ -386,7 +386,7 @@ fn Value::as_int(self: Value) -> BigInt! {
   }
 }
 
-fn concat(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr! {
+fn concat_rev(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr! {
     if exprs.is_empty() {
       return Literal(UInt(width=0, radix=Some(2), value=BigInt::from_int(0)))
     }
@@ -412,13 +412,12 @@ fn flatten_int(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Spa
       let refs = Array::new(capacity=len)
 
       for i in 0..<len {
-        // reverse the bits so that vec[0] becomes the most significant bit in a uint or sint
-        let index = @firrtl.Expr::Int(BigInt::from_int(len - i - 1))
+        let index = @firrtl.Expr::Int(BigInt::from_int(i))
         let r = @firrtl.Reference::Indexing(lhs=reference, index~)
         refs.push(flatten_int!(r, elem_ty, span~))
       }
 
-      concat!(refs)
+      concat_rev!(refs)
     }
     Bundle(fields) => {
       let refs = Array::new(capacity=fields.length())
@@ -428,7 +427,7 @@ fn flatten_int(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Spa
         refs.push(flatten_int!(r, field.ty, span~))
       }
 
-      concat!(refs)
+      concat_rev!(refs)
     }
     UInt(_) => Reference(reference)
     SInt(_) => Reference(reference)
@@ -566,7 +565,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
               }
               UInt(len) | SInt(len) => {
                 for i in 0..<len {
-                  let index = @firrtl.Expr::Int(BigInt::from_int(len - i - 1))
+                  let index = @firrtl.Expr::Int(BigInt::from_int(i))
                   values.push(Expr(expr=@firrtl.primop(Bits, [Reference(reference), index, index]), ty=UInt(1), span=elem.span()))
                 }
               }
@@ -582,6 +581,21 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       }
 
       Vector(elems=values, ty~, span~)
+    }
+    Concat(elems~, span~, ..) => {
+      let values = Array::new(capacity=elems.length())
+
+      for elem in elems {
+        values.push(self.lower_expr!(elem, scope~, env~))
+      }
+
+      let refs = Array::new(capacity=values.length())
+
+      for value in values {
+        refs.push(@firrtl.Expr::Reference(value.as_ref!(self, scope~)))
+      }
+
+      Expr(expr=concat_rev!(refs.rev()), ty~, span~)
     }
     Match(subject~, cases~, default~, span~, ty=match_ty) => {
       let has_value = unwrap_type!(match_ty, span~).width!(span) > 0
@@ -1201,7 +1215,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         bits.push(@firrtl.primop(Bits, [Reference(arg_ref), index, index]))
       }
 
-       Value::Expr(expr=concat!(bits), ty=UInt(width), span~)
+       Value::Expr(expr=concat_rev!(bits), ty=UInt(width), span~)
     }
     Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
       raise UnexpectedExprDuringElaboration(span=expr.span())

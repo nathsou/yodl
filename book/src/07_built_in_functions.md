@@ -13,11 +13,13 @@ let a: sint<8> = -7'd11;
 let b: uint<8> = uint(a); // 8'd11
 ```
 
-When applied to a vector of bits, it concatenates them into a single unsigned integer:
+When applied to a vector of bits, it concatenates them into a single unsigned integer.
+
+Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer.
 
 ```yodl
-let bits = [1'1, 1'0, 1'1, 1'0, 1'1, 1'0, 1'1, 1'0];
-let value: uint<8> = uint(bits); // Results in 8'b10101010
+let bits = [true, false, true, true];
+let value: uint<4> = uint(bits); // Results in 4'b1101
 ```
 
 ### `sint(x)`
@@ -45,7 +47,6 @@ Computes the ceiling of the base-2 logarithm of `n`.
 Often used to determine the minimum number of bits required to represent a value.
 
 ```yodl
-let addr_width = $clog2(Depth);
 let addr: uint<$clog2(1024)>; // uint<10>
 ```
 

@@ -10,6 +10,7 @@ pub(all) enum Expr {
   Instance(path~: Path, params~: InstanceParams, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
+  Concat(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
   Match(subject~: Expr, cases~: Array[(Expr, Expr)], default~: Expr?, span~: Span, ty~: Ref[Type?])
   Tuple(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
@@ -425,6 +426,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
     Instance(ty~, ..) => ty
     Vector(ty~, ..) => ty
     Spread(ty~, ..) => ty
+    Concat(ty~, ..) => ty
     Ternary(ty~, ..) => ty
     Match(ty~, ..) => ty
     Tuple(ty~, ..) => ty
@@ -476,6 +478,7 @@ pub impl Spanned for Expr with span(self: Expr) -> Span {
     Instance(span~, ..) => span
     Vector(span~, ..) => span
     Spread(span~, ..) => span
+    Concat(span~, ..) => span
     Ternary(span~, ..) => span
     Match(span~, ..) => span
     Tuple(span~, ..) => span
@@ -511,6 +514,7 @@ pub fn ctor(self: Expr) -> String {
     Instance(_) => "Instance"
     Vector(_) => "Vector"
     Spread(_) => "Spread"
+    Concat(_) => "Concat"
     Ternary(_) => "Ternary"
     Match(_) => "Match"
     Tuple(_) => "Tuple"
@@ -540,6 +544,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Instance(_) => false
     Vector(_) => false
     Spread(_) => false
+    Concat(_) => false
     Ternary(_) => false
     Match(_) => false
     Tuple(_) => false
@@ -860,14 +865,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
   },
   "$rev": {
     arity: Fixed(1),
-    apply: fn(args, _span) {
-      match args[0] {
-        Vector(elems~, span~, ty~) => {
-          Some(Vector(elems=elems.rev(), span~, ty~))
-        }
-        _ => None
-      }
-    }
+    apply: fn(_, _) { None }
   },
   "$flip": {
     arity: Fixed(1),

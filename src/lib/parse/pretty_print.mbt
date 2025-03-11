@@ -270,6 +270,21 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
       self.write("...")
       self.emit_expr(expr)
     }
+    Concat(elems~, ..) => {
+      self.write("{")
+      self.indent += 1
+
+      for i, elem in elems {
+        if i > 0 {
+          self.write(", ")
+        }
+
+        self.emit_expr(elem)
+      }
+
+      self.indent -= 1
+      self.write("}")
+    }
     Ternary(cond~, then~, else_~, ..) => {
       self.write("(")
       self.emit_expr(cond)
