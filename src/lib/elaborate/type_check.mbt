@@ -624,25 +624,42 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Concat(elems~, ..) => {
             let mut len = 0
-            let mut is_signed = false
+            let mut is_signed: Bool? = None
+            let stack = @stack.Stack::new()
 
-            for index, elem in elems {
+            for elem in elems {
                 let ty = self.check_expr!(elem, env)
-                len += ty.width!(elem.span())
-                let is_elem_signed = match ty {
-                    UInt(_) => false
-                    SInt(_) => true
-                    _ => raise InvalidConcatElement(ty~, span=elem.span())
-                }
+                let span = elem.span()
+                len += ty.width!(span)
+                stack.push((ty, span))
+            }
 
-                if index == 0 {
-                    is_signed = is_elem_signed
-                } else if is_signed != is_elem_signed {
-                    raise CannotMixUnsignedAndSignedIntegersInConcatExpr(span=elem.span())
+            while not(stack.is_empty()) {
+                let (ty, span) = stack.unsafe_pop()
+
+                match ty {
+                    UInt(_) | SInt(_) => {
+                        let is_elem_signed = ty is SInt(_)
+
+                        match is_signed {
+                            Some(is_signed) => {
+                                if is_signed != is_elem_signed {
+                                    raise CannotMixUnsignedAndSignedIntegersInConcatExpr(span=span)
+                                }
+                            }
+                            None => {
+                                is_signed = Some(is_elem_signed)
+                            }
+                        }
+                    }
+                    Vector(ty=elem_ty, len=_) => {
+                        stack.push((elem_ty, span))
+                    }
+                    _ => raise InvalidConcatElement(ty~, span=span)
                 }
             }
 
-            if is_signed {
+            if is_signed is Some(true) {
                 @parse.Type::sint(len)
             } else {
                 @parse.Type::uint(len)

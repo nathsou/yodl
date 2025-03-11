@@ -144,7 +144,8 @@ The width of the resulting integer is the sum of the widths of the operands.
 If any operand is a signed integer (sint), then all operands are required to be signed.
 
 ```yodl
-let word: uint<32> = {16'hBABA, 16'hFABE}; // 32'hBABAFABE
+let concat_args: uint<32> = {16'hBABA, 16'hFABE}; // 32'hBABAFABE
+let concat_vec = {[16'hBABA, 16'hFABE]}; // 32'hBABAFABE
 ```
 
 ## Spread

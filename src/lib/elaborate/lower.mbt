@@ -583,16 +583,27 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       Vector(elems=values, ty~, span~)
     }
     Concat(elems~, span~, ..) => {
-      let values = Array::new(capacity=elems.length())
+      let refs = Array::new(capacity=elems.length())
 
-      for elem in elems {
-        values.push(self.lower_expr!(elem, scope~, env~))
+      fn flatten(value: Value) -> Unit! {
+        match value.ty() {
+          UInt(_) | SInt(_) => {
+            refs.push(@firrtl.Reference(value.as_ref!(self, scope~, binding=None)))
+          }
+          Vec(elem_ty, len) => {
+            let vec_ref = value.as_ref!(self, scope~, binding=None)
+            
+            for i in 0..<len {
+              let index = @firrtl.Expr::Int(BigInt::from_int(len - 1 - i))
+              flatten!(Expr(expr=Reference(Indexing(lhs=vec_ref, index~)), ty=elem_ty, span=value.span()))
+            }
+          }
+          _ => raise ElaborationError::Unreachable(message="Cannot flatten value of type \{value.ty()}", span=value.span())
+        }
       }
 
-      let refs = Array::new(capacity=values.length())
-
-      for value in values {
-        refs.push(@firrtl.Expr::Reference(value.as_ref!(self, scope~)))
+      for elem in elems {
+        flatten!(self.lower_expr!(elem, scope~, env~))
       }
 
       Expr(expr=concat_rev!(refs.rev()), ty~, span~)

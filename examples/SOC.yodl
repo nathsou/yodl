@@ -22,9 +22,8 @@ module RAM(
     );
 
     $readmemh("prog.hex", mem);
-
-    let data = mem.q[0];
-    q = {data[3], data[2], data[1], data[0]};
+    
+    q = {mem.q[0]};
 }
 
 // One-hot encoding of MMIO devices

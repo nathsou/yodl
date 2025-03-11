@@ -1,7 +1,8 @@
 {
     "import": [
-        "nathsou/yodl/lib/parse",
-        "nathsou/yodl/lib/firrtl",
-        "nathsou/yodl/lib/utils"
+      "nathsou/yodl/lib/parse",
+      "nathsou/yodl/lib/firrtl",
+      "nathsou/yodl/lib/utils",
+      "moonbitlang/x/stack"
     ]
 }
