@@ -237,11 +237,11 @@ module CPU(
     let is_store = opcode == Inst::STORE;
     let is_system = opcode == Inst::SYSTEM;
 
-    let imm_u = {inst.q[31], inst.q[30:12], 12'0};
-    let imm_i = {uint(21*{inst.q[31]}), inst.q[30:20]};
-    let imm_s = {uint(21*{inst.q[31]}), inst.q[30:25], inst.q[11:7]};
-    let imm_b = {uint(20*{inst.q[31]}), inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0};
-    let imm_j = {uint(12*{inst.q[31]}), inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0};
+    let imm_u = {inst.q[31:12], 12'0};
+    let imm_i = {21*{inst.q[31]}, inst.q[30:20]};
+    let imm_s = {21*{inst.q[31]}, inst.q[30:25], inst.q[11:7]};
+    let imm_b = {20*{inst.q[31]}, inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0};
+    let imm_j = {12*{inst.q[31]}, inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0};
 
     let stage = Reg&lt;uint&lt;2&gt;&gt;(clk, rst);
     let rs1_addr = (stage.q == Stage::WAIT_INST ? mem_read_data : inst.q)[19:15];
@@ -302,8 +302,8 @@ module CPU(
     let byte_access = funct3[1:0] == 2'd0;
     let half_word_access = funct3[1:0] == 2'd1;
     let load_sign = (not funct3[2]) and (byte_access ? load_byte[7] : load_half_word[15]);
-    let load_data = byte_access ? {uint(24*{load_sign}), load_byte} :
-        half_word_access ? {uint(16*{load_sign}), load_half_word} :
+    let load_data = byte_access ? {24*{load_sign}, load_byte} :
+        half_word_access ? {16*{load_sign}, load_half_word} :
         mem_read_data;
 
     let write_back_enable = (stage.q == Stage::EXECUTE and (not is_branch) and (not is_store) and (not is_load)) or stage.q == Stage::WAIT_DATA;
@@ -395,9 +395,8 @@ module RAM(
     );
 
     $readmemh("prog.hex", mem);
-
-    let data = mem.q[0];
-    q = {data[3], data[2], data[1], data[0]};
+    
+    q = {mem.q[0]};
 }
 
 // One-hot encoding of MMIO devices

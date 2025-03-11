@@ -255,7 +255,8 @@ let cells = Cols * [Rows * [Cell(clk, rst)]];
 <p>Concatenation expressions <code>{&lt;expr-list&gt;}</code> create an integer from a list of smaller integers.
 The width of the resulting integer is the sum of the widths of the operands.</p>
 <p>If any operand is a signed integer (sint), then all operands are required to be signed.</p>
-<pre><code class="language-yodl">let word: uint&lt;32&gt; = {16'hBABA, 16'hFABE}; // 32'hBABAFABE
+<pre><code class="language-yodl">let concat_args: uint&lt;32&gt; = {16'hBABA, 16'hFABE}; // 32'hBABAFABE
+let concat_vec = {[16'hBABA, 16'hFABE]}; // 32'hBABAFABE
 </code></pre>
 <h2 id="spread"><a class="header" href="#spread">Spread</a></h2>
 <p>The spread operator <code>..</code> can only appear inside a vector expression and is used to decompose a value into its individual elements.</p>
