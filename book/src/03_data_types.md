@@ -72,22 +72,6 @@ let neighbours: bool[8] = [false, false, true, false, true, false, true, false];
 let ints: uint<16>[4] = [16'd1, 16'd12, 16'd3, 16'd4];
 ```
 
-### Concatenation expressions
-
-Concatenation expressions `{expr1, expr2, ...}` flatten each expression (by one level, non-recursively) and concatenates them together, it is equivalent to a vector expression containing only spread expressions, i.e. `[...expr1, ...expr2]`.
-
-```yodl
-let word = {8'hBA, 8'hFA}; // 16'hBAFA
-```
-
-#### Integer decomposition
-
-When applied to integer values represented by `N` bits (`uint<N>`, `sint<N>`), the concatenation expression evaluates to an N-bit boolean vector of type `bool[N]`.
-
-```yodl
-let bits = {4'b1011}; // [1'b1, 1'b0, 1'b1, 1'b1] 
-```
-
 ## Characters and Strings
 
 Characters use the ISO 8601 encoding (extended ASCII).
