@@ -202,14 +202,6 @@ let neighbours: bool[8] = [false, false, true, false, true, false, true, false];
 // a vector of four 16-bit unsigned integers
 let ints: uint&lt;16&gt;[4] = [16'd1, 16'd12, 16'd3, 16'd4];
 </code></pre>
-<h3 id="concatenation-expressions"><a class="header" href="#concatenation-expressions">Concatenation expressions</a></h3>
-<p>Concatenation expressions <code>{expr1, expr2, ...}</code> flatten each expression (by one level, non-recursively) and concatenates them together, it is equivalent to a vector expression containing only spread expressions, i.e. <code>[...expr1, ...expr2]</code>.</p>
-<pre><code class="language-yodl">let word = {8'hBA, 8'hFA}; // 16'hBAFA
-</code></pre>
-<h4 id="integer-decomposition"><a class="header" href="#integer-decomposition">Integer decomposition</a></h4>
-<p>When applied to integer values represented by <code>N</code> bits (<code>uint&lt;N&gt;</code>, <code>sint&lt;N&gt;</code>), the concatenation expression evaluates to an N-bit boolean vector of type <code>bool[N]</code>.</p>
-<pre><code class="language-yodl">let bits = {4'b1011}; // [1'b1, 1'b0, 1'b1, 1'b1] 
-</code></pre>
 <h2 id="characters-and-strings"><a class="header" href="#characters-and-strings">Characters and Strings</a></h2>
 <p>Characters use the ISO 8601 encoding (extended ASCII).</p>
 <pre><code class="language-yodl">let char: uint&lt;8&gt; = 'a';
