@@ -38,8 +38,8 @@ type! TypeCheckerError {
     ExpectedLengthGotType(expected~: Int, got~: @parse.Type, span~: @parse.Span)
     InvalidParameterInstantiation(name~: String, expected~: @parse.ModuleParameterAnnotation, ty~: @parse.Type, span~: @parse.Span)
     InvalidMemoryArgumentInReadMemCall(ty~: @parse.Type, span~: @parse.Span)
-    InvalidPrintfFormatString(span~: @parse.Span)
-    InvalidPrintfArgument(index~: Int, span~: @parse.Span)
+    InvalidFormatString(span~: @parse.Span)
+    InvalidFormatStringArgument(index~: Int, span~: @parse.Span)
     InvalidStopExitCode(exit_code_ty~: @parse.Type, span~: @parse.Span)
     InvalidFlipOperand(ty~: @parse.Type, span~: @parse.Span)
     InvalidRevOperand(ty~: @parse.Type, span~: @parse.Span)
@@ -127,11 +127,11 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidBinaryOpOperands(op~, lhs_ty~, rhs_ty~, ..) => {
             logger.write_string("Invalid operands '\{lhs_ty}' and '\{rhs_ty}' for binary operator '\{op}'")
         }
-        InvalidPrintfFormatString(..) => {
-            logger.write_string("Invalid printf format string")
+        InvalidFormatString(..) => {
+            logger.write_string("Invalid format string")
         }
-        InvalidPrintfArgument(index~, ..) => {
-            logger.write_string("Invalid argument at index \{index} in printf call")
+        InvalidFormatStringArgument(index~, ..) => {
+            logger.write_string("Invalid format string argument at index \{index}")
         }
         InvalidStopExitCode(exit_code_ty~, ..) => {
             logger.write_string("Invalid exit code type '\{exit_code_ty}' in stop statement, expected an integer")
@@ -181,8 +181,8 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidParameterInstantiation(span~, ..) => span
         InvalidMemoryArgumentInReadMemCall(span~, ..) => span
         InvalidBinaryOpOperands(span~, ..) => span
-        InvalidPrintfFormatString(span~, ..) => span
-        InvalidPrintfArgument(span~, ..) => span
+        InvalidFormatString(span~, ..) => span
+        InvalidFormatStringArgument(span~, ..) => span
         InvalidStopExitCode(span~, ..) => span
         InvalidFlipOperand(span~, ..) => span
         InvalidRevOperand(span~, ..) => span
@@ -771,19 +771,15 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             @parse.Type::empty()
         }
-        FunCall(name="$printf", args=[format_str, ..varargs], span~, ..) => {
-            let format_str_ty = self.check_expr!(format_str, env)
+        FunCall(name="$printf", args=[format_str, ..args], span~, ..) => {
+            self.check_format_string!(format_str~, args~, env~, span~)
+            @parse.Type::empty()
+        }
+        FunCall(name="$assert", args=[pred,..rest], span~, ..) => {
+            let _ = self.check_expr!(pred, env, expected_ty=Some(@parse.Type::bool()))
 
-            if not(format_str_ty.is_string()) {
-                raise InvalidPrintfFormatString(span~)
-            }
-
-            for index, arg in varargs {
-                let arg_ty = self.check_expr!(arg, env)
-
-                if not(arg_ty.is_ground()) {
-                    raise InvalidPrintfArgument(index=index + 1, span~)
-                }
+            if rest is [format_str, ..args] {
+                self.check_format_string!(format_str~, args~, env~, span~)
             }
 
             @parse.Type::empty()
@@ -946,6 +942,28 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
         }
         Const(decl~, span=_) => {
             self.check_const_decl!(decl, env)
+        }
+    }
+}
+
+fn check_format_string(
+    self: TypeChecker,
+    format_str~: @parse.Expr,
+    args~: ArrayView[@parse.Expr],
+    env~: Scope[@parse.Path, @parse.Type],
+    span~: @parse.Span,
+) -> Unit! {
+    let format_str_ty = self.check_expr!(format_str, env)
+
+    if not(format_str_ty.is_string()) {
+        raise InvalidFormatString(span~)
+    }
+
+    for index, arg in args {
+        let arg_ty = self.check_expr!(arg, env)
+
+        if not(arg_ty.is_ground()) {
+            raise InvalidFormatStringArgument(index=index + 1, span~)
         }
     }
 }

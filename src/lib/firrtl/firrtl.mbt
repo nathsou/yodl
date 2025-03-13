@@ -160,5 +160,6 @@ pub fn primop(op: PrimOp, args: Array[Expr]) -> Expr {
 
 pub(all) enum Command {
   Printf(clk~: Expr, cond~: Expr, fmt~: String, args~: Array[Expr])
+  Assert(clk~: Expr, pred~: Expr, en~: Expr, fmt~: String, args~: Array[Expr])
   Stop(clk~: Expr, cond~: Expr, code~: Int)
 }

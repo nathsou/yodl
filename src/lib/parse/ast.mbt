@@ -897,6 +897,10 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Range(min=1, max=@int.max_value),
     apply: fn(_, _) { None }
   },
+  "$assert": {
+    arity: Range(min=1, max=@int.max_value),
+    apply: fn(_, _) { None }
+  },
   "$stop": {
     arity: Range(min=0, max=1),
     apply: fn(_, _) { None }

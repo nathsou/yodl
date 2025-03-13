@@ -1187,6 +1187,34 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       scope.add_stmt(Command(Printf(clk~, cond~, fmt~, args=new_args)))
       Empty(span~)
     }
+    FunCall(name="$assert", args=[pred, ..rest], span~, ..) => {
+      let pred_val = self.lower_expr!(pred, scope~, env~)
+      let clk = self.get_clock!(source="$assert", span~)
+      let en = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
+
+      let (fmt, args) = if rest is [format_str, ..args] {
+        let fmt = format_str.expect_string!()
+        let new_args = Array::new(capacity=args.length())
+
+        for arg in args {
+          new_args.push(self.lower_expr!(arg, scope~, env~).as_expr!(self, scope~))
+        }
+
+        (fmt, new_args)
+      } else {
+        let pred_fmt = {
+          let emitter = @parse.AstEmitter::new()
+          emitter.emit_expr(pred)
+          emitter.to_string()
+        }
+
+        ("assertion failed: \{pred_fmt}", [])
+      }
+
+      scope.add_stmt(Command(Assert(clk~, en~, pred=pred_val.as_expr!(self, scope~), fmt~, args~)))
+
+      Empty(span~)
+    }
     FunCall(name="$stop", args~, span~, ..) => {
       let clk = self.get_clock!(source="$stop", span~)
       let cond = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))

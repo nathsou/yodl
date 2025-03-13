@@ -135,7 +135,16 @@ Prints formatted text during simulation. Similar to C's printf.
 $printf("Value of counter: %d", counter.q);
 ```
 
-### `$stop(exit_code?)`
+### `$assert(predicate, [format_string, args..])`
+
+Asserts that the predicate is true. If the predicate is false, the simulation stops and prints an optional error message.
+
+```yodl
+$assert(true == 1'b1);
+$assert(counter.q == 0, "Counter should be 0, but is %d", counter.q);
+```
+
+### `$stop([exit_code])`
 
 Stops the simulation with an optional exit code.
 

@@ -316,6 +316,33 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
           self._.write(", \"")
           self._.write(show_format_string(fmt))
           self._.write("\"")
+
+          if args.length() > 0 {
+            self._.write(", ")
+            
+            for idx, arg in args {
+              self.emit_expr(arg)
+
+              if idx < args.length() - 1 {
+                self._.write(", ")
+              }
+            }
+          }
+
+          self._.write(")\n")
+        }
+        Assert(clk~, pred~, en~, fmt~, args~) => {
+          self._.write_indent()
+          self._.write("assert(")
+          self.emit_expr(clk)
+          self._.write(", ")
+          self.emit_expr(pred)
+          self._.write(", ")
+          self.emit_expr(en)
+          self._.write(", \"")
+          self._.write(show_format_string(fmt))
+          self._.write("\"")
+          
           if args.length() > 0 {
             self._.write(", ")
             
