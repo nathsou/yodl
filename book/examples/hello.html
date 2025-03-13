@@ -323,7 +323,7 @@ module TextDynamicPosition&lt;Length: uint&gt;(
 module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: Char[$cdiv(Bits, 4)]) {
     const Len = $cdiv(Bits, 4);
     for i in 0..&lt;Len {
-        chars[Len - 1 - i] = (match n[(i + 1) * 4 - 1 -: 4] {
+        chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
             4'h0 =&gt; '0',
             4'h1 =&gt; '1',
             4'h2 =&gt; '2',
@@ -340,14 +340,14 @@ module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: Char[$cdiv(Bits,
             4'hD =&gt; 'D',
             4'hE =&gt; 'E',
             4'hF =&gt; 'F',
-        });
+        };
     }
 }
 
 module Dec&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: Char[$cdiv(Bits, 4)]) {
     const Len = $cdiv(Bits, 4);
     for i in 0..&lt;Len {
-        chars[Len - 1 - i] = (match n[(i + 1) * 4 - 1 -: 4] {
+        chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
             4'h0 =&gt; '0',
             4'h1 =&gt; '1',
             4'h2 =&gt; '2',
@@ -358,7 +358,7 @@ module Dec&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: Char[$cdiv(Bits,
             4'h7 =&gt; '7',
             4'h8 =&gt; '8',
             _ =&gt; '9',
-        });
+        };
     }
 }
 
