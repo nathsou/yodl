@@ -12,7 +12,7 @@ RUN apt update
 RUN apt install -y curl git wget tar unzip
 
 # Install Moonbit
-RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.1.20250304+fdfcb3f1f'
+RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.1.20250310+a7a1e9804'
 ENV PATH="/root/.moon/bin:${PATH}"
 
 # Install Bun

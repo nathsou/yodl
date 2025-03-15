@@ -15,7 +15,7 @@ let b: uint<8> = uint(a); // 8'd11
 
 When applied to a vector of bits, it concatenates them into a single unsigned integer.
 
-Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer.
+Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the `{<expr_list>}` concatenation operator. 
 
 ```yodl
 let bits = [true, false, true, true];
@@ -76,7 +76,7 @@ Reverses the bit order of `x`.
 let reversed = $flip(5'b11100); // Results in 5'b00111
 ```
 
-## Array Functions
+## Vector Functions
 
 ### `$rev(vec)`
 
@@ -127,7 +127,7 @@ $readmemh("rom_data.hex", rom);
 
 ## Debug Functions
 
-### `$printf(format_string, args...)`
+### `$printf(format_string, args..)`
 
 Prints formatted text during simulation. Similar to C's printf.
 
