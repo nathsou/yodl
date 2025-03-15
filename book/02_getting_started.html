@@ -164,7 +164,7 @@ cd yodl
 moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"
 </code></pre>
 <p>.fir files can then be converted to SystemVerilog using <a href="https://github.com/llvm/circt/releases">firtool</a> (tested with version 1.106.0).</p>
-<p>Feature support for SystemVerilog/Verilog differs from tool to tool, check https://circt.llvm.org/docs/VerilogGeneration/#recommended-loweringoptions-by-target to customise the output.
+<p>Feature support for SystemVerilog/Verilog differs from tool to tool, check <a href="https://circt.llvm.org/docs/VerilogGeneration/#recommended-loweringoptions-by-target">this page</a> to customise the output.
 When using Yosys for instance, specify <code>--lowering-options=disallowPackedArrays,disallowLocalVariables,emitBindComments</code>.</p>
 <pre><code class="language-bash">firtool --format=fir --verilog Hello.fir -o Hello.sv
 </code></pre>

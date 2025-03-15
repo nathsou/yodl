@@ -164,7 +164,7 @@
 let b: uint&lt;8&gt; = uint(a); // 8'd11
 </code></pre>
 <p>When applied to a vector of bits, it concatenates them into a single unsigned integer.</p>
-<p>Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer.</p>
+<p>Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the <code>{&lt;expr_list&gt;}</code> concatenation operator.</p>
 <pre><code class="language-yodl">let bits = [true, false, true, true];
 let value: uint&lt;4&gt; = uint(bits); // Results in 4'b1101
 </code></pre>
@@ -195,7 +195,7 @@ let value: uint&lt;4&gt; = uint(bits); // Results in 4'b1101
 <p>Reverses the bit order of <code>x</code>.</p>
 <pre><code class="language-yodl">let reversed = $flip(5'b11100); // Results in 5'b00111
 </code></pre>
-<h2 id="array-functions"><a class="header" href="#array-functions">Array Functions</a></h2>
+<h2 id="vector-functions"><a class="header" href="#vector-functions">Vector Functions</a></h2>
 <h3 id="revvec"><a class="header" href="#revvec"><code>$rev(vec)</code></a></h3>
 <p>Reverses the order of elements in a vector.</p>
 <p>Particularly useful when constructing a bit vector from a list of bits from most to least significant
@@ -229,7 +229,7 @@ $readmemb("rom_data.bin", rom);
 $readmemh("rom_data.hex", rom);
 </code></pre>
 <h2 id="debug-functions"><a class="header" href="#debug-functions">Debug Functions</a></h2>
-<h3 id="printfformat_string-args"><a class="header" href="#printfformat_string-args"><code>$printf(format_string, args...)</code></a></h3>
+<h3 id="printfformat_string-args"><a class="header" href="#printfformat_string-args"><code>$printf(format_string, args..)</code></a></h3>
 <p>Prints formatted text during simulation. Similar to C's printf.</p>
 <pre><code class="language-yodl">$printf("Value of counter: %d", counter.q);
 </code></pre>
