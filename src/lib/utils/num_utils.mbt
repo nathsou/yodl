@@ -137,7 +137,7 @@ pub fn bin(n: Int, width~: Int) -> Iter[Bool] {
 
   Iter::new(fn(visit: (Bool) -> IterResult) -> IterResult {
     for i in 0..<width {
-      if visit((n & p) == 1) == IterEnd {
+      if visit((n & p) != 0) == IterEnd {
         break IterEnd
       }
 
@@ -149,7 +149,11 @@ pub fn bin(n: Int, width~: Int) -> Iter[Bool] {
 }
 
 pub fn bits(n: Int) -> Iter[Bool] {
-  let width = clog2(n)
+  if n == 0 {
+    return [false].iter()
+  }
+
+  let width = clog2(n + 1)
   bin(n, width~)
 }
 

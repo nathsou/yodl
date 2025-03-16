@@ -266,7 +266,7 @@ fn parse_primary_expr(self: Parser) -> Expr! {
     }
     Not | Minus | Andr | Orr | Xorr as op => {
       self.advance()
-      let expr = self.parse_expr!()
+      let expr = self.parse_indexing_expr!()
       let unop: UnaryOp = match op {
         Not => Not
         Minus => Neg

@@ -594,7 +594,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
             let vec_ref = value.as_ref!(self, scope~, binding=None)
             
             for i in 0..<len {
-              let index = @firrtl.Expr::Int(BigInt::from_int(len - 1 - i))
+              let index = @firrtl.Expr::Int(BigInt::from_int(i))
               flatten!(Expr(expr=Reference(Indexing(lhs=vec_ref, index~)), ty=elem_ty, span=value.span()))
             }
           }
@@ -1136,11 +1136,11 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
           let flattened = flatten_int!(arg_ref, arg.ty(), span~)
           Expr(expr=@firrtl.primop(AsSInt, [flattened]), ty=fir_ty, span~)
         }
-        ("uint", UInt(_) | AsyncReset | Reset) | ("sint", SInt(_)) => arg
-        ("uint", SInt(_)) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
+        ("uint", UInt(_) | UIntInferred | AsyncReset | Reset) | ("sint", SInt(_) | SIntInferred) => arg
+        ("uint", SInt(_) | SIntInferred) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
         ("uint", Clock) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
-        ("sint", UInt(_)) => Expr(expr=@firrtl.primop(AsSInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
-        _ => raise ElaborationError::Unsupported(message="Cannot convert type '\{arg.ty()}' to UInt or SInt", span~)
+        ("sint", UInt(_) | UIntInferred) => Expr(expr=@firrtl.primop(AsSInt, [arg.as_expr!(self, scope~)]), ty=fir_ty, span~)
+        _ => raise ElaborationError::Unsupported(message="Cannot convert type '\{arg.ty()}' to UInt or SInt with '\{name}'", span~)
       }
     }
     FunCall(name="clock", args=[clk], span~, ..) => {

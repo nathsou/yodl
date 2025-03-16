@@ -700,7 +700,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Exp
         match expr.as_int?() {
           Ok(value) => {
             let value = match op {
-              Not => if value == 0 { 1 } else { 0 }
+              Not => @utils.bitwise_not(BigInt::from_int(value)).to_int()
               Andr => @utils.bits(value).all(fn(b) { b }).to_int()
               Orr => @utils.bits(value).any(fn(b) { b }).to_int()
               Xorr => @utils.bits(value).fold(init=0, fn(acc, b) { acc ^ b.to_int() })
@@ -954,7 +954,7 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
 
 pub fn width(self: Type, span: Span) -> Int!AstError {
   match self {
-    Nat(min_width~) => @math.maximum(min_width, 32)
+    Nat(min_width~) => min_width
     UInt(Fixed(width)) => width
     SInt(Fixed(width)) => width
     Clock => 1
@@ -1160,7 +1160,7 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
   map
 }
 
-pub fn clone(self: Type) -> Type {
+pub fn Type::clone(self: Type) -> Type {
   match self {
     Nat(min_width~) => Nat(min_width~)
     UInt(width) => UInt(width)
@@ -1168,7 +1168,7 @@ pub fn clone(self: Type) -> Type {
     Vector(ty~, len~) => Vector(ty=ty.clone(), len~)
     Instance(sig~, params~, accessed_ports~) => Instance(sig~, params~, accessed_ports~)
     Name(path~, params~) => Name(path~, params~)
-    Struct(fields) => Struct(@utils.map_values(fields, clone))
+    Struct(fields) => Struct(@utils.map_values(fields, Type::clone))
     String(len~) => String(len~)
     Clock => Clock
   }

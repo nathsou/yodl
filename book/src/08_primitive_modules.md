@@ -168,7 +168,7 @@ module ByteAddressableRAM(
         write: [{ clk, en: write_enable, addr, data: write_data, mask: byte_mask }],
     );
 
-    read_data = mem.q[0];
+    read_data = uint(mem.q[0]);
 }
 ```
 

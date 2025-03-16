@@ -103,6 +103,7 @@ Individual characters can be accessed using the following syntax:
 
 ```yodl
 let first_char = message1[0];
+$assert(first_char == 'Y');
 ```
 
 ## Tuples

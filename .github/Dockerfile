@@ -6,6 +6,7 @@ COPY book/ ./book
 COPY src/ ./src
 COPY moon.mod.json ./
 COPY examples/ ./examples
+COPY test.sh ./
 
 # Install dependencies
 RUN apt update
@@ -14,6 +15,17 @@ RUN apt install -y curl git wget tar unzip
 # Install Moonbit
 RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.1.20250310+a7a1e9804'
 ENV PATH="/root/.moon/bin:${PATH}"
+RUN moon update
+RUN moon install
+
+# Install firtool
+RUN wget https://github.com/llvm/circt/releases/download/firtool-1.109.0/firrtl-bin-linux-x64.tar.gz
+RUN tar -xzf firrtl-bin-linux-x64.tar.gz
+RUN mv firtool-1.109.0/bin/firtool /usr/local/bin/firtool
+RUN rm -rf firrtl-bin-linux-x64.tar.gz firtool-1.109.0
+
+# Run tests
+RUN bash test.sh
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash
@@ -26,8 +38,6 @@ RUN mv mdbook /usr/local/bin/mdbook
 RUN rm mdbook-v0.4.45-x86_64-unknown-linux-gnu.tar.gz
 
 # Build
-RUN moon update
-RUN moon install
 RUN moon build --target js
 RUN bun build src/main/yodl.ts --outdir bundle --minify
 RUN cd book && mdbook build

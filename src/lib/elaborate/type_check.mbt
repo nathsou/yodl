@@ -350,8 +350,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
         }
         Binary(op~, lhs~, rhs~, output_width~, span~, ..) => {
-            let lhs_ty = self.check_expr!(lhs, env, expected_ty~)
-            let rhs_ty = self.check_expr!(rhs, env, expected_ty~)
+            let lhs_ty = self.check_expr!(lhs, env)
+            let rhs_ty = self.check_expr!(rhs, env)
             let wa = lhs_ty.width!(lhs.span())
             let wb = rhs_ty.width!(rhs.span())
 
