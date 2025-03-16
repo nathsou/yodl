@@ -328,6 +328,7 @@ let message2: uint&lt;8&gt;[9] = "Yo, Yodl!";
 </code></pre>
 <p>Individual characters can be accessed using the following syntax:</p>
 <pre><code class="language-yodl">let first_char = message1[0];
+$assert(first_char == 'Y');
 </code></pre>
 <h2 id="tuples"><a class="header" href="#tuples">Tuples</a></h2>
 <p>Tuples group a fixed number of ordered values of potentially different types.</p>
@@ -994,7 +995,7 @@ $assert(counter.q == 0, "Counter should be 0, but is %d", counter.q);
         write: [{ clk, en: write_enable, addr, data: write_data, mask: byte_mask }],
     );
 
-    read_data = mem.q[0];
+    read_data = uint(mem.q[0]);
 }
 </code></pre>
 <h4 id="mask-type"><a class="header" href="#mask-type">Mask Type</a></h4>
