@@ -19,6 +19,10 @@ package VGA {
         col: uint<$clog2(SCREEN_WIDTH)>,
     ) {
         // ...
+#       hsync = 1'b0;
+#       vsync = 1'b0;
+#       row = 9'd0;
+#       col = 10'd0;
     }
 }
 
@@ -50,6 +54,7 @@ Constants are named fixed values known at compile-time.
 const BAUD_RATE = 115200;
 const CLOCK_FREQ = 100 * 1_000_000; // 100 MHz
 const CYCLES_PER_BIT = CLOCK_FREQ / BAUD_RATE;
+# module Top() -> () {}
 ```
 
 ## Type Alias Declarations
@@ -59,6 +64,7 @@ Type aliases are used to give a name to a commonly used type.
 ```yodl
 type U8 = uint<8>;
 type RGB = { r: U8, g: U8, b: U8 };
+# module Top() -> () {}
 ```
 
 ### Parameterised type aliases
@@ -92,6 +98,8 @@ module FullAdder(
     sum = carry_in xor xor1;
     carry_out = (carry_in and xor1) or (a and b);
 }
+
+# module Top() -> () {}
 ```
 
 ### Parameterised Modules
@@ -124,6 +132,8 @@ module Adder<N: uint>(
     carry_out = carry_chain[N];
     sum = uint(bits);
 }
+
+# module Top() -> () {}
 ```
 
 ### Module instances
@@ -135,11 +145,29 @@ module Adder<N: uint>(
 - Parameter names can be omitted if the parameters are specified in the same order as the declaration.
 
 ```yodl
-let adder = Adder<32>( // or Adder<N: 32>(..);
-    a: counter.q,
-    b: 32'1,
-    carry_in: 1'0,
-);
+module Adder<N: uint>(
+    a: uint<N>,
+    b: uint<N>,
+    carry_in: bool,
+) -> (
+    sum: uint<N>,
+    carry_out: bool,
+) {
+    let total: uint<N + 1> = a + b + carry_in;
+    sum = total[N - 1 -: N];
+    carry_out = total[N];
+}
+
+module Top(clk: clock) -> () {
+    let counter = Reg<uint<32>>(clk);
+    counter.d = counter.q + 1;
+    
+    let adder = Adder<32>( // or Adder<N: 32>(..);
+        a: counter.q,
+        b: 32'1,
+        carry_in: 1'0,
+    );
+}
 ```
 
 - A module instance need not assign all ports as the module's ports are accessible as fields of the instance using the `.` operator.
@@ -167,11 +195,12 @@ module Top(clk: clock, rst: bool) -> () {
     otherwise, the type must be explicitly specified.
 
 ```yodl
-let message1: string<3>;
-message1 = "Yo!";
-
-let message2 = "Hi!";
-let message3: string<3> = "Hey";
+# module Test() -> () {
+    let message1: uint<8>[3];
+    message1 = "Yo!";
+    let message2 = "Hi!";
+    let message3: uint<8>[3] = "Hey";
+# }
 ```
 
 ## Assignments
@@ -179,18 +208,10 @@ let message3: string<3> = "Hey";
 If a binding is assigned multiple times, only the last assignment is used.
 
 ```yodl
-let a = true; // this first assignment is ignored
-a = false;
-```
-
-### Integer narrowing rules
-
-When assigning an integer value to a binding of a smaller width, the value is implicitly narrowed to fit the type. If no width is explicitly specified, the resulting width is the minimum required to represent the value.
-
-```yodl
-let a: uint<4> = 8'd15; // a = 4'd15
-let sum1: uint<8> = 8'd255 + 8'd1; // sum1 = 8'd0
-let sum2 = 8'd255 + 8'd1; // sum2 = 9'd256;
+# module Test() -> () {
+    let a = true; // this first assignment is ignored
+    a = false;
+# }
 ```
 
 ## Block Expressions
@@ -198,9 +219,13 @@ let sum2 = 8'd255 + 8'd1; // sum2 = 9'd256;
 Block expressions group multiple statements in a new lexical scope and optionally return a value:
 
 ```yodl
-let result = {
-    let a = 5;
-    let b = 10;
-    a + b  // Last expression becomes the block's value
-};
+# module Test(clk: clock) -> () {
+    let result = {
+        let a = 5;
+        let b = 10;
+        (a + b);  // Last expression becomes the block's value
+    };
+
+    $assert(result == 15);
+# }
 ```

@@ -18,4 +18,45 @@ do
     firtool --format=fir -O=debug --verilog $fir_path -o $sv_path
 done
 
-rm -rf $OUTPUT_PATH
+echo "All examples compiled successfully."
+
+counter=0
+
+# Find all Markdown files under book and process each one.
+find book -type f -name "*.md" | sort | while IFS= read -r file; do
+  in_block=0
+  while IFS= read -r line; do
+    # Start of a fenced code block with language "yodl".
+    if [[ "$line" =~ ^\`\`\`yodl ]]; then
+      in_block=1
+      counter=$((counter+1))
+      example_file="$OUTPUT_PATH/example_${counter}.yodl"
+      : > "$example_file"  # Create/empty the temporary file.
+      continue
+    fi
+
+    # End of the fenced code block.
+    if [[ $in_block -eq 1 && "$line" =~ ^\`\`\` ]]; then
+      in_block=0
+      echo "Compiling extracted example from '$file' -> '$example_file'..."
+      # Define output file names based on the temporary file’s basename.
+      fir_path="$OUTPUT_PATH/$(basename "$example_file" .yodl).fir"
+      sv_path="$OUTPUT_PATH/$(basename "$example_file" .yodl).sv"
+      
+      # Run the compilation commands; any failure causes an exit.
+      moon run src/main/yodl.mbt "$example_file" "write_firrtl $fir_path"
+      firtool --format=fir -O=debug --verilog "$fir_path" -o "$sv_path"
+      continue
+    fi
+
+    # If inside a yodl code block, remove leading '#' (and any following spaces) before appending.
+    if [ $in_block -eq 1 ]; then
+      clean_line=$(echo "$line" | sed 's/^#\s*//')
+      echo "$clean_line" >> "$example_file"
+    fi
+  done < "$file"
+done
+
+echo "All book examples compiled successfully."
+
+rm -rf "$OUTPUT_PATH"

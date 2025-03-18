@@ -9,17 +9,21 @@ Yodl supports two integer types, which require a width specifier.
 #### Unsigned Integers
 
 ```yodl
-// a 16-bit unsigned integer
-let a: uint<16>;
-a = 16'd1721;
+# module Test() -> () {
+    // a 16-bit unsigned integer
+    let a: uint<16>;
+    a = 16'd1721;
+# }
 ```
 
 #### Signed Integers
 
 ```yodl
-// a 7-bit signed ingeger
-let b: sint<7> = -6'd8;
-let c: sint<32> = sint(32'd11);
+# module Test() -> () {
+    // a 7-bit signed ingeger
+    let b: sint<7> = -6'd8;
+    let c: sint<32> = sint(32'd11);
+# }
 ```
 
 Integer literals can be specified in decimal, binary, octal, or hexadecimal format.
@@ -41,7 +45,9 @@ The `bool` type is an alias for the `uint<1>` type.
 For readability, the `true` and `false` keywords are supported and correspond to `1'b1` and `1'b0` respectively. 
 
 ```yodl
-let is_yodl_neat: bool = true;
+# module Test() -> () {
+    let is_yodl_neat: bool = true;
+# }
 ```
 
 ### Clocks
@@ -65,11 +71,13 @@ Ground types can be combined to create more complex data structures.
 Vectors are ordered and sized collections of elements.
 
 ```yodl
-// a vector of eight booleans
-let neighbours: bool[8] = [false, false, true, false, true, false, true, false];
+# module Test() -> () {
+    // a vector of eight booleans
+    let neighbours: bool[8] = [false, false, true, false, true, false, true, false];
 
-// a vector of four 16-bit unsigned integers
-let ints: uint<16>[4] = [16'd1, 16'd12, 16'd3, 16'd4];
+    // a vector of four 16-bit unsigned integers
+    let ints: uint<16>[4] = [16'd1, 16'd12, 16'd3, 16'd4];
+# }
 ```
 
 ## Characters and Strings
@@ -77,8 +85,9 @@ let ints: uint<16>[4] = [16'd1, 16'd12, 16'd3, 16'd4];
 Characters use the ISO 8601 encoding (extended ASCII).
 
 ```yodl
-let char: uint<8> = 'a';
-let newline = '\n';
+# module Test() -> () {
+    let char: uint<8> = 'a';
+# }
 ```
 
 ### Escape sequences
@@ -95,15 +104,18 @@ let newline = '\n';
 Strings are fixed-length vectors of characters.
 
 ```yodl
-let message1: string<9> = "Yo, Yodl!";
-let message2: uint<8>[9] = "Yo, Yodl!";
+# module Test() -> () {
+    let message: uint<8>[9] = "Yo, Yodl!";
+# }
 ```
 
 Individual characters can be accessed using the following syntax:
 
 ```yodl
-let first_char = message1[0];
-$assert(first_char == 'Y');
+# module Test(clk: clock) -> () {
+    let first_char = "Yo!"[0];
+    $assert(first_char == 'Y');
+# }
 ```
 
 ## Tuples
@@ -111,11 +123,13 @@ $assert(first_char == 'Y');
 Tuples group a fixed number of ordered values of potentially different types.
 
 ```yodl
-let pair: (bool, uint<8>) = (true, 8'hFF);
-let triplet: ({ a: uint<4>, b: bool }, (bool, uint<8>), uint<1>) = ({ a: [4'd1], b: false }, pair, 1'b0);
-
-let first: bool = pair.1; // true
-let second: uint<8> = pair.2; // 8'hFF
+# module Test() -> () {
+    let pair: (bool, uint<8>) = (true, 8'hFF);
+    let triplet: ({ a: uint<4>[1], b: bool }, (bool, uint<8>), uint<1>) = ({ a: [4'd1], b: false }, pair, 1'b0);
+    
+    let first: bool = pair.0; // true
+    let second: uint<8> = pair.1; // 8'hFF
+# }
 ```
 
 ## Structs
@@ -123,8 +137,10 @@ let second: uint<8> = pair.2; // 8'hFF
 Structures (also known as Bundles in Chisel/FIRRTL) group multiple named values under a single name.
 
 ```yodl
-let colour: { r: uint<8>, g: uint<8>, b: uint<8> } = { r: 8'd17, g: 8'd128, b: 8'd211 };
-let red = colour.red;
+# module Test() -> () {
+    let colour: { r: uint<8>, g: uint<8>, b: uint<8> } = { r: 8'd17, g: 8'd128, b: 8'd211 };
+    let red = colour.r;
+# }
 ```
 
 ### Instance Types
@@ -139,9 +155,9 @@ module Adder(a: uint<8>, b: uint<8>) -> (sum: uint<9>) {
 }
 
 module Top() -> () {
-    let adder: Adder = Adder(a: 8'd1, b: 8'd2);
-    let a = adder.a;
-    let b = adder.b;
+    let adder = Adder();
+    adder.a = 8'd1;
+    adder.b = 8'd2;
     let sum = adder.sum;
 }
 ```

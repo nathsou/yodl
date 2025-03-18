@@ -69,26 +69,12 @@ module Counter(clk: clock, enable: bool) -> (value: uint<8>) {
 ### Register with Asynchronous Reset
 
 ```yodl
-let state = RegAsyncReset<uint<2>>(clk, rst);
+# module Test(clk: clock, rst: bool) -> () {
+    let state = RegAsyncReset<uint<2>>(clk, rst);
+# }
 ```
 
 With `RegAsyncReset`, the reset signal is asynchronous and takes effect immediately.
-
-   <!-- #|@internal
-    #|declare module Memory<
-    #|  T: type,
-    #|  Depth: uint,
-    #|  ReadPorts: uint,
-    #|  WritePorts: uint,
-    #|  Mask: type,
-    #|  ReadLatency: uint,
-    #|  WriteLatency: uint,
-    #| >(
-    #|    read: { clk: clock, en: bool, addr: uint<$clog2(Depth)> }[ReadPorts],
-    #|    write: { clk: clock, en: bool, addr: uint<$clog2(Depth)>, data: T, mask: Mask }[WritePorts],
-    #|) -> (
-    #|    q: T[ReadPorts],
-    #|) -->
 
 ## Memory
 
@@ -134,8 +120,8 @@ module RAM(
         ReadLatency: 1,       // Cycles to read
         WriteLatency: 1,      // Cycles to write
     >(
-        read: [{ clk, en: true, addr }],
-        write: [{ clk, en: write_enable, addr, data: write_data, mask: true }],
+        read: [{ clk: clk, en: true, addr: addr }],
+        write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: true }],
     );
     
     read_data = mem.q[0];
@@ -164,8 +150,8 @@ module ByteAddressableRAM(
         ReadLatency: 1,
         WriteLatency: 1,
     >(
-        read: [{ clk, en: true, addr }],
-        write: [{ clk, en: write_enable, addr, data: write_data, mask: byte_mask }],
+        read: [{ clk: clk, en: true, addr: addr }],
+        write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask }],
     );
 
     read_data = uint(mem.q[0]);

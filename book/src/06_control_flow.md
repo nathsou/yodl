@@ -9,11 +9,13 @@ Yodl supports several control flow constructs that help express complex behaviou
 If expressions evaluate a condition and execute one of two branches based on the result:
 
 ```yodl
-let max = if a >: b {
-    a
-} else {
-    b
-};
+# module Test(a: uint<8>, b: uint<8>) -> () {
+    let max = if a >: b {
+        a;
+    } else {
+        b;
+    };
+# }
 ```
 
 If expressions always return a value. When used as statements (without assigning the result), the result is discarded.
@@ -23,12 +25,16 @@ If expressions always return a value. When used as statements (without assigning
 Match expressions provide a compact way of handling multiple conditions based on a single value:
 
 ```yodl
-// compute next state in the Game of Life
-alive.d = match count {
-    3'd2 => alive.q, // stable
-    3'd3 => true, // reproduction
-    _ => false, // overpopulation or underpopulation
-};
+# module Cell(clk: clock) -> () {
+#   let alive = Reg<bool>(clk);
+#   const count = 2;
+    // compute next state in the Game of Life
+    alive.d = match count {
+        3'd2 => alive.q, // stable
+        3'd3 => true, // reproduction
+        _ => false, // overpopulation or underpopulation
+    };
+# }
 ```
 
 A match expression must handle all possible values of the match condition, either by explicitly listing all cases or by providing a default case with the `_` wildcard.
@@ -64,6 +70,8 @@ module Hex<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
         };
     }
 }
+
+# module Top() -> () {}
 ```
 
 The range syntax uses:

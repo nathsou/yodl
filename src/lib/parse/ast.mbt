@@ -531,7 +531,7 @@ pub fn set_ty(self: Expr, ty: Type) -> Unit {
   self.ty().val = Some(ty)
 }
 
-pub fn is_constant_expr(self: Expr) -> Bool {
+pub fn Expr::is_constant_expr(self: Expr) -> Bool {
   match self {
     Natural(..) => true
     Identifier(..) => true
@@ -542,7 +542,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Slicing(_) => false
     FieldAccess(_) => false
     Instance(_) => false
-    Vector(_) => false
+    Vector(elems~, ..) => elems.iter().all(Expr::is_constant_expr)
     Spread(_) => false
     Concat(_) => false
     Ternary(_) => false
@@ -550,6 +550,7 @@ pub fn is_constant_expr(self: Expr) -> Bool {
     Tuple(_) => false
     Struct(_) => false
     Replicate(_) => false
+    FunCall(name="$flip" | "$rev", args=[arg], ..) => arg.is_constant_expr()
     FunCall(_) => false
     Block(body=[], last=Some(last), ..) => last.is_constant_expr()
     Block(..) => false

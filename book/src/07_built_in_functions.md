@@ -9,8 +9,10 @@ Yodl provides several built-in functions and operations to facilitate hardware d
 Reinterprets a value as an unsigned integer.
 
 ```yodl
-let a: sint<8> = -7'd11;
-let b: uint<8> = uint(a); // 8'd11
+# module Test() -> () {
+    let a: sint<8> = -7'd11;
+    let b: uint<8> = uint(a); // 8'd11
+# }
 ```
 
 When applied to a vector of bits, it concatenates them into a single unsigned integer.
@@ -18,8 +20,10 @@ When applied to a vector of bits, it concatenates them into a single unsigned in
 Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the `{<expr_list>}` concatenation operator. 
 
 ```yodl
-let bits = [true, false, true, true];
-let value: uint<4> = uint(bits); // Results in 4'b1101
+# module Test(clk: clock) -> () {
+    let bits = [true, false, true, true];
+    $assert(uint(bits) == 4'b1101);
+# }
 ```
 
 ### `sint(x)`
@@ -27,7 +31,9 @@ let value: uint<4> = uint(bits); // Results in 4'b1101
 Reinterprets a value as a signed integer.
 
 ```yodl
-let a: sint<8> = sint(8'b10101010);
+# module Test() -> () {
+    let a: sint<8> = sint(8'b10101010);
+# }
 ```
 
 ### `clock(x)`
@@ -35,7 +41,11 @@ let a: sint<8> = sint(8'b10101010);
 Converts a boolean signal to a clock signal.
 
 ```yodl
-let slow_clk = clock(counter.q[23]); // Divide the clock by 2^23
+# module Test(clk: clock) -> () {
+    let counter = Reg<uint<24>>(clk);
+    counter.d = counter.q + 1;
+    let slow_clk = clock(counter.q[23]); // Divide the clock by 2^23
+# }
 ```
 
 ## Mathematical Functions
@@ -47,7 +57,11 @@ Computes the ceiling of the base-2 logarithm of `n`.
 Often used to determine the minimum number of bits required to represent a value.
 
 ```yodl
-let addr: uint<$clog2(1024)>; // uint<10>
+# module Test(clk: clock) -> () {
+    const AddrWidth = $clog2(1024);
+    let addr: uint<AddrWidth> = 10'd0;
+    $assert(AddrWidth == 10);
+# }
 ```
 
 ### `$pow(base, exp)`
@@ -55,7 +69,10 @@ let addr: uint<$clog2(1024)>; // uint<10>
 Computes the power of `base` raised to `exp`.
 
 ```yodl
-let kilobyte = $pow(2, 10); // 1024
+# module Test(clk: clock) -> () {
+    const kilobyte = $pow(2, 10);
+    $assert(kilobyte == 1024);
+# }
 ```
 
 ### `$cdiv(a, b)`
@@ -63,7 +80,12 @@ let kilobyte = $pow(2, 10); // 1024
 Computes the ceiling of the division of `a` by `b`.
 
 ```yodl
-let blocks_needed = $cdiv(data_size, block_size);
+# module Test(clk: clock) -> () {
+    const data_size = 1024;
+    const block_size = 100;
+    const blocks_needed = $cdiv(data_size, block_size);
+    $assert(blocks_needed == 11);
+# }
 ```
 
 ## Bit Manipulation
@@ -73,7 +95,10 @@ let blocks_needed = $cdiv(data_size, block_size);
 Reverses the bit order of `x`.
 
 ```yodl
-let reversed = $flip(5'b11100); // Results in 5'b00111
+# module Test(clk: clock) -> () {
+    const flipped = $flip(5'b11100);
+    $assert(flipped == 5'b00111);
+# }
 ```
 
 ## Vector Functions
@@ -86,7 +111,13 @@ Particularly useful when constructing a bit vector from a list of bits from most
 since vectors are indexed from least to most significant, i.e. `vec[0]` is the first element.
 
 ```yodl
-let reversed = $rev([1'1, 1'0, 1'0, 1'0, 1'0]); // Results in [1'0, 1'0, 1'0, 1'0, 1'1]
+# module Test(clk: clock) -> () {
+    let reversed = $rev([1'1, 1'0, 1'0, 1'0]);
+    $assert(reversed[0] == 1'0);
+    $assert(reversed[1] == 1'0);
+    $assert(reversed[2] == 1'0);
+    $assert(reversed[3] == 1'1);
+# }
 ```
 
 ## Memory Functions
@@ -98,15 +129,21 @@ Yodl provides familiar [`$readmemb` and `$readmemh`](https://projectf.io/posts/i
 Initializes a memory from a binary format file.
 
 ```yodl
-let rom = Memory<
-    T: uint<8>,
-    Depth: 256,
-    ReadPorts: 1,
-    WritePorts: 0,
->();
+# module Test(clk: clock, addr: uint<8>) -> () {
+    let rom = Memory<
+        T: uint<8>,
+        Depth: 256,
+        ReadPorts: 1,
+        WritePorts: 0,
+    >(
+        read: [{ clk: clk, en: true, addr: addr }],
+    );
 
-// Initialize memory from binary file
-$readmemb("rom_data.bin", rom);
+    // Initialize memory from binary file
+    $readmemb("rom_data.bin", rom);
+
+    let data = rom.q[0];
+# }
 ```
 
 ### `$readmemh(file, memory)`
@@ -114,15 +151,21 @@ $readmemb("rom_data.bin", rom);
 Initializes a memory from a hexadecimal format file.
 
 ```yodl
-let rom = Memory<
-    T: uint<8>,
-    Depth: 256,
-    ReadPorts: 1,
-    WritePorts: 0,
->();
+# module Test(clk: clock, addr: uint<8>) -> () {
+    let rom = Memory<
+        T: uint<8>,
+        Depth: 256,
+        ReadPorts: 1,
+        WritePorts: 0,
+    >(
+        read: [{ clk: clk, en: true, addr: addr }],
+    );
 
-// Initialize memory from hex file
-$readmemh("rom_data.hex", rom);
+    // Initialize memory from hex file
+    $readmemh("rom_data.hex", rom);
+
+    let data = rom.q[0];
+# }
 ```
 
 ## Debug Functions
@@ -132,7 +175,9 @@ $readmemh("rom_data.hex", rom);
 Prints formatted text during simulation. Similar to C's printf.
 
 ```yodl
-$printf("Value of counter: %d", counter.q);
+# module Test(clk: clock, data: uint<8>) -> () {
+    $printf("Value of data: %d", data);
+# }
 ```
 
 ### `$assert(predicate, [format_string, args..])`
@@ -140,8 +185,11 @@ $printf("Value of counter: %d", counter.q);
 Asserts that the predicate is true. If the predicate is false, the simulation stops and prints an optional error message.
 
 ```yodl
-$assert(true == 1'b1);
-$assert(counter.q == 0, "Counter should be 0, but is %d", counter.q);
+# module Test(clk: clock) -> () {
+    $assert(true == 1'b1);
+    const two_plus_two = 2 + 2;
+    $assert(two_plus_two == 4, "Math is broken, expected 4, got %d", two_plus_two);
+# }
 ```
 
 ### `$stop([exit_code])`
@@ -149,7 +197,10 @@ $assert(counter.q == 0, "Counter should be 0, but is %d", counter.q);
 Stops the simulation with an optional exit code.
 
 ```yodl
-if error_condition {
-    $stop(1);
-}
+# module Test(clk: clock) -> () {
+#   const error_condition = false;
+    if error_condition {
+        $stop(1);
+    }
+# }
 ```

@@ -15,9 +15,16 @@
 Reduction operators apply the corresponding logic operation across all bits of the operand, returning a single bit result.
 
 ```yodl
-let all_ones = andr 8'b11111111; // 1
-let any_one = orr 8'b00000001;   // 1
-let parity = xorr 8'b10101010;   // 0
+# module Test(clk: clock) -> () {
+    let all_ones = andr 8'b11111111;
+    $assert(all_ones == 1);
+
+    let any_one = orr 8'b00000001;
+    $assert(any_one == 1);
+
+    let parity = xorr 8'b10101010;
+    $assert(parity == 0);
+# }
 ```
 
 ## Binary Operators
@@ -69,22 +76,31 @@ Note 2: The `and`, `or`, `xor`, `nand`, `nor`, and `xnor` operators are used bot
 The ternary operator is a concise way to express conditional expressions, generally spanning a single line.
 
 ```yodl
-let max = a >= b ? a : b;
+# module Test(a: uint<8>, b: uint<8>) -> () {
+    let max = a >= b ? a : b;
+# }
 ```
 
 ## Concatenation
 
-Vector concatenation can be performed by wrapping a list of values in curly braces:
+Integer concatenation can be performed by wrapping a list of values in curly braces:
 
 ```yodl
-let byte = {upper_nibble, lower_nibble};
+# module Test(clk: clock) -> () {
+    let upper_nibble = 8'hAB;
+    let lower_nibble = 8'hCD;
+    let word = {upper_nibble, lower_nibble};
+    $assert(word == 16'hABCD);
+# }
 ```
 
-The concatenation operator can also be used to split an integer into individual bits:
+The concatenation operator also accepts Vectors of integers.
 
 ```yodl
-let bits = {8'd200}; // [1'1, 1'1, 1'0, 1'0, 1'1, 1'0, 1'0, 1'0]
-let value = uint(bits); // 8'd200
+# module Test(clk: clock) -> () {
+    let value = {[1'1, 1'0, 1'0, 1'0]}; // 4'b1000
+    $assert(value == 4'b1000);
+# }
 ```
 
 ## Slicing and Indexing
@@ -92,9 +108,16 @@ let value = uint(bits); // 8'd200
 Elements of vectors and bits of integers can be accessed using the `[]` operator:
 
 ```yodl
-let first = array[0];          // Access the first element
-let nibble = value[7:4];       // Extract a range of bits (inclusive)
-let bytes = data[7-:8];        // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
+# module Test(clk: clock) -> () {
+    let bits = [..8'd233];
+    let first = bits[0];     // Access the first element
+    let nibble = bits[7:4]; // Extract a range of bits (inclusive)
+    let byte = bits[7-:8];   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
+
+    $assert(first == 1'b1);
+    $assert(uint(nibble) == 4'hE);
+    $assert(uint(byte) == 8'hE9);
+# }
 ```
 
 There are two forms of bit slicing:
@@ -111,13 +134,10 @@ When a bit vector (`bool[N]` i.e. `uint<1>[N]`) is used as the argument of the `
 the first element of the vector becomes the MSB of the resulting integer:
 
 ```yodl
-let n = uint([1'b1, 1'b0, 1'b0]); // 3'b100
-```
-
-If you instead want the first element to be the LSB, you can use the `$flip` built-in function:
-
-```yodl
-let n = $flip(uint([1'b1, 1'b0, 1'b0])); // 3'b001
+# module Test(clk: clock) -> () {
+    let n = uint([1'b1, 1'b0, 1'b0]);
+    $assert(n == 3'b0001);
+# }
 ```
 
 ## Replication
@@ -125,15 +145,28 @@ let n = $flip(uint([1'b1, 1'b0, 1'b0])); // 3'b001
 Replication expressions `<uint>*[<expr-list>]` and `<uint>*{<expr-list>}` create a vector by repeating a value multiple times:
 
 ```yodl
-let zeros = 4*[1'b0];        // Creates [1'b0, 1'b0, 1'b0, 1'b0]
-let pattern = 3*{a, b};      // Creates a concatenation equivalent to {a, b, a, b, a, b}
+# const a = 1'b1;
+# const b = 1'b0;
+# module Test(clk: clock) -> () {
+    let zeros = 4*[1'b0];   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
+    let ones = 3*{1'b1}; // Expands to {1'b, 1'b, 1'b1}
+
+    $assert(uint(zeros) == 4'd0);
+    $assert(uint(ones) == 3'b111);
+# }
 ```
 
 The repeated expressions can contain any value, including instances:
 
 ```yodl
-// initialise a Rows by Cols grid of cells
-let cells = Cols * [Rows * [Cell(clk, rst)]];
+# module Cell(clk: clock, rst: bool) -> () {}
+# const Rows = 1;
+# const Cols = 1;
+
+# module Test(clk: clock, rst: bool) -> () {
+    // initialise a Rows by Cols grid of cells
+    let cells = Cols * [Rows * [Cell(clk, rst)]];
+# }
 ```
 
 ## Concatenation
@@ -144,8 +177,13 @@ The width of the resulting integer is the sum of the widths of the operands.
 If any operand is a signed integer (sint), then all operands are required to be signed.
 
 ```yodl
-let concat_args: uint<32> = {16'hBABA, 16'hFABE}; // 32'hBABAFABE
-let concat_vec = {[16'hBABA, 16'hFABE]}; // 32'hBABAFABE
+# module Test(clk: clock) -> () {
+    let concat_args = {16'hBABA, 16'hFABE};
+    let concat_vec = {[16'hBABA, 16'hFABE]};
+
+    $assert(concat_args == 32'hBABAFABE);
+    $assert(concat_vec == 32'hBABAFABE);
+# }
 ```
 
 ## Spread
@@ -153,9 +191,22 @@ let concat_vec = {[16'hBABA, 16'hFABE]}; // 32'hBABAFABE
 The spread operator `..` can only appear inside a vector expression and is used to decompose a value into its individual elements.
 
 ```yodl
-let bits: uint<4> = [..4'b1100]; // [1'b0, 1'b0, 1'b1, 1'b1]
-let chars: uint<8>[3] = [.."Yo!"]; // [8'h59, 8'h6F, 8'h21]
-let flat: uint<2>[3] = [..[2'd1, 2'd2], 2'd3]; // [2'd1, 2'd2, 2'd3]
+# module Test(clk: clock) -> () {
+    let bits: uint<1>[4] = [..4'b1100]; // [1'b0, 1'b0, 1'b1, 1'b1]
+    let chars: uint<8>[3] = [.."Yo!"]; // [8'h59, 8'h6F, 8'h21]
+    let flat: uint<2>[3] = [..[2'd1, 2'd2], 2'd3]; // [2'd1, 2'd2, 2'd3]
+
+    $assert(bits[0] == 1'b0);
+    $assert(bits[1] == 1'b0);
+    $assert(bits[2] == 1'b1);
+    $assert(bits[3] == 1'b1);
+    $assert(chars[0] == 8'h59);
+    $assert(chars[1] == 8'h6F);
+    $assert(chars[2] == 8'h21);
+    $assert(flat[0] == 2'd1);
+    $assert(flat[1] == 2'd2);
+    $assert(flat[2] == 2'd3);
+# }
 ```
 
 ## Operator Precedence
