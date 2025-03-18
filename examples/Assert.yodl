@@ -6,6 +6,7 @@ module Top(clk: clock) -> () {
     $assert(uint(4'b1000) == 4'b1000);
     $assert(uint([1'b0, 1'b0, 1'b0, 1'b1]) == 4'b1000);
     $assert(uint([..4'b1000]) == 4'b1000);
+    $assert(uint([4'hA, 4'hB]) == 8'hBA);
 
     // clock casting
     $assert(uint(clock(1'b1)) == 1'b1);
@@ -21,7 +22,7 @@ module Top(clk: clock) -> () {
     $assert([..4'b1000][3] == 1'b1);
     $assert([.."yo!"][0] == 8'd121);
 
-    // airthmetical operators
+    // arithmetical operators
     $assert(1998 + 2025 == 4023);
     $assert(2025 - 1998 == 27);
     $assert(not 16'd1998 == uint(-15'd1999));

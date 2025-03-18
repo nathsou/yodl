@@ -1124,7 +1124,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       self.lower_expr!(Vector(elems=chars, span~, ty~), scope~, env~)
     }
-    FunCall(name="uint" | "sint" as name, args=[arg], ty~, span~, ..) => {
+    FunCall(name="uint" | "sint" as name, args=[arg], ty~, span~) => {
       let arg = self.lower_expr!(arg, scope~, env~)
       let arg_ref = arg.as_ref!(self, scope~)
       let ty = unwrap_type!(ty, span~)
@@ -1227,7 +1227,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       scope.add_stmt(Command(Stop(clk~, cond~, code~)))
       Empty(span~)
     }
-    FunCall(name="$rev", args=[arg], span~, ty={val: Some(Vector(ty=elem_ty, len=Fixed(len)))}, ..) => {
+    FunCall(name="$rev", args=[arg], span~, ty={val: Some(Vector(ty=elem_ty, len=Fixed(len)))}) => {
       let arg = self.lower_expr!(arg, scope~, env~)
       let arg_ref = arg.as_ref!(self, scope~)
       let elems = Array::new(capacity=len)
@@ -1243,7 +1243,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       Value::Vector(elems~, ty=@firrtl.Type::Vec(fir_elem_ty, len), span~)
     }
-    FunCall(name="$flip", args=[arg], span~, ty~, ..) => {
+    FunCall(name="$flip", args=[arg], span~, ty~) => {
       let arg = self.lower_expr!(arg, scope~, env~)
       let arg_ref = arg.as_ref!(self, scope~)
       let width = unwrap_type!(ty, span~).width!(span)

@@ -158,36 +158,36 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         UnboundVariable(span~, ..) => span
         IncompatibleTypes(span~, ..) => span
         VariableRedeclared(span~, ..) => span
-        InvalidAssignmentTarget(span~, ..) => span
-        IndexMustBeInteger(span~, ..) => span
-        IndexedExpressionMustBeVector(span~, ..) => span
+        InvalidAssignmentTarget(span~) => span
+        IndexMustBeInteger(span~) => span
+        IndexedExpressionMustBeVector(span~) => span
         UnknownModule(span~, ..) => span
         UnknownModulePort(span~, ..) => span
         InvalidFieldAccess(span~, ..) => span
         InvalidSlicingRange(span~, ..) => span
-        ExpectedConstantExpr(span~, ..) => span
-        LetStmtMustHaveTypeOrValue(span~, ..) => span
+        ExpectedConstantExpr(span~) => span
+        LetStmtMustHaveTypeOrValue(span~) => span
         InvalidAttribute(span~, ..) => span
         InvalidAttributeArgs(span~, ..) => span
-        EmptyMatch(span~, ..) => span
+        EmptyMatch(span~) => span
         InvalidInstanceTypeParameterCount(span~, ..) => span
-        FunCallAfterMonomorphization(span~, ..) => span
+        FunCallAfterMonomorphization(span~) => span
         InvalidStructField(span~, ..) => span
         InvalidUnaryOpOperand(span~, ..) => span
         InvalidBinaryOpOperand(span~, ..) => span
         StringContainsNonAsciiChar(span~, ..) => span
-        SpreadOutsideVector(span~, ..) => span
+        SpreadOutsideVector(span~) => span
         ExpectedLengthGotType(span~, ..) => span
         InvalidParameterInstantiation(span~, ..) => span
         InvalidMemoryArgumentInReadMemCall(span~, ..) => span
         InvalidBinaryOpOperands(span~, ..) => span
-        InvalidFormatString(span~, ..) => span
+        InvalidFormatString(span~) => span
         InvalidFormatStringArgument(span~, ..) => span
         InvalidStopExitCode(span~, ..) => span
         InvalidFlipOperand(span~, ..) => span
         InvalidRevOperand(span~, ..) => span
         InvalidConcatElement(span~, ..) => span
-        CannotMixUnsignedAndSignedIntegersInConcatExpr(span~, ..) => span
+        CannotMixUnsignedAndSignedIntegersInConcatExpr(span~) => span
     }
 }
 
@@ -878,7 +878,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
         Expr(expr~, ..) => {
             let _ = self.check_expr!(expr, env)
         }
-        Let(name~, ty~, expr~, span~, ..) => {
+        Let(name~, ty~, expr~, span~) => {
             let path = @parse.Path::new([], name)
 
             ty.val = Some(match (ty.val, expr) {
@@ -906,7 +906,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
                 }
             })
         }
-        Assign(lhs~, rhs~, span~, ..) => {
+        Assign(lhs~, rhs~, span~) => {
             let lhs_ty = self.check_expr!(lhs, env)
             let valid_lhs = is_valid_assignment_target(lhs)
 
@@ -924,7 +924,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
                 self.check_stmt!(stmt, new_env)
             }
         }
-        For(var~, range~, body~, span~, ..) => {
+        For(var~, range~, body~, span~) => {
             let start_ty = self.check_expr!(range.start, env)
             let end_ty = self.check_expr!(range.end, env)
 

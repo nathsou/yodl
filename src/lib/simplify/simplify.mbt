@@ -38,6 +38,26 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
   { name, id: count }
 }
 
+pub type! SimplifierError {
+  AssertionAlwaysFails(span~: @parse.Span)
+}
+
+pub impl Show for SimplifierError with output(self, logger) {
+  match self {
+    AssertionAlwaysFails(span=_) => {
+      logger.write_string("Assertion always fails")
+    }
+  }
+
+  logger.write_string(self.show_context(use_ansi_colors=false))
+}
+
+pub impl @parse.Spanned for SimplifierError with span(self) -> @parse.Span {
+  match self {
+    AssertionAlwaysFails(span~) => span
+  }
+}
+
 // - Resolve identifiers to unique names
 // - Rewrite port accesses on match expressions
 // - Rewrite replication expressions into concatenation expressions
@@ -46,11 +66,12 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
 // - Rewrite ternary expressions into match expressions
 // - Rewrite slicing expressions using width and offset to absolute slicing expressions
 // - Rewrite if expressions into match expressions
+// - Check static assertions
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr! {
   let rewr_stmt = fn!(stmt) { self.simplify_stmt!(stmt, env~, scope~) }
 
   @parse.rewrite_expr!(expr, rewr_stmt~, rewr_expr=fn(expr) {
-    (match expr {
+    match expr {
       Identifier(path~, span~, ty~) => {
         match env.resolve(path) {
           Some(Const(expr)) => Some(expr)
@@ -157,8 +178,15 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
 
         Some(self.simplify_expr!(match_expr, env~, scope~))
       }
+      FunCall(name="$assert", args=[pred, ..], span~, ty~) => {
+        match pred.as_int?() {
+          Ok(0) => raise AssertionAlwaysFails(span~)
+          Ok(1) => Some(@parse.Expr::Tuple(elems=[], span~, ty~))
+          _ => None
+        }
+      }
       _ => None
-    })
+    }
   })
 }
 
@@ -220,7 +248,10 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
         let stmts = self.simplify_stmt!(stmt, env=mod_env, scope~)
 
         for stmt in stmts {
-          scope.push(stmt)
+          // ignore empty tuples, whcih are used to represent empty expressions
+          if not(stmt is @parse.Stmt::Expr(expr=Tuple(elems=[], ..), ..)) {
+            scope.push(stmt)
+          }
         }
 
         simplified_body.push_iter(scope.iter())
