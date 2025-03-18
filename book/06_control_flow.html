@@ -160,22 +160,28 @@
 <h2 id="conditional-statements"><a class="header" href="#conditional-statements">Conditional Statements</a></h2>
 <h3 id="if-expressions"><a class="header" href="#if-expressions">If Expressions</a></h3>
 <p>If expressions evaluate a condition and execute one of two branches based on the result:</p>
-<pre><code class="language-yodl">let max = if a &gt;: b {
-    a
-} else {
-    b
-};
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test(a: uint&lt;8&gt;, b: uint&lt;8&gt;) -&gt; () {
+</span>    let max = if a &gt;: b {
+        a;
+    } else {
+        b;
+    };
+<span class="boring"> }
+</span></code></pre>
 <p>If expressions always return a value. When used as statements (without assigning the result), the result is discarded.</p>
 <h3 id="match-expressions"><a class="header" href="#match-expressions">Match Expressions</a></h3>
 <p>Match expressions provide a compact way of handling multiple conditions based on a single value:</p>
-<pre><code class="language-yodl">// compute next state in the Game of Life
-alive.d = match count {
-    3'd2 =&gt; alive.q, // stable
-    3'd3 =&gt; true, // reproduction
-    _ =&gt; false, // overpopulation or underpopulation
-};
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Cell(clk: clock) -&gt; () {
+</span><span class="boring">   let alive = Reg&lt;bool&gt;(clk);
+</span><span class="boring">   const count = 2;
+</span>    // compute next state in the Game of Life
+    alive.d = match count {
+        3'd2 =&gt; alive.q, // stable
+        3'd3 =&gt; true, // reproduction
+        _ =&gt; false, // overpopulation or underpopulation
+    };
+<span class="boring"> }
+</span></code></pre>
 <p>A match expression must handle all possible values of the match condition, either by explicitly listing all cases or by providing a default case with the <code>_</code> wildcard.</p>
 <h2 id="iteration"><a class="header" href="#iteration">Iteration</a></h2>
 <h3 id="for-loops"><a class="header" href="#for-loops">For Loops</a></h3>
@@ -204,7 +210,9 @@ module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[$c
         };
     }
 }
-</code></pre>
+
+<span class="boring"> module Top() -&gt; () {}
+</span></code></pre>
 <p>The range syntax uses:</p>
 <ul>
 <li><code>a..&lt;b</code> for exclusive upper bound (iterates from a to b-1)</li>

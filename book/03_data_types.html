@@ -160,15 +160,19 @@
 <h3 id="integer-types"><a class="header" href="#integer-types">Integer types</a></h3>
 <p>Yodl supports two integer types, which require a width specifier.</p>
 <h4 id="unsigned-integers"><a class="header" href="#unsigned-integers">Unsigned Integers</a></h4>
-<pre><code class="language-yodl">// a 16-bit unsigned integer
-let a: uint&lt;16&gt;;
-a = 16'd1721;
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    // a 16-bit unsigned integer
+    let a: uint&lt;16&gt;;
+    a = 16'd1721;
+<span class="boring"> }
+</span></code></pre>
 <h4 id="signed-integers"><a class="header" href="#signed-integers">Signed Integers</a></h4>
-<pre><code class="language-yodl">// a 7-bit signed ingeger
-let b: sint&lt;7&gt; = -6'd8;
-let c: sint&lt;32&gt; = sint(32'd11);
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    // a 7-bit signed ingeger
+    let b: sint&lt;7&gt; = -6'd8;
+    let c: sint&lt;32&gt; = sint(32'd11);
+<span class="boring"> }
+</span></code></pre>
 <p>Integer literals can be specified in decimal, binary, octal, or hexadecimal format.
 The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <p>The decimal value <code>1621</code> which requires at least 11 bits can be represented as follows:</p>
@@ -182,8 +186,10 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <h3 id="booleans"><a class="header" href="#booleans">Booleans</a></h3>
 <p>The <code>bool</code> type is an alias for the <code>uint&lt;1&gt;</code> type.</p>
 <p>For readability, the <code>true</code> and <code>false</code> keywords are supported and correspond to <code>1'b1</code> and <code>1'b0</code> respectively.</p>
-<pre><code class="language-yodl">let is_yodl_neat: bool = true;
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    let is_yodl_neat: bool = true;
+<span class="boring"> }
+</span></code></pre>
 <h3 id="clocks"><a class="header" href="#clocks">Clocks</a></h3>
 <p>The <code>clock</code> type is required for clock signals used in <code>Reg</code> and <code>Memory</code> module instances.</p>
 <pre><code class="language-yodl">module Counter(clk: clock) -&gt; (count: uint&lt;24&gt;) {
@@ -196,17 +202,20 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <p>Ground types can be combined to create more complex data structures.</p>
 <h2 id="vectors"><a class="header" href="#vectors">Vectors</a></h2>
 <p>Vectors are ordered and sized collections of elements.</p>
-<pre><code class="language-yodl">// a vector of eight booleans
-let neighbours: bool[8] = [false, false, true, false, true, false, true, false];
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    // a vector of eight booleans
+    let neighbours: bool[8] = [false, false, true, false, true, false, true, false];
 
-// a vector of four 16-bit unsigned integers
-let ints: uint&lt;16&gt;[4] = [16'd1, 16'd12, 16'd3, 16'd4];
-</code></pre>
+    // a vector of four 16-bit unsigned integers
+    let ints: uint&lt;16&gt;[4] = [16'd1, 16'd12, 16'd3, 16'd4];
+<span class="boring"> }
+</span></code></pre>
 <h2 id="characters-and-strings"><a class="header" href="#characters-and-strings">Characters and Strings</a></h2>
 <p>Characters use the ISO 8601 encoding (extended ASCII).</p>
-<pre><code class="language-yodl">let char: uint&lt;8&gt; = 'a';
-let newline = '\n';
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    let char: uint&lt;8&gt; = 'a';
+<span class="boring"> }
+</span></code></pre>
 <h3 id="escape-sequences"><a class="header" href="#escape-sequences">Escape sequences</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Sequence</th><th>Description</th></tr></thead><tbody>
 <tr><td><code>\n</code></td><td>Newline</td></tr>
@@ -217,26 +226,33 @@ let newline = '\n';
 </div>
 <h3 id="strings"><a class="header" href="#strings">Strings</a></h3>
 <p>Strings are fixed-length vectors of characters.</p>
-<pre><code class="language-yodl">let message1: string&lt;9&gt; = "Yo, Yodl!";
-let message2: uint&lt;8&gt;[9] = "Yo, Yodl!";
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    let message: uint&lt;8&gt;[9] = "Yo, Yodl!";
+<span class="boring"> }
+</span></code></pre>
 <p>Individual characters can be accessed using the following syntax:</p>
-<pre><code class="language-yodl">let first_char = message1[0];
-$assert(first_char == 'Y');
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
+</span>    let first_char = "Yo!"[0];
+    $assert(first_char == 'Y');
+<span class="boring"> }
+</span></code></pre>
 <h2 id="tuples"><a class="header" href="#tuples">Tuples</a></h2>
 <p>Tuples group a fixed number of ordered values of potentially different types.</p>
-<pre><code class="language-yodl">let pair: (bool, uint&lt;8&gt;) = (true, 8'hFF);
-let triplet: ({ a: uint&lt;4&gt;, b: bool }, (bool, uint&lt;8&gt;), uint&lt;1&gt;) = ({ a: [4'd1], b: false }, pair, 1'b0);
-
-let first: bool = pair.1; // true
-let second: uint&lt;8&gt; = pair.2; // 8'hFF
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    let pair: (bool, uint&lt;8&gt;) = (true, 8'hFF);
+    let triplet: ({ a: uint&lt;4&gt;[1], b: bool }, (bool, uint&lt;8&gt;), uint&lt;1&gt;) = ({ a: [4'd1], b: false }, pair, 1'b0);
+    
+    let first: bool = pair.0; // true
+    let second: uint&lt;8&gt; = pair.1; // 8'hFF
+<span class="boring"> }
+</span></code></pre>
 <h2 id="structs"><a class="header" href="#structs">Structs</a></h2>
 <p>Structures (also known as Bundles in Chisel/FIRRTL) group multiple named values under a single name.</p>
-<pre><code class="language-yodl">let colour: { r: uint&lt;8&gt;, g: uint&lt;8&gt;, b: uint&lt;8&gt; } = { r: 8'd17, g: 8'd128, b: 8'd211 };
-let red = colour.red;
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    let colour: { r: uint&lt;8&gt;, g: uint&lt;8&gt;, b: uint&lt;8&gt; } = { r: 8'd17, g: 8'd128, b: 8'd211 };
+    let red = colour.r;
+<span class="boring"> }
+</span></code></pre>
 <h3 id="instance-types"><a class="header" href="#instance-types">Instance Types</a></h3>
 <p>The type of a module instance is similar to a structure corresponding to the port signature of the module.</p>
 <p>Note: Instance types are not compatible with structure types because only the ports which are accessed on a particular instance are included in the resulting type.</p>
@@ -245,9 +261,9 @@ let red = colour.red;
 }
 
 module Top() -&gt; () {
-    let adder: Adder = Adder(a: 8'd1, b: 8'd2);
-    let a = adder.a;
-    let b = adder.b;
+    let adder = Adder();
+    adder.a = 8'd1;
+    adder.b = 8'd2;
     let sum = adder.sum;
 }
 </code></pre>

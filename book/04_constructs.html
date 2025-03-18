@@ -171,7 +171,11 @@
         col: uint&lt;$clog2(SCREEN_WIDTH)&gt;,
     ) {
         // ...
-    }
+<span class="boring">       hsync = 1'b0;
+</span><span class="boring">       vsync = 1'b0;
+</span><span class="boring">       row = 9'd0;
+</span><span class="boring">       col = 10'd0;
+</span>    }
 }
 
 module Top(
@@ -202,12 +206,14 @@ module Top(
 <pre><code class="language-yodl">const BAUD_RATE = 115200;
 const CLOCK_FREQ = 100 * 1_000_000; // 100 MHz
 const CYCLES_PER_BIT = CLOCK_FREQ / BAUD_RATE;
-</code></pre>
+<span class="boring"> module Top() -&gt; () {}
+</span></code></pre>
 <h2 id="type-alias-declarations"><a class="header" href="#type-alias-declarations">Type Alias Declarations</a></h2>
 <p>Type aliases are used to give a name to a commonly used type.</p>
 <pre><code class="language-yodl">type U8 = uint&lt;8&gt;;
 type RGB = { r: U8, g: U8, b: U8 };
-</code></pre>
+<span class="boring"> module Top() -&gt; () {}
+</span></code></pre>
 <h3 id="parameterised-type-aliases"><a class="header" href="#parameterised-type-aliases">Parameterised type aliases</a></h3>
 <p>Type aliases can be parameterised by providing a list of type parameters.</p>
 <pre><code class="language-yodl">type Triplet&lt;T&gt; = (T, T, T);
@@ -237,7 +243,9 @@ module Top() -&gt; () {
     sum = carry_in xor xor1;
     carry_out = (carry_in and xor1) or (a and b);
 }
-</code></pre>
+
+<span class="boring"> module Top() -&gt; () {}
+</span></code></pre>
 <h3 id="parameterised-modules"><a class="header" href="#parameterised-modules">Parameterised Modules</a></h3>
 <p>Modules can be parameterised by specifying a list of parameters surrounded by <code>&lt;</code> and <code>&gt;</code> after the module name.</p>
 <pre><code class="language-yodl">module Adder&lt;N: uint&gt;(
@@ -265,7 +273,9 @@ module Top() -&gt; () {
     carry_out = carry_chain[N];
     sum = uint(bits);
 }
-</code></pre>
+
+<span class="boring"> module Top() -&gt; () {}
+</span></code></pre>
 <h3 id="module-instances"><a class="header" href="#module-instances">Module instances</a></h3>
 <ul>
 <li>
@@ -278,11 +288,29 @@ module Top() -&gt; () {
 <p>Parameter names can be omitted if the parameters are specified in the same order as the declaration.</p>
 </li>
 </ul>
-<pre><code class="language-yodl">let adder = Adder&lt;32&gt;( // or Adder&lt;N: 32&gt;(..);
-    a: counter.q,
-    b: 32'1,
-    carry_in: 1'0,
-);
+<pre><code class="language-yodl">module Adder&lt;N: uint&gt;(
+    a: uint&lt;N&gt;,
+    b: uint&lt;N&gt;,
+    carry_in: bool,
+) -&gt; (
+    sum: uint&lt;N&gt;,
+    carry_out: bool,
+) {
+    let total: uint&lt;N + 1&gt; = a + b + carry_in;
+    sum = total[N - 1 -: N];
+    carry_out = total[N];
+}
+
+module Top(clk: clock) -&gt; () {
+    let counter = Reg&lt;uint&lt;32&gt;&gt;(clk);
+    counter.d = counter.q + 1;
+    
+    let adder = Adder&lt;32&gt;( // or Adder&lt;N: 32&gt;(..);
+        a: counter.q,
+        b: 32'1,
+        carry_in: 1'0,
+    );
+}
 </code></pre>
 <ul>
 <li>
@@ -309,31 +337,32 @@ module Top() -&gt; () {
 <li>The type of the binding is inferred from the right-hand side of the assignment if present;
 otherwise, the type must be explicitly specified.</li>
 </ul>
-<pre><code class="language-yodl">let message1: string&lt;3&gt;;
-message1 = "Yo!";
-
-let message2 = "Hi!";
-let message3: string&lt;3&gt; = "Hey";
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    let message1: uint&lt;8&gt;[3];
+    message1 = "Yo!";
+    let message2 = "Hi!";
+    let message3: uint&lt;8&gt;[3] = "Hey";
+<span class="boring"> }
+</span></code></pre>
 <h2 id="assignments"><a class="header" href="#assignments">Assignments</a></h2>
 <p>If a binding is assigned multiple times, only the last assignment is used.</p>
-<pre><code class="language-yodl">let a = true; // this first assignment is ignored
-a = false;
-</code></pre>
-<h3 id="integer-narrowing-rules"><a class="header" href="#integer-narrowing-rules">Integer narrowing rules</a></h3>
-<p>When assigning an integer value to a binding of a smaller width, the value is implicitly narrowed to fit the type. If no width is explicitly specified, the resulting width is the minimum required to represent the value.</p>
-<pre><code class="language-yodl">let a: uint&lt;4&gt; = 8'd15; // a = 4'd15
-let sum1: uint&lt;8&gt; = 8'd255 + 8'd1; // sum1 = 8'd0
-let sum2 = 8'd255 + 8'd1; // sum2 = 9'd256;
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    let a = true; // this first assignment is ignored
+    a = false;
+<span class="boring"> }
+</span></code></pre>
 <h2 id="block-expressions"><a class="header" href="#block-expressions">Block Expressions</a></h2>
 <p>Block expressions group multiple statements in a new lexical scope and optionally return a value:</p>
-<pre><code class="language-yodl">let result = {
-    let a = 5;
-    let b = 10;
-    a + b  // Last expression becomes the block's value
-};
-</code></pre>
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
+</span>    let result = {
+        let a = 5;
+        let b = 10;
+        (a + b);  // Last expression becomes the block's value
+    };
+
+    $assert(result == 15);
+<span class="boring"> }
+</span></code></pre>
 
                     </main>
 
