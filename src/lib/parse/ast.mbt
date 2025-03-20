@@ -716,6 +716,8 @@ pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Exp
       Binary(op~, lhs~, rhs~, output_width=_, span~, ty~) => {
         let lhs_value = lhs.as_bigint?()
         let rhs_value = rhs.as_bigint?()
+        let is_single_bit = lhs is Natural(width=Some(1), ..) && rhs is Natural(width=Some(1), ..)
+        
         match (lhs_value, rhs_value, lhs, rhs, op) {
           (Ok(lhs), Ok(rhs), _, _, _) => {
             let value = match op {
@@ -743,7 +745,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Exp
 
             Some(Natural(value~, width=None, base=10, span~, ty~))
           }
-          (Ok(0), _, _, b, op) | (_, Ok(0), b, _, op) => {
+          ((Ok(0), _, _, b, op) | (_, Ok(0), b, _, op)) if is_single_bit => {
             match op {
               And => Some(Expr::nat(0, span~))
               Or | Xor => Some(b)
@@ -752,7 +754,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Exp
               _ => None
             }
           }
-          (Ok(1), _, _, b, op) | (_, Ok(1), b, _, op) => {
+          ((Ok(1), _, _, b, op) | (_, Ok(1), b, _, op)) if is_single_bit => {
             match op {
               And | Xnor => Some(b)
               Or => Some(Expr::nat(1, span~))

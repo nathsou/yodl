@@ -154,7 +154,7 @@ module Adder<N: uint>(
     carry_out: bool,
 ) {
     let total: uint<N + 1> = a + b + carry_in;
-    sum = total[N - 1 -: N];
+    sum = total[N - 1 : 0];
     carry_out = total[N];
 }
 
