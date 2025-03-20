@@ -297,7 +297,7 @@ module Top() -&gt; () {
     carry_out: bool,
 ) {
     let total: uint&lt;N + 1&gt; = a + b + carry_in;
-    sum = total[N - 1 -: N];
+    sum = total[N - 1 : 0];
     carry_out = total[N];
 }
 
