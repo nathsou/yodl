@@ -159,8 +159,8 @@
 <h2 id="packages"><a class="header" href="#packages">Packages</a></h2>
 <p>Packages group related top-level declarations under a common namespace.</p>
 <pre><code class="language-yodl">package VGA {
-    const SCREEN_WIDTH = 640;
-    const SCREEN_HEIGHT = 480;
+    const SCREEN_WIDTH = 640
+    const SCREEN_HEIGHT = 480
 
     module SyncPulses(
         clk: clock,
@@ -171,10 +171,10 @@
         col: uint&lt;$clog2(SCREEN_WIDTH)&gt;,
     ) {
         // ...
-<span class="boring">       hsync = 1'b0;
-</span><span class="boring">       vsync = 1'b0;
-</span><span class="boring">       row = 9'd0;
-</span><span class="boring">       col = 10'd0;
+<span class="boring">       hsync = 1'b0
+</span><span class="boring">       vsync = 1'b0
+</span><span class="boring">       row = 9'd0
+</span><span class="boring">       col = 10'd0
 </span>    }
 }
 
@@ -185,12 +185,12 @@ module Top(
     vsync: bool,
     vga_color: { r: uint&lt;8&gt;, g: uint&lt;8&gt;, b: uint&lt;8&gt; },
 ) {
-    let pulses = VGA::SyncPulses(clk, hsync, vsync);
+    let pulses = VGA::SyncPulses(clk, hsync, vsync)
     vga_color = {
         r: pulses.row[7:0],
         g: pulses.col[7:0],
         b: 8'd127,
-    };
+    }
 }
 </code></pre>
 <ul>
@@ -203,23 +203,23 @@ module Top(
 </ul>
 <h2 id="constant-declarations"><a class="header" href="#constant-declarations">Constant Declarations</a></h2>
 <p>Constants are named fixed values known at compile-time.</p>
-<pre><code class="language-yodl">const BAUD_RATE = 115200;
-const CLOCK_FREQ = 100 * 1_000_000; // 100 MHz
-const CYCLES_PER_BIT = CLOCK_FREQ / BAUD_RATE;
+<pre><code class="language-yodl">const BAUD_RATE = 115200
+const CLOCK_FREQ = 100 * 1_000_000 // 100 MHz
+const CYCLES_PER_BIT = CLOCK_FREQ / BAUD_RATE
 <span class="boring"> module Top() -&gt; () {}
 </span></code></pre>
 <h2 id="type-alias-declarations"><a class="header" href="#type-alias-declarations">Type Alias Declarations</a></h2>
 <p>Type aliases are used to give a name to a commonly used type.</p>
-<pre><code class="language-yodl">type U8 = uint&lt;8&gt;;
-type RGB = { r: U8, g: U8, b: U8 };
+<pre><code class="language-yodl">type U8 = uint&lt;8&gt;
+type RGB = { r: U8, g: U8, b: U8 }
 <span class="boring"> module Top() -&gt; () {}
 </span></code></pre>
 <h3 id="parameterised-type-aliases"><a class="header" href="#parameterised-type-aliases">Parameterised type aliases</a></h3>
 <p>Type aliases can be parameterised by providing a list of type parameters.</p>
-<pre><code class="language-yodl">type Triplet&lt;T&gt; = (T, T, T);
+<pre><code class="language-yodl">type Triplet&lt;T&gt; = (T, T, T)
 
 module Top() -&gt; () {
-    let triplet: Triplet&lt;bool&gt; = (true, false, false);
+    let triplet: Triplet&lt;bool&gt; = (true, false, false)
 }
 </code></pre>
 <h2 id="module-declarations"><a class="header" href="#module-declarations">Module Declarations</a></h2>
@@ -239,9 +239,9 @@ module Top() -&gt; () {
     sum: bool,
     carry_out: bool,
 ) {
-    let xor1 = a xor b;
-    sum = carry_in xor xor1;
-    carry_out = (carry_in and xor1) or (a and b);
+    let xor1 = a xor b
+    sum = carry_in xor xor1
+    carry_out = (carry_in and xor1) or (a and b)
 }
 
 <span class="boring"> module Top() -&gt; () {}
@@ -256,9 +256,9 @@ module Top() -&gt; () {
     sum: uint&lt;N&gt;,
     carry_out: bool,
 ) {
-    let carry_chain: bool[N + 1];
-    carry_chain[0] = carry_in;
-    let bits: bool[N];
+    let carry_chain: bool[N + 1]
+    carry_chain[0] = carry_in
+    let bits: bool[N]
 
     for i in 0..&lt;N {
         FullAdder(
@@ -267,11 +267,11 @@ module Top() -&gt; () {
             carry_in: carry_chain[i],
             carry_out: carry_chain[i + 1],
             sum: bits[i],
-        );
+        )
     }
 
-    carry_out = carry_chain[N];
-    sum = uint(bits);
+    carry_out = carry_chain[N]
+    sum = uint(bits)
 }
 
 <span class="boring"> module Top() -&gt; () {}
@@ -296,20 +296,20 @@ module Top() -&gt; () {
     sum: uint&lt;N&gt;,
     carry_out: bool,
 ) {
-    let total: uint&lt;N + 1&gt; = a + b + carry_in;
-    sum = total[N - 1 : 0];
-    carry_out = total[N];
+    let total: uint&lt;N + 1&gt; = a + b + carry_in
+    sum = total[N - 1 : 0]
+    carry_out = total[N]
 }
 
 module Top(clk: clock) -&gt; () {
-    let counter = Reg&lt;uint&lt;32&gt;&gt;(clk);
-    counter.d = counter.q + 1;
+    let counter = Reg&lt;uint&lt;32&gt;&gt;(clk)
+    counter.d = counter.q + 1
     
-    let adder = Adder&lt;32&gt;( // or Adder&lt;N: 32&gt;(..);
+    let adder = Adder&lt;32&gt;( // or Adder&lt;N: 32&gt;(..)
         a: counter.q,
         b: 32'1,
         carry_in: 1'0,
-    );
+    )
 }
 </code></pre>
 <ul>
@@ -322,45 +322,45 @@ module Top(clk: clock) -&gt; () {
 </ul>
 <p>All three <code>Reg</code> instances in the following example are equivalent.</p>
 <pre><code class="language-yodl">module Top(clk: clock, rst: bool) -&gt; () {
-    let reg1 = Reg&lt;uint&lt;32&gt;&gt;(clk: clk, rst: rst);
-    let reg2 = Reg&lt;uint&lt;32&gt;&gt;(clk, rst);
-    let reg3 = Reg&lt;uint&lt;32&gt;&gt;();
+    let reg1 = Reg&lt;uint&lt;32&gt;&gt;(clk: clk, rst: rst)
+    let reg2 = Reg&lt;uint&lt;32&gt;&gt;(clk, rst)
+    let reg3 = Reg&lt;uint&lt;32&gt;&gt;()
 
-    reg3.clk = clk;
-    reg3.rst = rst;
+    reg3.clk = clk
+    reg3.rst = rst
 }
 </code></pre>
 <h2 id="let-bindings"><a class="header" href="#let-bindings">Let Bindings</a></h2>
 <ul>
 <li>A let binding introduces a named value in the current scope.</li>
 <li>Let bindings must be defined inside a module declaration.</li>
-<li>The type of the binding is inferred from the right-hand side of the assignment if present;
+<li>The type of the binding is inferred from the right-hand side of the assignment if present
 otherwise, the type must be explicitly specified.</li>
 </ul>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let message1: uint&lt;8&gt;[3];
-    message1 = "Yo!";
-    let message2 = "Hi!";
-    let message3: uint&lt;8&gt;[3] = "Hey";
+</span>    let message1: uint&lt;8&gt;[3]
+    message1 = "Yo!"
+    let message2 = "Hi!"
+    let message3: uint&lt;8&gt;[3] = "Hey"
 <span class="boring"> }
 </span></code></pre>
 <h2 id="assignments"><a class="header" href="#assignments">Assignments</a></h2>
 <p>If a binding is assigned multiple times, only the last assignment is used.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let a = true; // this first assignment is ignored
-    a = false;
+</span>    let a = true // this first assignment is ignored
+    a = false
 <span class="boring"> }
 </span></code></pre>
 <h2 id="block-expressions"><a class="header" href="#block-expressions">Block Expressions</a></h2>
 <p>Block expressions group multiple statements in a new lexical scope and optionally return a value:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let result = {
-        let a = 5;
-        let b = 10;
-        (a + b);  // Last expression becomes the block's value
-    };
+        let a = 5
+        let b = 10
+        (a + b)  // Last expression becomes the block's value
+    }
 
-    $assert(result == 15);
+    $assert(result == 15)
 <span class="boring"> }
 </span></code></pre>
 

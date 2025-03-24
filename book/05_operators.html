@@ -168,14 +168,14 @@
 <h3 id="reduction-operators"><a class="header" href="#reduction-operators">Reduction Operators</a></h3>
 <p>Reduction operators apply the corresponding logic operation across all bits of the operand, returning a single bit result.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let all_ones = andr 8'b11111111;
-    $assert(all_ones == 1);
+</span>    let all_ones = andr 8'b11111111
+    $assert(all_ones == 1)
 
-    let any_one = orr 8'b00000001;
-    $assert(any_one == 1);
+    let any_one = orr 8'b00000001
+    $assert(any_one == 1)
 
-    let parity = xorr 8'b10101010;
-    $assert(parity == 0);
+    let parity = xorr 8'b10101010
+    $assert(parity == 0)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="binary-operators"><a class="header" href="#binary-operators">Binary Operators</a></h2>
@@ -217,35 +217,35 @@
 <h2 id="ternary-operator"><a class="header" href="#ternary-operator">Ternary Operator</a></h2>
 <p>The ternary operator is a concise way to express conditional expressions, generally spanning a single line.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(a: uint&lt;8&gt;, b: uint&lt;8&gt;) -&gt; () {
-</span>    let max = a &gt;= b ? a : b;
+</span>    let max = a &gt;= b ? a : b
 <span class="boring"> }
 </span></code></pre>
 <h2 id="concatenation"><a class="header" href="#concatenation">Concatenation</a></h2>
 <p>Integer concatenation can be performed by wrapping a list of values in curly braces:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let upper_nibble = 8'hAB;
-    let lower_nibble = 8'hCD;
-    let word = {upper_nibble, lower_nibble};
-    $assert(word == 16'hABCD);
+</span>    let upper_nibble = 8'hAB
+    let lower_nibble = 8'hCD
+    let word = {upper_nibble, lower_nibble}
+    $assert(word == 16'hABCD)
 <span class="boring"> }
 </span></code></pre>
 <p>The concatenation operator also accepts Vectors of integers.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let value = {[1'1, 1'0, 1'0, 1'0]}; // 4'b1000
-    $assert(value == 4'b1000);
+</span>    let value = {[1'1, 1'0, 1'0, 1'0]} // 4'b1000
+    $assert(value == 4'b1000)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="slicing-and-indexing"><a class="header" href="#slicing-and-indexing">Slicing and Indexing</a></h2>
 <p>Elements of vectors and bits of integers can be accessed using the <code>[]</code> operator:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let bits = [..8'd233];
-    let first = bits[0];     // Access the first element
-    let nibble = bits[7:4]; // Extract a range of bits (inclusive)
-    let byte = bits[7-:8];   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
+</span>    let bits = [..8'd233]
+    let first = bits[0]     // Access the first element
+    let nibble = bits[7:4] // Extract a range of bits (inclusive)
+    let byte = bits[7-:8]   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
 
-    $assert(first == 1'b1);
-    $assert(uint(nibble) == 4'hE);
-    $assert(uint(byte) == 8'hE9);
+    $assert(first == 1'b1)
+    $assert(uint(nibble) == 4'hE)
+    $assert(uint(byte) == 8'hE9)
 <span class="boring"> }
 </span></code></pre>
 <p>There are two forms of bit slicing:</p>
@@ -261,30 +261,30 @@
 <p>When a bit vector (<code>bool[N]</code> i.e. <code>uint&lt;1&gt;[N]</code>) is used as the argument of the <code>uint</code> and <code>sint</code> built-in functions,
 the first element of the vector becomes the MSB of the resulting integer:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let n = uint([1'b1, 1'b0, 1'b0]);
-    $assert(n == 3'b0001);
+</span>    let n = uint([1'b1, 1'b0, 1'b0])
+    $assert(n == 3'b0001)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="replication"><a class="header" href="#replication">Replication</a></h2>
 <p>Replication expressions <code>&lt;uint&gt;*[&lt;expr-list&gt;]</code> and <code>&lt;uint&gt;*{&lt;expr-list&gt;}</code> create a vector by repeating a value multiple times:</p>
-<pre><code class="language-yodl"><span class="boring"> const a = 1'b1;
-</span><span class="boring"> const b = 1'b0;
+<pre><code class="language-yodl"><span class="boring"> const a = 1'b1
+</span><span class="boring"> const b = 1'b0
 </span><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let zeros = 4*[1'b0];   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
-    let ones = 3*{1'b1}; // Expands to {1'b, 1'b, 1'b1}
+</span>    let zeros = 4*[1'b0]   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
+    let ones = 3*{1'b1} // Expands to {1'b, 1'b, 1'b1}
 
-    $assert(uint(zeros) == 4'd0);
-    $assert(uint(ones) == 3'b111);
+    $assert(uint(zeros) == 4'd0)
+    $assert(uint(ones) == 3'b111)
 <span class="boring"> }
 </span></code></pre>
 <p>The repeated expressions can contain any value, including instances:</p>
 <pre><code class="language-yodl"><span class="boring"> module Cell(clk: clock, rst: bool) -&gt; () {}
-</span><span class="boring"> const Rows = 1;
-</span><span class="boring"> const Cols = 1;
+</span><span class="boring"> const Rows = 1
+</span><span class="boring"> const Cols = 1
 </span>
 <span class="boring"> module Test(clk: clock, rst: bool) -&gt; () {
 </span>    // initialise a Rows by Cols grid of cells
-    let cells = Cols * [Rows * [Cell(clk, rst)]];
+    let cells = Cols * [Rows * [Cell(clk, rst)]]
 <span class="boring"> }
 </span></code></pre>
 <h2 id="concatenation-1"><a class="header" href="#concatenation-1">Concatenation</a></h2>
@@ -292,30 +292,30 @@ the first element of the vector becomes the MSB of the resulting integer:</p>
 The width of the resulting integer is the sum of the widths of the operands.</p>
 <p>If any operand is a signed integer (sint), then all operands are required to be signed.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let concat_args = {16'hBABA, 16'hFABE};
-    let concat_vec = {[16'hBABA, 16'hFABE]};
+</span>    let concat_args = {16'hBABA, 16'hFABE}
+    let concat_vec = {[16'hBABA, 16'hFABE]}
 
-    $assert(concat_args == 32'hBABAFABE);
-    $assert(concat_vec == 32'hBABAFABE);
+    $assert(concat_args == 32'hBABAFABE)
+    $assert(concat_vec == 32'hBABAFABE)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="spread"><a class="header" href="#spread">Spread</a></h2>
 <p>The spread operator <code>..</code> can only appear inside a vector expression and is used to decompose a value into its individual elements.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let bits: uint&lt;1&gt;[4] = [..4'b1100]; // [1'b0, 1'b0, 1'b1, 1'b1]
-    let chars: uint&lt;8&gt;[3] = [.."Yo!"]; // [8'h59, 8'h6F, 8'h21]
-    let flat: uint&lt;2&gt;[3] = [..[2'd1, 2'd2], 2'd3]; // [2'd1, 2'd2, 2'd3]
+</span>    let bits: uint&lt;1&gt;[4] = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
+    let chars: uint&lt;8&gt;[3] = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
+    let flat: uint&lt;2&gt;[3] = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
 
-    $assert(bits[0] == 1'b0);
-    $assert(bits[1] == 1'b0);
-    $assert(bits[2] == 1'b1);
-    $assert(bits[3] == 1'b1);
-    $assert(chars[0] == 8'h59);
-    $assert(chars[1] == 8'h6F);
-    $assert(chars[2] == 8'h21);
-    $assert(flat[0] == 2'd1);
-    $assert(flat[1] == 2'd2);
-    $assert(flat[2] == 2'd3);
+    $assert(bits[0] == 1'b0)
+    $assert(bits[1] == 1'b0)
+    $assert(bits[2] == 1'b1)
+    $assert(bits[3] == 1'b1)
+    $assert(chars[0] == 8'h59)
+    $assert(chars[1] == 8'h6F)
+    $assert(chars[2] == 8'h21)
+    $assert(flat[0] == 2'd1)
+    $assert(flat[1] == 2'd2)
+    $assert(flat[2] == 2'd3)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="operator-precedence"><a class="header" href="#operator-precedence">Operator Precedence</a></h2>

@@ -191,9 +191,9 @@ node target/js/release/build/main/main.js examples/Hello.yodl "write_firrtl"
   // outputs
   leds: uint&lt;8&gt;,
 ) {
-  let counter = Reg&lt;uint&lt;24&gt;&gt;(clk, rst);
-  counter.d = counter.q + 1'd1;
-  leds = counter.q[23:16];
+  let counter = Reg&lt;uint&lt;24&gt;&gt;(clk, rst)
+  counter.d = counter.q + 1'd1
+  leds = counter.q[23:16]
 }
 </code></pre>
 <p>This simple design creates a 24-bit counter and displays the 8 most-significant bits to the output <code>leds</code> port.</p>

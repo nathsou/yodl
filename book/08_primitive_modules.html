@@ -161,9 +161,9 @@
 <p>Registers are fundamental storage elements in digital circuits. They store data between clock cycles.</p>
 <h3 id="basic-register"><a class="header" href="#basic-register">Basic Register</a></h3>
 <pre><code class="language-yodl">module Counter(clk: clock) -&gt; (value: uint&lt;8&gt;) {
-    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk);
-    counter.d = counter.q + 1'b1;
-    value = counter.q;
+    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk)
+    counter.d = counter.q + 1'b1
+    value = counter.q
 }
 </code></pre>
 <h3 id="parameters"><a class="header" href="#parameters">Parameters</a></h3>
@@ -182,30 +182,30 @@
 </div>
 <h3 id="register-with-reset"><a class="header" href="#register-with-reset">Register with Reset</a></h3>
 <pre><code class="language-yodl">module Counter(clk: clock, rst: bool) -&gt; (value: uint&lt;8&gt;) {
-    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk, rst);
-    counter.d = counter.q + 1'b1;
-    value = counter.q;
+    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk, rst)
+    counter.d = counter.q + 1'b1
+    value = counter.q
 }
 </code></pre>
 <p>When <code>rst</code> is asserted, the register's value is synchronously reset to 0.</p>
 <h3 id="register-with-enable"><a class="header" href="#register-with-enable">Register with Enable</a></h3>
 <pre><code class="language-yodl">module Counter(clk: clock, enable: bool) -&gt; (value: uint&lt;8&gt;) {
-    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk, en: enable);
-    counter.d = counter.q + 1'b1;
-    value = counter.q;
+    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk, en: enable)
+    counter.d = counter.q + 1'b1
+    value = counter.q
 }
 </code></pre>
 <p>The register only updates its value when <code>enable</code> is asserted.</p>
 <p>The same behaviour can be obtained using the <code>d</code> port only:</p>
 <pre><code class="language-yodl">module Counter(clk: clock, enable: bool) -&gt; (value: uint&lt;8&gt;) {
-    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk);
-    counter.d = enable ? counter.q + 1'b1 : counter.q;
-    value = counter.q;
+    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk)
+    counter.d = enable ? counter.q + 1'b1 : counter.q
+    value = counter.q
 }
 </code></pre>
 <h3 id="register-with-asynchronous-reset"><a class="header" href="#register-with-asynchronous-reset">Register with Asynchronous Reset</a></h3>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, rst: bool) -&gt; () {
-</span>    let state = RegAsyncReset&lt;uint&lt;2&gt;&gt;(clk, rst);
+</span>    let state = RegAsyncReset&lt;uint&lt;2&gt;&gt;(clk, rst)
 <span class="boring"> }
 </span></code></pre>
 <p>With <code>RegAsyncReset</code>, the reset signal is asynchronous and takes effect immediately.</p>
@@ -248,9 +248,9 @@
     &gt;(
         read: [{ clk: clk, en: true, addr: addr }],
         write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: true }],
-    );
+    )
     
-    read_data = mem.q[0];
+    read_data = mem.q[0]
 }
 </code></pre>
 <h3 id="memory-with-write-masking"><a class="header" href="#memory-with-write-masking">Memory with Write Masking</a></h3>
@@ -274,9 +274,9 @@
     &gt;(
         read: [{ clk: clk, en: true, addr: addr }],
         write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask }],
-    );
+    )
 
-    read_data = uint(mem.q[0]);
+    read_data = uint(mem.q[0])
 }
 </code></pre>
 <h4 id="mask-type"><a class="header" href="#mask-type">Mask Type</a></h4>

@@ -161,29 +161,29 @@
 <h3 id="uintx"><a class="header" href="#uintx"><code>uint(x)</code></a></h3>
 <p>Reinterprets a value as an unsigned integer.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let a: sint&lt;8&gt; = -7'd11;
-    let b: uint&lt;8&gt; = uint(a); // 8'd11
+</span>    let a: sint&lt;8&gt; = -7'd11
+    let b: uint&lt;8&gt; = uint(a) // 8'd11
 <span class="boring"> }
 </span></code></pre>
 <p>When applied to a vector of bits, it concatenates them into a single unsigned integer.</p>
 <p>Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the <code>{&lt;expr_list&gt;}</code> concatenation operator.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let bits = [true, false, true, true];
-    $assert(uint(bits) == 4'b1101);
+</span>    let bits = [true, false, true, true]
+    $assert(uint(bits) == 4'b1101)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="sintx"><a class="header" href="#sintx"><code>sint(x)</code></a></h3>
 <p>Reinterprets a value as a signed integer.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let a: sint&lt;8&gt; = sint(8'b10101010);
+</span>    let a: sint&lt;8&gt; = sint(8'b10101010)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="clockx"><a class="header" href="#clockx"><code>clock(x)</code></a></h3>
 <p>Converts a boolean signal to a clock signal.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let counter = Reg&lt;uint&lt;24&gt;&gt;(clk);
-    counter.d = counter.q + 1;
-    let slow_clk = clock(counter.q[23]); // Divide the clock by 2^23
+</span>    let counter = Reg&lt;uint&lt;24&gt;&gt;(clk)
+    counter.d = counter.q + 1
+    let slow_clk = clock(counter.q[23]) // Divide the clock by 2^23
 <span class="boring"> }
 </span></code></pre>
 <h2 id="mathematical-functions"><a class="header" href="#mathematical-functions">Mathematical Functions</a></h2>
@@ -191,33 +191,33 @@
 <p>Computes the ceiling of the base-2 logarithm of <code>n</code>.</p>
 <p>Often used to determine the minimum number of bits required to represent a value.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    const AddrWidth = $clog2(1024);
-    let addr: uint&lt;AddrWidth&gt; = 10'd0;
-    $assert(AddrWidth == 10);
+</span>    const AddrWidth = $clog2(1024)
+    let addr: uint&lt;AddrWidth&gt; = 10'd0
+    $assert(AddrWidth == 10)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="powbase-exp"><a class="header" href="#powbase-exp"><code>$pow(base, exp)</code></a></h3>
 <p>Computes the power of <code>base</code> raised to <code>exp</code>.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    const kilobyte = $pow(2, 10);
-    $assert(kilobyte == 1024);
+</span>    const kilobyte = $pow(2, 10)
+    $assert(kilobyte == 1024)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="cdiva-b"><a class="header" href="#cdiva-b"><code>$cdiv(a, b)</code></a></h3>
 <p>Computes the ceiling of the division of <code>a</code> by <code>b</code>.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    const data_size = 1024;
-    const block_size = 100;
-    const blocks_needed = $cdiv(data_size, block_size);
-    $assert(blocks_needed == 11);
+</span>    const data_size = 1024
+    const block_size = 100
+    const blocks_needed = $cdiv(data_size, block_size)
+    $assert(blocks_needed == 11)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="bit-manipulation"><a class="header" href="#bit-manipulation">Bit Manipulation</a></h2>
 <h3 id="flipx"><a class="header" href="#flipx"><code>$flip(x)</code></a></h3>
 <p>Reverses the bit order of <code>x</code>.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    const flipped = $flip(5'b11100);
-    $assert(flipped == 5'b00111);
+</span>    const flipped = $flip(5'b11100)
+    $assert(flipped == 5'b00111)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="vector-functions"><a class="header" href="#vector-functions">Vector Functions</a></h2>
@@ -226,11 +226,11 @@
 <p>Particularly useful when constructing a bit vector from a list of bits from most to least significant
 since vectors are indexed from least to most significant, i.e. <code>vec[0]</code> is the first element.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let reversed = $rev([1'1, 1'0, 1'0, 1'0]);
-    $assert(reversed[0] == 1'0);
-    $assert(reversed[1] == 1'0);
-    $assert(reversed[2] == 1'0);
-    $assert(reversed[3] == 1'1);
+</span>    let reversed = $rev([1'1, 1'0, 1'0, 1'0])
+    $assert(reversed[0] == 1'0)
+    $assert(reversed[1] == 1'0)
+    $assert(reversed[2] == 1'0)
+    $assert(reversed[3] == 1'1)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="memory-functions"><a class="header" href="#memory-functions">Memory Functions</a></h2>
@@ -245,12 +245,12 @@ since vectors are indexed from least to most significant, i.e. <code>vec[0]</cod
         WritePorts: 0,
     &gt;(
         read: [{ clk: clk, en: true, addr: addr }],
-    );
+    )
 
     // Initialize memory from binary file
-    $readmemb("rom_data.bin", rom);
+    $readmemb("rom_data.bin", rom)
 
-    let data = rom.q[0];
+    let data = rom.q[0]
 <span class="boring"> }
 </span></code></pre>
 <h3 id="readmemhfile-memory"><a class="header" href="#readmemhfile-memory"><code>$readmemh(file, memory)</code></a></h3>
@@ -263,35 +263,35 @@ since vectors are indexed from least to most significant, i.e. <code>vec[0]</cod
         WritePorts: 0,
     &gt;(
         read: [{ clk: clk, en: true, addr: addr }],
-    );
+    )
 
     // Initialize memory from hex file
-    $readmemh("rom_data.hex", rom);
+    $readmemh("rom_data.hex", rom)
 
-    let data = rom.q[0];
+    let data = rom.q[0]
 <span class="boring"> }
 </span></code></pre>
 <h2 id="debug-functions"><a class="header" href="#debug-functions">Debug Functions</a></h2>
 <h3 id="printfformat_string-args"><a class="header" href="#printfformat_string-args"><code>$printf(format_string, args..)</code></a></h3>
 <p>Prints formatted text during simulation. Similar to C's printf.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, data: uint&lt;8&gt;) -&gt; () {
-</span>    $printf("Value of data: %d", data);
+</span>    $printf("Value of data: %d", data)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="assertpredicate-format_string-args"><a class="header" href="#assertpredicate-format_string-args"><code>$assert(predicate, [format_string, args..])</code></a></h3>
 <p>Asserts that the predicate is true. If the predicate is false, the simulation stops and prints an optional error message.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    $assert(true == 1'b1);
-    const two_plus_two = 2 + 2;
-    $assert(two_plus_two == 4, "Math is broken, expected 4, got %d", two_plus_two);
+</span>    $assert(true == 1'b1)
+    const two_plus_two = 2 + 2
+    $assert(two_plus_two == 4, "Math is broken, expected 4, got %d", two_plus_two)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="stopexit_code"><a class="header" href="#stopexit_code"><code>$stop([exit_code])</code></a></h3>
 <p>Stops the simulation with an optional exit code.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span><span class="boring">   const error_condition = false;
+</span><span class="boring">   const error_condition = false
 </span>    if error_condition {
-        $stop(1);
+        $stop(1)
     }
 <span class="boring"> }
 </span></code></pre>
