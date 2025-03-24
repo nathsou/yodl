@@ -7,9 +7,9 @@ module FullAdder(
     sum: bool,
     carry_out: bool,
 ) {
-    let xor1 = a xor b;
-    sum = carry_in xor xor1;
-    carry_out = (carry_in and xor1) or (a and b);
+    let xor1 = a xor b
+    sum = carry_in xor xor1
+    carry_out = (carry_in and xor1) or (a and b)
 }
 
 module Adder<N: uint>(
@@ -20,9 +20,9 @@ module Adder<N: uint>(
     sum: uint<N>,
     carry_out: bool,
 ) {
-    let carry_chain: bool[N + 1];
-    carry_chain[0] = carry_in;
-    let bits: bool[N];
+    let carry_chain: bool[N + 1]
+    carry_chain[0] = carry_in
+    let bits: bool[N]
 
     for i in 0..<N {
         FullAdder(
@@ -31,11 +31,11 @@ module Adder<N: uint>(
             carry_in: carry_chain[i],
             carry_out: carry_chain[i + 1],
             sum: bits[i],
-        );
+        )
     }
 
-    carry_out = carry_chain[N];
-    sum = uint(bits);
+    carry_out = carry_chain[N]
+    sum = uint(bits)
 }
 
 module Top(
@@ -43,14 +43,14 @@ module Top(
 ) -> (
     led: uint<16>,
 ) {
-    let counter = Reg<uint<32>>(clk);
+    let counter = Reg<uint<32>>(clk)
     let adder = Adder<32>(
         a: counter.q,
         b: 32'1,
         carry_in: 1'0,
-    );
+    )
 
-    counter.d = adder.sum;
+    counter.d = adder.sum
 
-    led = adder.sum[31:16];
+    led = adder.sum[31:16]
 }

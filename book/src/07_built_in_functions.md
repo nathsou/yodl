@@ -10,8 +10,8 @@ Reinterprets a value as an unsigned integer.
 
 ```yodl
 # module Test() -> () {
-    let a: sint<8> = -7'd11;
-    let b: uint<8> = uint(a); // 8'd11
+    let a: sint<8> = -7'd11
+    let b: uint<8> = uint(a) // 8'd11
 # }
 ```
 
@@ -21,8 +21,8 @@ Note that the first element of the vector becomes the least significant bit (LSB
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let bits = [true, false, true, true];
-    $assert(uint(bits) == 4'b1101);
+    let bits = [true, false, true, true]
+    $assert(uint(bits) == 4'b1101)
 # }
 ```
 
@@ -32,7 +32,7 @@ Reinterprets a value as a signed integer.
 
 ```yodl
 # module Test() -> () {
-    let a: sint<8> = sint(8'b10101010);
+    let a: sint<8> = sint(8'b10101010)
 # }
 ```
 
@@ -42,9 +42,9 @@ Converts a boolean signal to a clock signal.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let counter = Reg<uint<24>>(clk);
-    counter.d = counter.q + 1;
-    let slow_clk = clock(counter.q[23]); // Divide the clock by 2^23
+    let counter = Reg<uint<24>>(clk)
+    counter.d = counter.q + 1
+    let slow_clk = clock(counter.q[23]) // Divide the clock by 2^23
 # }
 ```
 
@@ -58,9 +58,9 @@ Often used to determine the minimum number of bits required to represent a value
 
 ```yodl
 # module Test(clk: clock) -> () {
-    const AddrWidth = $clog2(1024);
-    let addr: uint<AddrWidth> = 10'd0;
-    $assert(AddrWidth == 10);
+    const AddrWidth = $clog2(1024)
+    let addr: uint<AddrWidth> = 10'd0
+    $assert(AddrWidth == 10)
 # }
 ```
 
@@ -70,8 +70,8 @@ Computes the power of `base` raised to `exp`.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    const kilobyte = $pow(2, 10);
-    $assert(kilobyte == 1024);
+    const kilobyte = $pow(2, 10)
+    $assert(kilobyte == 1024)
 # }
 ```
 
@@ -81,10 +81,10 @@ Computes the ceiling of the division of `a` by `b`.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    const data_size = 1024;
-    const block_size = 100;
-    const blocks_needed = $cdiv(data_size, block_size);
-    $assert(blocks_needed == 11);
+    const data_size = 1024
+    const block_size = 100
+    const blocks_needed = $cdiv(data_size, block_size)
+    $assert(blocks_needed == 11)
 # }
 ```
 
@@ -96,8 +96,8 @@ Reverses the bit order of `x`.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    const flipped = $flip(5'b11100);
-    $assert(flipped == 5'b00111);
+    const flipped = $flip(5'b11100)
+    $assert(flipped == 5'b00111)
 # }
 ```
 
@@ -112,11 +112,11 @@ since vectors are indexed from least to most significant, i.e. `vec[0]` is the f
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let reversed = $rev([1'1, 1'0, 1'0, 1'0]);
-    $assert(reversed[0] == 1'0);
-    $assert(reversed[1] == 1'0);
-    $assert(reversed[2] == 1'0);
-    $assert(reversed[3] == 1'1);
+    let reversed = $rev([1'1, 1'0, 1'0, 1'0])
+    $assert(reversed[0] == 1'0)
+    $assert(reversed[1] == 1'0)
+    $assert(reversed[2] == 1'0)
+    $assert(reversed[3] == 1'1)
 # }
 ```
 
@@ -137,12 +137,12 @@ Initializes a memory from a binary format file.
         WritePorts: 0,
     >(
         read: [{ clk: clk, en: true, addr: addr }],
-    );
+    )
 
     // Initialize memory from binary file
-    $readmemb("rom_data.bin", rom);
+    $readmemb("rom_data.bin", rom)
 
-    let data = rom.q[0];
+    let data = rom.q[0]
 # }
 ```
 
@@ -159,12 +159,12 @@ Initializes a memory from a hexadecimal format file.
         WritePorts: 0,
     >(
         read: [{ clk: clk, en: true, addr: addr }],
-    );
+    )
 
     // Initialize memory from hex file
-    $readmemh("rom_data.hex", rom);
+    $readmemh("rom_data.hex", rom)
 
-    let data = rom.q[0];
+    let data = rom.q[0]
 # }
 ```
 
@@ -176,7 +176,7 @@ Prints formatted text during simulation. Similar to C's printf.
 
 ```yodl
 # module Test(clk: clock, data: uint<8>) -> () {
-    $printf("Value of data: %d", data);
+    $printf("Value of data: %d", data)
 # }
 ```
 
@@ -186,9 +186,9 @@ Asserts that the predicate is true. If the predicate is false, the simulation st
 
 ```yodl
 # module Test(clk: clock) -> () {
-    $assert(true == 1'b1);
-    const two_plus_two = 2 + 2;
-    $assert(two_plus_two == 4, "Math is broken, expected 4, got %d", two_plus_two);
+    $assert(true == 1'b1)
+    const two_plus_two = 2 + 2
+    $assert(two_plus_two == 4, "Math is broken, expected 4, got %d", two_plus_two)
 # }
 ```
 
@@ -198,9 +198,9 @@ Stops the simulation with an optional exit code.
 
 ```yodl
 # module Test(clk: clock) -> () {
-#   const error_condition = false;
+#   const error_condition = false
     if error_condition {
-        $stop(1);
+        $stop(1)
     }
 # }
 ```

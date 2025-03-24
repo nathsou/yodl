@@ -26,7 +26,11 @@ pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: String) -
 }
 
 fn Parser::peek(self: Parser) -> TokenType {
-  self.tokens[self.index].kind
+  if self.tokens.get(self.index) is Some(token) {
+    token.kind
+  } else {
+    TokenType::Semicolon
+  }
 }
 
 fn Parser::lookahead(self: Parser, n: Int) -> Token {
@@ -61,6 +65,12 @@ fn Parser::consumes(self: Parser, token: TokenType) -> Bool {
     true
   } else {
     false
+  }
+}
+
+fn Parser::ignore(self: Parser, token: TokenType) -> Unit {
+  if self.matches(token) {
+    self.advance()
   }
 }
 
@@ -206,7 +216,7 @@ fn parse_match_expr(self: Parser) -> Expr! {
       cases.push((value, expr))
     }
 
-    if not(self.consumes(Comma)) {
+    if not(self.consumes(Semicolon)) {
       break
     }
   }
@@ -631,6 +641,7 @@ fn parse_stmt(self: Parser) -> Stmt! {
 
       let end = self.parse_expr!()
       let body = self.parse_block!()
+      self.ignore(Semicolon)
 
       For(var~, range={ start, end, inclusive }, body~, span=self.span(start_idx))
     }
@@ -673,6 +684,8 @@ fn parse_package_decl(self: Parser) -> PackageDecl! {
     body.push(decl)
   }
 
+  self.ignore(Semicolon)
+
   { name, body, span: self.span(start_idx) }
 }
 
@@ -684,6 +697,8 @@ fn parse_import_decl(self: Parser) -> ImportDecl! {
   while self.consumes(ColonColon) {
     packages.push(self.parse_identifier!())
   }
+
+  self.expect!(Semicolon, start_idx)
 
   { packages, span: self.span(start_idx) }
 }
@@ -970,6 +985,8 @@ fn parse_attribute(self: Parser) -> Attribute! {
     []
   }
 
+  self.ignore(Semicolon)
+
   { name, args, span: self.span(start_idx) }
 }
 
@@ -1028,9 +1045,12 @@ fn parse_module_def_or_decl(self: Parser) -> Decl! {
   let sig = self.parse_module_signature!(attributes~)
 
   if is_declaration {
+    self.expect!(Semicolon, self.index)
     ModuleDeclaration(sig)
   } else {
-    Module(self.parse_module_definition!(sig~))
+    let def = self.parse_module_definition!(sig~)
+    self.expect!(Semicolon, self.index)
+    Module(def)
   }
 }
 

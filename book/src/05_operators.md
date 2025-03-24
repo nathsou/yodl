@@ -16,14 +16,14 @@ Reduction operators apply the corresponding logic operation across all bits of t
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let all_ones = andr 8'b11111111;
-    $assert(all_ones == 1);
+    let all_ones = andr 8'b11111111
+    $assert(all_ones == 1)
 
-    let any_one = orr 8'b00000001;
-    $assert(any_one == 1);
+    let any_one = orr 8'b00000001
+    $assert(any_one == 1)
 
-    let parity = xorr 8'b10101010;
-    $assert(parity == 0);
+    let parity = xorr 8'b10101010
+    $assert(parity == 0)
 # }
 ```
 
@@ -77,7 +77,7 @@ The ternary operator is a concise way to express conditional expressions, genera
 
 ```yodl
 # module Test(a: uint<8>, b: uint<8>) -> () {
-    let max = a >= b ? a : b;
+    let max = a >= b ? a : b
 # }
 ```
 
@@ -87,10 +87,10 @@ Integer concatenation can be performed by wrapping a list of values in curly bra
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let upper_nibble = 8'hAB;
-    let lower_nibble = 8'hCD;
-    let word = {upper_nibble, lower_nibble};
-    $assert(word == 16'hABCD);
+    let upper_nibble = 8'hAB
+    let lower_nibble = 8'hCD
+    let word = {upper_nibble, lower_nibble}
+    $assert(word == 16'hABCD)
 # }
 ```
 
@@ -98,8 +98,8 @@ The concatenation operator also accepts Vectors of integers.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let value = {[1'1, 1'0, 1'0, 1'0]}; // 4'b1000
-    $assert(value == 4'b1000);
+    let value = {[1'1, 1'0, 1'0, 1'0]} // 4'b1000
+    $assert(value == 4'b1000)
 # }
 ```
 
@@ -109,14 +109,14 @@ Elements of vectors and bits of integers can be accessed using the `[]` operator
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let bits = [..8'd233];
-    let first = bits[0];     // Access the first element
-    let nibble = bits[7:4]; // Extract a range of bits (inclusive)
-    let byte = bits[7-:8];   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
+    let bits = [..8'd233]
+    let first = bits[0]     // Access the first element
+    let nibble = bits[7:4] // Extract a range of bits (inclusive)
+    let byte = bits[7-:8]   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
 
-    $assert(first == 1'b1);
-    $assert(uint(nibble) == 4'hE);
-    $assert(uint(byte) == 8'hE9);
+    $assert(first == 1'b1)
+    $assert(uint(nibble) == 4'hE)
+    $assert(uint(byte) == 8'hE9)
 # }
 ```
 
@@ -135,8 +135,8 @@ the first element of the vector becomes the MSB of the resulting integer:
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let n = uint([1'b1, 1'b0, 1'b0]);
-    $assert(n == 3'b0001);
+    let n = uint([1'b1, 1'b0, 1'b0])
+    $assert(n == 3'b0001)
 # }
 ```
 
@@ -145,14 +145,14 @@ the first element of the vector becomes the MSB of the resulting integer:
 Replication expressions `<uint>*[<expr-list>]` and `<uint>*{<expr-list>}` create a vector by repeating a value multiple times:
 
 ```yodl
-# const a = 1'b1;
-# const b = 1'b0;
+# const a = 1'b1
+# const b = 1'b0
 # module Test(clk: clock) -> () {
-    let zeros = 4*[1'b0];   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
-    let ones = 3*{1'b1}; // Expands to {1'b, 1'b, 1'b1}
+    let zeros = 4*[1'b0]   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
+    let ones = 3*{1'b1} // Expands to {1'b, 1'b, 1'b1}
 
-    $assert(uint(zeros) == 4'd0);
-    $assert(uint(ones) == 3'b111);
+    $assert(uint(zeros) == 4'd0)
+    $assert(uint(ones) == 3'b111)
 # }
 ```
 
@@ -160,12 +160,12 @@ The repeated expressions can contain any value, including instances:
 
 ```yodl
 # module Cell(clk: clock, rst: bool) -> () {}
-# const Rows = 1;
-# const Cols = 1;
+# const Rows = 1
+# const Cols = 1
 
 # module Test(clk: clock, rst: bool) -> () {
     // initialise a Rows by Cols grid of cells
-    let cells = Cols * [Rows * [Cell(clk, rst)]];
+    let cells = Cols * [Rows * [Cell(clk, rst)]]
 # }
 ```
 
@@ -178,11 +178,11 @@ If any operand is a signed integer (sint), then all operands are required to be 
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let concat_args = {16'hBABA, 16'hFABE};
-    let concat_vec = {[16'hBABA, 16'hFABE]};
+    let concat_args = {16'hBABA, 16'hFABE}
+    let concat_vec = {[16'hBABA, 16'hFABE]}
 
-    $assert(concat_args == 32'hBABAFABE);
-    $assert(concat_vec == 32'hBABAFABE);
+    $assert(concat_args == 32'hBABAFABE)
+    $assert(concat_vec == 32'hBABAFABE)
 # }
 ```
 
@@ -192,20 +192,20 @@ The spread operator `..` can only appear inside a vector expression and is used 
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let bits: uint<1>[4] = [..4'b1100]; // [1'b0, 1'b0, 1'b1, 1'b1]
-    let chars: uint<8>[3] = [.."Yo!"]; // [8'h59, 8'h6F, 8'h21]
-    let flat: uint<2>[3] = [..[2'd1, 2'd2], 2'd3]; // [2'd1, 2'd2, 2'd3]
+    let bits: uint<1>[4] = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
+    let chars: uint<8>[3] = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
+    let flat: uint<2>[3] = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
 
-    $assert(bits[0] == 1'b0);
-    $assert(bits[1] == 1'b0);
-    $assert(bits[2] == 1'b1);
-    $assert(bits[3] == 1'b1);
-    $assert(chars[0] == 8'h59);
-    $assert(chars[1] == 8'h6F);
-    $assert(chars[2] == 8'h21);
-    $assert(flat[0] == 2'd1);
-    $assert(flat[1] == 2'd2);
-    $assert(flat[2] == 2'd3);
+    $assert(bits[0] == 1'b0)
+    $assert(bits[1] == 1'b0)
+    $assert(bits[2] == 1'b1)
+    $assert(bits[3] == 1'b1)
+    $assert(chars[0] == 8'h59)
+    $assert(chars[1] == 8'h6F)
+    $assert(chars[2] == 8'h21)
+    $assert(flat[0] == 2'd1)
+    $assert(flat[1] == 2'd2)
+    $assert(flat[2] == 2'd3)
 # }
 ```
 

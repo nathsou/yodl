@@ -78,7 +78,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|    rst?: bool,
     #|) -> (
     #|    q: T,
-    #|)
+    #|);
     #|
     #|@internal
     #|declare module RegAsyncReset<T: type>(
@@ -88,7 +88,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|    rst?: bool,
     #|) -> (
     #|    q: T,
-    #|)
+    #|);
     #|
     #|@internal
     #|declare module Memory<
@@ -103,7 +103,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|    write: { clk: clock, en: bool, addr: uint<$clog2(Depth)>, data: T, mask: MemoryMask<T> }[WritePorts],
     #|) -> (
     #|    q: T[ReadPorts],
-    #|)
+    #|);
   
   let lexer = @parse.Lexer::new(source, file="builtin.yodl", file_content=source)
   let tokens = match lexer.lex?() {

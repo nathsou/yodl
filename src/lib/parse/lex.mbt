@@ -6,6 +6,7 @@ pub struct Lexer {
   mut column: Int
   file: String
   file_content: String
+  tokens: Array[Token]
 }
 
 pub type! LexerError {
@@ -29,7 +30,7 @@ pub impl Spanned for LexerError with span(self: LexerError) -> Span {
 }
 
 pub fn Lexer::new(input: String, file~: String, file_content~: String) -> Lexer {
-  { input, index: 0, line: 1, column: 1, file, file_content }
+  { input, index: 0, line: 1, column: 1, tokens: Array::new(capacity=file_content.length() / 4), file, file_content }
 }
 
 fn peek(self: Lexer) -> Char {
@@ -54,6 +55,15 @@ fn next_non_whitespace(self: Lexer) -> Char? {
   }
 
   None
+}
+
+fn should_insert_semicolon(last_token: Token) -> Bool {
+  match last_token.kind {
+    Natural(_) | StringLiteral(_) | CharacterLiteral(_) => true
+    Identifier(_) => true
+    Rparen | Rbracket | Rbrace | Rchevron => true
+    _ => false
+  }
 }
 
 fn matches(self: Lexer, char: Char) -> Bool {
@@ -175,6 +185,13 @@ fn advance(self: Lexer) -> Unit {
   if self.peek() == '\n' {
     self.line += 1
     self.column = 1
+
+    if self.tokens.last() is Some(t) && should_insert_semicolon(t) {
+      self.tokens.push({
+        kind: Semicolon,
+        span: t.span,
+      })
+    }
   } else {
     self.column += 1
   }
@@ -182,17 +199,11 @@ fn advance(self: Lexer) -> Unit {
   self.index += 1
 }
 
-priv enum LexerResult[T] {
-  Ok(T)
-  Err(LexerError)
-  EOF
-}
-
-fn next(self: Lexer) -> LexerResult[Token]! {
+fn next(self: Lexer) -> Bool!LexerError {
   self.skip_whitespaces()
 
   if self.index >= self.input.length() {
-    return EOF
+    return false
   }
 
   let char = self.peek()
@@ -455,22 +466,20 @@ fn next(self: Lexer) -> LexerResult[Token]! {
   let end = (self.line, self.column)
 
   match val {
-    Ok(token) => Ok({ kind: token, span: { file: self.file, file_content: self.file_content, start, end } })
-    Err(error) => Err(error)
-    EOF => EOF
+    Ok(token) => {
+      let token = {
+        kind: token,
+        span: { file: self.file, file_content: self.file_content, start, end },
+      }
+
+      self.tokens.push(token)
+      true
+    }
+    Err(error) => raise error
   }
 }
 
 pub fn lex(self: Lexer) -> Array[Token]! {
-  let tokens = []
-
-  while true {
-    match self.next!() {
-      Ok(token) => tokens.push(token)
-      Err(error) => raise error
-      EOF => break
-    }
-  }
-
-  tokens
+  while self.next!() {}
+  self.tokens
 }

@@ -1,14 +1,14 @@
 import Text
 
 module Euler1(clk: clock, rst: bool) -> (q: uint<18>, is_ready: bool) {
-    const N = 1000;
-    let counter = Reg<uint<$clog2(N)>>(clk, rst);
-    let is_active = counter.q <: N;
-    counter.d = counter.q + is_active;
-    let sum = Reg<uint<18>>(clk, en: is_active, rst, q);
-    let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0;
-    sum.d = sum.q + (is_divisible ? counter.q : 0);
-    is_ready = not is_active;
+    const N = 1000
+    let counter = Reg<uint<$clog2(N)>>(clk, rst)
+    let is_active = counter.q <: N
+    counter.d = counter.q + is_active
+    let sum = Reg<uint<18>>(clk, en: is_active, rst, q)
+    let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0
+    sum.d = sum.q + (is_divisible ? counter.q : 0)
+    is_ready = not is_active
 }
 
 module Top(
@@ -22,28 +22,28 @@ module Top(
     vga_green: uint<3>,
     vga_blue: uint<3>,
 ) {
-    let rst = button[0] or button[1] or button[2] or button[3];
+    let rst = button[0] or button[1] or button[2] or button[3]
     let vga = VGA::SyncPulses(
         pixel_clk: clk,
         hsync: vga_hsync,
         vsync: vga_vsync,
-    );
+    )
 
-    let euler1 = Euler1(clk, rst);
-    let hex = Text::Hex<20>(n: {2'0, euler1.q});
+    let euler1 = Euler1(clk, rst)
+    let hex = Text::Hex<20>(n: {2'0, euler1.q})
     let text = Text::Text<Length: 40, X: 20, Y: 30>(
         text: [.."The solution to Project Euler 1 is ", ..hex.chars],
         screen_x: vga.col,
         screen_y: vga.row,
-    );
+    )
 
     let color = match vga.is_active_area and text.is_active {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => { r: 3'd1, g: 3'd5, b: 3'd6 },
-    };
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 }
+        1'b1 => { r: 3'd1, g: 3'd5, b: 3'd6 }
+    }
 
-    vga_red = color.r;
-    vga_green = color.g;
-    vga_blue = color.b;
-    led = uint(4*{euler1.is_ready});
+    vga_red = color.r
+    vga_green = color.g
+    vga_blue = color.b
+    led = uint(4*{euler1.is_ready})
 }

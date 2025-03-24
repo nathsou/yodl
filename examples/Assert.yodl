@@ -3,48 +3,48 @@ module Top(clk: clock) -> () {
     // static assertions checked by firtool
 
     // uint casting
-    $assert(uint(4'b1000) == 4'b1000);
-    $assert(uint([1'b0, 1'b0, 1'b0, 1'b1]) == 4'b1000);
-    $assert(uint([..4'b1000]) == 4'b1000);
-    $assert(uint([4'hA, 4'hB]) == 8'hBA);
+    $assert(uint(4'b1000) == 4'b1000)
+    $assert(uint([1'b0, 1'b0, 1'b0, 1'b1]) == 4'b1000)
+    $assert(uint([..4'b1000]) == 4'b1000)
+    $assert(uint([4'hA, 4'hB]) == 8'hBA)
 
     // clock casting
-    $assert(uint(clock(1'b1)) == 1'b1);
+    $assert(uint(clock(1'b1)) == 1'b1)
 
     // concatenation
-    $assert({8'hBA, 8'hFA} == 16'hBAFA);
-    $assert({[8'hBE, 8'hEF]} == 16'hBEEF);
+    $assert({8'hBA, 8'hFA} == 16'hBAFA)
+    $assert({[8'hBE, 8'hEF]} == 16'hBEEF)
 
     // decomposition
-    $assert([..4'b1000][0] == 1'b0);
-    $assert([..4'b1000][1] == 1'b0);
-    $assert([..4'b1000][2] == 1'b0);
-    $assert([..4'b1000][3] == 1'b1);
-    $assert([.."yo!"][0] == 8'd121);
+    $assert([..4'b1000][0] == 1'b0)
+    $assert([..4'b1000][1] == 1'b0)
+    $assert([..4'b1000][2] == 1'b0)
+    $assert([..4'b1000][3] == 1'b1)
+    $assert([.."yo!"][0] == 8'd121)
 
     // arithmetical operators
-    $assert(1998 + 2025 == 4023);
-    $assert(2025 - 1998 == 27);
-    $assert(not 16'd1998 == uint(-15'd1999));
-    $assert(sint(not 1998) == -1999);
-    $assert(sint(63538) == -1998);
-    $assert(sint(1998) - sint(2025) == -27);
-    $assert(1998 * 2025 == 4045950);
-    $assert(4045950 / 2025 == 1998);
-    $assert(2025 % 1998 == 27);
+    $assert(1998 + 2025 == 4023)
+    $assert(2025 - 1998 == 27)
+    $assert(not 16'd1998 == uint(-15'd1999))
+    $assert(sint(not 1998) == -1999)
+    $assert(sint(63538) == -1998)
+    $assert(sint(1998) - sint(2025) == -27)
+    $assert(1998 * 2025 == 4045950)
+    $assert(4045950 / 2025 == 1998)
+    $assert(2025 % 1998 == 27)
     
     // reduction operators
-    $assert(orr 4'b1000 == 1'b1);
-    $assert(orr 4'b1111 == 1'b1);
-    $assert(orr 4'd0 == 1'b0);
+    $assert(orr 4'b1000 == 1'b1)
+    $assert(orr 4'b1111 == 1'b1)
+    $assert(orr 4'd0 == 1'b0)
 
-    $assert(andr 4'b1000 == 1'b0);
-    $assert(andr 4'd0 == 1'b0);
-    $assert(andr 4'b1111 == 1'b1);
+    $assert(andr 4'b1000 == 1'b0)
+    $assert(andr 4'd0 == 1'b0)
+    $assert(andr 4'b1111 == 1'b1)
 
-    $assert(xorr 4'b1000 == 1'b1);
-    $assert(xorr 4'b1111 == 1'b0);
-    $assert(xorr 4'd0 == 1'b0);
+    $assert(xorr 4'b1000 == 1'b1)
+    $assert(xorr 4'b1111 == 1'b0)
+    $assert(xorr 4'd0 == 1'b0)
     
-    $printf("All assertions passed");
+    $printf("All assertions passed")
 }

@@ -11,10 +11,10 @@ If expressions evaluate a condition and execute one of two branches based on the
 ```yodl
 # module Test(a: uint<8>, b: uint<8>) -> () {
     let max = if a >: b {
-        a;
+        a
     } else {
-        b;
-    };
+        b
+    }
 # }
 ```
 
@@ -27,13 +27,13 @@ Match expressions provide a compact way of handling multiple conditions based on
 ```yodl
 # module Cell(clk: clock) -> () {
 #   let alive = Reg<bool>(clk);
-#   const count = 2;
+#   const count = 2
     // compute next state in the Game of Life
     alive.d = match count {
-        3'd2 => alive.q, // stable
-        3'd3 => true, // reproduction
-        _ => false, // overpopulation or underpopulation
-    };
+        3'd2 => alive.q // stable
+        3'd3 => true // reproduction
+        _ => false // overpopulation or underpopulation
+    }
 # }
 ```
 
@@ -48,26 +48,26 @@ The `for` loop iterates over a range of values:
 ```yodl
 // Simple parallel hexadecimal to character decoder
 module Hex<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[$cdiv(Bits, 4)]) {
-    const Len = $cdiv(Bits, 4);
+    const Len = $cdiv(Bits, 4)
     for i in 0..<Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
-            4'h0 => '0',
-            4'h1 => '1',
-            4'h2 => '2',
-            4'h3 => '3',
-            4'h4 => '4',
-            4'h5 => '5',
-            4'h6 => '6',
-            4'h7 => '7',
-            4'h8 => '8',
-            4'h9 => '9',
-            4'hA => 'A',
-            4'hB => 'B',
-            4'hC => 'C',
-            4'hD => 'D',
-            4'hE => 'E',
-            4'hF => 'F',
-        };
+            4'h0 => '0'
+            4'h1 => '1'
+            4'h2 => '2'
+            4'h3 => '3'
+            4'h4 => '4'
+            4'h5 => '5'
+            4'h6 => '6'
+            4'h7 => '7'
+            4'h8 => '8'
+            4'h9 => '9'
+            4'hA => 'A'
+            4'hB => 'B'
+            4'hC => 'C'
+            4'hD => 'D'
+            4'hE => 'E'
+            4'hF => 'F'
+        }
     }
 }
 

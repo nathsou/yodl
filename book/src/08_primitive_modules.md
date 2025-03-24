@@ -10,9 +10,9 @@ Registers are fundamental storage elements in digital circuits. They store data 
 
 ```yodl
 module Counter(clk: clock) -> (value: uint<8>) {
-    let counter = Reg<uint<8>>(clk);
-    counter.d = counter.q + 1'b1;
-    value = counter.q;
+    let counter = Reg<uint<8>>(clk)
+    counter.d = counter.q + 1'b1
+    value = counter.q
 }
 ```
 
@@ -36,9 +36,9 @@ module Counter(clk: clock) -> (value: uint<8>) {
 
 ```yodl
 module Counter(clk: clock, rst: bool) -> (value: uint<8>) {
-    let counter = Reg<uint<8>>(clk, rst);
-    counter.d = counter.q + 1'b1;
-    value = counter.q;
+    let counter = Reg<uint<8>>(clk, rst)
+    counter.d = counter.q + 1'b1
+    value = counter.q
 }
 ```
 
@@ -48,9 +48,9 @@ When `rst` is asserted, the register's value is synchronously reset to 0.
 
 ```yodl
 module Counter(clk: clock, enable: bool) -> (value: uint<8>) {
-    let counter = Reg<uint<8>>(clk, en: enable);
-    counter.d = counter.q + 1'b1;
-    value = counter.q;
+    let counter = Reg<uint<8>>(clk, en: enable)
+    counter.d = counter.q + 1'b1
+    value = counter.q
 }
 ```
 
@@ -60,9 +60,9 @@ The same behaviour can be obtained using the `d` port only:
 
 ```yodl
 module Counter(clk: clock, enable: bool) -> (value: uint<8>) {
-    let counter = Reg<uint<8>>(clk);
-    counter.d = enable ? counter.q + 1'b1 : counter.q;
-    value = counter.q;
+    let counter = Reg<uint<8>>(clk)
+    counter.d = enable ? counter.q + 1'b1 : counter.q
+    value = counter.q
 }
 ```
 
@@ -70,7 +70,7 @@ module Counter(clk: clock, enable: bool) -> (value: uint<8>) {
 
 ```yodl
 # module Test(clk: clock, rst: bool) -> () {
-    let state = RegAsyncReset<uint<2>>(clk, rst);
+    let state = RegAsyncReset<uint<2>>(clk, rst)
 # }
 ```
 
@@ -122,9 +122,9 @@ module RAM(
     >(
         read: [{ clk: clk, en: true, addr: addr }],
         write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: true }],
-    );
+    )
     
-    read_data = mem.q[0];
+    read_data = mem.q[0]
 }
 ```
 
@@ -152,9 +152,9 @@ module ByteAddressableRAM(
     >(
         read: [{ clk: clk, en: true, addr: addr }],
         write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask }],
-    );
+    )
 
-    read_data = uint(mem.q[0]);
+    read_data = uint(mem.q[0])
 }
 ```
 

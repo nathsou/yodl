@@ -13,36 +13,36 @@ module LFSR<NumBits: uint>(
 
     // https://docs.amd.com/v/u/en-US/xapp052
     r_xnor.d = match NumBits {
-        3 => r_lfsr.q[2] xnor r_lfsr.q[1],
-        4 => r_lfsr.q[3] xnor r_lfsr.q[2],
-        5 => r_lfsr.q[4] xnor r_lfsr.q[2],
-        6 => r_lfsr.q[5] xnor r_lfsr.q[4],
-        7 => r_lfsr.q[6] xnor r_lfsr.q[5],
-        8 => r_lfsr.q[7] xnor r_lfsr.q[5] xnor r_lfsr.q[4] xnor r_lfsr.q[3],
-        9 => r_lfsr.q[8] xnor r_lfsr.q[4],
-        10 => r_lfsr.q[9] xnor r_lfsr.q[6],
-        11 => r_lfsr.q[10] xnor r_lfsr.q[8],
-        12 => r_lfsr.q[11] xnor r_lfsr.q[5] xnor r_lfsr.q[3] xnor r_lfsr.q[0],
-        13 => r_lfsr.q[12] xnor r_lfsr.q[3] xnor r_lfsr.q[2] xnor r_lfsr.q[0],
-        14 => r_lfsr.q[13] xnor r_lfsr.q[4] xnor r_lfsr.q[2] xnor r_lfsr.q[0],
-        15 => r_lfsr.q[14] xnor r_lfsr.q[13],
-        16 => r_lfsr.q[15] xnor r_lfsr.q[14] xnor r_lfsr.q[12] xnor r_lfsr.q[3],
-        17 => r_lfsr.q[16] xnor r_lfsr.q[13],
-        18 => r_lfsr.q[17] xnor r_lfsr.q[10],
-        19 => r_lfsr.q[18] xnor r_lfsr.q[5] xnor r_lfsr.q[1] xnor r_lfsr.q[0],
-        20 => r_lfsr.q[19] xnor r_lfsr.q[16],
-        21 => r_lfsr.q[20] xnor r_lfsr.q[18],
-        22 => r_lfsr.q[21] xnor r_lfsr.q[20],
-        23 => r_lfsr.q[22] xnor r_lfsr.q[17],
-        24 => r_lfsr.q[23] xnor r_lfsr.q[22] xnor r_lfsr.q[21] xnor r_lfsr.q[16],
-        25 => r_lfsr.q[24] xnor r_lfsr.q[21],
-        26 => r_lfsr.q[25] xnor r_lfsr.q[5] xnor r_lfsr.q[1] xnor r_lfsr.q[0],
-        27 => r_lfsr.q[26] xnor r_lfsr.q[4] xnor r_lfsr.q[1] xnor r_lfsr.q[0],
-        28 => r_lfsr.q[27] xnor r_lfsr.q[24],
-        29 => r_lfsr.q[28] xnor r_lfsr.q[26],
-        30 => r_lfsr.q[29] xnor r_lfsr.q[5] xnor r_lfsr.q[3] xnor r_lfsr.q[0],
-        31 => r_lfsr.q[30] xnor r_lfsr.q[27],
-        32 => r_lfsr.q[31] xnor r_lfsr.q[21] xnor r_lfsr.q[1] xnor r_lfsr.q[0],
+        3 => r_lfsr.q[2] xnor r_lfsr.q[1]
+        4 => r_lfsr.q[3] xnor r_lfsr.q[2]
+        5 => r_lfsr.q[4] xnor r_lfsr.q[2]
+        6 => r_lfsr.q[5] xnor r_lfsr.q[4]
+        7 => r_lfsr.q[6] xnor r_lfsr.q[5]
+        8 => r_lfsr.q[7] xnor r_lfsr.q[5] xnor r_lfsr.q[4] xnor r_lfsr.q[3]
+        9 => r_lfsr.q[8] xnor r_lfsr.q[4]
+        10 => r_lfsr.q[9] xnor r_lfsr.q[6]
+        11 => r_lfsr.q[10] xnor r_lfsr.q[8]
+        12 => r_lfsr.q[11] xnor r_lfsr.q[5] xnor r_lfsr.q[3] xnor r_lfsr.q[0]
+        13 => r_lfsr.q[12] xnor r_lfsr.q[3] xnor r_lfsr.q[2] xnor r_lfsr.q[0]
+        14 => r_lfsr.q[13] xnor r_lfsr.q[4] xnor r_lfsr.q[2] xnor r_lfsr.q[0]
+        15 => r_lfsr.q[14] xnor r_lfsr.q[13]
+        16 => r_lfsr.q[15] xnor r_lfsr.q[14] xnor r_lfsr.q[12] xnor r_lfsr.q[3]
+        17 => r_lfsr.q[16] xnor r_lfsr.q[13]
+        18 => r_lfsr.q[17] xnor r_lfsr.q[10]
+        19 => r_lfsr.q[18] xnor r_lfsr.q[5] xnor r_lfsr.q[1] xnor r_lfsr.q[0]
+        20 => r_lfsr.q[19] xnor r_lfsr.q[16]
+        21 => r_lfsr.q[20] xnor r_lfsr.q[18]
+        22 => r_lfsr.q[21] xnor r_lfsr.q[20]
+        23 => r_lfsr.q[22] xnor r_lfsr.q[17]
+        24 => r_lfsr.q[23] xnor r_lfsr.q[22] xnor r_lfsr.q[21] xnor r_lfsr.q[16]
+        25 => r_lfsr.q[24] xnor r_lfsr.q[21]
+        26 => r_lfsr.q[25] xnor r_lfsr.q[5] xnor r_lfsr.q[1] xnor r_lfsr.q[0]
+        27 => r_lfsr.q[26] xnor r_lfsr.q[4] xnor r_lfsr.q[1] xnor r_lfsr.q[0]
+        28 => r_lfsr.q[27] xnor r_lfsr.q[24]
+        29 => r_lfsr.q[28] xnor r_lfsr.q[26]
+        30 => r_lfsr.q[29] xnor r_lfsr.q[5] xnor r_lfsr.q[3] xnor r_lfsr.q[0]
+        31 => r_lfsr.q[30] xnor r_lfsr.q[27]
+        32 => r_lfsr.q[31] xnor r_lfsr.q[21] xnor r_lfsr.q[1] xnor r_lfsr.q[0]
     };
 
     done = r_lfsr.q == 0;

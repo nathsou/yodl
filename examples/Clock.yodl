@@ -1,30 +1,30 @@
 import Text
 
-const CLOCK_FREQ = 25_000_000; // 25 Mhz on Nandland Go
+const CLOCK_FREQ = 25_000_000 // 25 Mhz on Nandland Go
 
 module Dabble(bin: uint<4>) -> (q: uint<4>) {
-    q = bin >= 4'd5 ? bin + 4'd3 : bin;
+    q = bin >= 4'd5 ? bin + 4'd3 : bin
 }
 
 module BCD2(bin: uint<6>) -> (q: uint<8>) {
-    let a = bin[5];
-    let b = bin[4];
-    let c = bin[3];
-    let d = bin[2];
-    let e = bin[1];
-    let f = bin[0];
+    let a = bin[5]
+    let b = bin[4]
+    let c = bin[3]
+    let d = bin[2]
+    let e = bin[1]
+    let f = bin[0]
 
-    let t = Dabble(bin: {1'b0, a, b, c}).q;
-    let u = Dabble(bin: {t[2:0], d}).q;
-    let v = Dabble(bin: {u[2:0], e}).q;
+    let t = Dabble(bin: {1'b0, a, b, c}).q
+    let u = Dabble(bin: {t[2:0], d}).q
+    let v = Dabble(bin: {u[2:0], e}).q
 
-    q = {1'b0, t[3], u[3], v, f};
+    q = {1'b0, t[3], u[3], v, f}
 }
 
 module TicTac<Max: uint>(clk: clock, en: bool, rst: bool) -> (tick: bool, count: uint<$clog2(Max)>) {
-    let counter = Reg<uint<$clog2(Max)>>(clk, en, rst: rst or tick, q: count);
-    counter.d = counter.q + 1;
-    tick = counter.q == Max;
+    let counter = Reg<uint<$clog2(Max)>>(clk, en, rst: rst or tick, q: count)
+    counter.d = counter.q + 1
+    tick = counter.q == Max
 }
 
 module Clock(
@@ -48,32 +48,32 @@ module Clock(
         col: screen_x,
         row: screen_y,
         is_active_area,
-    );
+    )
 
-    let ticks = TicTac<CLOCK_FREQ>(clk, en: 1'b1, rst);
-    let seconds = TicTac<60>(clk, en: ticks.tick, rst);
-    let minutes = TicTac<60>(clk, en: seconds.tick, rst);
-    let hours = TicTac<24>(clk, en: minutes.tick, rst);
+    let ticks = TicTac<CLOCK_FREQ>(clk, en: 1'b1, rst)
+    let seconds = TicTac<60>(clk, en: ticks.tick, rst)
+    let minutes = TicTac<60>(clk, en: seconds.tick, rst)
+    let hours = TicTac<24>(clk, en: minutes.tick, rst)
 
     let text = Text::Text<Length: 8, X: 36, Y: 30>(
         text: {
-            let seconds_dec = Text::Dec<8>(n: BCD2(bin: seconds.count).q).chars;
-            let minutes_dec = Text::Dec<8>(n: BCD2(bin: minutes.count).q).chars;
-            let hours_dec = Text::Dec<8>(n: BCD2(bin: {1'b0, hours.count}).q).chars;
-            [..hours_dec, ':', ..minutes_dec, ':', ..seconds_dec];
+            let seconds_dec = Text::Dec<8>(n: BCD2(bin: seconds.count).q).chars
+            let minutes_dec = Text::Dec<8>(n: BCD2(bin: minutes.count).q).chars
+            let hours_dec = Text::Dec<8>(n: BCD2(bin: {1'b0, hours.count}).q).chars
+            [..hours_dec, ':', ..minutes_dec, ':', ..seconds_dec]
         },
         screen_x,
         screen_y,
-    );
+    )
 
     let color = match is_active_area and text.is_active {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
-        1'b1 => { r: 3'd1, g: 3'd6, b: 3'd3 },
-    };
+        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 }
+        1'b1 => { r: 3'd1, g: 3'd6, b: 3'd3 }
+    }
 
-    vga_red = color.r;
-    vga_green = color.g;
-    vga_blue = color.b;
+    vga_red = color.r
+    vga_green = color.g
+    vga_blue = color.b
 }
 
 module Top(
@@ -96,7 +96,7 @@ module Top(
         vga_red,
         vga_green,
         vga_blue,
-    );
+    )
 
-    led = 4'd0;
+    led = 4'd0
 }

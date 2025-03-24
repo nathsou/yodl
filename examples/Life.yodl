@@ -11,19 +11,19 @@ module Cell(
 ) -> (
     state: bool,
 ) {
-    let alive = Reg<bool>(clk, rst, en: enable, q: state);
+    let alive = Reg<bool>(clk, rst, en: enable, q: state)
     let count: uint<3> = neighbors[0] + neighbors[1] + neighbors[2] + neighbors[3] +
-                         neighbors[4] + neighbors[5] + neighbors[6] + neighbors[7];
+                         neighbors[4] + neighbors[5] + neighbors[6] + neighbors[7]
 
     alive.d = if write_enable {
-        write_state; // direct write during initialization
+        write_state // direct write during initialization
     } else {
         match count {
-            3'd2 => alive.q, // stable
-            3'd3 => true, // reproduction
-            _ => false, // overpopulation or underpopulation
+            3'd2 => alive.q // stable
+            3'd3 => true // reproduction
+            _ => false // overpopulation or underpopulation
         }
-    };
+    }
 }
 
 module Grid<Rows: uint, Cols: uint>(
@@ -38,35 +38,35 @@ module Grid<Rows: uint, Cols: uint>(
 ) -> (
     read_state: bool,
 ) {
-    let cells = Cols * [Rows * [Cell(clk, rst)]];
+    let cells = Cols * [Rows * [Cell(clk, rst)]]
 
     for row in 0..<Rows {
         for col in 0..<Cols {
-            let cell = cells[col][row];
-            let cell_active = (write_row == row) and (write_col == col);
+            let cell = cells[col][row]
+            let cell_active = (write_row == row) and (write_col == col)
 
-            cell.enable = write_enable ? cell_active : 1'b1;
-            cell.write_enable = write_enable and cell_active;
-            cell.write_state = write_state;
+            cell.enable = write_enable ? cell_active : 1'b1
+            cell.write_enable = write_enable and cell_active
+            cell.write_state = write_state
 
             // wrap around
-            const prev_row = row == 0 ? Rows - 1 : row - 1;
-            const next_row = row == Rows - 1 ? 0 : row + 1;
-            const prev_col = col == 0 ? Cols - 1 : col - 1;
-            const next_col = col == Cols - 1 ? 0 : col + 1;
+            const prev_row = row == 0 ? Rows - 1 : row - 1
+            const next_row = row == Rows - 1 ? 0 : row + 1
+            const prev_col = col == 0 ? Cols - 1 : col - 1
+            const next_col = col == Cols - 1 ? 0 : col + 1
 
-            cell.neighbors[0] = cells[prev_col][prev_row].state;
-            cell.neighbors[1] = cells[col][prev_row].state;
-            cell.neighbors[2] = cells[next_col][prev_row].state;
-            cell.neighbors[3] = cells[prev_col][row].state;
-            cell.neighbors[4] = cells[next_col][row].state;
-            cell.neighbors[5] = cells[prev_col][next_row].state;
-            cell.neighbors[6] = cells[col][next_row].state;
-            cell.neighbors[7] = cells[next_col][next_row].state;
+            cell.neighbors[0] = cells[prev_col][prev_row].state
+            cell.neighbors[1] = cells[col][prev_row].state
+            cell.neighbors[2] = cells[next_col][prev_row].state
+            cell.neighbors[3] = cells[prev_col][row].state
+            cell.neighbors[4] = cells[next_col][row].state
+            cell.neighbors[5] = cells[prev_col][next_row].state
+            cell.neighbors[6] = cells[col][next_row].state
+            cell.neighbors[7] = cells[next_col][next_row].state
         }
     }
 
-    read_state = cells[read_col][read_row].state;
+    read_state = cells[read_col][read_row].state
 }
 
 module GridInit<Rows: uint, Cols: uint>(
@@ -79,38 +79,38 @@ module GridInit<Rows: uint, Cols: uint>(
     read_state: bool,
     ready: bool,
 ) {
-    let grid = Grid<Rows, Cols>(clk, rst, read_row, read_col, read_state);
-    const PatternLen = Rows * Cols;
-    let counter = Reg<uint<$clog2(PatternLen)>>(clk, rst);
-    let row = Reg<uint<$clog2(Rows)>>(clk, rst);
-    let col = Reg<uint<$clog2(Cols)>>(clk, rst);
-    let state = pattern[row.q][col.q];
+    let grid = Grid<Rows, Cols>(clk, rst, read_row, read_col, read_state)
+    const PatternLen = Rows * Cols
+    let counter = Reg<uint<$clog2(PatternLen)>>(clk, rst)
+    let row = Reg<uint<$clog2(Rows)>>(clk, rst)
+    let col = Reg<uint<$clog2(Cols)>>(clk, rst)
+    let state = pattern[row.q][col.q]
 
-    col.d = col.q;
-    row.d = row.q;
-    counter.d = counter.q;
+    col.d = col.q
+    row.d = row.q
+    counter.d = counter.q
 
     if counter.q <: PatternLen {
-        grid.write_enable = 1'1;
-        grid.write_state = state;
-        grid.write_row = row.q;
-        grid.write_col = col.q;
-        ready = 1'0;
+        grid.write_enable = 1'1
+        grid.write_state = state
+        grid.write_row = row.q
+        grid.write_col = col.q
+        ready = 1'0
 
-        counter.d = counter.q + 1'1;
+        counter.d = counter.q + 1'1
 
         if col.q == Cols - 1 {
-            col.d = uint($clog2(Cols) * {1'0});
-            row.d = row.q + 1'1;
+            col.d = uint($clog2(Cols) * {1'0})
+            row.d = row.q + 1'1
         } else {
-            col.d = col.q + 1'1;
+            col.d = col.q + 1'1
         }
     } else {
-        grid.write_enable = 1'0;
-        grid.write_state = 1'0;
-        grid.write_row = uint($clog2(Rows) * {1'0});
-        grid.write_col = uint($clog2(Cols) * {1'0});
-        ready = 1'b1;
+        grid.write_enable = 1'0
+        grid.write_state = 1'0
+        grid.write_row = uint($clog2(Rows) * {1'0})
+        grid.write_col = uint($clog2(Cols) * {1'0})
+        ready = 1'b1
     }
 }
 
@@ -124,11 +124,11 @@ module Life(
 ) -> (
     color: { r: uint<3>, g: uint<3>, b: uint<3> },
 ) {
-    const Rows = 480 / 16;
-    const Cols = 640 / 16;
+    const Rows = 480 / 16
+    const Cols = 640 / 16
 
-    let x = col[9:4];
-    let y = row[8:4];
+    let x = col[9:4]
+    let y = row[8:4]
 
     // Gosper glider gun and a glider eater
     let pattern: bool[Cols][Rows] = [
@@ -162,27 +162,27 @@ module Life(
         $rev([..40'b0000000000000000000000000000000000000010]),
         $rev([..40'b0000000000000000000000000000000000000011]),
         $rev([..40'b0000000000000000000000000000000000000000]),
-    ];
+    ]
 
     let grid = GridInit<Rows, Cols>(
         rst,
         read_col: x,
         read_row: y,
         pattern,
-    );
+    )
 
-    grid.clk = grid.ready ? clock(vsync) : clk;
+    grid.clk = grid.ready ? clock(vsync) : clk
 
     color = match grid.ready {
-        1'0 => { r: 3'd0, g: 3'd0, b: 3'd0 },
+        1'0 => { r: 3'd0, g: 3'd0, b: 3'd0 }
         1'1 => {
             if col[3:0] == 4'0 or row[3:0] == 4'0 {
-                { r: 3'd1, g: 3'd1, b: 3'd1 };
+                { r: 3'd1, g: 3'd1, b: 3'd1 }
             } else if grid.read_state {
-                { r: 3'd1, g: 3'd6, b: 3'd4 };
+                { r: 3'd1, g: 3'd6, b: 3'd4 }
             } else {
-                { r: 3'd0, g: 3'd0, b: 3'd0 };
+                { r: 3'd0, g: 3'd0, b: 3'd0 }
             }
-        },
-    };
+        }
+    }
 }
