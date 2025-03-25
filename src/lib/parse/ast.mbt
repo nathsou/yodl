@@ -698,17 +698,17 @@ pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Exp
       }
       Unary(op=Neg, ..) => None
       Unary(op~, expr~, span~, ty~) => {
-        match expr.as_int?() {
+        match expr.as_bigint?() {
           Ok(value) => {
             let value = match op {
-              Not => @utils.bitwise_not(BigInt::from_int(value)).to_int()
-              Andr => @utils.bits(value).all(fn(b) { b }).to_int()
-              Orr => @utils.bits(value).any(fn(b) { b }).to_int()
-              Xorr => @utils.bits(value).fold(init=0, fn(acc, b) { acc ^ b.to_int() })
+              Not => @utils.bitwise_not(value)
+              Andr => BigInt::from_int(@utils.bits(value).all(fn(b) { b }).to_int())
+              Orr => BigInt::from_int(@utils.bits(value).any(fn(b) { b }).to_int())
+              Xorr => BigInt::from_int(@utils.bits(value).fold(init=0, fn(acc, b) { acc ^ b.to_int() }))
               Neg => raise @utils.unreachable()
             }
 
-            Some(Natural(value=BigInt::from_int(value), width=None, base=10, span~, ty~))
+            Some(Natural(value=value, width=None, base=10, span~, ty~))
           }
           _ => None
         }
@@ -845,25 +845,32 @@ let builtin_functions: Map[String, BuiltinFunction] = {
   "$clog2": {
     arity: Fixed(1),
     apply: fn(args, span) {
-      let arg = args[0].as_int!()
+      let arg = args[0].as_bigint!()
       let value = @utils.clog2(arg)
-      Some(Expr::nat(value, span~))
+      Some(Expr::bignat(value, width=None, span~))
     }
   },
   "$pow": {
     arity: Fixed(2),
     apply: fn(args, span) {
-      let base = args[0].as_int!()
-      let exp = args[1].as_int!()
-      Some(Expr::nat(@utils.pow(base, exp), span~))
+      let base = args[0].as_bigint!()
+      let exp = args[1].as_bigint!()
+      Some(Expr::bignat(@utils.pow(base, exp), span~))
     }
   },
   "$cdiv": {
     arity: Fixed(2),
     apply: fn(args, span) {
-      let dividend = args[0].as_int!()
-      let divisor = args[1].as_int!()
-      Some(Expr::nat(@utils.cdiv(dividend, divisor), span~))
+      let dividend = args[0].as_bigint!()
+      let divisor = args[1].as_bigint!()
+      Some(Expr::bignat(@utils.cdiv(dividend, divisor), span~))
+    }
+  },
+  "$csqrt": {
+    arity: Fixed(1),
+    apply: fn(args, span) {
+      let arg = args[0].as_bigint!()
+      Some(Expr::bignat(@utils.csqrt(arg), span~))
     }
   },
   "$rev": {
@@ -1112,12 +1119,16 @@ pub fn has_zero_width(self: Type) -> Bool {
 }
 
 pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
+  Expr::bignat(BigInt::from_int(n), width~, base~, span~)
+}
+
+pub fn Expr::bignat(n: BigInt, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
   let ty = match width {
     Some(width) => if n > 0 { Type::uint(width) } else { Type::uint(width) }
-    None => Nat(min_width=@utils.significant_bits(BigInt::from_int(n)))
+    None => Nat(min_width=@utils.significant_bits(n))
   }
 
-  Natural(value=BigInt::from_int(n), width~, base~, span~, ty={ val: Some(ty) })
+  Natural(value=n, width~, base~, span~, ty={ val: Some(ty) })
 }
 
 pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Map[String, Param]!AstError {

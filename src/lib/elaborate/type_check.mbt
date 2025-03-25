@@ -390,11 +390,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 (Equ | Neq | Gtr | Lss | Geq | Leq, SInt(_), SInt(_)) => @parse.Type::uint(1)
                 (Shl, UInt(_), UInt(_)) => match shift_amount {
                     Some(amount) => @parse.Type::uint(wa + amount)
-                    None => @parse.Type::uint(wa + @utils.pow2(wb) - 1)
+                    None => @parse.Type::uint(wa + @utils.pow2(wb).to_int() - 1)
                 }
                 (Shl, SInt(_), UInt(_)) => match shift_amount {
                     Some(amount) => @parse.Type::sint(wa + amount)
-                    None => @parse.Type::sint(wa + @utils.pow2(wb) - 1)
+                    None => @parse.Type::sint(wa + @utils.pow2(wb).to_int() - 1)
                 }
                 (Shr, UInt(_), UInt(_)) => match shift_amount {
                     Some(amount) => @parse.Type::uint(@utils.max(wa - amount, 0))

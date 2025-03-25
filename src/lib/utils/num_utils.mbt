@@ -15,32 +15,55 @@ pub fn sum(iter: Iter[Int]) -> Int {
   iter.fold(fn(a, b) { a + b }, init=0)
 }
 
-pub fn clog2(n: Int) -> Int {
-  let mut p = 1
+pub fn clog2(n: BigInt) -> BigInt {
+  let mut p: BigInt = 1
+  let mut i: BigInt = 0
 
-  for i in 0..<64 {
+  while i < 1024 {
     if p >= n {
       return i
     }
 
     p = p << 1
+    i += 1
   }
 
-  64
+  1024
 }
 
-pub fn cdiv(dividend: Int, divisor: Int) -> Int {
-  @math.ceil(dividend.to_double() / divisor.to_double()).to_int()
+pub fn cdiv(dividend: BigInt, divisor: BigInt) -> BigInt {
+  let quotient = dividend / divisor
+
+  if quotient * divisor == dividend {
+    quotient
+  } else {
+    quotient + 1
+  }
 }
 
-pub fn pow2(n: Int) -> Int {
-  1 << n
+// returns the ceiling of the square root of n
+pub fn csqrt(n: BigInt) -> BigInt {
+  let mut i: BigInt = 0
+
+  while i < n {
+    if i * i >= n {
+      return i
+    }
+
+    i += 1
+  }
+
+  0
 }
 
-pub fn pow(n: Int, exp: Int) -> Int {
+pub fn pow2(n: Int) -> BigInt {
+  BigInt::from_int(1) << n
+}
+
+pub fn pow(n: BigInt, exp: BigInt) -> BigInt {
   let mut n = n
   let mut exp = exp
-  let mut res = 1
+  let mut res: BigInt = 1
 
   while exp > 0 {
     if (exp & 1) == 1 {
@@ -132,8 +155,8 @@ pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
   }
 }
 
-pub fn bin(n: Int, width~: Int) -> Iter[Bool] {
-  let mut p = 1 << (width - 1)
+pub fn bin(n: BigInt, width~: Int) -> Iter[Bool] {
+  let mut p = BigInt::from_int(1) << (width - 1)
 
   Iter::new(fn(visit: (Bool) -> IterResult) -> IterResult {
     for i in 0..<width {
@@ -148,12 +171,12 @@ pub fn bin(n: Int, width~: Int) -> Iter[Bool] {
   })
 }
 
-pub fn bits(n: Int) -> Iter[Bool] {
+pub fn bits(n: BigInt) -> Iter[Bool] {
   if n == 0 {
     return [false].iter()
   }
 
-  let width = clog2(n + 1)
+  let width = clog2(n + 1).to_int()
   bin(n, width~)
 }
 

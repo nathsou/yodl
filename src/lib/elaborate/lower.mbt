@@ -624,7 +624,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       
       let subject_binding = binding.map(fn(b) { "\{b}_subject" }).or("subject")
       let fir_subject = @firrtl.Reference(self.lower_expr!(subject, scope~, env~).as_ref!(self, scope~, binding=Some(subject_binding)))
-      let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type!(subject.ty(), span~).width!(span))
+      let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type!(subject.ty(), span~).width!(span)).to_int()
       let mut last_when: @firrtl.When? = None
 
       for idx, case in cases {
