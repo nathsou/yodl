@@ -106,7 +106,7 @@ impl ScopeLike for StmtContainer with add_stmt(self, stmt) {
 fn id_of_path(path: @parse.Path) -> @firrtl.Id {
   match path.packages {
     [] => Ident(path.member)
-    _ => Ident(String::concat(path.packages, separator="_") + "_" + path.member)
+    _ => Ident(@string.concat(path.packages, separator="_") + "_" + path.member)
   }
 }
 
@@ -222,7 +222,7 @@ fn default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
 
 fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
   let env = ElaboratorEnv::new()
-  self.current_target.push(String::concat([..mod.path.packages, mod.path.member], separator="_"))
+  self.current_target.push(@string.concat([..mod.path.packages, mod.path.member], separator="_"))
   self.current_clock = None
 
   let fir_mod: @firrtl.Module = {
@@ -262,13 +262,13 @@ fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit! {
       { name: "inline", args: [], .. } => {
         self.annotations.push({
           "class": "firrtl.passes.InlineAnnotation",
-          "target": String::concat(self.current_target, separator=".").to_json(),
+          "target": @string.concat(self.current_target, separator=".").to_json(),
         })
       }
       { name: "flatten", args: [], .. } => {
         self.annotations.push({
           "class": "firrtl.transforms.FlattenAnnotation",
-          "target": String::concat(self.current_target, separator=".").to_json(),
+          "target": @string.concat(self.current_target, separator=".").to_json(),
         })
       }
       { name: "internal", args: [], .. } => ()
@@ -1164,7 +1164,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       let annotation = {
         "class": "firrtl.annotations.MemoryFileInlineAnnotation",
-        "target": String::concat([..self.current_target, mem_id], separator="."),
+        "target": @string.concat([..self.current_target, mem_id], separator="."),
         "filename": path,
         "hexOrBinary": if name == "$readmemh" { "h" } else { "b" },
         "originalMemoryNameOpt": mem_id,

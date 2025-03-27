@@ -451,13 +451,13 @@ impl Spanned with show_context(self, use_ansi_colors~: Bool) -> String {
   builder.write_string(", ")
 
   if use_ansi_colors {
-    builder.write_string("\x1b[4m")
+    builder.write_string("\u001b[1;31m")
   }
 
   builder.write_string("\{span}")
   
   if use_ansi_colors {
-    builder.write_string("\x1b[0m")
+    builder.write_string("\u001b[0m")
   }
 
   builder.write_string("\n\n")

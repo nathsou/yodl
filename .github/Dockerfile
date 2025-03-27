@@ -13,7 +13,7 @@ RUN apt update
 RUN apt install -y curl git wget tar unzip
 
 # Install Moonbit
-RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.1.20250310+a7a1e9804'
+RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.1.20250324+371b0cfef'
 ENV PATH="/root/.moon/bin:${PATH}"
 RUN moon update
 RUN moon install

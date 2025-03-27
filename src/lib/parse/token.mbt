@@ -91,7 +91,7 @@ pub fn context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool = false
           }
 
           if use_ansi_colors {
-            window.write_string("\x1b[1;31m")
+            window.write_string("\u001b[31m")
           }
 
           for _ in 0..=(last_non_whitespace_col - first_non_whitespace_col) {
@@ -99,7 +99,7 @@ pub fn context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool = false
           }
 
           if use_ansi_colors {
-            window.write_string("\x1b[0m")
+            window.write_string("\u001b[0m")
           }
         }
       }
