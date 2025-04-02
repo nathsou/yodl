@@ -126,16 +126,16 @@ pub(all) struct Path {
 } derive(Eq)
 
 pub impl Hash for Path with hash_combine(self, hasher) {
-  for package in self.packages {
-    hasher.combine(package)
+  for pkg in self.packages {
+    hasher.combine(pkg)
   }
 
   hasher.combine(self.member)
 }
 
 pub impl Show for Path with output(self, logger) {
-  for package in self.packages {
-    logger.write_string(package)
+  for pkg in self.packages {
+    logger.write_string(pkg)
     logger.write_string("::")
   }
 

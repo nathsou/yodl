@@ -1,0 +1,21 @@
+{
+    "type": "module",
+    "name": "yodl",
+    "main": "target/js/release/build/main.js",
+    "types": "target/js/release/build/main.d.ts",
+    "description": "Modern Hardware Description Language",
+    "version": "0.0.1",
+    "files": [
+        "/target/js/release/build/main/"
+    ],
+    "bin": {
+        "yodl": "target/js/release/build/main/main.js"
+    },
+    "scripts": {
+        "prepublishOnly": "moon build --target js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' target/js/release/build/main/main.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/nathsou/yodl.git"
+    }
+}

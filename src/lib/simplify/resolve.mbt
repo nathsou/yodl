@@ -127,7 +127,7 @@ let builtin_decls: Array[@parse.Decl] = {
 
 pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.PackageDecl!ResolutionError {
   match self.resolved_packages[path] {
-    Some(package) => return package
+    Some(pkg) => return pkg
     None => ()
   }
 

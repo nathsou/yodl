@@ -1,6 +1,6 @@
 // FIRRTL https://github.com/chipsalliance/firrtl-spec
 
-pub fn version() -> (Int, Int, Int) {
+pub fn min_version() -> (Int, Int, Int) {
   (4, 1, 0)
 }
 

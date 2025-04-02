@@ -5,15 +5,14 @@ To try Yodl directly in your browser, [visit the playground](https://nathsou.git
 
 ## Installation
 
-To build and run Yodl, install [Moonbit](https://www.moonbitlang.com/download/#moonbit-cli-tools)
+The simplest way to get yodl is to install the bundled npm package:
 
 ```bash
-git clone https://github.com/nathsou/yodl.git yodl
-cd yodl
-moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"
+$ npm install --global yodl
+$ yodl examples/Hello.yodl "write_firrtl Hello.fir"
 ```
 
-.fir files can then be converted to SystemVerilog using [firtool](https://github.com/llvm/circt/releases) (tested with version 1.106.0).
+.fir files can then be converted to SystemVerilog using [firtool](https://github.com/llvm/circt/releases) (tested with version 1.111.1).
 
 Feature support for SystemVerilog/Verilog differs from tool to tool, check [this page](https://circt.llvm.org/docs/VerilogGeneration/#recommended-loweringoptions-by-target) to customise the output.
 When using Yosys for instance, specify `--lowering-options=disallowPackedArrays,disallowLocalVariables,emitBindComments`.
@@ -22,12 +21,13 @@ When using Yosys for instance, specify `--lowering-options=disallowPackedArrays,
 firtool --format=fir --verilog Hello.fir -o Hello.sv
 ```
 
-The project can also be compiled to JavaScript by running:
+The project can also be compiled to wasm or wasm-gc by installing [Moonbit](https://www.moonbitlang.com/) and running:
 
 ```bash
-moon build --target js
-# run using node, bun or deno
-node target/js/release/build/main/main.js examples/Hello.yodl "write_firrtl"
+$ git clone https://github.com/nathsou/yodl
+$ cd yodl
+$ moon build --target wasm-gc
+$ moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"
 ```
 
 ## Editor support

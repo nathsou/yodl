@@ -9,12 +9,28 @@ Yet anOther (hardware) Description Language
 - [Documentation](https://nathsou.github.io/yodl/book/)
 - [Playground](https://nathsou.github.io/yodl/playground.html)
 
+# Installation
+
+The JS build of Yodl can be installed from npm:
+
+```bash
+$ npm install --global yodl
+```
+
+To compile FIRRTL outputs to SystemVerilog, install [firtool](https://github.com/llvm/circt/releases/tag/firtool-1.111.1)
+
 ## Usage
-- Install [Moonbit](https://www.moonbitlang.com/) and [firtool](https://github.com/llvm/circt/releases) (tested with version 1.108.0)
-- ```$ git clone https://github.com/nathsou/yodl.git yodl```
-- ```$ cd yodl```
-- ```$ moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"```
-- ```$ firtool --format=fir --verilog Hello.fir -o Hello.sv```
+```bash
+$ yodl examples/Hello.yodl "write_firrtl Hello.fir"
+$ firtool --format=fir --verilog Hello.fir -o Hello.sv
+```
+
+## Development
+Install [Moonbit](https://www.moonbitlang.com/):
+
+```bash
+$ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.1.20250324+371b0cfef'
+```
 
 ## Checklist
 

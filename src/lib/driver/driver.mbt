@@ -173,7 +173,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
       WriteFIRRTL(path~) => {
         let emitter = @firrtl.FIRRTLEmitter::new()
         emitter.emit_circuit({
-          version: @firrtl.version(),
+          version: @firrtl.min_version(),
           id: Ident(firrtl.circuit_name),
           annotations: firrtl.annotations,
           decls: firrtl.modules.values().map(fn(mod) { @firrtl.Decl::Module(mod) }).collect(),
