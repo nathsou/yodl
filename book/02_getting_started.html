@@ -158,20 +158,20 @@
                         <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
 <p>To try Yodl directly in your browser, <a href="https://nathsou.github.io/yodl/playground.html">visit the playground</a>.</p>
 <h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
-<p>To build and run Yodl, install <a href="https://www.moonbitlang.com/download/#moonbit-cli-tools">Moonbit</a></p>
-<pre><code class="language-bash">git clone https://github.com/nathsou/yodl.git yodl
-cd yodl
-moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"
+<p>The simplest way to get yodl is to install the bundled npm package:</p>
+<pre><code class="language-bash">$ npm install --global yodl
+$ yodl examples/Hello.yodl "write_firrtl Hello.fir"
 </code></pre>
-<p>.fir files can then be converted to SystemVerilog using <a href="https://github.com/llvm/circt/releases">firtool</a> (tested with version 1.106.0).</p>
+<p>.fir files can then be converted to SystemVerilog using <a href="https://github.com/llvm/circt/releases">firtool</a> (tested with version 1.111.1).</p>
 <p>Feature support for SystemVerilog/Verilog differs from tool to tool, check <a href="https://circt.llvm.org/docs/VerilogGeneration/#recommended-loweringoptions-by-target">this page</a> to customise the output.
 When using Yosys for instance, specify <code>--lowering-options=disallowPackedArrays,disallowLocalVariables,emitBindComments</code>.</p>
 <pre><code class="language-bash">firtool --format=fir --verilog Hello.fir -o Hello.sv
 </code></pre>
-<p>The project can also be compiled to JavaScript by running:</p>
-<pre><code class="language-bash">moon build --target js
-# run using node, bun or deno
-node target/js/release/build/main/main.js examples/Hello.yodl "write_firrtl"
+<p>The project can also be compiled to wasm or wasm-gc by installing <a href="https://www.moonbitlang.com/">Moonbit</a> and running:</p>
+<pre><code class="language-bash">$ git clone https://github.com/nathsou/yodl
+$ cd yodl
+$ moon build --target wasm-gc
+$ moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"
 </code></pre>
 <h2 id="editor-support"><a class="header" href="#editor-support">Editor support</a></h2>
 <h3 id="visual-studio-code"><a class="header" href="#visual-studio-code">Visual Studio Code</a></h3>
