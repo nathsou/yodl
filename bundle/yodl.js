@@ -181,7 +181,7 @@ module Top(
     vga_green: uint<3>,
     vga_blue: uint<3>,
 ) {
-    let rst = button[0] or button[1] or button[2] or button[3]
+    let rst = orr button
     let vga = VGA::SyncPulses(
         pixel_clk: clk,
         hsync: vga_hsync,
