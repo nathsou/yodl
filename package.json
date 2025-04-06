@@ -1,10 +1,10 @@
 {
-    "type": "module",
+    "type": "commonjs",
     "name": "yodl",
     "main": "target/js/release/build/main.js",
     "types": "target/js/release/build/main.d.ts",
     "description": "Modern Hardware Description Language",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "files": [
         "/target/js/release/build/main/"
     ],
