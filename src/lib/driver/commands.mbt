@@ -138,52 +138,18 @@ pub fn parse_commands(source: String) -> Array[Command]!CommandParserError {
   let commands = Array::new(capacity=cmds.length())
 
   for cmd in cmds {
+    let path = match cmd.args {
+      [] => None
+      [path] => Some(path)
+      _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
+    }
+
     let command = match cmd.name {
-      "write_source" => {
-        let path = match cmd.args {
-          [] => None
-          [path] => Some(path)
-          _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
-        }
-
-        WriteSource(path~)
-      }
-      "write_mono" => {
-        let path = match cmd.args {
-          [] => None
-          [path] => Some(path)
-          _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
-        }
-
-        WriteMono(path~)
-      }
-      "write_typed" => {
-        let path = match cmd.args {
-          [] => None
-          [path] => Some(path)
-          _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
-        }
-
-        WriteTyped(path~)
-      }
-      "write_simplified" => {
-        let path = match cmd.args {
-          [] => None
-          [path] => Some(path)
-          _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
-        }
-
-        WriteSimplified(path~)
-      }
-      "write_firrtl" => {
-        let path = match cmd.args {
-          [] => None
-          [path] => Some(path)
-          _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
-        }
-
-        WriteFIRRTL(path~)
-      }
+      "write_source" => WriteSource(path~)
+      "write_mono" => WriteMono(path~)
+      "write_typed" => WriteTyped(path~)
+      "write_simplified" => WriteSimplified(path~)
+      "write_firrtl" | "write_fir" => WriteFIRRTL(path~)
       _ => raise UnknownCommand(name=cmd.name)
     }
 
