@@ -1,4 +1,3 @@
-
 fn main {
   let fs: @utils.FileSystem = {
     path_exists: @fs.path_exists,
@@ -61,6 +60,14 @@ fn main {
     }
     _ => {
       println("Usage: yodl <file> [commands]")
+      println("\nCommands are separated by semicolons ';'. Each command can optionally take a file path argument.")
+      println("Available commands:")
+      println("  write_source [path]     - Write the source code after parsing.")
+      println("  write_mono [path]       - Write the monomorphized code.")
+      println("  write_typed [path]      - Write the typed code.")
+      println("  write_simplified [path] - Write the simplified code.")
+      println("  write_firrtl [path]     - Write the FIRRTL output (alias: write_fir).")
+      println("\nExample: yodl my_design.yodl \"write_firrtl my_design.fir; write_typed my_design.typed.txt\"")
     }
   }
 }
