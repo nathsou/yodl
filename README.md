@@ -29,7 +29,7 @@ $ firtool --format=fir --verilog Hello.fir -o Hello.sv
 Install [Moonbit](https://www.moonbitlang.com/):
 
 ```bash
-$ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.1.20250324+371b0cfef'
+$ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.1.20250416+7b5076c8f'
 ```
 
 ## Checklist

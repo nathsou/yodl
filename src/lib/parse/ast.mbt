@@ -441,7 +441,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
 
 pub(open) trait Spanned {
   span(Self) -> Span
-  show_context(Self, use_ansi_colors~: Bool) -> String
+  show_context(Self, use_ansi_colors~: Bool) -> String = _
 }
 
 impl Spanned with show_context(self, use_ansi_colors~: Bool) -> String {

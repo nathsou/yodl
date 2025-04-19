@@ -1,6 +1,6 @@
 
 pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> Unit!Failure {
-  if not(path.ends_with(".yodl")) {
+  if not(path.has_suffix(".yodl")) {
     raise Failure("Input file must have a .yodl extension")
   }
 

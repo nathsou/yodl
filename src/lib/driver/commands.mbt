@@ -1,5 +1,5 @@
 
-pub enum Command {
+pub(all) enum Command {
   WriteSource(path~: String?)
   WriteMono(path~: String?)
   WriteTyped(path~: String?)

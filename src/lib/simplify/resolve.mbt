@@ -28,7 +28,7 @@ pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem) -> Resolver!R
 fn extract_package_name_from_path(path: String) -> String!ResolutionError {
   let name = @utils.file_name(path)
 
-  if name.ends_with(".yodl") {
+  if name.has_suffix(".yodl") {
     name.replace(old=".yodl", new="")
   } else {
     raise CouldNotExtractPackageName(path)
@@ -49,7 +49,7 @@ fn collect_packages(dir: String, fs~: @utils.FileSystem, acc~: Map[String, Strin
         let _ = collect_packages!(path, fs~, acc~)
       }
       Ok(false) => {
-        if entry.ends_with(".yodl") {
+        if entry.has_suffix(".yodl") {
           let name = extract_package_name_from_path!(entry)
           if acc.contains(name) {
             raise PackageNameConflict(name~, path1=acc[name].unwrap(), path2=path)
