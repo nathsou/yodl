@@ -4,5 +4,6 @@
       "nathsou/yodl/lib/firrtl",
       "nathsou/yodl/lib/utils",
       "moonbitlang/x/stack"
-    ]
+    ],
+    "warn-list": "-35"
 }

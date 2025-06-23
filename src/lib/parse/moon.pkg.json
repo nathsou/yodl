@@ -1,5 +1,6 @@
 {
     "import": [
       "nathsou/yodl/lib/utils"
-    ]
+    ],
+    "warn-list": "-35"
 }

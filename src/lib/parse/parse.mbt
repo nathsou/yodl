@@ -8,7 +8,6 @@ pub struct Parser {
 pub suberror ParserError {
   UnexpectedToken(expected~: TokenType, received~: TokenType, span~: Span)
   ExpectedIdentifier(received~: TokenType, span~: Span)
-  ExpectedInteger(received~: TokenType, span~: Span)
   ExpectedExpr(received~: TokenType, span~: Span)
   ExpectedStmt(received~: TokenType, span~: Span)
   ExpectedType(received~: TokenType, span~: Span)
@@ -80,19 +79,6 @@ fn Parser::parse_identifier(self: Parser) -> String raise {
       name
     }
     _ => raise ExpectedIdentifier(received=token, span=self.span(start_idx))
-  }
-}
-
-fn Parser::parse_integer(self: Parser) -> ParsedInteger raise ParserError {
-  let token = self.peek()
-  let start_idx = self.index
-
-  match token {
-    Natural(value~, width~, base~) => {
-      self.advance()
-      { value, width, base }
-    }
-    _ => raise ExpectedInteger(received=token, span=self.span(start_idx))
   }
 }
 
