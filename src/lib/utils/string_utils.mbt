@@ -25,3 +25,11 @@ pub fn is_alpha(c: Char) -> Bool {
 pub fn is_alphanumeric(c: Char) -> Bool {
   is_alpha(c) || is_digit(c, base=10)
 }
+
+pub fn char_at(s: String, index: Int) -> Char {
+  s.charcode_at(index).to_char().unwrap()
+}
+
+pub fn join(elems: Array[String], separator: String) -> String {
+  Array::join(elems, separator)
+}

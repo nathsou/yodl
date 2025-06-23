@@ -24,7 +24,7 @@ impl Logger for Emitter with write_substring(self, str, start, end) {
   self.write_string(str.substring(start~, end~))
 }
 
-pub fn emit[T: Show](self: Emitter, s: T) -> Unit {
+pub fn[T: Show] emit(self: Emitter, s: T) -> Unit {
   self.builder.write_string("  ".repeat(self.indent) + s.to_string() + "\n")
 }
 
@@ -32,11 +32,11 @@ pub fn write_indent(self: Emitter) -> Unit {
   self.builder.write_string("  ".repeat(self.indent))
 }
 
-pub fn write[T: Show](self: Emitter, s: T) -> Unit {
+pub fn[T: Show] write(self: Emitter, s: T) -> Unit {
   self.builder.write_string(s.to_string())
 }
 
-pub fn write_iter[T: Show](
+pub fn[T: Show] write_iter(
   self: Emitter,
   iter: Iter[T],
   prefix~: String,

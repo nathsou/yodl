@@ -48,7 +48,7 @@ pub fn context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool = false
 
       window.write_string(line_nb)
       window.write_char(' ')
-      window.write_string(line)
+      window.write_string(line.to_string())
 
       if is_inside_span {
         let line_start = if index == self.start.0 - 1 { self.start.1 } else { 0 }

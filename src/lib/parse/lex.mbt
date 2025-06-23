@@ -9,7 +9,7 @@ pub struct Lexer {
   tokens: Array[Token]
 }
 
-pub type! LexerError {
+pub suberror LexerError {
   UnexepectedChar(char~: Char, span~: Span)
 }
 
@@ -34,18 +34,18 @@ pub fn Lexer::new(input: String, file~: String, file_content~: String) -> Lexer 
 }
 
 fn peek(self: Lexer) -> Char {
-  self.input[self.index]
+  @utils.char_at(self.input, self.index)
 }
 
 fn lookahead(self: Lexer, n: Int) -> Char {
-  self.input[self.index + n]
+  self.input.charcode_at(self.index + n).to_char().unwrap()
 }
 
 fn next_non_whitespace(self: Lexer) -> Char? {
   let mut i = self.index
 
   while i < self.input.length() {
-    let char = self.input[i]
+    let char = @utils.char_at(self.input, i)
 
     if not(@utils.is_whitespace(char)) {
       return Some(char)
@@ -70,16 +70,6 @@ fn matches(self: Lexer, char: Char) -> Bool {
   self.peek() == char
 }
 
-fn matches_str(self: Lexer, chars: String) -> Bool {
-  for i, char in chars {
-    if self.lookahead(i) != char {
-      return false
-    }
-  }
-
-  true
-}
-
 fn consumes(self: Lexer, char: Char) -> Bool {
   if self.matches(char) {
     self.index += 1
@@ -99,7 +89,7 @@ fn parse_identifier(self: Lexer) -> String {
   let builder = StringBuilder::new()
   
   for i in self.index..<self.input.length() {
-    let char = self.input[i]
+    let char = @utils.char_at(self.input, i)
 
     if @utils.is_alphanumeric(char) || char == '_' {
       builder.write_char(char)
@@ -119,7 +109,7 @@ fn parse_uint(s: String, base~: Int) -> BigInt {
       let mut p: BigInt = 1
 
       for i in 0..<s.length() {
-        if s[s.length() - i - 1] == '1' {
+        if @utils.char_at(s, s.length() - i - 1) == '1' {
           n += p
         }
 
@@ -199,7 +189,7 @@ fn advance(self: Lexer) -> Unit {
   self.index += 1
 }
 
-fn next(self: Lexer) -> Bool!LexerError {
+fn next(self: Lexer) -> Bool raise LexerError {
   self.skip_whitespaces()
 
   if self.index >= self.input.length() {
@@ -273,7 +263,7 @@ fn next(self: Lexer) -> Bool!LexerError {
           self.advance()
         }
         
-        return self.next!()
+        return self.next()
       } else {
         Ok(Slash)
       }
@@ -479,7 +469,7 @@ fn next(self: Lexer) -> Bool!LexerError {
   }
 }
 
-pub fn lex(self: Lexer) -> Array[Token]! {
-  while self.next!() {}
+pub fn lex(self: Lexer) -> Array[Token] raise {
+  while self.next() {}
   self.tokens
 }

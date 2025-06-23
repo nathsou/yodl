@@ -12,7 +12,7 @@ priv struct ParsedCommand {
   args: Array[String]
 } derive(Show)
 
-type! CommandParserError {
+suberror CommandParserError {
   ExpectedIdentifier(token~: CommandToken)
   ExpectedLiteral(token~: CommandToken)
   InvalidCommandArgs(name~: String, args~: Array[String])
@@ -33,16 +33,16 @@ fn is_valid_literal_char(char: Char) -> Bool {
   }
 }
 
-fn lex_commands(source: String) -> Array[CommandToken]!CommandParserError {
+fn lex_commands(source: String) -> Array[CommandToken] raise CommandParserError {
   let tokens = []
   let mut idx = 0
 
   while idx < source.length() {
-    let mut char = source[idx]
+    let mut char = @utils.char_at(source, idx)
 
     while idx < source.length() && @utils.is_whitespace(char) {
       idx += 1
-      char = source[idx]
+      char = @utils.char_at(source, idx)
     }
 
     if idx >= source.length() {
@@ -58,8 +58,8 @@ fn lex_commands(source: String) -> Array[CommandToken]!CommandParserError {
         if is_valid_literal_char(char) {
           let literal = StringBuilder::new()
 
-          while idx < source.length() && is_valid_literal_char(source[idx]) {
-            literal.write_char(source[idx])
+          while idx < source.length() && is_valid_literal_char(@utils.char_at(source, idx)) {
+            literal.write_char(@utils.char_at(source, idx))
             idx += 1
           }
 
@@ -74,8 +74,8 @@ fn lex_commands(source: String) -> Array[CommandToken]!CommandParserError {
   tokens
 }
 
-pub fn parse_commands(source: String) -> Array[Command]!CommandParserError {
-  let tokens = lex_commands!(source)
+pub fn parse_commands(source: String) -> Array[Command] raise CommandParserError {
+  let tokens = lex_commands(source)
   let mut idx = 0
 
   fn peek() -> CommandToken {
@@ -94,7 +94,7 @@ pub fn parse_commands(source: String) -> Array[Command]!CommandParserError {
     }
   }
 
-  fn parse_arg() -> String!CommandParserError {
+  fn parse_arg() -> String raise CommandParserError {
     let token = peek()
 
     match token {
@@ -106,7 +106,7 @@ pub fn parse_commands(source: String) -> Array[Command]!CommandParserError {
     }
   }
 
-  fn parse_cmd() -> ParsedCommand!CommandParserError {
+  fn parse_cmd() -> ParsedCommand raise CommandParserError {
     let token = peek()
 
     match token {
@@ -116,7 +116,7 @@ pub fn parse_commands(source: String) -> Array[Command]!CommandParserError {
         let args = []
 
         while idx < tokens.length() && not(matches(Semicolon)) {
-          args.push(parse_arg!())
+          args.push(parse_arg())
         }
 
         { name, args }
@@ -128,7 +128,7 @@ pub fn parse_commands(source: String) -> Array[Command]!CommandParserError {
   let cmds = []
 
   while idx < tokens.length() {
-    cmds.push(parse_cmd!())
+    cmds.push(parse_cmd())
 
     if matches(Semicolon) {
       idx += 1

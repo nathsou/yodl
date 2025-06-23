@@ -79,7 +79,7 @@ function resolveParentDirectory(root: TreeNode, path: string): DirectoryNode | n
     const parent = resolvePath(root, components.join(PATH_SEPARATOR)) ?? root;
 
     if (parent?.type === 'dir') {
-        return parent; 
+        return parent;
     }
 
     return null;

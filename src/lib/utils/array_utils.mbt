@@ -1,5 +1,5 @@
 
-pub fn zip[X, Y](xs: Array[X], ys: Array[Y]) -> Iter[(X, Y)] {
+pub fn[X, Y] zip(xs: Array[X], ys: Array[Y]) -> Iter[(X, Y)] {
   let len = min(xs.length(), ys.length())
 
   Iter::new(fn(visit: (((X, Y)) -> IterResult)) -> IterResult {
@@ -13,7 +13,7 @@ pub fn zip[X, Y](xs: Array[X], ys: Array[Y]) -> Iter[(X, Y)] {
   })
 }
 
-pub fn zip2[X, Y](xs: Array[X], ys: Array[Y]) -> Iter2[X, Y] {
+pub fn[X, Y] zip2(xs: Array[X], ys: Array[Y]) -> Iter2[X, Y] {
   let len = min(xs.length(), ys.length())
 
   Iter2::new(fn(visit: ((X, Y) -> IterResult)) -> IterResult {
@@ -27,14 +27,14 @@ pub fn zip2[X, Y](xs: Array[X], ys: Array[Y]) -> Iter2[X, Y] {
   })
 }
 
-pub fn concat[T](xs: Array[T], ys: Array[T]) -> Array[T] {
+pub fn[T] concat(xs: Array[T], ys: Array[T]) -> Array[T] {
   let result = Array::new(capacity=xs.length() + ys.length())
   result.push_iter(xs.iter())
   result.push_iter(ys.iter())
   result
 }
 
-pub fn fill[T](n: Int, value: T) -> Array[T] {
+pub fn[T] fill(n: Int, value: T) -> Array[T] {
   let result = Array::new(capacity=n)
 
   for _ in 0..<n {
@@ -44,7 +44,7 @@ pub fn fill[T](n: Int, value: T) -> Array[T] {
   result
 }
 
-pub fn merge[K: Eq + Hash, V](map1: Map[K, V], map2: Map[K, V]) -> Map[K, V] {
+pub fn[K: Eq + Hash, V] merge(map1: Map[K, V], map2: Map[K, V]) -> Map[K, V] {
   let result = Map::new(capacity=map1.size() + map2.size())
 
   for key, value in map1 {
@@ -58,17 +58,17 @@ pub fn merge[K: Eq + Hash, V](map1: Map[K, V], map2: Map[K, V]) -> Map[K, V] {
   result
 }
 
-pub fn map[A, B, E: Error](values: Array[A], f: (A) -> B!E) -> Array[B]!E {
+pub fn[A, B, E: Error] map(values: Array[A], f: (A) -> B raise E) -> Array[B] raise E {
   let mapped = Array::new(capacity=values.length())
 
   for value in values {
-    mapped.push(f!(value))
+    mapped.push(f(value))
   }
   
   mapped
 }
 
-pub fn map_values[K: Eq + Hash, V](map: Map[K, V], f: (V) -> V) -> Map[K, V] {
+pub fn[K: Eq + Hash, V] map_values(map: Map[K, V], f: (V) -> V) -> Map[K, V] {
   let result = Map::new(capacity=map.size())
 
   for key, value in map {
@@ -78,7 +78,7 @@ pub fn map_values[K: Eq + Hash, V](map: Map[K, V], f: (V) -> V) -> Map[K, V] {
   result
 }
 
-pub fn map_keys[K1: Eq + Hash, K2: Eq + Hash, V](map: Map[K1, V], f: (K1, V) -> K2) -> Map[K2, V] {
+pub fn[K1: Eq + Hash, K2: Eq + Hash, V] map_keys(map: Map[K1, V], f: (K1, V) -> K2) -> Map[K2, V] {
   let result = Map::new(capacity=map.size())
 
   for key, value in map {
@@ -88,12 +88,12 @@ pub fn map_keys[K1: Eq + Hash, K2: Eq + Hash, V](map: Map[K1, V], f: (K1, V) -> 
   result
 }
 
-pub fn sorted_keys[K: Eq + Hash + Compare, V](map: Map[K, V]) -> Map[K, V] {
+pub fn[K: Eq + Hash + Compare, V] sorted_keys(map: Map[K, V]) -> Map[K, V] {
   let sorted_keys = { let keys = map.keys().collect(); keys.sort(); keys }
   let new_map = Map::new(capacity=map.size())
 
   for key in sorted_keys {
-    new_map[key] = map[key].unwrap()
+    new_map[key] = map.get(key).unwrap()
   }
 
   new_map
@@ -104,7 +104,7 @@ pub fn is_ascii(c: Char) -> Bool {
   n >= 0 && n <= 255
 }
 
-pub fn filter_map[A, B](elems: Iter[A], f: (A) -> B?) -> Iter[B] {
+pub fn[A, B] filter_map(elems: Iter[A], f: (A) -> B?) -> Iter[B] {
   Iter::new(fn(visit: ((B) -> IterResult)) -> IterResult {
     for elem in elems {
       match f(elem) {
@@ -121,7 +121,7 @@ pub fn filter_map[A, B](elems: Iter[A], f: (A) -> B?) -> Iter[B] {
   })
 }
 
-pub fn chunk[T](elems: Iter[T], size: Int) -> Iter[Array[T]] {
+pub fn[T] chunk(elems: Iter[T], size: Int) -> Iter[Array[T]] {
   Iter::new(fn(visit: ((Array[T]) -> IterResult)) -> IterResult {
     let mut chunk = Array::new(capacity=size)
 
@@ -145,7 +145,7 @@ pub fn chunk[T](elems: Iter[T], size: Int) -> Iter[Array[T]] {
   })
 }
 
-pub fn all_eq[T: Eq](elems: Array[T]) -> Bool {
+pub fn[T: Eq] all_eq(elems: Array[T]) -> Bool {
   if elems.length() == 0 {
     true
   } else {

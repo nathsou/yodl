@@ -23,13 +23,13 @@ pub enum SimplifierEnvEntry {
   Const(@parse.Expr)
 }
 
-typealias SimplifierEnv = @elaborate.Scope[@parse.Path, SimplifierEnvEntry]
+typealias @elaborate.Scope[@parse.Path, SimplifierEnvEntry] as SimplifierEnv
 
 pub fn Simplifier::new() -> Simplifier {
   { name_counts: {} }
 }
 pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
-  let count = match self.name_counts[name] {
+  let count = match self.name_counts.get(name) {
     Some(count) => count
     None => 0
   }
@@ -39,7 +39,7 @@ pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
   { name, id: count }
 }
 
-pub type! SimplifierError {
+pub suberror SimplifierError {
   AssertionAlwaysFails(span~: @parse.Span)
 }
 
@@ -68,10 +68,10 @@ pub impl @parse.Spanned for SimplifierError with span(self) -> @parse.Span {
 // - Rewrite slicing expressions using width and offset to absolute slicing expressions
 // - Rewrite if expressions into match expressions
 // - Check static assertions
-pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr! {
-  let rewr_stmt = fn!(stmt) { self.simplify_stmt!(stmt, env~, scope~) }
+pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr raise {
+  let rewr_stmt = fn(stmt) raise { self.simplify_stmt(stmt, env~, scope~) }
 
-  @parse.rewrite_expr!(expr, rewr_stmt~, rewr_expr=fn(expr) {
+  @parse.rewrite_expr(expr, rewr_stmt~, rewr_expr=fn(expr) {
     match expr {
       Identifier(path~, span~, ty~) => {
         match env.resolve(path) {
@@ -92,7 +92,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
         for idx, elem in elems {
           let key = idx.to_string()
           fields[key] = elem
-          types[key] = elem.ty().val.or_error!(Failure("Untyped tuple element"))
+          types[key] = elem.ty().val.or_error(Failure("Untyped tuple element"))
         }
 
         @parse.Expr::Struct(fields=fields, span~, ty={ val: Some(Struct(types)) })
@@ -120,7 +120,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
       }
       Replicate(expr~, count~, concat~, span~, ty~) => Some({
         // Rewrite replication expressions into concatenation expressions
-        let mut repeated_expr = self.simplify_expr!(
+        let mut repeated_expr = self.simplify_expr(
           expr,
           env~,
           scope~,
@@ -130,10 +130,10 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
           repeated_expr = @parse.Expr::Spread(expr=repeated_expr, span~, ty~)
         }
 
-        let elems = @utils.fill(count.as_int!(), repeated_expr)
+        let elems = @utils.fill(count.as_int(), repeated_expr)
         let res = @parse.Expr::Vector(elems~, span~, ty~)
 
-        self.simplify_expr!(res, env~, scope~)
+        self.simplify_expr(res, env~, scope~)
       })
       Ternary(cond~, then~, else_~, span~, ty~) => {
         // Rewrite ternary expressions into match expressions
@@ -148,10 +148,10 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
           ty~,
         )
 
-        Some(self.simplify_expr!(match_expr, env~, scope~))
+        Some(self.simplify_expr(match_expr, env~, scope~))
       }
       Slicing(expr~, hi=msb, lo=width, kind=Width, span~, ty~) => Some({
-        let lsb = msb.as_int!() - width.as_int!() + 1
+        let lsb = msb.as_int() - width.as_int() + 1
         @parse.Expr::Slicing(expr~, hi=msb, lo=@parse.Expr::nat(lsb, span=width.span()), kind=Absolute, span~, ty~)
       })
       If(cond~, then~, else_~, span~, ty~) => {
@@ -177,10 +177,10 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
           ty~,
         )
 
-        Some(self.simplify_expr!(match_expr, env~, scope~))
+        Some(self.simplify_expr(match_expr, env~, scope~))
       }
       FunCall(name="$assert", args=[pred, ..], span~, ty~) => {
-        match pred.as_int?() {
+        match (try? pred.as_int()) {
           Ok(0) => raise AssertionAlwaysFails(span~)
           Ok(1) => Some(@parse.Expr::Tuple(elems=[], span~, ty~))
           _ => None
@@ -191,15 +191,15 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
   })
 }
 
-pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> Iter[@parse.Stmt]! {
+pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> Iter[@parse.Stmt] raise {
   match stmt {
     Expr(expr~, span~) => {
-      let simplified_expr = self.simplify_expr!(expr, env~, scope~)
+      let simplified_expr = self.simplify_expr(expr, env~, scope~)
       Iter::singleton(@parse.Stmt::Expr(expr=simplified_expr, span~))
     }
     Let(name~, ty~, expr~, span~) => {
       let simplified_expr = match expr {
-        Some(expr) => Some(self.simplify_expr!(expr, env~, scope~))
+        Some(expr) => Some(self.simplify_expr(expr, env~, scope~))
         None => None
       }
 
@@ -210,8 +210,8 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, s
       Iter::singleton(@parse.Stmt::Let(name=unique_name.to_string(), ty~, expr=simplified_expr, span~))
     }
     Assign(lhs~, rhs~, span~) => {
-      let simplified_lhs = self.simplify_expr!(lhs, env~, scope~)
-      let simplified_rhs = self.simplify_expr!(rhs, env~, scope~)
+      let simplified_lhs = self.simplify_expr(lhs, env~, scope~)
+      let simplified_rhs = self.simplify_expr(rhs, env~, scope~)
       Iter::singleton(@parse.Stmt::Assign(lhs=simplified_lhs, rhs=simplified_rhs, span~))
     }
     For(_) => {
@@ -222,19 +222,19 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, s
       let scope_env = env.child()
 
       for stmt in body {
-        simplified_body.push_iter(self.simplify_stmt!(stmt, env=scope_env, scope~))
+        simplified_body.push_iter(self.simplify_stmt(stmt, env=scope_env, scope~))
       }
 
       simplified_body.iter()
     }
     Const(decl~, span=_) => {
-      env.declare!(decl.path, Const(decl.expr))
+      env.declare(decl.path, Const(decl.expr))
       Iter::empty()
     }
   }
 }
 
-fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @parse.Decl?! {
+fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @parse.Decl? raise {
   match decl {
     Module({ path, params, attributes, ports, body, span }) => {
       let simplified_body = []
@@ -246,7 +246,7 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
 
       for stmt in body {
         let scope = []
-        let stmts = self.simplify_stmt!(stmt, env=mod_env, scope~)
+        let stmts = self.simplify_stmt(stmt, env=mod_env, scope~)
 
         for stmt in stmts {
           // ignore empty tuples, whcih are used to represent empty expressions
@@ -264,7 +264,7 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
       Some(@parse.Decl::ModuleDeclaration(sig))
     }
     Const(decl) => {
-      env.declare!(decl.path, Const(decl.expr))
+      env.declare(decl.path, Const(decl.expr))
       None
     }
     Package(_) => None
@@ -273,13 +273,13 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
   }
 }
 
-pub fn simplify_decls(decls: Array[@parse.Decl]) -> Array[@parse.Decl]! {
+pub fn simplify_decls(decls: Array[@parse.Decl]) -> Array[@parse.Decl] raise {
   let simplifier = Simplifier::new()
   let top_env = @elaborate.Scope::new()
   let simplified_decls = []
 
   for decl in decls {
-    match simplifier.simplify_decl!(decl, env=top_env) {
+    match simplifier.simplify_decl(decl, env=top_env) {
       Some(simplified_decl) => {
         simplified_decls.push(simplified_decl)
       }

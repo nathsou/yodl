@@ -6,7 +6,7 @@ pub struct Resolver {
   fs: @utils.FileSystem
 }
 
-pub type! ResolutionError {
+pub suberror ResolutionError {
   PackageNotFound(name~: String)
   IOError(Error)
   LexerError(Error)
@@ -16,16 +16,16 @@ pub type! ResolutionError {
   MultiLevelImportNotSupportedYet(packages~: Array[String])
 } derive(Show)
 
-pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem) -> Resolver!ResolutionError {
+pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem) -> Resolver raise ResolutionError {
   {
     resolved_packages: {},
-    available_packages: collect_packages!(packages_dir, fs~),
+    available_packages: collect_packages(packages_dir, fs~),
     imports: Set::new(),
     fs,
   }
 }
 
-fn extract_package_name_from_path(path: String) -> String!ResolutionError {
+fn extract_package_name_from_path(path: String) -> String raise ResolutionError {
   let name = @utils.file_name(path)
 
   if name.has_suffix(".yodl") {
@@ -35,8 +35,8 @@ fn extract_package_name_from_path(path: String) -> String!ResolutionError {
   }
 }
 
-fn collect_packages(dir: String, fs~: @utils.FileSystem, acc~: Map[String, String] = {}) -> Map[String, String]!ResolutionError {
-  let entries = match (fs.read_dir)?(dir) {
+fn collect_packages(dir: String, fs~: @utils.FileSystem, acc~: Map[String, String] = {}) -> Map[String, String] raise ResolutionError {
+  let entries = match (try? (fs.read_dir)(dir)) {
     Ok(entries) => entries
     Err(error) => raise IOError(error)
   }
@@ -44,15 +44,15 @@ fn collect_packages(dir: String, fs~: @utils.FileSystem, acc~: Map[String, Strin
   for entry in entries {
     let path = @utils.join_paths(dir, entry)
 
-    match (fs.is_dir)?(path) {
+    match (try ?(fs.is_dir)(path)) {
       Ok(true) => {
-        let _ = collect_packages!(path, fs~, acc~)
+        let _ = collect_packages(path, fs~, acc~)
       }
       Ok(false) => {
         if entry.has_suffix(".yodl") {
-          let name = extract_package_name_from_path!(entry)
+          let name = extract_package_name_from_path(entry)
           if acc.contains(name) {
-            raise PackageNameConflict(name~, path1=acc[name].unwrap(), path2=path)
+            raise PackageNameConflict(name~, path1=acc.get(name).unwrap(), path2=path)
           }
           
           acc[name] = path
@@ -67,8 +67,8 @@ fn collect_packages(dir: String, fs~: @utils.FileSystem, acc~: Map[String, Strin
 
 let builtin_decls: Array[@parse.Decl] = {
   let source =
-    #|const true = 1'b1;
-    #|const false = 1'b0;
+    #|const true = 1'b1
+    #|const false = 1'b0
     #|
     #|@internal
     #|declare module Reg<T: type>(
@@ -78,7 +78,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|    rst?: bool,
     #|) -> (
     #|    q: T,
-    #|);
+    #|)
     #|
     #|@internal
     #|declare module RegAsyncReset<T: type>(
@@ -88,7 +88,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|    rst?: bool,
     #|) -> (
     #|    q: T,
-    #|);
+    #|)
     #|
     #|@internal
     #|declare module Memory<
@@ -103,10 +103,10 @@ let builtin_decls: Array[@parse.Decl] = {
     #|    write: { clk: clock, en: bool, addr: uint<$clog2(Depth)>, data: T, mask: MemoryMask<T> }[WritePorts],
     #|) -> (
     #|    q: T[ReadPorts],
-    #|);
+    #|)
   
   let lexer = @parse.Lexer::new(source, file="builtin.yodl", file_content=source)
-  let tokens = match lexer.lex?() {
+  let tokens = match (try? lexer.lex()) {
     Ok(tokens) => tokens
     Err(error) => {
       println("Error lexing builtin declarations: \{error}")
@@ -116,7 +116,7 @@ let builtin_decls: Array[@parse.Decl] = {
   
   let parser = @parse.Parser::new(tokens, file="builtin.yodl", file_content=source)
 
-  match parser.parse?() {
+  match (try? parser.parse()) {
     Ok(decls) => decls
     Err(error) => {
       println("Error parsing builtin declarations: \{error}")
@@ -125,30 +125,30 @@ let builtin_decls: Array[@parse.Decl] = {
   }
 }
 
-pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.PackageDecl!ResolutionError {
-  match self.resolved_packages[path] {
+pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.PackageDecl raise ResolutionError {
+  match self.resolved_packages.get(path) {
     Some(pkg) => return pkg
     None => ()
   }
 
-  let source = match (self.fs.read_file_to_string)?(path) {
+  let source = match (try? (self.fs.read_file_to_string)(path)) {
     Ok(source) => source
     Err(error) => raise IOError(error)
   }
 
-  let tokens = match @parse.Lexer::new(source, file=path, file_content=source).lex?() {
+  let tokens = match (try? @parse.Lexer::new(source, file=path, file_content=source).lex()) {
     Ok(tokens) => tokens
     Err(error) => raise LexerError(error)
   }
 
   let parser = @parse.Parser::new(tokens, file=path, file_content=source)
 
-  let decls = match parser.parse?() {
+  let decls = match (try? parser.parse()) {
     Ok(decls) => {
       let resolved_decl = Array::new(capacity=decls.length())
 
       for decl in decls {
-        match self.resolve_decl!(decl) {
+        match self.resolve_decl(decl) {
           Some(decl) => resolved_decl.push(decl)
           None => ()
         }
@@ -162,14 +162,14 @@ pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.P
   let pkg_name = if is_top_package {
     "Main"
   } else {
-    extract_package_name_from_path!(path)
+    extract_package_name_from_path(path)
   }
 
   let pkg: @parse.PackageDecl = {
     name: pkg_name,
     body: if is_top_package {
         let imports = self.imports.iter().map(fn(p) {
-          @parse.Decl::Package(self.resolved_packages[p].unwrap())
+          @parse.Decl::Package(self.resolved_packages.get(p).unwrap())
         }).collect()
 
         builtin_decls + imports + decls
@@ -186,7 +186,7 @@ pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.P
   pkg
 }
 
-pub fn resolve_decl(self: Resolver, decl: @parse.Decl) -> @parse.Decl?!ResolutionError {
+pub fn resolve_decl(self: Resolver, decl: @parse.Decl) -> @parse.Decl? raise ResolutionError {
   match decl {
     Import({ packages, span: _ }) => {
       let pkg = match packages {
@@ -194,12 +194,12 @@ pub fn resolve_decl(self: Resolver, decl: @parse.Decl) -> @parse.Decl?!Resolutio
         _ => raise MultiLevelImportNotSupportedYet(packages~)
       }
 
-      let path = match self.available_packages[pkg] {
+      let path = match self.available_packages.get(pkg) {
         Some(path) => path
         None => raise PackageNotFound(name=pkg)
       }
 
-      let _ = self.resolve!(path~, is_top_package=false)
+      let _ = self.resolve(path~, is_top_package=false)
       self.imports.add(path)
       
       None
@@ -208,7 +208,7 @@ pub fn resolve_decl(self: Resolver, decl: @parse.Decl) -> @parse.Decl?!Resolutio
       let resolved_body = Array::new(capacity=pkg.body.length())
 
       for decl in pkg.body {
-        match self.resolve_decl!(decl) {
+        match self.resolve_decl(decl) {
           Some(decl) => resolved_body.push(decl)
           None => ()
         }

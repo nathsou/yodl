@@ -1,17 +1,17 @@
 
 pub(all) struct FileSystem {
   path_exists: (String) -> Bool
-  create_dir: (String) -> Unit!Failure
-  write_string_to_file: (String, String) -> Unit!Failure
-  read_dir: (String) -> Array[String]!Failure
-  is_dir: (String) -> Bool!Failure
-  read_file_to_string: (String) -> String!Failure
+  create_dir: (String) -> Unit raise Failure
+  write_string_to_file: (String, String) -> Unit raise Failure
+  read_dir: (String) -> Array[String] raise Failure
+  is_dir: (String) -> Bool raise Failure
+  read_file_to_string: (String) -> String raise Failure
 }
 
 // TODO: Support Windows paths
 
 pub fn file_name(path: String) -> String {
-    path.split("/").last().or(path)
+    path.split("/").last().or(path).to_string()
 }
 
 pub fn file_extension(path: String) -> String? {

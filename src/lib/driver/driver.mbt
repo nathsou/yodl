@@ -1,19 +1,19 @@
 
-pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> Unit!Failure {
+pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> Unit raise Failure {
   if not(path.has_suffix(".yodl")) {
     raise Failure("Input file must have a .yodl extension")
   }
 
   if not((fs.path_exists)("output/")) {
-    (fs.create_dir)!("output/")
+    (fs.create_dir)("output/")
   }
 
-  let resolver = match @simplify.Resolver::new?(@utils.dir_name(path), fs~) {
+  let resolver = match (try? @simplify.Resolver::new(@utils.dir_name(path), fs~)) {
     Err(err) => raise Failure(err.to_string())
     Ok(resolver) => resolver
   }
 
-  let pkg = match resolver.resolve?(path~, is_top_package=true) {
+  let pkg = match (try? resolver.resolve(path~, is_top_package=true)) {
     Err(err) => raise Failure(err.to_string())
     Ok(pkg) => pkg 
   }
@@ -32,7 +32,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
 
         match path {
           Some(path) => {
-            (fs.write_string_to_file)!(path, source)
+            (fs.write_string_to_file)(path, source)
           }
           None => {
             println(source)
@@ -44,7 +44,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 
   let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = match monomorphizer.monomorphize?(decls=pkg.body, packages=[]) {
+  let mono_decls = match (try? monomorphizer.monomorphize(decls=pkg.body, packages=[])) {
     Err(err) => raise Failure(err.to_string())
     Ok(mono_decls) => mono_decls
   }
@@ -63,7 +63,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
 
         match path {
           Some(path) => {
-            (fs.write_string_to_file)!(path, mono)
+            (fs.write_string_to_file)(path, mono)
           }
           None => {
             println(mono)
@@ -77,7 +77,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   let checker = @elaborate.TypeChecker::new()
 
   for decl in mono_decls {
-    if checker.check_decl?(decl) is Err(err) {
+    if (try? checker.check_decl(decl)) is Err(err) {
       raise Failure(err.to_string())
     }
   }
@@ -94,7 +94,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
 
         match path {
           Some(path) => {
-            (fs.write_string_to_file)!(path, emitter.to_string())
+            (fs.write_string_to_file)(path, emitter.to_string())
           }
           None => {
             println(emitter.to_string())
@@ -105,7 +105,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
     }
   }
 
-  let simplified_decls = match @simplify.simplify_decls?(mono_decls) {
+  let simplified_decls = match (try? @simplify.simplify_decls(mono_decls)) {
     Err(err) => raise Failure(err.to_string())
     Ok(simplified_decls) => simplified_decls
   }
@@ -124,7 +124,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
 
         match path {
           Some(path) => {
-            (fs.write_string_to_file)!(path, simplified)
+            (fs.write_string_to_file)(path, simplified)
           }
           None => {
             println(simplified)
@@ -161,7 +161,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   let firrtl = {
     let low = @elaborate.Elaborator::new(top)
 
-    if low.lower?(simplified_decls.iter()) is Err(err) {
+    if (try? low.lower(simplified_decls.iter())) is Err(err) {
       raise Failure(err.to_string())
     }
 
@@ -176,15 +176,15 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
           version: @firrtl.min_version(),
           id: Ident(firrtl.circuit_name),
           annotations: firrtl.annotations,
-          decls: firrtl.modules.values().map(fn(mod) { @firrtl.Decl::Module(mod) }).collect(),
+          decls: firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod)).collect(),
         })
 
         match path {
           Some(path) => {
-            (fs.write_string_to_file)!(path, emitter._.to_string())
+            (fs.write_string_to_file)(path, emitter.inner().to_string())
           }
           None => {
-            println(emitter._.to_string())
+            println(emitter.inner().to_string())
           }
         }
       }
