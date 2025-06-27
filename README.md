@@ -17,7 +17,7 @@ The JS build of Yodl can be installed from npm:
 $ npm install --global yodl
 ```
 
-To compile FIRRTL outputs to SystemVerilog, install [firtool](https://github.com/llvm/circt/releases/tag/firtool-1.111.1)
+To compile FIRRTL outputs to SystemVerilog, install [firtool](https://github.com/llvm/circt/releases/tag/firtool-1.122.0)
 
 ## Usage
 ```bash

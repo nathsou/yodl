@@ -625,7 +625,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         Concat(elems~, ..) => {
             let mut len = 0
             let mut is_signed: Bool? = None
-            let stack = @stack.Stack::new()
+            let stack = @stack.new()
 
             for elem in elems {
                 let ty = self.check_expr(elem, env)

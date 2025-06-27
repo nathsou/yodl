@@ -43,7 +43,7 @@ A match expression must handle all possible values of the match condition, eithe
 
 ### For Loops
 
-The `for` loop iterates over a range of values:
+The `for` loop duplicates its body a fixed number of times, substituting the loop variable with the current iteration index.
 
 ```yodl
 // Simple parallel hexadecimal to character decoder
@@ -90,4 +90,4 @@ The range syntax uses:
 
 ## Control Flow in Hardware Context
 
-In hardware description languages, control flow constructs don't create sequential execution as in software—they describe hardware structures that implement the specified behavior. Yodl's compiler unrolls loops and elaborates conditional statements into multiplexers.
+In hardware description languages, control flow constructs don't create sequential execution as in software, they describe hardware structures that implement the specified behavior. Yodl's compiler unrolls loops and elaborates conditional statements into multiplexers.

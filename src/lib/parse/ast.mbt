@@ -667,7 +667,7 @@ pub fn ResolvedParam::as_expr(self: ResolvedParam) -> Expr raise {
 }
 
 pub fn keep_and_check_resolved(params: Map[String, Param], span~: Span) -> Map[String, ResolvedParam] raise AstError {
-  let resolved_params = {}
+  let resolved_params = Map::new(capacity=params.size())
 
   for name, param in params {
     if param is Resolved(p) {
