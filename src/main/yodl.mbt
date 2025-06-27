@@ -31,7 +31,7 @@ fn main {
     },
   }
   
-  match @env.args() {
+  match @sys.get_cli_args() {
     [_, path] => {
       match (try? @driver.run(path~, commands=[@driver.WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")))], fs~)) {
         Ok(_) => ()
