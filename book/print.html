@@ -835,7 +835,7 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <p>A match expression must handle all possible values of the match condition, either by explicitly listing all cases or by providing a default case with the <code>_</code> wildcard.</p>
 <h2 id="iteration"><a class="header" href="#iteration">Iteration</a></h2>
 <h3 id="for-loops"><a class="header" href="#for-loops">For Loops</a></h3>
-<p>The <code>for</code> loop iterates over a range of values:</p>
+<p>The <code>for</code> loop duplicates its body a fixed number of times, substituting the loop variable with the current iteration index.</p>
 <pre><code class="language-yodl">// Simple parallel hexadecimal to character decoder
 module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[$cdiv(Bits, 4)]) {
     const Len = $cdiv(Bits, 4)
@@ -878,7 +878,7 @@ module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[$c
 <li><strong>For Loops</strong>: Use to repeat operations a known number of times, especially when manipulating vectors or generating parallel hardware.</li>
 </ul>
 <h2 id="control-flow-in-hardware-context"><a class="header" href="#control-flow-in-hardware-context">Control Flow in Hardware Context</a></h2>
-<p>In hardware description languages, control flow constructs don't create sequential execution as in software—they describe hardware structures that implement the specified behavior. Yodl's compiler unrolls loops and elaborates conditional statements into multiplexers.</p>
+<p>In hardware description languages, control flow constructs don't create sequential execution as in software, they describe hardware structures that implement the specified behavior. Yodl's compiler unrolls loops and elaborates conditional statements into multiplexers.</p>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="built-in-functions-and-operations"><a class="header" href="#built-in-functions-and-operations">Built-in Functions and Operations</a></h1>
 <p>Yodl provides several built-in functions and operations to facilitate hardware design.</p>
 <h2 id="type-conversion-functions"><a class="header" href="#type-conversion-functions">Type Conversion Functions</a></h2>
