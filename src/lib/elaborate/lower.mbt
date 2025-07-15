@@ -299,7 +299,7 @@ fn expr_as_ref(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeLike, binding
   match expr {
     Reference(value) => value
     _ => {
-      let prefix = binding.or("temp")
+      let prefix = binding.unwrap_or("temp")
       let rhs_id = id_of_str("\{prefix}_\{self.next_id()}")
       scope.add_stmt(Node(id=rhs_id, expr~))
       Id(rhs_id)
@@ -351,7 +351,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       Reference(Id(id))
     }
     Struct(fields~, ty~, span=_) => {
-      let id = id_of_str(binding.or_else(fn() {"struct_\{elaborator.next_id()}"}))
+      let id = id_of_str(binding.unwrap_or_else(() => "struct_\{elaborator.next_id()}"))
 
       if binding.is_empty() {
         scope.add_stmt(Wire(id~, ty~))
@@ -599,7 +599,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
     Match(subject~, cases~, default~, span~, ty=match_ty) => {
       let has_value = unwrap_type(match_ty, span~).width(span) > 0
       let res_id = if has_value {
-        let res_id = id_of_str(binding.or_else(fn() { "match_\{self.next_idx()}" }))
+        let res_id = id_of_str(binding.unwrap_or_else(() => "match_\{self.next_idx()}"))
 
         if binding.is_empty() {
           scope.add_stmt(Wire(id=res_id, ty~))
@@ -610,7 +610,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         None
       }
       
-      let subject_binding = binding.map(fn(b) { "\{b}_subject" }).or("subject")
+      let subject_binding = binding.map(b => "\{b}_subject").unwrap_or("subject")
       let fir_subject = @firrtl.Reference(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(subject_binding)))
       let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width(span)).to_int()
       let mut last_when: @firrtl.When? = None

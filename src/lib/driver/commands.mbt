@@ -10,7 +10,7 @@ pub(all) enum Command {
 priv struct ParsedCommand {
   name: String
   args: Array[String]
-} derive(Show)
+}
 
 suberror CommandParserError {
   ExpectedIdentifier(token~: CommandToken)
