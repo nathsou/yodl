@@ -7,9 +7,9 @@ module LFSR<NumBits: uint>(
     q: uint<NumBits>,
     done: bool,
 ) {
-    let r_xnor = Reg<bool>(clk);
-    let r_lfsr = Reg<uint<NumBits>>(clk, en: enable, q);
-    r_lfsr.d = {r_lfsr.q[NumBits - 2:0], r_xnor.q};
+    let r_xnor = Reg<bool>(clk)
+    let r_lfsr = Reg<uint<NumBits>>(clk, en: enable, q)
+    r_lfsr.d = {r_lfsr.q[NumBits - 2:0], r_xnor.q}
 
     // https://docs.amd.com/v/u/en-US/xapp052
     r_xnor.d = match NumBits {
@@ -43,7 +43,7 @@ module LFSR<NumBits: uint>(
         30 => r_lfsr.q[29] xnor r_lfsr.q[5] xnor r_lfsr.q[3] xnor r_lfsr.q[0]
         31 => r_lfsr.q[30] xnor r_lfsr.q[27]
         32 => r_lfsr.q[31] xnor r_lfsr.q[21] xnor r_lfsr.q[1] xnor r_lfsr.q[0]
-    };
+    }
 
-    done = r_lfsr.q == 0;
+    done = r_lfsr.q == 0
 }

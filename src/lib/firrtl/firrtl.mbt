@@ -32,6 +32,7 @@ pub(all) struct Circuit {
 
 pub(all) enum Decl {
   Module(Module)
+  ExtModule(ExtModule)
 }
 
 pub(all) enum Stmt {
@@ -96,6 +97,19 @@ pub(all) struct Module {
   id: Id
   ports: Array[Port]
   body: Array[Stmt]
+}
+
+pub(all) struct ExtModule {
+  id: Id
+  ports: Array[Port]
+  defname: String?
+  parameters: Array[(String, ParameterLiteral)]
+}
+
+pub enum ParameterLiteral {
+  IntLiteral(BigInt)
+  StringLiteral(String)
+  RawStringLiteral(String)
 }
 
 pub(all) struct Port {

@@ -3,6 +3,7 @@ pub struct Elaborator {
   mut autoidx: Int
   circuit_name: String
   modules: Map[@parse.Path, @firrtl.Module]
+  extmodules: Map[@parse.Path, @firrtl.ExtModule]
   annotations: Array[Json]
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
   current_target: Array[String]
@@ -15,6 +16,7 @@ pub fn Elaborator::new(circuit_name: String) -> Elaborator {
     circuit_name,
     autoidx: 0,
     modules: {},
+    extmodules: {},
     annotations: [],
     declared_modules: {},
     current_target: [circuit_name],
@@ -283,6 +285,47 @@ fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit raise {
   }
 
   let _ = self.current_target.pop()
+}
+
+fn lower_external_module(self: Elaborator, sig: @parse.ModuleSignature) -> Unit raise {
+  guard sig.attributes.get("external") is Some({args: [String(defname), String(verilog_path)], ..})
+  let id = id_of_path(sig.path)
+  let ports = Array::new(capacity=sig.ports.length())
+  let parameters = []
+
+  for port in sig.ports {
+    let fir_ty = lower_type(port.ty, span=port.span)
+    let port_id = id_of_str(port.name)
+
+    if fir_ty == Clock && self.current_clock.is_empty() {
+      self.current_clock = Some(Reference(Id(port_id)))
+    }
+
+    let fir_port: @firrtl.Port = {
+      direction: port.direction,
+      id: port_id,
+      ty: fir_ty,
+    }
+
+    ports.push(fir_port)
+  }
+
+  let ext_mod: @firrtl.ExtModule = {
+    id,
+    ports,
+    defname: Some(defname),
+    parameters,
+  }
+
+  self.extmodules[sig.path] = ext_mod
+
+  let annotation = {
+    "class": "firrtl.transforms.BlackBoxPathAnno",
+    "target": @utils.join([..self.current_target, sig.path.to_string()], "."),
+    "path": verilog_path,
+  }
+
+  self.annotations.push(annotation.to_json())
 }
 
 fn unwrap_type(ty: Ref[@parse.Type?], span~: @parse.Span) -> @parse.Type raise ElaborationError {
@@ -1258,6 +1301,10 @@ pub fn lower(self: Elaborator, decls: Iter[@parse.Decl]) -> Unit raise {
       }
       ModuleDeclaration(sig) => {
         self.declared_modules[sig.path] = sig
+
+        if sig.attributes.contains("external") {
+          self.lower_external_module(sig)
+        }
       }
       Const(_) | Package(_) | Import(_) | TypeAlias(_) => ()
     }

@@ -176,7 +176,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
           version: @firrtl.min_version(),
           id: Ident(firrtl.circuit_name),
           annotations: firrtl.annotations,
-          decls: firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod)).collect(),
+          decls: (firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod)) + (firrtl.extmodules.values().map(mod => @firrtl.Decl::ExtModule(mod)))).collect(),
         })
 
         match path {

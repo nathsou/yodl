@@ -25,7 +25,7 @@ suberror TypeCheckerError {
     ExpectedConstantExpr(span~: @parse.Span)
     LetStmtMustHaveTypeOrValue(span~: @parse.Span)
     InvalidAttribute(name~: String, span~: @parse.Span)
-    InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], span~: @parse.Span)
+    InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], expected~: Array[AttributeValueType], span~: @parse.Span)
     EmptyMatch(span~: @parse.Span)
     InvalidInstanceTypeParameterCount(module_path~: @parse.Path, expected~: Int, actual~: Int, span~: @parse.Span)
     FunCallAfterMonomorphization(span~: @parse.Span)
@@ -88,8 +88,8 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         InvalidAttribute(name~, ..) => {
             logger.write_string("Invalid attribute '\{name}'")
         }
-        InvalidAttributeArgs(name~, args~, ..) => {
-            logger.write_string("Invalid arguments '\{args}' for attribute '\{name}'")
+        InvalidAttributeArgs(name~, args~, expected~, ..) => {
+            logger.write_string("Invalid arguments '\{args}' for attribute '\{name}', expected \{expected}")
         }
         EmptyMatch(..) => {
             logger.write_string("Empty match expression")
@@ -980,14 +980,15 @@ fn is_valid_assignment_target(expr: @parse.Expr) -> Bool {
 }
 
 priv enum AttributeValueType {
-    // Str
+    Str
     // Int
-}
+} derive(Show)
 
 let module_attribute_signatures: Map[String, Array[AttributeValueType]] = {
     "internal": [],
     "inline": [],
     "flatten": [],
+    "external": [Str, Str],
     // "alias": [Str],
 }
 
@@ -997,14 +998,14 @@ fn check_attribute(attr: @parse.Attribute, signatures~: Map[String, Array[Attrib
     match signatures.get(attr.name) {
         Some(expected) => {
             if expected.length() != attr.args.length() {
-                raise InvalidAttributeArgs(name=attr.name, args=attr.args, span=attr.span)
+                raise InvalidAttributeArgs(name=attr.name, args=attr.args, expected=expected, span=attr.span)
             }
 
-            for arg, expected in @utils.zip2(attr.args, expected) {
-                match (arg, expected) {
+            for arg, exp in @utils.zip2(attr.args, expected) {
+                match (arg, exp) {
                     // (Int(_), Int) => ()
-                    // (String(_), Str) => ()
-                    _ => raise InvalidAttributeArgs(name=attr.name, args=attr.args, span=attr.span)
+                    (String(_), Str) => ()
+                    _ => raise InvalidAttributeArgs(name=attr.name, args=attr.args, expected~, span=attr.span)
                 }
             }
         }

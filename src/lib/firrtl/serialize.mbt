@@ -82,6 +82,7 @@ pub fn emit_circuit(self: FIRRTLEmitter, circuit: Circuit) -> Unit {
 pub fn emit_decl(self: FIRRTLEmitter, decl: Decl) -> Unit {
   match decl {
     Module(mod) => self.emit_module(mod)
+    ExtModule(ext_mod) => self.emit_ext_module(ext_mod)
   }
 
   self.inner().write("\n")
@@ -110,6 +111,42 @@ pub fn emit_module(self: FIRRTLEmitter, mod: Module) -> Unit {
 
   for stmt in mod.body {
     self.emit_stmt(stmt)
+    self.inner().write("\n")
+  }
+
+  self.inner().indent -= 1
+}
+
+pub fn emit_ext_module(self: FIRRTLEmitter, ext_mod: ExtModule) -> Unit {
+  self.inner().write_indent()
+  self.inner().write("extmodule ")
+  self.inner().write(ext_mod.id)
+  self.inner().write(":\n")
+  self.inner().indent += 1
+
+  for port in ext_mod.ports {
+    self.emit_port(port)
+    self.inner().write("\n")
+  }
+
+  if ext_mod.defname is Some(defname) {
+    self.inner().write_indent()
+    self.inner().write("defname = ")
+    self.inner().write(defname)
+    self.inner().write("\n")
+  }
+
+  for param in ext_mod.parameters {
+    let (name, value) = param
+    self.inner().write_indent()
+    self.inner().write("parameter \{name} = ")
+    let value_str = match value {
+      IntLiteral(value) => value.to_string()
+      StringLiteral(value) => "\"" + value + "\""
+      RawStringLiteral(value) => "r\"" + value + "\""
+    }
+
+    self.inner().write(value_str)
     self.inner().write("\n")
   }
 

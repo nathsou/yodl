@@ -1,0 +1,28 @@
+
+@external("ttl_7474", "7474.v")
+declare module U74x74(
+    Preset_bar: bool[2],
+    Clear_bar: bool[2],
+    D: bool[2],
+    clk: clock[2],
+) -> (
+    Q: bool[2],
+    Q_bar: bool[2],
+)
+
+module Top(
+    clk: clock,
+    rst: bool,
+    button: uint<4>,
+) -> (
+    led: uint<4>,
+) {
+    let u74x74 = U74x74(
+        Preset_bar: [1'b1, 1'b1],
+        Clear_bar: [rst, rst],
+        D: [button[0], button[1]],
+        clk: [clk, clk],
+    )
+
+    led = {4*{u74x74.Q[0]}}
+}

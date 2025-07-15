@@ -42,7 +42,7 @@ $ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.6.20'
 - [ ] Optional module parameters (and register initial value)
 - [x] Arbitrary port types
 - [x] Type parameters
-- [ ] External modules
+- [x] External modules
 - [ ] Source Maps
 - [ ] Test Benches
 - [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export
