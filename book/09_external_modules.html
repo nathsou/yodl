@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Getting Started - yodl</title>
+        <title>External Modules - yodl</title>
 
 
         <!-- Custom HTML head -->
@@ -155,113 +155,39 @@
 
                 <div id="content" class="content">
                     <main>
-                        <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
-<p>To try Yodl directly in your browser, <a href="https://nathsou.github.io/yodl/playground.html">visit the playground</a>.</p>
-<h2 id="installation"><a class="header" href="#installation">Installation</a></h2>
-<p>The simplest way to get yodl is to install the bundled npm package:</p>
-<pre><code class="language-bash">$ npm install --global yodl
-$ yodl examples/Hello.yodl "write_firrtl Hello.fir"
-</code></pre>
-<p>.fir files can then be converted to SystemVerilog using <a href="https://github.com/llvm/circt/releases">firtool</a> (tested with version 1.111.1).</p>
-<p>Feature support for SystemVerilog/Verilog differs from tool to tool, check <a href="https://circt.llvm.org/docs/VerilogGeneration/#recommended-loweringoptions-by-target">this page</a> to customise the output.
-When using Yosys for instance, specify <code>--lowering-options=disallowPackedArrays,disallowLocalVariables,emitBindComments</code>.</p>
-<pre><code class="language-bash">firtool --format=fir --verilog Hello.fir -o Hello.sv
-</code></pre>
-<p>The project can also be compiled to wasm or wasm-gc by installing <a href="https://www.moonbitlang.com/">Moonbit</a> and running:</p>
-<pre><code class="language-bash">$ git clone https://github.com/nathsou/yodl
-$ cd yodl
-$ moon build --target wasm-gc
-$ moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"
-</code></pre>
-<h2 id="editor-support"><a class="header" href="#editor-support">Editor support</a></h2>
-<h3 id="visual-studio-code"><a class="header" href="#visual-studio-code">Visual Studio Code</a></h3>
-<p>A syntax-highlighting extension is embedded in the repository, to install it, do:</p>
-<ol>
-<li>Open the command palette (Ctrl | Cmd + Shift + P)</li>
-<li>Select 'Developer: Install Extension from Location'</li>
-<li>Open 'extensions/yodl-vscode-syntax'</li>
-</ol>
-<h2 id="your-first-yodl-design"><a class="header" href="#your-first-yodl-design">Your first Yodl design</a></h2>
-<p>Create a file called <code>Blink.yodl</code> and insert the following text:</p>
-<pre><code class="language-yodl">module Top(
-  // inputs
-  clk: clock,
-  rst: bool,
+                        <h1 id="external-modules"><a class="header" href="#external-modules">External Modules</a></h1>
+<p>Yodl allows you to integrate existing Verilog modules into your designs through external module declarations. This is useful for leveraging existing IP, interfacing with vendor-specific primitives, or gradually migrating from Verilog to Yodl.</p>
+<h2 id="external-module-declaration"><a class="header" href="#external-module-declaration">External Module Declaration</a></h2>
+<p>External modules are declared using the <code>@external</code> attribute followed by a module declaration:</p>
+<pre><code class="language-yodl">@external("module_name", "file.v")
+@parameters({ PARAM1: 0, PARAM2: "true" })
+declare module ExternalModule(
+    input1: uint&lt;8&gt;,
+    input2: bool[4],
 ) -&gt; (
-  // outputs
-  leds: uint&lt;8&gt;,
-) {
-  let counter = Reg&lt;uint&lt;24&gt;&gt;(clk, rst)
-  counter.d = counter.q + 1'd1
-  leds = counter.q[23:16]
-}
-</code></pre>
-<p>This simple design creates a 24-bit counter and displays the 8 most-significant bits to the output <code>leds</code> port.</p>
-<h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
-<p>Yodl provides several key features for hardware design:</p>
+    output1: bool,
+    output2: uint&lt;16&gt;,
+)
+
+<span class="boring"> module Top() -&gt; () {}
+</span></code></pre>
+<h3 id="attributes"><a class="header" href="#attributes">Attributes</a></h3>
+<h4 id="externalmodule_name-file_path"><a class="header" href="#externalmodule_name-file_path"><code>@external(module_name, file_path)</code></a></h4>
 <ul>
-<li><strong>Type-safe hardware description</strong>: Strong typing prevents many common hardware design errors</li>
-<li><strong>Primitive modules</strong>: Built-in registers, memories, and other essential building blocks</li>
-<li><strong>External module integration</strong>: Seamlessly integrate existing Verilog modules (see <a href="./09_external_modules.html">External Modules</a>)</li>
+<li><code>module_name</code>: The name of the Verilog module to instantiate</li>
+<li><code>file_path</code>: Path to the Verilog file containing the module (relative to the generated FIRRTL output file)</li>
 </ul>
-<h2 id="compilation-process"><a class="header" href="#compilation-process">Compilation Process</a></h2>
-<p>To convert this Yodl design to FIRRTL:</p>
-<pre><code class="language-bash">yodl Blink.yodl "write_firrtl Blink.fir"
-</code></pre>
-<p>Which should output:</p>
-<pre><code class="language-fir">FIRRTL version 4.1.0
-circuit Top:
-  public module Top:
-    input clk: Clock
-    input rst: UInt&lt;1&gt;
-    output leds: UInt&lt;8&gt;
-
-    wire counter: { flip d: UInt&lt;24&gt;, q: UInt&lt;24&gt; }
-    regreset reg_0: UInt&lt;24&gt;, clk, rst, UInt&lt;24&gt;(0)
-    connect counter.q, reg_0
-    connect reg_0, counter.d
-    connect counter.d, counter.q
-    node temp_1 = bits(add(counter.q, UInt&lt;1&gt;(1)), 24, 0)
-    connect counter.d, temp_1
-    node temp_2 = bits(counter.q, 23, 16)
-    connect leds, temp_2
-</code></pre>
-<p>Now to generate a SystemVerilog file:</p>
-<pre><code class="language-bash">firtool --format=fir -O=release --verilog \
-      -disable-all-randomization -strip-debug-info \
-      --lowering-options=disallowPackedArrays,disallowLocalVariables \
-      Blink.fir -o Blink.sv 
-</code></pre>
-<p>Which should output a file similar to:</p>
-<pre><code class="language-SystemVerilog">// Generated by CIRCT firtool-1.105.0
-module Top(
-  input        clk,
-               rst,
-  output [7:0] leds
-);
-
-  reg [23:0] reg_0;
-  always @(posedge clk) begin
-    if (rst)
-      reg_0 &lt;= 24'h0;
-    else
-      reg_0 &lt;= reg_0 + 24'h1;
-  end // always @(posedge)
-  assign leds = reg_0[23:16];
-endmodule
-</code></pre>
+<h4 id="parameters---optional"><a class="header" href="#parameters---optional"><code>@parameters({ ... })</code> (Optional)</a></h4>
+<p>Parameters to pass to the Verilog module. These become <code>parameter</code> declarations in the generated Verilog.</p>
 
                     </main>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="01_presentation.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="08_primitive_modules.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <i class="fa fa-angle-left"></i>
                             </a>
 
-                            <a rel="next prefetch" href="03_data_types.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
 
                         <div style="clear: both"></div>
                     </nav>
@@ -269,13 +195,10 @@ endmodule
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="01_presentation.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="08_primitive_modules.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <i class="fa fa-angle-left"></i>
                     </a>
 
-                    <a rel="next prefetch" href="03_data_types.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
             </nav>
 
         </div>

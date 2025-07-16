@@ -216,8 +216,16 @@ $ moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"
 }
 </code></pre>
 <p>This simple design creates a 24-bit counter and displays the 8 most-significant bits to the output <code>leds</code> port.</p>
+<h2 id="key-features"><a class="header" href="#key-features">Key Features</a></h2>
+<p>Yodl provides several key features for hardware design:</p>
+<ul>
+<li><strong>Type-safe hardware description</strong>: Strong typing prevents many common hardware design errors</li>
+<li><strong>Primitive modules</strong>: Built-in registers, memories, and other essential building blocks</li>
+<li><strong>External module integration</strong>: Seamlessly integrate existing Verilog modules (see <a href="./09_external_modules.html">External Modules</a>)</li>
+</ul>
+<h2 id="compilation-process"><a class="header" href="#compilation-process">Compilation Process</a></h2>
 <p>To convert this Yodl design to FIRRTL:</p>
-<pre><code class="language-bash">moon run src/main Blink.yodl "write_firrtl Blink.fir"
+<pre><code class="language-bash">yodl Blink.yodl "write_firrtl Blink.fir"
 </code></pre>
 <p>Which should output:</p>
 <pre><code class="language-fir">FIRRTL version 4.1.0
@@ -1158,6 +1166,30 @@ since vectors are indexed from least to most significant, i.e. <code>vec[0]</cod
     Instead, the integer can be split into smaller parts which can be masked individually.
 </div>
 <p>To learn more about write masks, check out the <a href="https://github.com/chipsalliance/firrtl-spec/blob/main/spec.md#write-ports">FIRRTL specification</a>.</p>
+<div style="break-before: page; page-break-before: always;"></div><h1 id="external-modules"><a class="header" href="#external-modules">External Modules</a></h1>
+<p>Yodl allows you to integrate existing Verilog modules into your designs through external module declarations. This is useful for leveraging existing IP, interfacing with vendor-specific primitives, or gradually migrating from Verilog to Yodl.</p>
+<h2 id="external-module-declaration"><a class="header" href="#external-module-declaration">External Module Declaration</a></h2>
+<p>External modules are declared using the <code>@external</code> attribute followed by a module declaration:</p>
+<pre><code class="language-yodl">@external("module_name", "file.v")
+@parameters({ PARAM1: 0, PARAM2: "true" })
+declare module ExternalModule(
+    input1: uint&lt;8&gt;,
+    input2: bool[4],
+) -&gt; (
+    output1: bool,
+    output2: uint&lt;16&gt;,
+)
+
+<span class="boring"> module Top() -&gt; () {}
+</span></code></pre>
+<h3 id="attributes"><a class="header" href="#attributes">Attributes</a></h3>
+<h4 id="externalmodule_name-file_path"><a class="header" href="#externalmodule_name-file_path"><code>@external(module_name, file_path)</code></a></h4>
+<ul>
+<li><code>module_name</code>: The name of the Verilog module to instantiate</li>
+<li><code>file_path</code>: Path to the Verilog file containing the module (relative to the generated FIRRTL output file)</li>
+</ul>
+<h4 id="parameters---optional"><a class="header" href="#parameters---optional"><code>@parameters({ ... })</code> (Optional)</a></h4>
+<p>Parameters to pass to the Verilog module. These become <code>parameter</code> declarations in the generated Verilog.</p>
 
                     </main>
 
