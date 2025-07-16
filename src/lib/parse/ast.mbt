@@ -218,6 +218,7 @@ pub(all) enum PartSelect {
 pub(all) enum AttributeValue {
   String(String)
   Int(Int)
+  Dict(Map[String, AttributeValue])
 }
 
 pub(all) struct Attribute {

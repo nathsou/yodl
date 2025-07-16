@@ -699,6 +699,23 @@ pub impl Show for AttributeValue with output(val, logger) {
     Int(n) => {
       logger.write_string(n.to_string())
     }
+    Dict(dict) => {
+      logger.write_char('{')
+      let mut first = true
+
+      for key, value in dict {
+        if not(first) {
+          logger.write_string(", ")
+        }
+        first = false
+
+        logger.write_string(key)
+        logger.write_string(": ")
+        logger.write_string(value.to_string())
+      }
+
+      logger.write_char('}')
+    }
   }
 }
 

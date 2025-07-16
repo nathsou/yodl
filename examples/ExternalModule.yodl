@@ -1,5 +1,7 @@
 
+// https://github.com/TimRudy/ice-chips-verilog/blob/09471fc7fb6053074549a5c6d51e92676c0d8df6/source-7400/7474.v
 @external("ttl_7474", "7474.v")
+@parameters({ BLOCKS: 4, DELAY_RISE: 0, DELAY_FALL: 0 })
 declare module U74x74(
     Preset_bar: bool[2],
     Clear_bar: bool[2],

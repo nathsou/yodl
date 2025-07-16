@@ -981,6 +981,7 @@ fn is_valid_assignment_target(expr: @parse.Expr) -> Bool {
 
 priv enum AttributeValueType {
     Str
+    Dict
     // Int
 } derive(Show)
 
@@ -989,6 +990,7 @@ let module_attribute_signatures: Map[String, Array[AttributeValueType]] = {
     "inline": [],
     "flatten": [],
     "external": [Str, Str],
+    "parameters": [Dict],
     // "alias": [Str],
 }
 
@@ -1005,6 +1007,7 @@ fn check_attribute(attr: @parse.Attribute, signatures~: Map[String, Array[Attrib
                 match (arg, exp) {
                     // (Int(_), Int) => ()
                     (String(_), Str) => ()
+                    (Dict(_), Dict) => ()
                     _ => raise InvalidAttributeArgs(name=attr.name, args=attr.args, expected~, span=attr.span)
                 }
             }

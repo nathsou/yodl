@@ -9,6 +9,11 @@ OUTPUT_PATH=examples/output
 
 mkdir -p $OUTPUT_PATH
 
+# download 7474.v if it doesn't exist for the ExternalModule.yodl example
+if [ ! -f "$OUTPUT_PATH/7474.v" ]; then
+  curl https://github.com/TimRudy/ice-chips-verilog/blob/09471fc7fb6053074549a5c6d51e92676c0d8df6/source-7400/7474.v -o "$OUTPUT_PATH/7474.v"
+fi
+
 for example in $EXAMPLES
 do
     echo "Compiling $example..."

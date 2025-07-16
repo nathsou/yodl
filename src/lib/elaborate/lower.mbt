@@ -310,6 +310,18 @@ fn lower_external_module(self: Elaborator, sig: @parse.ModuleSignature) -> Unit 
     ports.push(fir_port)
   }
 
+  if sig.attributes.get("parameters") is Some({ args: [Dict(params)], .. }) {
+    for key, val in params {
+      let param_value: @firrtl.ParameterLiteral = match val {
+        String(value) => StringLiteral(value)
+        Int(value) => IntLiteral(BigInt::from_int(value))
+        Dict(_) => raise ElaborationError::Unsupported(message="Nested dictionaries in parameters are not supported", span=sig.span)
+      }
+
+      parameters.push((key, param_value))
+    }
+  }
+
   let ext_mod: @firrtl.ExtModule = {
     id,
     ports,

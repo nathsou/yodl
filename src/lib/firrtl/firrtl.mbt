@@ -106,7 +106,7 @@ pub(all) struct ExtModule {
   parameters: Array[(String, ParameterLiteral)]
 }
 
-pub enum ParameterLiteral {
+pub(all) enum ParameterLiteral {
   IntLiteral(BigInt)
   StringLiteral(String)
   RawStringLiteral(String)

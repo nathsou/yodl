@@ -939,6 +939,35 @@ fn parse_attribute_value(self: Parser) -> AttributeValue raise {
       self.advance()
       AttributeValue::Int(value.to_int())
     }
+    Lbrace => {
+      self.advance()
+      let dict: Map[String, AttributeValue] = {}
+
+      while not(self.matches(Rbracket)) {
+        let key = match self.peek() {
+          StringLiteral(str) => {
+            self.advance()
+            str
+          }
+          Identifier(name) => {
+            self.advance()
+            name
+          }
+          _ => raise ExpectedExpr(received=self.peek(), span=self.span(start_idx))
+        }
+
+        self.expect(Colon, start_idx)
+        let value = self.parse_attribute_value()
+        dict[key] = value
+
+        if not(self.consumes(Comma)) {
+          break
+        }
+      }
+
+      self.expect(Rbrace, start_idx)
+      AttributeValue::Dict(dict)
+    }
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
 }
