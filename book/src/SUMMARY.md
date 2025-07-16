@@ -8,3 +8,4 @@
 - [Control Flow](./06_control_flow.md)
 - [Built-in Functions](./07_built_in_functions.md)
 - [Primitive Modules](./08_primitive_modules.md)
+- [External Modules](./09_external_modules.md)

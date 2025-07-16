@@ -63,10 +63,20 @@ module Top(
 
 This simple design creates a 24-bit counter and displays the 8 most-significant bits to the output `leds` port.
 
+## Key Features
+
+Yodl provides several key features for hardware design:
+
+- **Type-safe hardware description**: Strong typing prevents many common hardware design errors
+- **Primitive modules**: Built-in registers, memories, and other essential building blocks
+- **External module integration**: Seamlessly integrate existing Verilog modules (see [External Modules](./09_external_modules.md))
+
+## Compilation Process
+
 To convert this Yodl design to FIRRTL:
 
 ```bash
-moon run src/main Blink.yodl "write_firrtl Blink.fir"
+yodl Blink.yodl "write_firrtl Blink.fir"
 ```
 
 Which should output:
