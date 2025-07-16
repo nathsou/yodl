@@ -8,14 +8,16 @@ External modules are declared using the `@external` attribute followed by a modu
 
 ```yodl
 @external("module_name", "file.v")
-@parameters({ PARAM1: value1, PARAM2: value2 })
+@parameters({ PARAM1: 0, PARAM2: "true" })
 declare module ExternalModule(
-    input1: type1,
-    input2: type2,
+    input1: uint<8>,
+    input2: bool[4],
 ) -> (
-    output1: type3,
-    output2: type4,
+    output1: bool,
+    output2: uint<16>,
 )
+
+# module Top() -> () {}
 ```
 
 ### Attributes
