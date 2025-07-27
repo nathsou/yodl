@@ -61,6 +61,7 @@ fn should_insert_semicolon(last_token: Token) -> Bool {
   match last_token.kind {
     Natural(_) | StringLiteral(_) | CharacterLiteral(_) => true
     Identifier(_) => true
+    Bool | UInt | SInt => true
     Rparen | Rbracket | Rbrace | Rchevron => true
     _ => false
   }
