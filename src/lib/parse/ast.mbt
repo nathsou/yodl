@@ -442,7 +442,7 @@ pub fn ty(self: Expr) -> Ref[Type?] {
 
 pub(open) trait Spanned {
   span(Self) -> Span
-  show_context(Self, use_ansi_colors~: Bool) -> String = _
+  show_context(Self, use_ansi_colors~ : Bool) -> String = _
 }
 
 impl Spanned with show_context(self, use_ansi_colors~: Bool) -> String {
@@ -1006,8 +1006,8 @@ pub fn substitute(self: Type, params_env: Map[String, ResolvedParam], span~: Spa
     SInt(Fixed(width)) => SInt(Fixed(width))
     UInt(Dynamic(expr)) | SInt(Dynamic(expr)) => {
       let is_unsigned = match self { UInt(_) => true; _ => false }
-      match (try ?expr.partial_eval(params=params_env)) {
-        Ok(Natural(value~, ..)) => if is_unsigned { UInt(Fixed(value.to_int())) } else { SInt(Fixed(value.to_int())) }
+      match (try? expr.partial_eval(params=params_env)) {
+        Ok(Expr::Natural(value~, ..)) => if is_unsigned { UInt(Fixed(value.to_int())) } else { SInt(Fixed(value.to_int())) }
         _ => if is_unsigned { UInt(Dynamic(expr)) } else { SInt(Dynamic(expr)) }
       }
     }

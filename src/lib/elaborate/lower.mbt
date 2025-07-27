@@ -434,18 +434,18 @@ fn concat_rev(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr raise {
       return Literal(UInt(width=0, radix=Some(2), value=BigInt::from_int(0)))
     }
 
-    let list = @immut/list.from_array(exprs)
+    let list = @list.from_array(exprs)
 
-    fn go(lst: @immut/list.T[@firrtl.Expr], acc: @firrtl.Expr) -> @firrtl.Expr raise {
+    fn go(lst: @list.T[@firrtl.Expr], acc: @firrtl.Expr) -> @firrtl.Expr raise {
       match lst.head() {
         Some(expr) => {
-          go(lst.tail(), @firrtl.primop(Cat, [expr, acc]))
+          go(lst.unsafe_tail(), @firrtl.primop(Cat, [expr, acc]))
         }
         None => acc
       }
     }
 
-    go(list.tail(), exprs[0])
+    go(list.unsafe_tail(), exprs[0])
 }
 
 fn flatten_int(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Span) -> @firrtl.Expr raise {

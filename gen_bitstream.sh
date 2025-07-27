@@ -2,6 +2,8 @@
 module=$1
 device=$2
 
+set -e # Exit on error
+
 rm output/$module.json output/$module.asc output/$module.bin
 
 firtool --format=fir -O=release --verilog \

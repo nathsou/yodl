@@ -67,7 +67,7 @@ pub fn emit_circuit(self: FIRRTLEmitter, circuit: Circuit) -> Unit {
   if circuit.annotations.length() > 0 {
     self.inner().emit("%[[")
     self.inner().indent += 1
-    self.inner().write(@utils.join(circuit.annotations.map(fn(j) { j.stringify(indent=4) }), ",\n"))
+    self.inner().write(@utils.join(circuit.annotations.map(j => j.stringify(indent=4)), ",\n"))
     self.inner().write("\n")
     self.inner().emit("]]")
   }

@@ -38,7 +38,7 @@ fn peek(self: Lexer) -> Char {
 }
 
 fn lookahead(self: Lexer, n: Int) -> Char {
-  self.input.charcode_at(self.index + n).to_char().unwrap()
+  @utils.char_at(self.input, self.index + n)
 }
 
 fn next_non_whitespace(self: Lexer) -> Char? {

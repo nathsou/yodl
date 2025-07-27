@@ -27,7 +27,7 @@ pub fn is_alphanumeric(c: Char) -> Bool {
 }
 
 pub fn char_at(s: String, index: Int) -> Char {
-  s.charcode_at(index).to_char().unwrap()
+  s[index].to_char().unwrap()
 }
 
 pub fn join(elems: Array[String], separator: String) -> String {

@@ -44,7 +44,7 @@ fn collect_packages(dir: String, fs~: @utils.FileSystem, acc~: Map[String, Strin
   for entry in entries {
     let path = @utils.join_paths(dir, entry)
 
-    match (try ?(fs.is_dir)(path)) {
+    match (try? (fs.is_dir)(path)) {
       Ok(true) => {
         let _ = collect_packages(path, fs~, acc~)
       }
