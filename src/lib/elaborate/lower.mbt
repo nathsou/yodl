@@ -95,7 +95,7 @@ impl ScopeLike for @firrtl.Module with add_stmt(self, stmt) {
   self.body.push(stmt)
 }
 
-priv type StmtContainer Array[@firrtl.Stmt]
+priv struct StmtContainer(Array[@firrtl.Stmt])
 
 fn StmtContainer::new() -> StmtContainer {
   Array::new()
@@ -201,20 +201,20 @@ fn default_value(ty: @firrtl.Type, span~: @parse.Span) -> Value raise {
   }
 }
 
-fn default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
+fn _default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
   match ty {
-    Const(ty) => default_mask(ty, span~)
+    Const(ty) => _default_mask(ty, span~)
     Clock | Reset | AsyncReset | UInt(_) | SInt(_) | UIntInferred | SIntInferred => {
       Value::Expr(expr=Literal(UInt(width=1, radix=Some(2), value=1)), ty=UInt(1), span~)
     }
     Vec(elem_ty, len) => {
-      Vector(elems=@utils.fill(len, default_mask(elem_ty, span~)), ty~, span~)
+      Vector(elems=@utils.fill(len, _default_mask(elem_ty, span~)), ty~, span~)
     }
     Bundle(fields) => {
       let values = Map::new(capacity=fields.length())
 
       for field in fields {
-        values[field.id.inner()] = default_mask(field.ty, span~)
+        values[field.id.inner()] = _default_mask(field.ty, span~)
       }
 
       Struct(fields=values, ty~, span~)
@@ -436,7 +436,7 @@ fn concat_rev(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr raise {
 
     let list = @list.from_array(exprs)
 
-    fn go(lst: @list.T[@firrtl.Expr], acc: @firrtl.Expr) -> @firrtl.Expr raise {
+    fn go(lst: @list.List[@firrtl.Expr], acc: @firrtl.Expr) -> @firrtl.Expr raise {
       match lst.head() {
         Some(expr) => {
           go(lst.unsafe_tail(), @firrtl.primop(Cat, [expr, acc]))

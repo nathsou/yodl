@@ -1,4 +1,4 @@
-pub type FIRRTLEmitter @utils.Emitter
+pub struct FIRRTLEmitter(@utils.Emitter)
 
 pub fn FIRRTLEmitter::new() -> FIRRTLEmitter {
   FIRRTLEmitter(@utils.Emitter::new())

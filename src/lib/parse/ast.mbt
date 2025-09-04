@@ -259,7 +259,7 @@ pub(all) struct ModuleSignature {
     span: Span
 }
 
-impl Eq for ModuleSignature with op_equal(self, other) {
+impl Eq for ModuleSignature with equal(self, other) {
   self.path == other.path && self.span.file == other.span.file
 }
 
@@ -303,7 +303,7 @@ pub(all) enum IntParam {
   Dynamic(Expr)
 }
 
-impl Eq for IntParam with op_equal(self, other) {
+impl Eq for IntParam with equal(self, other) {
   match (self, other) {
     (Fixed(a), Fixed(b)) => a == b
     _ => false
@@ -588,7 +588,7 @@ pub(all) enum Param {
   Resolved(ResolvedParam)
 } derive(Eq)
 
-pub impl Eq for ResolvedParam with op_equal(self, other) {
+pub impl Eq for ResolvedParam with equal(self, other) {
   match (self, other) {
     (ConstParam(value=a, ..), ConstParam(value=b, ..)) => a == b
     (TypeParam(ty=a, ..), TypeParam(ty=b, ..)) => a == b
@@ -596,7 +596,7 @@ pub impl Eq for ResolvedParam with op_equal(self, other) {
   }
 }
 
-pub impl Eq for UnresolvedParam with op_equal(self, other) {
+pub impl Eq for UnresolvedParam with equal(self, other) {
   match (self, other) {
     (PathParam(path=a, ..), PathParam(path=b, ..)) => a == b
     (ExprParam(_), ExprParam(_)) => false

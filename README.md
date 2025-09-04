@@ -17,7 +17,7 @@ The JS build of Yodl can be installed from npm:
 $ npm install --global yodl
 ```
 
-To compile FIRRTL outputs to SystemVerilog, install [firtool](https://github.com/llvm/circt/releases/tag/firtool-1.122.0)
+To compile FIRRTL outputs to SystemVerilog, install [firtool](https://github.com/llvm/circt/releases/tag/firtool-1.129.0)
 
 ## Usage
 ```bash
@@ -29,7 +29,7 @@ $ firtool --format=fir --verilog Hello.fir -o Hello.sv
 Install [Moonbit](https://www.moonbitlang.com/):
 
 ```bash
-$ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.6.21'
+$ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.6.26+4cdee97dd'
 ```
 
 ## Checklist

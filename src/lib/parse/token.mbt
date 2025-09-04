@@ -27,7 +27,7 @@ pub(all) struct Span {
   end: (Int, Int)
 }
 
-pub impl Eq for Span with op_equal(self, other) {
+pub impl Eq for Span with equal(self, other) {
   self.file == other.file && self.start == other.start && self.end == other.end
 }
 

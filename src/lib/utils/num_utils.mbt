@@ -12,7 +12,7 @@ pub fn clamp(n: Int, min~: Int, max~: Int) -> Int {
 }
 
 pub fn sum(iter: Iter[Int]) -> Int {
-  iter.fold(fn(a, b) { a + b }, init=0)
+  iter.fold(Int::op_add, init=0)
 }
 
 pub fn clog2(n: BigInt) -> BigInt {
@@ -89,28 +89,6 @@ pub fn log_n(n: Double, base: Double) -> Double {
   @math.log2(n) / d
 }
 
-pub fn show_digit(digit: BigInt) -> Char {
-  match digit {
-    0 => '0'
-    1 => '1'
-    2 => '2'
-    3 => '3'
-    4 => '4'
-    5 => '5'
-    6 => '6'
-    7 => '7'
-    8 => '8'
-    9 => '9'
-    10 => 'a'
-    11 => 'b'
-    12 => 'c'
-    13 => 'd'
-    14 => 'e'
-    15 => 'f'
-    _ => '?'
-  }
-}
-
 pub fn abs(n: BigInt) -> BigInt {
   if n < 0 { -n } else { n }
 }
@@ -137,9 +115,14 @@ pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
     let mut n = n
 
     while n > 0 {
-      let digit = n % base_b
-      n /= base_b
-      builder.write_char(show_digit(digit))
+      let div = n / base_b
+      let digit = n - (div * base_b)
+      n = div
+      builder.write_char(match digit {
+          0 => '0'; 1 => '1'; 2 => '2'; 3 => '3'; 4 => '4'; 5 => '5'; 6 => '6'; 7 => '7'; 8 => '8'; 9 => '9'
+          10 => 'a'; 11 => 'b'; 12 => 'c'; 13 => 'd'; 14 => 'e'; 15 => 'f'
+          _ => '?'
+      })
     }
   }
 

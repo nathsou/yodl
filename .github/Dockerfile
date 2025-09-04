@@ -13,13 +13,13 @@ RUN apt update
 RUN apt install -y curl git wget tar unzip
 
 # Install Moonbit
-RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.6.21'
+RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.6.26+4cdee97dd'
 ENV PATH="/root/.moon/bin:${PATH}"
 RUN moon update
 RUN moon install
 
 # Install firtool
-RUN wget https://github.com/llvm/circt/releases/download/firtool-1.111.1/firrtl-bin-linux-x64.tar.gz
+RUN wget https://github.com/llvm/circt/releases/download/firtool-1.129.0/firrtl-bin-linux-x64.tar.gz
 RUN tar -xzf firrtl-bin-linux-x64.tar.gz
 RUN mv firtool-1.111.1/bin/firtool /usr/local/bin/firtool
 RUN rm -rf firrtl-bin-linux-x64.tar.gz firtool-1.111.1
