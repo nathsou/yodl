@@ -549,7 +549,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
     Binary(op~, lhs~, rhs~, output_width~, span~, ty=bin_ty) => {
       let fir_lhs = self.lower_expr(lhs, scope~, env~).as_expr(self, scope~)
       let fir_rhs = self.lower_expr(rhs, scope~, env~).as_expr(self, scope~)
-      let is_rhs_int = (try? rhs.as_int()).is_ok()
+      let is_rhs_int = (try? rhs.as_int()) is Ok(_)
       let mut negate = false
       let primop: @firrtl.PrimOp = match op {
         Add => Add

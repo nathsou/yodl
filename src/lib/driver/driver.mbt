@@ -181,10 +181,10 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
 
         match path {
           Some(path) => {
-            (fs.write_string_to_file)(path, emitter.inner().to_string())
+            (fs.write_string_to_file)(path, emitter.0.to_string())
           }
           None => {
-            println(emitter.inner().to_string())
+            println(emitter.0.to_string())
           }
         }
       }

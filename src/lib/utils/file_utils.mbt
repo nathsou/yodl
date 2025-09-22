@@ -17,21 +17,21 @@ pub fn file_name(path: String) -> String {
 pub fn file_extension(path: String) -> String? {
     match path.rev_find(".") {
       None => None
-      Some(i) => Some(path.substring(start=i))
+      Some(i) => Some(substring(path, start=i))
     }
 }
 
 pub fn without_extension(path: String) -> String {
     match path.rev_find(".") {
       None => path
-      Some(i) => path.substring(start=0, end=i)
+      Some(i) => substring(path, start=0, end=i)
     }
 }
 
 pub fn dir_name(path: String) -> String {
     match path.rev_find("/") {
       None => "."
-      Some(i) => path.substring(start=0, end=i)
+      Some(i) => substring(path, start=0, end=i)
     }
 }
 

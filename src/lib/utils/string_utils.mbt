@@ -33,3 +33,7 @@ pub fn char_at(s: String, index: Int) -> Char {
 pub fn join(elems: Array[String], separator: String) -> String {
   Array::join(elems, separator)
 }
+
+pub fn substring(s: String, start~: Int, end~: Int = s.length()) -> String {
+  try s[start:end].to_string() catch { _ => "" }
+}

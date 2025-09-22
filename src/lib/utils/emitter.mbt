@@ -21,7 +21,7 @@ impl Logger for Emitter with write_char(self, c) {
 }
 
 impl Logger for Emitter with write_substring(self, str, start, end) {
-  self.write_string(str.substring(start~, end~))
+  self.write_string(substring(str, start~, end~))
 }
 
 pub fn[T: Show] emit(self: Emitter, s: T) -> Unit {
