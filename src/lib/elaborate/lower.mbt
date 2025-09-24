@@ -350,12 +350,16 @@ fn next_id(self: Elaborator) -> Int {
   idx
 }
 
+fn Elaborator::gen_id(self: Elaborator, prefix: String) -> @firrtl.Id {
+  Ident("\{prefix}_\{self.next_id()}$")
+}
+
 fn expr_as_ref(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference {
   match expr {
     Reference(value) => value
     _ => {
       let prefix = binding.unwrap_or("temp")
-      let rhs_id = id_of_str("\{prefix}_\{self.next_id()}")
+      let rhs_id = self.gen_id(prefix)
       scope.add_stmt(Node(id=rhs_id, expr~))
       Id(rhs_id)
     }
@@ -374,7 +378,7 @@ fn connect(self: Elaborator, lhs~: @firrtl.Reference, value~: Value, scope~: &Sc
     _ => false
   }
 
-  if not(same) {
+  if !same {
     scope.add_stmt(Connect(lhs, Reference(rhs)))
   }
 }
@@ -396,7 +400,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
   match self {
     Expr(expr~, ..) => expr
     Vector(elems~, ty~, span=_) => {
-      let id = id_of_str("vec_\{elaborator.next_id()}")
+      let id = elaborator.gen_id("vec")
       scope.add_stmt(Wire(id~, ty~))
       for i, elem in elems {
         let index = @firrtl.Expr::Int(BigInt::from_int(i))
@@ -406,7 +410,10 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       Reference(Id(id))
     }
     Struct(fields~, ty~, span=_) => {
-      let id = id_of_str(binding.unwrap_or_else(() => "struct_\{elaborator.next_id()}"))
+      let id = match binding {
+        Some(name) => id_of_str(name)
+        None => elaborator.gen_id("struct")
+      }
 
       if binding.is_empty() {
         scope.add_stmt(Wire(id~, ty~))
@@ -486,14 +493,15 @@ fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: Ela
     Let(name~, ty~, expr~, span~) => {
       let path = @parse.Path::new([], name)
       let ty = lower_type(unwrap_type(ty, span~), span~)
-      scope.add_stmt(Wire(id=id_of_str(name), ty~))
+      let id = id_of_str(name)
+      scope.add_stmt(Wire(id~, ty~))
 
       let val = match expr {
         Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(name)))
         None => None
       }
       
-      let var = @firrtl.Reference::Id(id_of_str(name))
+      let var = @firrtl.Reference::Id(id)
 
       match val {
         Some(val) => {
@@ -597,16 +605,17 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         match elem {
           Spread(expr~, ..) => {
             let val = self.lower_expr(expr, scope~, env~)
-            let reference = val.as_ref(self, scope~, binding=None)
 
             match val.ty() {
               Vec(elem_ty, len) => {
+                let reference = val.as_ref(self, scope~, binding=None)
                 for i in 0..<len {
                   let index = @firrtl.Expr::Int(BigInt::from_int(i))
                   values.push(Expr(expr=Reference(Indexing(lhs=reference, index~)), ty=elem_ty, span=elem.span()))
                 }
               }
               UInt(len) | SInt(len) => {
+                let reference = val.as_ref(self, scope~, binding=None)
                 for i in 0..<len {
                   let index = @firrtl.Expr::Int(BigInt::from_int(i))
                   values.push(Expr(expr=@firrtl.primop(Bits, [Reference(reference), index, index]), ty=UInt(1), span=elem.span()))
@@ -631,7 +640,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       fn flatten(value: Value) -> Unit raise {
         match value.ty() {
           UInt(_) | SInt(_) | UIntInferred | SIntInferred => {
-            refs.push(@firrtl.Reference(value.as_ref(self, scope~, binding=None)))
+            refs.push(value.as_expr(self, scope~, binding=None))
           }
           Vec(elem_ty, len) => {
             let vec_ref = value.as_ref(self, scope~, binding=None)
@@ -1191,14 +1200,13 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
     }
     FunCall(name="uint" | "sint" as name, args=[arg], ty~, span~) => {
       let arg = self.lower_expr(arg, scope~, env~)
-      let arg_ref = arg.as_ref(self, scope~)
       let ty = unwrap_type(ty, span~)
       let fir_ty = lower_type(ty, span~)
 
       match (name, arg.ty()) {
-        ("uint", Vec(_)) => Expr(expr=flatten_int(arg_ref, arg.ty(), span~), ty=fir_ty, span~)
+        ("uint", Vec(_)) => Expr(expr=flatten_int(arg.as_ref(self, scope~), arg.ty(), span~), ty=fir_ty, span~)
         ("sint", Vec(_)) => {
-          let flattened = flatten_int(arg_ref, arg.ty(), span~)
+          let flattened = flatten_int(arg.as_ref(self, scope~), arg.ty(), span~)
           Expr(expr=@firrtl.primop(AsSInt, [flattened]), ty=fir_ty, span~)
         }
         ("uint", UInt(_) | UIntInferred | AsyncReset | Reset) | ("sint", SInt(_) | SIntInferred) => arg
