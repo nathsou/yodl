@@ -125,9 +125,9 @@ Extends the bit-width of an integer `x` to `width` bits.
 If `x` is signed, it performs sign-extension; if `x` is unsigned, it performs zero-extension:
 
 | type of `x` | $pad(x, width) |
-|-------------|----------|
-| sint        | sign-extend |
-| uint        | zero-extend | 
+|-------------|----------------|
+| sint<W>     | sign-extend    |
+| uint<W>     | zero-extend    | 
 
 ```yodl
 # module Test(clk: clock) -> () {
@@ -135,7 +135,7 @@ If `x` is signed, it performs sign-extension; if `x` is unsigned, it performs ze
     let b: sint<8> = $pad(a, 8) // 8'b11111101 (sign-extended)
     $assert(uint(b) == 8'b11111101)
     let c: uint<4> = 4'd3 // 4'b0011
-    let d: uint<8> = $pad(c, 8) // 8'b00000011 (zero-extended
+    let d: uint<8> = $pad(c, 8) // 8'b00000011 (zero-extended)
     $assert(d == 8'b00000011)
 # }
 ```

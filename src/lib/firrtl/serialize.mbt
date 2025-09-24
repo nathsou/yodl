@@ -488,12 +488,13 @@ pub fn emit_expr(self: FIRRTLEmitter, expr: Expr) -> Unit {
     Int(value) => self.inner().write(value)
     Literal(literal) => self.emit_literal(literal)
     Mux(cond~, tval~, fval~) => {
-      self.inner().write("mux ")
+      self.inner().write("mux(")
       self.emit_expr(cond)
       self.inner().write(", ")
       self.emit_expr(tval)
       self.inner().write(", ")
       self.emit_expr(fval)
+      self.inner().write(")")
     }
     PrimOp(op~, args~) => {
       self.inner().write(op)

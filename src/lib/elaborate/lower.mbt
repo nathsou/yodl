@@ -653,80 +653,101 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
     }
     Match(subject~, cases~, default~, span~, ty=match_ty) => {
       let has_value = unwrap_type(match_ty, span~).width(span) > 0
-      let res_id = if has_value {
-        let res_id = id_of_str(binding.unwrap_or_else(() => "match_\{self.next_idx()}"))
 
-        if binding.is_empty() {
-          scope.add_stmt(Wire(id=res_id, ty~))
+      if
+        has_value &&
+        subject.ty().val is Some(UInt(Fixed(1))) &&
+        cases.length() == 2 &&
+        !cases.iter().any(case => case.1 is Block(_)) {
+        // Rewrite 1-bit match with two cases as a mux
+        let cases_map: Map[Int, @firrtl.Expr] = {}
+
+        for case in cases {
+          let int_val = case.0.as_int()
+          cases_map[int_val] = self.lower_expr(case.1, scope~, env~).as_expr(self, scope~)
         }
 
-        Some(res_id)
+        let tval = cases_map.get(1).or_error(ElaborationError::Unreachable(message="Missing true case in 1-bit match", span~))
+        let fval = cases_map.get(0).or_error(ElaborationError::Unreachable(message="Missing false case in 1-bit match", span~))
+        let cond = self.lower_expr(subject, scope~, env~).as_expr(self, scope~)
+
+        Expr(expr=Mux(cond~, tval~, fval~), ty~, span~)
       } else {
-        None
-      }
-      
-      let subject_binding = binding.map(b => "\{b}_subject").unwrap_or("subject")
-      let fir_subject = @firrtl.Reference(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(subject_binding)))
-      let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width(span)).to_int()
-      let mut last_when: @firrtl.When? = None
+        let res_id = if has_value {
+          let res_id = id_of_str(binding.unwrap_or_else(() => "match_\{self.next_idx()}"))
 
-      for idx, case in cases {
-        let (lhs, rhs) = case
-        let fir_lhs = self.lower_expr(lhs, scope~, env~).as_expr(self, scope~)
-        let body = {
-          let case_scope = StmtContainer::new()
-          let fir_rhs = self.lower_expr(rhs, scope=case_scope, env~).as_expr(self, scope=case_scope)
-          if has_value {
-            case_scope.add_stmt(Connect(Id(res_id.unwrap()), fir_rhs))
+          if binding.is_empty() {
+            scope.add_stmt(Wire(id=res_id, ty~))
           }
 
-          case_scope.inner()
+          Some(res_id)
+        } else {
+          None
         }
+        
+        let subject_binding = binding.map(b => "\{b}_subject").unwrap_or("subject")
+        let fir_subject = @firrtl.Reference(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(subject_binding)))
+        let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width(span)).to_int()
+        let mut last_when: @firrtl.When? = None
 
-        let when: @firrtl.When = {
-          cond: @firrtl.primop(Eq, [fir_subject, fir_lhs]),
-          body,
-          otherwise: None,
-        }
-
-        match last_when {
-          Some(last_when) => {
-            if is_complete && idx == cases.length() - 1 {
-              last_when.otherwise = Some(when.body)
-            } else {
-              last_when.otherwise = Some([When(when)])
-            }
-          }
-          None => {
-            scope.add_stmt(When(when))
-          }
-        }
-
-        last_when = Some(when)
-      }
-      
-      match default {
-        Some(expr) => match last_when {
-          Some(last_when) => {
+        for idx, case in cases {
+          let (lhs, rhs) = case
+          let fir_lhs = self.lower_expr(lhs, scope~, env~).as_expr(self, scope~)
+          let body = {
             let case_scope = StmtContainer::new()
-            let fir_rhs = self.lower_expr(expr, scope=case_scope, env~).as_expr(self, scope=case_scope)
+            let fir_rhs = self.lower_expr(rhs, scope=case_scope, env~).as_expr(self, scope=case_scope)
             if has_value {
               case_scope.add_stmt(Connect(Id(res_id.unwrap()), fir_rhs))
             }
 
-            last_when.otherwise = Some(case_scope.inner())
+            case_scope.inner()
           }
-          None => {
-            raise ElaborationError::Unreachable(message="Unexpected default case", span~)
-          }
-        }
-        None => ()
-      }
 
-      if has_value {
-        Expr(expr=Reference(Id(res_id.unwrap())), ty~, span~)
-      } else {
-        Empty(span~)
+          let when: @firrtl.When = {
+            cond: @firrtl.primop(Eq, [fir_subject, fir_lhs]),
+            body,
+            otherwise: None,
+          }
+
+          match last_when {
+            Some(last_when) => {
+              if is_complete && idx == cases.length() - 1 {
+                last_when.otherwise = Some(when.body)
+              } else {
+                last_when.otherwise = Some([When(when)])
+              }
+            }
+            None => {
+              scope.add_stmt(When(when))
+            }
+          }
+
+          last_when = Some(when)
+        }
+        
+        match default {
+          Some(expr) => match last_when {
+            Some(last_when) => {
+              let case_scope = StmtContainer::new()
+              let fir_rhs = self.lower_expr(expr, scope=case_scope, env~).as_expr(self, scope=case_scope)
+              if has_value {
+                case_scope.add_stmt(Connect(Id(res_id.unwrap()), fir_rhs))
+              }
+
+              last_when.otherwise = Some(case_scope.inner())
+            }
+            None => {
+              raise ElaborationError::Unreachable(message="Unexpected default case", span~)
+            }
+          }
+          None => ()
+        }
+
+        if has_value {
+          Expr(expr=Reference(Id(res_id.unwrap())), ty~, span~)
+        } else {
+          Empty(span~)
+        }
       }
     }
     Tuple(elems~, span~, ty=_) => {
