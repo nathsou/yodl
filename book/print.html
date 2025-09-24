@@ -969,8 +969,8 @@ since vectors are indexed from least to most significant, i.e. <code>vec[0]</cod
 <p>Extends the bit-width of an integer <code>x</code> to <code>width</code> bits.
 If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is unsigned, it performs zero-extension:</p>
 <div class="table-wrapper"><table><thead><tr><th>type of <code>x</code></th><th>$pad(x, width)</th></tr></thead><tbody>
-<tr><td>sint</td><td>sign-extend</td></tr>
-<tr><td>uint</td><td>zero-extend</td></tr>
+<tr><td>sint<W></td><td>sign-extend</td></tr>
+<tr><td>uint<W></td><td>zero-extend</td></tr>
 </tbody></table>
 </div>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
@@ -978,7 +978,7 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
     let b: sint&lt;8&gt; = $pad(a, 8) // 8'b11111101 (sign-extended)
     $assert(uint(b) == 8'b11111101)
     let c: uint&lt;4&gt; = 4'd3 // 4'b0011
-    let d: uint&lt;8&gt; = $pad(c, 8) // 8'b00000011 (zero-extended
+    let d: uint&lt;8&gt; = $pad(c, 8) // 8'b00000011 (zero-extended)
     $assert(d == 8'b00000011)
 <span class="boring"> }
 </span></code></pre>
