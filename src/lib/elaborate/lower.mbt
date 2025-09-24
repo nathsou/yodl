@@ -630,7 +630,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
 
       fn flatten(value: Value) -> Unit raise {
         match value.ty() {
-          UInt(_) | SInt(_) => {
+          UInt(_) | SInt(_) | UIntInferred | SIntInferred => {
             refs.push(@firrtl.Reference(value.as_ref(self, scope~, binding=None)))
           }
           Vec(elem_ty, len) => {
@@ -1191,6 +1191,12 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
       let clk_ref = clk.as_ref(self, scope~)
 
       Expr(expr=@firrtl.primop(AsClock, [Reference(clk_ref)]), ty=Clock, span~)
+    }
+    FunCall(name="$pad", args=[arg, width_arg], span~, ty~) => {
+      let arg = self.lower_expr(arg, scope~, env~)
+      let width = self.lower_expr(width_arg, scope~, env~).as_int().to_int()
+      let ty = lower_type(unwrap_type(ty, span~), span~)
+      Expr(expr=@firrtl.primop(Pad, [arg.as_expr(self, scope~), Int(BigInt::from_int(width))]), ty~, span~)
     }
     FunCall(name="$readmemb" | "$readmemh" as name, args=[path, mem], span~, ..) => {
       let path = path.expect_string()

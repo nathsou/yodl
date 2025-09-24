@@ -45,6 +45,7 @@ suberror TypeCheckerError {
     InvalidRevOperand(ty~: @parse.Type, span~: @parse.Span)
     InvalidConcatElement(ty~: @parse.Type, span~: @parse.Span)
     CannotMixUnsignedAndSignedIntegersInConcatExpr(span~: @parse.Span)
+    PadWidthTooSmall(given~: Int, min_required~: Int, span~: @parse.Span)
 }
 
 pub impl Show for TypeCheckerError with output(self, logger) {
@@ -148,6 +149,9 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         CannotMixUnsignedAndSignedIntegersInConcatExpr(..) => {
             logger.write_string("Cannot mix unsigned and signed integers in a concatenation expression")
         }
+        PadWidthTooSmall(given~, min_required~, ..) => {
+            logger.write_string("Pad width too small: given \{given}, minimum required is \{min_required}")
+        }
     }
 
     logger.write_string(self.show_context(use_ansi_colors=false))
@@ -188,6 +192,7 @@ pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
         InvalidRevOperand(span~, ..) => span
         InvalidConcatElement(span~, ..) => span
         CannotMixUnsignedAndSignedIntegersInConcatExpr(span~) => span
+        PadWidthTooSmall(span~, ..) => span
     }
 }
 
@@ -738,7 +743,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 false => (expr_ty, count)
             }
 
-            Vector(ty=elem_ty, len=Fixed(len))
+            match expr_ty {
+                UInt(_) if concat => @parse.Type::uint(len)
+                SInt(_) if concat => @parse.Type::sint(len)
+                _ => Vector(ty=elem_ty, len=Fixed(len))
+            }
         }
         FunCall(name="uint", args=[arg], ..) => {
             let arg_ty = self.check_expr(arg, env)
@@ -753,6 +762,22 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         FunCall(name="clock", args=[arg], ..) => {
             let _ = self.check_expr(arg, env, expected_ty=Some(@parse.Type::uint(1)))
             @parse.Type::Clock
+        }
+        FunCall(name="$pad", args=[arg, width], span~, ..) => {
+            let arg_ty = self.check_expr(arg, env)
+            let width_ty = self.check_expr(width, env)
+            let _ = unify(width_ty, @parse.Nat(min_width=0), span=width.span())
+            let width = eval_const_expr(width)
+
+            if width < arg_ty.width(arg.span()) {
+                raise PadWidthTooSmall(given=width, min_required=arg_ty.width(arg.span()), span~)
+            }
+
+            match arg_ty {
+                UInt(_) => @parse.Type::uint(width)
+                SInt(_) => @parse.Type::sint(width)
+                _ => raise Unreachable(message="", span~)
+            }
         }
         FunCall(name="$readmemb" | "$readmemh", args=[path, mem], span~, ..) => {
             let _ = self.check_expr(path, env)

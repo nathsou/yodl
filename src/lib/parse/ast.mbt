@@ -882,6 +882,10 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Fixed(1),
     apply: fn(_, _) { None }
   },
+  "$pad": {
+    arity: Fixed(2),
+    apply: fn(_, _) { None }
+  },
   "$readmemb": {
     arity: Range(min=2, max=2),
     apply: fn(args, _) {

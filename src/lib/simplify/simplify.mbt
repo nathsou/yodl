@@ -119,21 +119,48 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
         }
       }
       Replicate(expr~, count~, concat~, span~, ty~) => Some({
-        // Rewrite replication expressions into concatenation expressions
-        let mut repeated_expr = self.simplify_expr(
-          expr,
-          env~,
-          scope~,
-        )
+        // Replication of single-bit integers can be rewritten using the $pad function
+        // e.g. 21*{a.q[31]} -> $pad(sint(a.q[31]), 21)
+        if concat && expr.ty() is { val: Some(UInt(_) | SInt(_) as expr_ty) } && expr_ty.width(span) == 1 {
+          let width = count.as_int()
+          let pad_expr = @parse.Expr::FunCall(
+            name="$pad", 
+            args=[
+              if expr_ty is UInt(_) {
+                // $pad sign-extends if the input is signed, so we need to convert to sint first
+                @parse.Expr::FunCall(name="sint", args=[expr], span=expr.span(), ty={ val: Some(SInt(Fixed(1))) })
+              } else {
+                expr
+              },
+              @parse.Expr::nat(width, span=count.span())],
+            span~,
+            ty={ val: Some(SInt(Fixed(width))) },
+          )
 
-        if concat {
-          repeated_expr = @parse.Expr::Spread(expr=repeated_expr, span~, ty~)
+          let final_expr = if expr_ty is UInt(_) {
+            @parse.Expr::FunCall(name="uint", args=[pad_expr], span~, ty~)
+          } else {
+            pad_expr
+          }
+
+          self.simplify_expr(final_expr, env~, scope~)
+        } else {
+          // Rewrite replication expressions into concatenation expressions
+          let mut repeated_expr = self.simplify_expr(
+            expr,
+            env~,
+            scope~,
+          )
+
+          if concat {
+            repeated_expr = @parse.Expr::Spread(expr=repeated_expr, span~, ty~)
+          }
+
+          let elems = @utils.fill(count.as_int(), repeated_expr)
+          let res = @parse.Expr::Vector(elems~, span~, ty~)
+
+          self.simplify_expr(res, env~, scope~)
         }
-
-        let elems = @utils.fill(count.as_int(), repeated_expr)
-        let res = @parse.Expr::Vector(elems~, span~, ty~)
-
-        self.simplify_expr(res, env~, scope~)
       })
       Ternary(cond~, then~, else_~, span~, ty~) => {
         // Rewrite ternary expressions into match expressions
