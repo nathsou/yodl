@@ -11,7 +11,7 @@ pub fn[K: Eq + Hash, T] Scope::new() -> Scope[K, T] {
   { members: {}, parent: None }
 }
 
-pub fn[K: Eq + Hash, T] child(self: Scope[K, T]) -> Scope[K, T] {
+pub fn[K: Eq + Hash, T] Scope::child(self: Scope[K, T]) -> Scope[K, T] {
   { members: {}, parent: Some(self) }
 }
 
@@ -23,46 +23,40 @@ pub fn[K: Eq + Hash + Show, T] Scope::declare(self: Scope[K, T], key: K, value: 
   self.members[key] = value
 }
 
-pub fn[K: Eq + Hash, T] declare_shadowing(self: Scope[K, T], key: K, value: T) -> Unit {
+pub fn[K: Eq + Hash, T] Scope::declare_shadowing(self: Scope[K, T], key: K, value: T) -> Unit {
   self.members[key] = value
 }
 
-pub fn[K: Eq + Hash, T] contains(self: Scope[K, T], key: K) -> Bool {
-  self.members.contains(key) || (match self.parent {
-    Some(parent) => parent.contains(key)
-    None => false
-  })
+pub fn[K: Eq + Hash, T] Scope::contains(self: Scope[K, T], key: K) -> Bool {
+  self.members.contains(key) || self.parent.map_or(false, parent => parent.contains(key))
 }
 
-pub fn[K: Eq + Hash, T] contains_local(self: Scope[K, T], key: K) -> Bool {
+pub fn[K: Eq + Hash, T] Scope::contains_local(self: Scope[K, T], key: K) -> Bool {
   self.members.contains(key)
 }
 
-pub fn[K: Eq + Hash, T] resolve(self: Scope[K, T], key: K) -> T? {
+pub fn[K: Eq + Hash, T] Scope::resolve(self: Scope[K, T], key: K) -> T? {
   match self.members.get(key) {
     Some(value) => Some(value)
-    None => match self.parent {
-      Some(parent) => parent.resolve(key)
-      None => None
-    }
+    None => self.parent.map_or(None, parent => parent.resolve(key))
   }
 }
 
-pub fn[K: Eq + Hash, T] remove(self: Scope[K, T], key: K) -> Unit {
+pub fn[K: Eq + Hash, T] Scope::remove(self: Scope[K, T], key: K) -> Unit {
   self.members.remove(key)
 }
 
-pub fn[K, T] members(self: Scope[K, T]) -> Iter[K] {
+pub fn[K, T] Scope::members(self: Scope[K, T]) -> Iter[K] {
   self.members.keys()
 }
 
-pub fn[K, T] members_rec(self: Scope[K, T]) -> Iter[K] {
+pub fn[K, T] Scope::members_rec(self: Scope[K, T]) -> Iter[K] {
   self.members.keys() + (match self.parent {
     Some(parent) => parent.members_rec()
     None => Iter::empty()
   })
 }
 
-pub fn[K, T] values(self: Scope[K, T]) -> Iter[T] {
+pub fn[K, T] Scope::values(self: Scope[K, T]) -> Iter[T] {
   self.members.values()
 }

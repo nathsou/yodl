@@ -11,59 +11,42 @@ pub fn TypeChecker::new() -> TypeChecker {
     }
 }
 
-suberror TypeCheckerError {
-    UnboundVariable(path~: @parse.Path, span~: @parse.Span)
+priv suberror TypeCheckerError {
+    TypeCheckerError(message~: String, span~: @parse.Span)
     IncompatibleTypes(ty1~: @parse.Type, ty2~: @parse.Type, span~: @parse.Span)
-    VariableRedeclared(path~: @parse.Path, span~: @parse.Span)
     InvalidAssignmentTarget(span~: @parse.Span)
-    IndexMustBeInteger(span~: @parse.Span)
     IndexedExpressionMustBeVector(span~: @parse.Span)
     UnknownModule(path~: @parse.Path, span~: @parse.Span)
     UnknownModulePort(module_path~: @parse.Path, port_name~: String, span~: @parse.Span)
-    InvalidFieldAccess(field~: String, ty~: @parse.Type, span~: @parse.Span)
     InvalidSlicingRange(reason~: String, span~: @parse.Span)
     ExpectedConstantExpr(span~: @parse.Span)
-    LetStmtMustHaveTypeOrValue(span~: @parse.Span)
-    InvalidAttribute(name~: String, span~: @parse.Span)
     InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], expected~: Array[AttributeValueType], span~: @parse.Span)
-    EmptyMatch(span~: @parse.Span)
-    InvalidInstanceTypeParameterCount(module_path~: @parse.Path, expected~: Int, actual~: Int, span~: @parse.Span)
-    FunCallAfterMonomorphization(span~: @parse.Span)
-    InvalidStructField(name~: String, span~: @parse.Span)
-    InvalidUnaryOpOperand(op~: @parse.UnaryOp, ty~: @parse.Type, span~: @parse.Span)
-    InvalidBinaryOpOperand(op~: @parse.BinaryOp, ty~: @parse.Type, span~: @parse.Span)
-    InvalidBinaryOpOperands(op~: @parse.BinaryOp, lhs_ty~: @parse.Type, rhs_ty~: @parse.Type, span~: @parse.Span)
-    StringContainsNonAsciiChar(char~: Char, span~: @parse.Span)
-    SpreadOutsideVector(span~: @parse.Span)
-    ExpectedLengthGotType(expected~: Int, got~: @parse.Type, span~: @parse.Span)
-    InvalidParameterInstantiation(name~: String, expected~: @parse.ModuleParameterAnnotation, ty~: @parse.Type, span~: @parse.Span)
-    InvalidMemoryArgumentInReadMemCall(ty~: @parse.Type, span~: @parse.Span)
-    InvalidFormatString(span~: @parse.Span)
-    InvalidFormatStringArgument(index~: Int, span~: @parse.Span)
-    InvalidStopExitCode(exit_code_ty~: @parse.Type, span~: @parse.Span)
-    InvalidFlipOperand(ty~: @parse.Type, span~: @parse.Span)
-    InvalidRevOperand(ty~: @parse.Type, span~: @parse.Span)
-    InvalidConcatElement(ty~: @parse.Type, span~: @parse.Span)
-    CannotMixUnsignedAndSignedIntegersInConcatExpr(span~: @parse.Span)
-    PadWidthTooSmall(given~: Int, min_required~: Int, span~: @parse.Span)
 }
 
-pub impl Show for TypeCheckerError with output(self, logger) {
+impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
     match self {
-        UnboundVariable(path~, ..) => {
-            logger.write_string("Unbound variable '\{path}'")
+        TypeCheckerError(span~, ..) => span
+        IncompatibleTypes(span~, ..) => span
+        InvalidAssignmentTarget(span~) => span
+        IndexedExpressionMustBeVector(span~) => span
+        UnknownModule(span~, ..) => span
+        UnknownModulePort(span~, ..) => span
+        InvalidSlicingRange(span~, ..) => span
+        ExpectedConstantExpr(span~) => span
+        InvalidAttributeArgs(span~, ..) => span
+    }
+}
+
+impl Show for TypeCheckerError with output(self, logger) {
+    match self {
+        TypeCheckerError(message~, ..) => {
+            logger.write_string(message)
         }
         IncompatibleTypes(ty1~, ty2~, ..) => {
             logger.write_string("Incompatible types '\{ty1}' and '\{ty2}'")
         }
-        VariableRedeclared(path~, ..) => {
-            logger.write_string("Variable '\{path}' redeclared")
-        }
         InvalidAssignmentTarget(..) => {
             logger.write_string("Invalid assignment target")
-        }
-        IndexMustBeInteger(..) => {
-            logger.write_string("Index must be an integer")
         }
         IndexedExpressionMustBeVector(..) => {
             logger.write_string("Indexed expression must be a vector")
@@ -74,126 +57,22 @@ pub impl Show for TypeCheckerError with output(self, logger) {
         UnknownModulePort(module_path~, port_name~, ..) => {
             logger.write_string("Unknown port '\{port_name}' in module '\{module_path}'")
         }
-        InvalidFieldAccess(field~, ty~, ..) => {
-            logger.write_string("Invalid field access '\{field}' on type '\{ty}'")
-        }
         InvalidSlicingRange(reason~, ..) => {
             logger.write_string("Invalid slicing range: \{reason}")
         }
         ExpectedConstantExpr(..) => {
             logger.write_string("Expected constant expression")
         }
-        LetStmtMustHaveTypeOrValue(..) => {
-            logger.write_string("Let statement must have a type or value")
-        }
-        InvalidAttribute(name~, ..) => {
-            logger.write_string("Invalid attribute '\{name}'")
-        }
         InvalidAttributeArgs(name~, args~, expected~, ..) => {
             logger.write_string("Invalid arguments '\{args}' for attribute '\{name}', expected \{expected}")
-        }
-        EmptyMatch(..) => {
-            logger.write_string("Empty match expression")
-        }
-        InvalidInstanceTypeParameterCount(module_path~, expected~, actual~, ..) => {
-            logger.write_string("Module '\{module_path}' expected \{expected} type parameters, got \{actual}")
-        }
-        FunCallAfterMonomorphization(..) => {
-            logger.write_string("Function call after monomorphization")
-        }
-        InvalidStructField(name~, ..) => {
-            logger.write_string("Invalid struct field '\{name}'")
-        }
-        InvalidUnaryOpOperand(op~, ty~, ..) => {
-            logger.write_string("Invalid operand type '\{ty}' for unary operator '\{op}, expected uint or sint")
-        }
-        InvalidBinaryOpOperand(op~, ty~, ..) => {
-            logger.write_string("Invalid operand type '\{ty}' for binary operator '\{op}'")
-        }
-        StringContainsNonAsciiChar(char~, ..) => {
-            logger.write_string("String contains non-ASCII character '\{char}'")
-        }
-        SpreadOutsideVector(..) => {
-            logger.write_string("Spread outside vector")
-        }
-        ExpectedLengthGotType(expected~, got~, ..) => {
-            logger.write_string("Expected length '\{expected}', got type '\{got}'")
-        }
-        InvalidParameterInstantiation(name~, expected~, ty~, ..) => {
-            logger.write_string("Invalid instantiation of parameter '\{name}' with type '\{ty}', expected '\{expected}'")
-        }
-        InvalidMemoryArgumentInReadMemCall(ty~, ..) => {
-            logger.write_string("Invalid memory argument of type '\{ty}' in readmem call")
-        }
-        InvalidBinaryOpOperands(op~, lhs_ty~, rhs_ty~, ..) => {
-            logger.write_string("Invalid operands '\{lhs_ty}' and '\{rhs_ty}' for binary operator '\{op}'")
-        }
-        InvalidFormatString(..) => {
-            logger.write_string("Invalid format string")
-        }
-        InvalidFormatStringArgument(index~, ..) => {
-            logger.write_string("Invalid format string argument at index \{index}")
-        }
-        InvalidStopExitCode(exit_code_ty~, ..) => {
-            logger.write_string("Invalid exit code type '\{exit_code_ty}' in stop statement, expected an integer")
-        }
-        InvalidFlipOperand(ty~, ..) => {
-            logger.write_string("Invalid operand '\{ty}' for $flip operator")
-        }
-        InvalidRevOperand(ty~, ..) => {
-            logger.write_string("Invalid operand '\{ty}' for $rev operator, expected a vector")
-        }
-        InvalidConcatElement(ty~, ..) => {
-            logger.write_string("Invalid element of type '\{ty}' in concatenation expression")
-        }
-        CannotMixUnsignedAndSignedIntegersInConcatExpr(..) => {
-            logger.write_string("Cannot mix unsigned and signed integers in a concatenation expression")
-        }
-        PadWidthTooSmall(given~, min_required~, ..) => {
-            logger.write_string("Pad width too small: given \{given}, minimum required is \{min_required}")
         }
     }
 
     logger.write_string(self.show_context(use_ansi_colors=false))
 }
 
-pub impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
-    match self {
-        UnboundVariable(span~, ..) => span
-        IncompatibleTypes(span~, ..) => span
-        VariableRedeclared(span~, ..) => span
-        InvalidAssignmentTarget(span~) => span
-        IndexMustBeInteger(span~) => span
-        IndexedExpressionMustBeVector(span~) => span
-        UnknownModule(span~, ..) => span
-        UnknownModulePort(span~, ..) => span
-        InvalidFieldAccess(span~, ..) => span
-        InvalidSlicingRange(span~, ..) => span
-        ExpectedConstantExpr(span~) => span
-        LetStmtMustHaveTypeOrValue(span~) => span
-        InvalidAttribute(span~, ..) => span
-        InvalidAttributeArgs(span~, ..) => span
-        EmptyMatch(span~) => span
-        InvalidInstanceTypeParameterCount(span~, ..) => span
-        FunCallAfterMonomorphization(span~) => span
-        InvalidStructField(span~, ..) => span
-        InvalidUnaryOpOperand(span~, ..) => span
-        InvalidBinaryOpOperand(span~, ..) => span
-        StringContainsNonAsciiChar(span~, ..) => span
-        SpreadOutsideVector(span~) => span
-        ExpectedLengthGotType(span~, ..) => span
-        InvalidParameterInstantiation(span~, ..) => span
-        InvalidMemoryArgumentInReadMemCall(span~, ..) => span
-        InvalidBinaryOpOperands(span~, ..) => span
-        InvalidFormatString(span~) => span
-        InvalidFormatStringArgument(span~, ..) => span
-        InvalidStopExitCode(span~, ..) => span
-        InvalidFlipOperand(span~, ..) => span
-        InvalidRevOperand(span~, ..) => span
-        InvalidConcatElement(span~, ..) => span
-        CannotMixUnsignedAndSignedIntegersInConcatExpr(span~) => span
-        PadWidthTooSmall(span~, ..) => span
-    }
+fn type_error(message: String, span: @parse.Span) -> TypeCheckerError {
+    TypeCheckerError(message~, span~)
 }
 
 priv enum UnificationParam {
@@ -218,7 +97,7 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
                         }
                     }
                     Some(Type(ty)) => {
-                        raise ExpectedLengthGotType(expected=len, got=ty, span~)
+                        raise type_error("Expected length '\{len}', got type '\{ty}'", span)
                     }
                     None => {
                         subst[member] = Int(len)
@@ -250,7 +129,7 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
                         accessed_ports1.add(port)
                     }
                 } else {
-                    raise IncompatibleTypes(ty1~, ty2~, span~)
+                        raise IncompatibleTypes(ty1~, ty2~, span~)
                 }
             }
             (String(len~), ty2) | (ty2, String(len~)) => {
@@ -272,7 +151,9 @@ fn unify(ty1: @parse.Type, ty2: @parse.Type, span~: @parse.Span, subst~: Map[Str
 fn declare_name(env~: Scope[@parse.Path, @parse.Type], path~: @parse.Path, ty~: @parse.Type, span~: @parse.Span) -> Unit raise TypeCheckerError {
     match (try? env.declare(path, ty)) {
         Ok(_) => ()
-        Err(MemberAlreadyDeclared(_)) => raise VariableRedeclared(path~, span~)
+        Err(MemberAlreadyDeclared(_)) => {
+            raise type_error("Variable '\{path}' redeclared", span)
+        }
     }
 }
 
@@ -297,7 +178,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
             match self.modules.get(path) {
                 Some(sig) => {
                     if sig.params.length() != params.length() {
-                        raise InvalidInstanceTypeParameterCount(module_path=path, expected=sig.params.length(), actual=params.length(), span~)
+                        raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span,)
                     }
 
                     Instance(sig~, params=Map::from_iter(@utils.zip(sig.params.map(fn(p) { p.name }), params)), accessed_ports=Set::new())
@@ -324,7 +205,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             match env.resolve(path) {
                 Some(ty) => ty
                 None => {
-                    raise UnboundVariable(path~, span~)
+                    raise type_error("Unbound variable '\{path}'", span)
                 }
             }
         }
@@ -334,8 +215,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         String(value=str,  span~, ..) => {
             for char in str {
-                if not(@utils.is_ascii(char)) {
-                    raise StringContainsNonAsciiChar(char~, span~)
+                if !@utils.is_ascii(char) {
+                    raise type_error("String contains non-ASCII character '\{char}'", span)
                 }
             }
 
@@ -345,7 +226,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let ty = self.check_expr(expr, env, expected_ty~)
  
             if not(ty.is_numerical()) {
-                raise InvalidUnaryOpOperand(op~, ty~, span~)
+                raise type_error("Invalid operand type '\{ty}' for unary operator '\{op}, expected uint or sint", span)
             }
 
             match op {
@@ -360,8 +241,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let wa = lhs_ty.width(lhs.span())
             let wb = rhs_ty.width(rhs.span())
 
-            if not(lhs_ty.is_numerical()) {
-                raise InvalidBinaryOpOperand(op~, ty=lhs_ty, span~)   
+            if !lhs_ty.is_numerical() {
+                raise type_error("Invalid operand type '\{lhs_ty}' for binary operator '\{op}'", span)
             }
 
             let shift_amount = match op {
@@ -413,7 +294,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 }
                 (And | Or | Xor | Nand | Nor | Xnor | Ternary, UInt(_), UInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
                 (And | Or | Xor | Nand | Nor | Xnor | Ternary, SInt(_), SInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
-                _ => raise InvalidBinaryOpOperands(op~, lhs_ty~, rhs_ty~, span~)
+                _ => raise type_error("Invalid operands '\{lhs_ty}' and '\{rhs_ty}' for binary operator '\{op}'", span)
             }
 
             let wy = out_ty.width(span)
@@ -429,7 +310,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let index_ty = self.check_expr(index, env)
 
             if not(index_ty.is_numerical()) {
-                raise IndexMustBeInteger(span=index.span())
+                raise type_error("Index must be an integer", index.span())
             }
 
             match ty {
@@ -491,10 +372,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 Struct(fields) => {
                     match fields.get(port) {
                         Some(ty) => ty
-                        None => raise InvalidStructField(name=port, span~)
+                        None => raise type_error("Invalid struct field '\{port}'", span)
                     }
                 }
-                ty => raise InvalidFieldAccess(field=port, ty~, span~)
+                ty => raise type_error("Invalid field access '\{port}' on type '\{ty}'", span)
             }
         }
         Instance(path~, params~, ports~, span~, ..) => {
@@ -535,7 +416,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                                 subst[name] = Type(ty)
                                 params_env[name] = TypeParam(ty~, span~)
                             }
-                            (Unresolved(_), _) => raise Failure("Unresolved parameter '\{name}'")
+                            (Unresolved(_), _) => raise type_error("Unresolved parameter '\{name}'", span)
                             _ => {
                                 let ty = match param {
                                     Unresolved(_) => raise @utils.unreachable()
@@ -543,7 +424,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                                     Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
                                 }
 
-                                raise InvalidParameterInstantiation(name~, expected=param_sig.ty, ty~, span=param.span())
+                                raise type_error("Invalid instantiation of parameter '\{name}' with type '\{ty}', expected '\{param_sig.ty}'", param.span())
                             }
                         }
                     }
@@ -625,7 +506,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             @parse.Type::Vector(ty=elem_ty.unwrap(), len=Fixed(len))
         }
         Spread(span~, ..) => {
-            raise SpreadOutsideVector(span~)
+            raise type_error("Spread outside vector", span)
         }
         Concat(elems~, ..) => {
             let mut len = 0
@@ -649,7 +530,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                         match is_signed {
                             Some(is_signed) => {
                                 if is_signed != is_elem_signed {
-                                    raise CannotMixUnsignedAndSignedIntegersInConcatExpr(span=span)
+                                    raise type_error("Cannot mix unsigned and signed integers in a concatenation expression", span)
                                 }
                             }
                             None => {
@@ -660,7 +541,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                     Vector(ty=elem_ty, len=_) => {
                         stack.push((elem_ty, span))
                     }
-                    _ => raise InvalidConcatElement(ty~, span=span)
+                    _ => raise type_error("Invalid element of type '\{ty}' in concatenation expression", span)
                 }
             }
 
@@ -685,7 +566,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let subject_ty = self.check_expr(subject, env)
             
             if cases.is_empty() && default.is_empty() {
-                raise EmptyMatch(span~)
+                raise type_error("Empty match expression", span)
             }
 
             let mut ret_ty = None
@@ -768,9 +649,13 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let width_ty = self.check_expr(width, env)
             let _ = unify(width_ty, @parse.Nat(min_width=0), span=width.span())
             let width = eval_const_expr(width)
+            let required_width = arg_ty.width(arg.span())
 
-            if width < arg_ty.width(arg.span()) {
-                raise PadWidthTooSmall(given=width, min_required=arg_ty.width(arg.span()), span~)
+            if width < required_width {
+                raise type_error(
+                    "Pad width too small: given \{width}, minimum required is \{required_width}",
+                    span,
+                )
             }
 
             match arg_ty {
@@ -790,7 +675,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                     ..
                 }, ..) => ()
                 _ => {
-                    raise InvalidMemoryArgumentInReadMemCall(ty=mem_ty, span~)
+                    raise type_error("Invalid memory argument of type '\{mem_ty}' in readmem call", span)
                 }
             }
 
@@ -816,7 +701,10 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                     let exit_code_ty = self.check_expr(exit_code, env)
 
                     if not(exit_code_ty.is_numerical()) {
-                        raise InvalidStopExitCode(exit_code_ty~, span~)
+                        raise type_error(
+                            "Invalid exit code type '\{exit_code_ty}' in stop statement, expected an integer",
+                            span,
+                        )
                     }
                 }
                 _ => {
@@ -832,7 +720,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             match arg_ty {
                 Vector(_) => arg_ty
                 _ => {
-                    raise InvalidRevOperand(ty=arg_ty, span~)
+                    raise type_error("Invalid operand '\{arg_ty}' for $rev operator, expected a vector", span)
                 }
             }
         }
@@ -842,14 +730,14 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             match arg_ty {
                 UInt(_) => ()
                 _ => {
-                    raise InvalidFlipOperand(ty=arg_ty, span~)
+                    raise type_error("Invalid operand '\{arg_ty}' for $flip operator", span)
                 }
             }
 
             arg_ty
         }
         FunCall(span~, ..) => {
-            raise FunCallAfterMonomorphization(span~)
+            raise type_error("Function call after monomorphization", span)
         }
         Struct(fields~, ..) => {
             let field_tys = Map::new(capacity=fields.size())
@@ -927,7 +815,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
                     ty
                 }
                 (None, None) => {
-                    raise LetStmtMustHaveTypeOrValue(span~)
+                    raise type_error("Let statement must have a type or value", span)
                 }
             })
         }
@@ -980,15 +868,15 @@ fn check_format_string(
 ) -> Unit raise {
     let format_str_ty = self.check_expr(format_str, env)
 
-    if not(format_str_ty.is_string()) {
-        raise InvalidFormatString(span~)
+    if !format_str_ty.is_string() {
+        raise type_error("Invalid format string", span)
     }
 
     for index, arg in args {
         let arg_ty = self.check_expr(arg, env)
 
-        if not(arg_ty.is_ground()) {
-            raise InvalidFormatStringArgument(index=index + 1, span~)
+        if !arg_ty.is_ground() {
+            raise type_error("Invalid format string argument at index \{index + 1}", span)
         }
     }
 }
@@ -1037,7 +925,7 @@ fn check_attribute(attr: @parse.Attribute, signatures~: Map[String, Array[Attrib
                 }
             }
         }
-        None => raise TypeCheckerError::InvalidAttribute(name=attr.name, span=attr.span)
+    None => raise type_error("Invalid attribute '\{attr.name}'", attr.span)
     }
 }
 
@@ -1048,7 +936,7 @@ fn check_attributes(attrs: Map[String, @parse.Attribute], signatures~: Map[Strin
 }
 
 fn check_const_decl(self: TypeChecker, decl: @parse.ConstDecl, env: Scope[@parse.Path, @parse.Type]) -> Unit raise {
-    if not(decl.expr.is_constant_expr()) {
+    if !decl.expr.is_constant_expr() {
         raise ExpectedConstantExpr(span=decl.expr.span())
     }
 

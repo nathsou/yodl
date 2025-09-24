@@ -84,8 +84,9 @@ module CPU(
     let imm_j = {12*{inst.q[31]}, inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0}
 
     let stage = Reg<uint<2>>(clk, rst)
-    let rs1_addr = (stage.q == Stage::WAIT_INST ? mem_read_data : inst.q)[19:15]
-    let rs2_addr = (stage.q == Stage::WAIT_INST ? mem_read_data : inst.q)[24:20]
+    let fresh_inst = stage.q == Stage::WAIT_INST ? mem_read_data : inst.q
+    let rs1_addr = fresh_inst[19:15]
+    let rs2_addr = fresh_inst[24:20]
     let rd_addr = inst.q[11:7]
 
     let funct3 = inst.q[14:12]

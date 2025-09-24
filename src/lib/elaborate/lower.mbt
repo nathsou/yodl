@@ -658,7 +658,8 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         has_value &&
         subject.ty().val is Some(UInt(Fixed(1))) &&
         cases.length() == 2 &&
-        !cases.iter().any(case => case.1 is Block(_)) {
+        // Require both cases to be simple expressions without statements
+        !cases.iter().any(case => case.1.contains_statements()) {
         // Rewrite 1-bit match with two cases as a mux
         let cases_map: Map[Int, @firrtl.Expr] = {}
 

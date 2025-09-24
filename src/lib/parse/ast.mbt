@@ -559,6 +559,48 @@ pub fn Expr::is_constant_expr(self: Expr) -> Bool {
   }
 }
 
+pub fn Expr::contains_statements(self: Expr) -> Bool {
+  match self {
+    Block(body~, last~, ..) => {
+      for stmt in body {
+        match stmt {
+          Expr(expr~, span=_) => {
+            if expr.contains_statements() {
+              return true
+            }
+          }
+          _ => return true
+        }
+      }
+
+      last.map_or(false, Expr::contains_statements)
+    }
+    If(cond~, then~, else_~, ..) => cond.contains_statements() || then.contains_statements() || else_.map_or(false, Expr::contains_statements)
+    Unary(expr~, ..) => expr.contains_statements()
+    Binary(lhs~, rhs~, ..) => lhs.contains_statements() || rhs.contains_statements()
+    Indexing(expr~, index~, ..) => expr.contains_statements() || index.contains_statements()
+    Slicing(expr~, hi~, lo~, ..) => expr.contains_statements() || hi.contains_statements() || lo.contains_statements()
+    FieldAccess(expr~, ..) => expr.contains_statements()
+    Instance(ports~, ..) => ports.values().any(Expr::contains_statements)
+    Vector(elems~, ..) => elems.iter().any(Expr::contains_statements)
+    Spread(expr~, ..) => expr.contains_statements()
+    Concat(elems~, ..) => elems.iter().any(Expr::contains_statements)
+    Ternary(cond~, then~, else_~, ..) => cond.contains_statements() || then.contains_statements() || else_.contains_statements()
+    Match(subject~, cases~, default~, ..) => {
+      if subject.contains_statements() || cases.iter().any(case => case.0.contains_statements() || case.1.contains_statements()) {
+        return true
+      }
+      
+      default.map_or(false, Expr::contains_statements)
+    }
+    Tuple(elems~, ..) => elems.iter().any(Expr::contains_statements)
+    Struct(fields~, ..) => fields.values().any(Expr::contains_statements)
+    Replicate(expr~, count~, ..) => expr.contains_statements() || count.contains_statements()
+    FunCall(args~, ..) => args.iter().any(Expr::contains_statements)
+    Natural(_) | Identifier(_) | String(_) => false
+  }
+}
+
 pub(all) enum UnresolvedParam {
   PathParam(path~: Path, span~: Span)
   ExprParam(Expr)
