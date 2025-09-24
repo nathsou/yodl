@@ -120,6 +120,26 @@ since vectors are indexed from least to most significant, i.e. `vec[0]` is the f
 # }
 ```
 
+### `$pad(x, width)`
+Extends the bit-width of an integer `x` to `width` bits.
+If `x` is signed, it performs sign-extension; if `x` is unsigned, it performs zero-extension:
+
+| type of `x` | $pad(x, width) |
+|-------------|----------|
+| sint        | sign-extend |
+| uint        | zero-extend | 
+
+```yodl
+# module Test(clk: clock) -> () {
+    let a = -4'd3 // 5'b1101
+    let b: sint<8> = $pad(a, 8) // 8'b11111101 (sign-extended)
+    $assert(uint(b) == 8'b11111101)
+    let c: uint<4> = 4'd3 // 4'b0011
+    let d: uint<8> = $pad(c, 8) // 8'b00000011 (zero-extended
+    $assert(d == 8'b00000011)
+# }
+```
+
 ## Memory Functions
 
 Yodl provides familiar [`$readmemb` and `$readmemh`](https://projectf.io/posts/initialize-memory-in-verilog/) functions to initialize Memory instances from files.
