@@ -25,7 +25,7 @@ pub fn Elaborator::new(circuit_name: String) -> Elaborator {
   }
 }
 
-fn next_idx(self: Elaborator) -> Int {
+fn Elaborator::next_idx(self: Elaborator) -> Int {
   let idx = self.autoidx
   self.autoidx += 1
   idx
@@ -222,7 +222,7 @@ fn _default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
   }
 }
 
-fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit raise {
+fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit raise {
   let env = ElaboratorEnv::new()
   self.current_target.push(@utils.join([..mod.path.packages, mod.path.member], "_"))
   self.current_clock = None
@@ -287,7 +287,7 @@ fn lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit raise {
   let _ = self.current_target.pop()
 }
 
-fn lower_external_module(self: Elaborator, sig: @parse.ModuleSignature) -> Unit raise {
+fn Elaborator::lower_external_module(self: Elaborator, sig: @parse.ModuleSignature) -> Unit raise {
   guard sig.attributes.get("external") is Some({args: [String(defname), String(verilog_path)], ..})
   let id = id_of_path(sig.path)
   let ports = Array::new(capacity=sig.ports.length())
@@ -344,7 +344,7 @@ fn unwrap_type(ty: Ref[@parse.Type?], span~: @parse.Span) -> @parse.Type raise E
   ty.val.or_error(UntypedValue(span~))
 }
 
-fn next_id(self: Elaborator) -> Int {
+fn Elaborator::next_id(self: Elaborator) -> Int {
   let idx = self.autoidx
   self.autoidx += 1
   idx
@@ -354,7 +354,7 @@ fn Elaborator::gen_id(self: Elaborator, prefix: String) -> @firrtl.Id {
   Ident("\{prefix}_\{self.next_id()}$")
 }
 
-fn expr_as_ref(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference {
+fn Elaborator::expr_as_ref(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference {
   match expr {
     Reference(value) => value
     _ => {
@@ -371,19 +371,13 @@ fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindin
   elaborator.expr_as_ref(expr, scope~, binding~)
 }
 
-fn connect(self: Elaborator, lhs~: @firrtl.Reference, value~: Value, scope~: &ScopeLike) -> Unit raise {
-  let rhs = value.as_ref(self, scope~)
-  let same = match (lhs, rhs) {
-    (Id(a), Id(b)) => a.inner() == b.inner()
-    _ => false
-  }
-
-  if !same {
-    scope.add_stmt(Connect(lhs, Reference(rhs)))
+fn Elaborator::connect(self: Elaborator, lhs~: @firrtl.Reference, value~: Value, scope~: &ScopeLike) -> Unit raise {
+  if !(lhs is Id(lhs_id) && value is Expr(expr=Reference(Id(rhs_id)), ..) && lhs_id.inner() == rhs_id.inner()) {
+    scope.add_stmt(Connect(lhs, value.as_expr(self, scope~)))
   }
 }
 
-fn get_clock(self: Elaborator, source~: String, span~: @parse.Span) -> @firrtl.Expr raise {
+fn Elaborator::get_clock(self: Elaborator, source~: String, span~: @parse.Span) -> @firrtl.Expr raise {
   self.current_clock.or_error(NoClockFound(message="No clock found in current module for \{source}", span~))
 }
 
@@ -402,6 +396,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
     Vector(elems~, ty~, span=_) => {
       let id = elaborator.gen_id("vec")
       scope.add_stmt(Wire(id~, ty~))
+      
       for i, elem in elems {
         let index = @firrtl.Expr::Int(BigInt::from_int(i))
         elaborator.connect(lhs=Indexing(lhs=Id(id), index~), value=elem, scope~)
@@ -485,7 +480,7 @@ fn flatten_int(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Spa
   }
 }
 
-fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: ElaboratorEnv) -> Unit raise {
+fn Elaborator::lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: ElaboratorEnv) -> Unit raise {
   match stmt {
     Expr(expr~, span=_) => {
       let _ = self.lower_expr(expr, scope~, env~, binding=None)
@@ -523,7 +518,7 @@ fn lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: Ela
   }
 }
 
-fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: String? = None) -> Value raise {
+fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: String? = None) -> Value raise {
   let expr_span = expr.span()
   let ty = lower_type(unwrap_type(expr.ty(), span=expr_span), span=expr_span)
   
@@ -684,7 +679,10 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
         Expr(expr=Mux(cond~, tval~, fval~), ty~, span~)
       } else {
         let res_id = if has_value {
-          let res_id = id_of_str(binding.unwrap_or_else(() => "match_\{self.next_idx()}"))
+          let res_id = match binding {
+            Some(name) => id_of_str(name)
+            None => self.gen_id("match")
+          }
 
           if binding.is_empty() {
             scope.add_stmt(Wire(id=res_id, ty~))
@@ -1341,7 +1339,7 @@ fn lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: Ela
   }
 }
 
-pub fn lower(self: Elaborator, decls: Iter[@parse.Decl]) -> Unit raise {
+pub fn Elaborator::lower(self: Elaborator, decls: Iter[@parse.Decl]) -> Unit raise {
   for decl in decls {
     match decl {
       Module(mod) => {
