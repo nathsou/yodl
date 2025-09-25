@@ -178,12 +178,12 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
             match self.modules.get(path) {
                 Some(sig) => {
                     if sig.params.length() != params.length() {
-                        raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span,)
+                        raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span)
                     }
 
-                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params.map(fn(p) { p.name }), params)), accessed_ports=Set::new())
+                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params.map(p => p.name), params)), accessed_ports=Set::new())
                 }
-                None => raise TypeCheckerError::UnknownModule(path~, span~)
+                None => raise UnknownModule(path~, span~)
             }
         }
         Struct(fields) => {
@@ -366,7 +366,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                             accessed_ports.add(port)
                             port_def.ty.substitute(resolved_params, span~)
                         }
-                        None => raise TypeCheckerError::UnknownModulePort(module_path=sig.path, port_name=port, span~)
+                        None => raise UnknownModulePort(module_path=sig.path, port_name=port, span~)
                     }
                 }
                 Struct(fields) => {
@@ -439,7 +439,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                                     raise InvalidAssignmentTarget(span=port_expr.span())
                                 }
                             }
-                            None => raise TypeCheckerError::UnknownModulePort(module_path=path, port_name=port_name, span~)
+                            None => raise UnknownModulePort(module_path=path, port_name=port_name, span~)
                         }
                     }
 
@@ -450,7 +450,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
                     @parse.Type::Instance(sig~, params=params_map, accessed_ports~)
                 }
-                None => raise TypeCheckerError::UnknownModule(path~, span~)
+                None => raise UnknownModule(path~, span~)
             }
         }
         Vector(elems~, span~, ..) => {

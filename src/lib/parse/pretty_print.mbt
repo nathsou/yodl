@@ -751,7 +751,7 @@ fn emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
 
   if sig.params.length() > 0 {
     self.write("<")
-    self.write(@utils.join(sig.params.map(Show::to_string), ", "))
+    self.write(sig.params.map(Show::to_string).join(", "))
     self.write(">")
   }
 
@@ -786,14 +786,14 @@ pub fn emit_decl(self: AstEmitter, decl: Decl) -> Unit {
     }
     Import({ packages, span: _ }) => {
       self.write("import ")
-      self.write(@utils.join(packages, "::"))
+      self.write(packages.join("::"))
     }
     TypeAlias({ name, parameters, ty, span: _ }) => {
       self.write("type \{name}")
       
       if parameters.length() > 0 {
         self.write("<")
-        self.write(@utils.join(parameters, ", "))
+        self.write(parameters.join(", "))
         self.write(">")
       }
 

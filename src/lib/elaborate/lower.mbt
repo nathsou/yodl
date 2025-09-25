@@ -67,25 +67,41 @@ impl @parse.Spanned for Value with span(self) {
 typealias Scope[@parse.Path, Value] as ElaboratorEnv
 
 pub suberror ElaborationError {
+  ElaborationError(message~: String, span~: @parse.Span)
   UnresolvedIdentifier(path~: @parse.Path, span~: @parse.Span)
-  UnexpectedStmtDuringElaboration(span~: @parse.Span)
-  UnexpectedExprDuringElaboration(span~: @parse.Span)
-  UntypedValue(span~: @parse.Span)
-  ParametricInstanceDuringElaboration(span~: @parse.Span)
   Unreachable(message~: String, span~: @parse.Span)
-  ExtraPorts(extra_ports~: Array[String], span~: @parse.Span)
-  UnknownModule(path~: @parse.Path, span~: @parse.Span)
-  UnknownModulePort(module_path~: @parse.Path, port_name~: String, span~: @parse.Span)
-  UnknownModuleParameter(name~: String, span~: @parse.Span)
-  UnknownModuleMarkedAsInternal(path~: @parse.Path, span~: @parse.Span)
   Unsupported(message~: String, span~: @parse.Span)
-  DynamicIntParam(span~: @parse.Span)
-  InvalidCharacterInString(char~: Char, span~: @parse.Span)
-  ExpctedIntLiteral(span~: @parse.Span)
-  InvalidMemoryReferenceInLoadMemory(mem_name~: String, span~: @parse.Span)
-  NoClockFound(message~: String, span~: @parse.Span)
-  InvalidAttribute(name~: String, span~: @parse.Span)
-} derive (Show)
+}
+
+impl @parse.Spanned for ElaborationError with span(self) {
+  match self {
+    ElaborationError(span~, ..) => span
+    UnresolvedIdentifier(span~, ..) => span
+    Unreachable(span~, ..) => span
+    Unsupported(span~, ..) => span
+  }
+}
+
+impl Show for ElaborationError with output(self, logger) {
+  logger.write_string("ElaborationError: ")
+
+  match self {
+    ElaborationError(message~, span~) => {
+      logger.write_string("\{message} at \{span}")
+    }
+    UnresolvedIdentifier(path~, span~) => {
+      logger.write_string("Unresolved identifier '\{path.to_string()}' at \{span}")
+    }
+    Unreachable(message~, span~) => {
+      logger.write_string("ElaborationError: Unreachable: \{message} at \{span}")
+    }
+    Unsupported(message~, span~) => {
+      logger.write_string("ElaborationError: Unsupported: \{message} at \{span}")
+    }
+  }
+
+  logger.write_string(self.show_context(use_ansi_colors=false))
+}
 
 priv trait ScopeLike {
   add_stmt(Self, @firrtl.Stmt) -> Unit
@@ -108,7 +124,7 @@ impl ScopeLike for StmtContainer with add_stmt(self, stmt) {
 fn id_of_path(path: @parse.Path) -> @firrtl.Id {
   match path.packages {
     [] => Ident(path.member)
-    _ => Ident(@utils.join(path.packages, "_") + "_" + path.member)
+    _ => Ident(path.packages.join("_") + "_" + path.member)
   }
 }
 
@@ -124,14 +140,17 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
     Clock => Clock
     Vector(ty~, len=Fixed(len)) => Vec(lower_type(ty, span~), len)
     UInt(Dynamic(_)) | SInt(Dynamic(_)) | Vector(ty=_, len=Dynamic(_)) => {
-      raise DynamicIntParam(span~)
+      raise ElaborationError(message="Integer parameters must be compile-time constants", span~)
     }
     Instance(sig~, params~, accessed_ports~) => {
       let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.size())
       let resolved_params = @parse.keep_and_check_resolved(params, span~)
 
       for port in accessed_ports {
-        let port_sig = sig.get_port(port).or_error(ElaborationError::UnknownModulePort(module_path=sig.path, port_name=port, span~))
+        let port_sig = sig.get_port(port).or_error(ElaborationError::ElaborationError(
+          message="Module '\{sig.path.to_string()}' does not declare a port named '\{port}'",
+          span~,
+        ))
 
         let field: @firrtl.BundleField = {
           id: id_of_str(port),
@@ -224,7 +243,7 @@ fn _default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
 
 fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit raise {
   let env = ElaboratorEnv::new()
-  self.current_target.push(@utils.join([..mod.path.packages, mod.path.member], "_"))
+  self.current_target.push([..mod.path.packages, mod.path.member].join("_"))
   self.current_clock = None
 
   let fir_mod: @firrtl.Module = {
@@ -264,18 +283,18 @@ fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit ra
       { name: "inline", args: [], .. } => {
         self.annotations.push({
           "class": "firrtl.passes.InlineAnnotation",
-          "target": @utils.join(self.current_target, ".").to_json(),
+          "target": self.current_target.join(".").to_json(),
         })
       }
       { name: "flatten", args: [], .. } => {
         self.annotations.push({
           "class": "firrtl.transforms.FlattenAnnotation",
-          "target": @utils.join(self.current_target, ".").to_json(),
+          "target": self.current_target.join(".").to_json(),
         })
       }
       { name: "internal", args: [], .. } => ()
       { span, .. } => {
-        raise ElaborationError::InvalidAttribute(name=attr.name, span~)
+        raise ElaborationError(message="Invalid module attribute '\{attr.name}'", span~)
       }
     }
   }
@@ -333,7 +352,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: @parse.ModuleSignatu
 
   let annotation = {
     "class": "firrtl.transforms.BlackBoxPathAnno",
-    "target": @utils.join([..self.current_target, sig.path.to_string()], "."),
+    "target": [..self.current_target, sig.path.to_string()].join("."),
     "path": verilog_path,
   }
 
@@ -341,7 +360,10 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: @parse.ModuleSignatu
 }
 
 fn unwrap_type(ty: Ref[@parse.Type?], span~: @parse.Span) -> @parse.Type raise ElaborationError {
-  ty.val.or_error(UntypedValue(span~))
+  ty.val.or_error(ElaborationError::ElaborationError(
+    message="Value requires a resolved type before lowering",
+    span~,
+  ))
 }
 
 fn Elaborator::next_id(self: Elaborator) -> Int {
@@ -378,7 +400,10 @@ fn Elaborator::connect(self: Elaborator, lhs~: @firrtl.Reference, value~: Value,
 }
 
 fn Elaborator::get_clock(self: Elaborator, source~: String, span~: @parse.Span) -> @firrtl.Expr raise {
-  self.current_clock.or_error(NoClockFound(message="No clock found in current module for \{source}", span~))
+  self.current_clock.or_error(ElaborationError::ElaborationError(
+    message="No clock found in current module for \{source}",
+    span~,
+  ))
 }
 
 fn Value::ty(self: Value) -> @firrtl.Type {
@@ -427,7 +452,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
 fn Value::as_int(self: Value) -> BigInt raise {
   match self {
     Expr(expr=Literal(UInt(value~, ..)) | Int(value), ..) => value
-    _ => raise ExpctedIntLiteral(span=self.span())
+    _ => raise ElaborationError(message="Expected integer literal", span=self.span())
   }
 }
 
@@ -513,7 +538,7 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLik
       self.connect(lhs=fir_lhs, value=fir_rhs, scope~)
     }
     Const(_) | For(_) | Scope(_) => {
-      raise UnexpectedStmtDuringElaboration(span=stmt.span())
+      raise ElaborationError(message="Unexpected statement encountered during elaboration", span=stmt.span())
     }
   }
 }
@@ -781,7 +806,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
     }
     Instance(path~, params~, ports~, span~, ty=inst_ty) => {
       if params.params.length() > 0 && not(self.declared_modules.contains(path)) {
-        raise ParametricInstanceDuringElaboration(span~)
+        raise ElaborationError(message="Cannot elaborate parametric instance of module '\{path.to_string()}'", span~)
       }
 
       let (ports_sig, params_map, attributes) = match self.modules.get(path) {
@@ -813,7 +838,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
 
             (ports_sig, params_map, sig.attributes)
           }
-          None => raise ElaborationError::UnknownModule(path~, span~)
+          None => raise ElaborationError(message="Module '\{path.to_string()}' is not declared", span~)
         }
       }
 
@@ -849,7 +874,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       }
       
       if not(extra_ports.is_empty()) {
-        raise ExtraPorts(extra_ports~, span~)
+        let extras = extra_ports.join(", ")
+        raise ElaborationError(message="Instance references undefined ports: \{extras}", span~)
       }
 
       for port_name, port_sig in ports_sig {
@@ -880,7 +906,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         fn get_param(name: String) -> @parse.Param raise {
           match params_map.get(name) {
             Some(param) => param
-            None => raise UnknownModuleParameter(name~, span~)
+            None => raise ElaborationError(message="Unknown module parameter '\{name}'", span~)
           }
         }
 
@@ -1060,7 +1086,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               scope.add_stmt(Connect(@firrtl.Reference::Indexing(lhs=q, index~), Reference(data)))
             }
           }
-          _ => raise UnknownModuleMarkedAsInternal(path~, span~)
+          _ => raise ElaborationError(message="Module '\{path.to_string()}' is marked as internal but has no elaboration handler", span~)
         }
       } else {
         let inst_id = id_of_str("inst_\{self.next_idx()}")
@@ -1188,7 +1214,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         let char_latin1 = char.to_int()
 
         if char_latin1 < 0 || char_latin1 > 255 {
-          raise InvalidCharacterInString(char~, span~)
+          raise ElaborationError(message="String literal contains unsupported character '\{char}' (expected Latin-1)", span~)
         }
 
         chars.push(@parse.Expr::nat(char_latin1, width=Some(8), span~))
@@ -1236,12 +1262,12 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
 
       let mem_id = match self.memories.get(mem_name) {
         Some(id) => id.inner()
-        None => raise InvalidMemoryReferenceInLoadMemory(mem_name~, span~)
+        None => raise ElaborationError(message="Unknown memory '\{mem_name}' referenced in \{name}", span~)
       }
 
       let annotation = {
         "class": "firrtl.annotations.MemoryFileInlineAnnotation",
-        "target": @utils.join([..self.current_target, mem_id], "."),
+        "target": [..self.current_target, mem_id].join("."),
         "filename": path,
         "hexOrBinary": if name == "$readmemh" { "h" } else { "b" },
         "originalMemoryNameOpt": mem_id,
@@ -1334,7 +1360,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
        Value::Expr(expr=concat_rev(bits), ty=UInt(width), span~)
     }
     Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
-      raise UnexpectedExprDuringElaboration(span=expr.span())
+      raise ElaborationError(message="Unexpected expression encountered during elaboration", span=expr.span())
     }
   }
 }

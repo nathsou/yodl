@@ -68,7 +68,7 @@ pub fn[A, B, E: Error] map(values: Array[A], f: (A) -> B raise E) -> Array[B] ra
   mapped
 }
 
-pub fn[K: Eq + Hash, V] map_values(map: Map[K, V], f: (V) -> V) -> Map[K, V] {
+pub fn[K: Eq + Hash, U, V] map_values(map: Map[K, U], f: (U) -> V) -> Map[K, V] {
   let result = Map::new(capacity=map.size())
 
   for key, value in map {
