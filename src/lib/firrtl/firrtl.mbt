@@ -9,6 +9,16 @@ pub(all) enum Id {
   Literal(String)
 } derive(Eq)
 
+pub fn Id::from(s: String) -> Id {
+  Ident(s)
+}
+
+pub fn Id::value(self: Id) -> String {
+  match self {
+    Ident(s) | Literal(s) => s
+  }
+}
+
 pub fn Id::inner(self: Id) -> String {
   match self {
     Ident(s) => s
@@ -90,6 +100,28 @@ pub(all) enum Reference {
   Id(Id)
   Indexing(lhs~: Reference, index~: Expr) // static or dynamic
   FieldAccess(lhs~: Reference, field~: Id)
+}
+
+pub impl Show for Reference with output(self, logger) {
+  match self {
+    Id(id) => logger.write_string(id.value())
+    Indexing(lhs~, index=_) => {
+      lhs.output(logger)
+      logger.write_string("[expr]")
+    }
+    FieldAccess(lhs~, field~) => {
+      lhs.output(logger)
+      logger.write_char('.')
+      logger.write_string(field.value())
+    }
+  }
+}
+
+pub fn Reference::as_id(self: Reference) -> Id? {
+  match self {
+    Id(id) => Some(id)
+    _ => None
+  }
 }
 
 pub(all) struct Module {

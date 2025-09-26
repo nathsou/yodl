@@ -4,7 +4,8 @@
 set -e
 
 EXAMPLES_PATH=examples
-EXAMPLES=$(ls $EXAMPLES_PATH/*.yodl)
+# all examples except files starting with underscore
+EXAMPLES=$(ls $EXAMPLES_PATH/*.yodl | grep -v '/_')
 OUTPUT_PATH=examples/output
 
 mkdir -p $OUTPUT_PATH

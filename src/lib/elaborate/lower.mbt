@@ -128,10 +128,6 @@ fn id_of_path(path: @parse.Path) -> @firrtl.Id {
   }
 }
 
-fn id_of_str(name: String) -> @firrtl.Id {
-  Ident(name)
-}
-
 fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
   match ty {
     Nat(min_width=_) => UIntInferred
@@ -153,7 +149,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
         ))
 
         let field: @firrtl.BundleField = {
-          id: id_of_str(port),
+          id: @firrtl.Id::from(port),
           ty: lower_type(port_sig.ty.substitute(resolved_params, span~), span~),
           flip: port_sig.direction == Input,
         }
@@ -172,7 +168,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
       for field in fields {
         let (name, ty) = field
         let field: @firrtl.BundleField = {
-          id: id_of_str(name),
+          id: @firrtl.Id::from(name),
           ty: lower_type(ty, span~),
           flip: false,
         }
@@ -254,7 +250,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit ra
 
       for port in mod.ports {
         let fir_ty = lower_type(port.ty, span=port.span)
-        let port_id = id_of_str(port.name)
+        let port_id = @firrtl.Id::from(port.name)
 
         // the first clock port is the module's default clock
         if fir_ty == Clock && self.current_clock.is_empty() {
@@ -314,7 +310,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: @parse.ModuleSignatu
 
   for port in sig.ports {
     let fir_ty = lower_type(port.ty, span=port.span)
-    let port_id = id_of_str(port.name)
+    let port_id = @firrtl.Id::from(port.name)
 
     if fir_ty == Clock && self.current_clock.is_empty() {
       self.current_clock = Some(Reference(Id(port_id)))
@@ -376,19 +372,22 @@ fn Elaborator::gen_id(self: Elaborator, prefix: String) -> @firrtl.Id {
   Ident("\{prefix}_\{self.next_id()}$")
 }
 
-fn Elaborator::expr_as_ref(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference {
+fn Elaborator::binding_name(self: Elaborator, binding: @firrtl.Reference?, default_prefix: String) -> @firrtl.Id {
+  binding.map(@firrtl.Reference::as_id).flatten().unwrap_or(self.gen_id(default_prefix))
+}
+
+fn Elaborator::expr_as_ref(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeLike, binding~: @firrtl.Reference? = None) -> @firrtl.Reference {
   match expr {
     Reference(value) => value
     _ => {
-      let prefix = binding.unwrap_or("temp")
-      let rhs_id = self.gen_id(prefix)
+      let rhs_id = self.binding_name(binding, "tmp")
       scope.add_stmt(Node(id=rhs_id, expr~))
       Id(rhs_id)
     }
   }
 }
 
-fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Reference raise {
+fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: @firrtl.Reference? = None) -> @firrtl.Reference raise {
   let expr = self.as_expr(elaborator, scope~, binding~)
   elaborator.expr_as_ref(expr, scope~, binding~)
 }
@@ -415,7 +414,7 @@ fn Value::ty(self: Value) -> @firrtl.Type {
   }
 }
 
-fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: String? = None) -> @firrtl.Expr raise {
+fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: @firrtl.Reference? = None) -> @firrtl.Expr raise {
   match self {
     Expr(expr~, ..) => expr
     Vector(elems~, ty~, span=_) => {
@@ -430,17 +429,14 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       Reference(Id(id))
     }
     Struct(fields~, ty~, span=_) => {
-      let id = match binding {
-        Some(name) => id_of_str(name)
-        None => elaborator.gen_id("struct")
-      }
+      let id = elaborator.binding_name(binding, "struct")
 
       if binding.is_empty() {
         scope.add_stmt(Wire(id~, ty~))
       }
 
       for field in fields {
-        elaborator.connect(lhs=FieldAccess(lhs=Id(id), field=id_of_str(field.0)), value=field.1, scope~)
+        elaborator.connect(lhs=FieldAccess(lhs=Id(id), field=@firrtl.Id::from(field.0)), value=field.1, scope~)
       }
 
       Reference(Id(id))
@@ -513,15 +509,13 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLik
     Let(name~, ty~, expr~, span~) => {
       let path = @parse.Path::new([], name)
       let ty = lower_type(unwrap_type(ty, span~), span~)
-      let id = id_of_str(name)
+      let id = @firrtl.Id::from(name)
       scope.add_stmt(Wire(id~, ty~))
-
+      let var = @firrtl.Reference::Id(id)
       let val = match expr {
-        Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(name)))
+        Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(var)))
         None => None
       }
-      
-      let var = @firrtl.Reference::Id(id)
 
       match val {
         Some(val) => {
@@ -543,7 +537,7 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLik
   }
 }
 
-fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: String? = None) -> Value raise {
+fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: @firrtl.Reference? = None) -> Value raise {
   let expr_span = expr.span()
   let ty = lower_type(unwrap_type(expr.ty(), span=expr_span), span=expr_span)
   
@@ -704,10 +698,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         Expr(expr=Mux(cond~, tval~, fval~), ty~, span~)
       } else {
         let res_id = if has_value {
-          let res_id = match binding {
-            Some(name) => id_of_str(name)
-            None => self.gen_id("match")
-          }
+          let res_id = self.binding_name(binding, "match")
 
           if binding.is_empty() {
             scope.add_stmt(Wire(id=res_id, ty~))
@@ -718,8 +709,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
           None
         }
         
-        let subject_binding = binding.map(b => "\{b}_subject").unwrap_or("subject")
-        let fir_subject = @firrtl.Reference(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(subject_binding)))
+        let subject_binding = self.binding_name(binding, "subject")
+        let fir_subject = @firrtl.Reference(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(Id(subject_binding))))
         let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width(span)).to_int()
         let mut last_when: @firrtl.When? = None
 
@@ -797,8 +788,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       let sorted_keys = { let keys = fields.keys().collect(); keys.sort(); keys }
 
       for field in sorted_keys {
-        let field_expr = fields.get(field).unwrap()
-        let field_name = binding.map(fn(name) { "\{name}_\{field}" })
+        let field_expr = fields[field]
+        let field_name = binding.map(@firrtl.Reference::as_id).flatten().map(id => @firrtl.Id(id.join("$\{field}")))
         val[field] = self.lower_expr(field_expr, scope~, env~, binding=field_name)
       }
 
@@ -849,31 +840,31 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         _ => raise ElaborationError::Unreachable(message="Untyped instance", span~)
       }
 
-      let extra_ports = []
+      let extra_ports: Array[String] = []
 
       fn uses_port(port_name: String) -> Bool {
         ports.contains(port_name) || accessed_ports.contains(port_name)
       }
 
-      let inst_name = match binding {
-        Some(name) => id_of_str(name)
-        None => {
+      let inst_ref = match binding {
+        Some(ref) => ref
+        _ => {
           let inst_ty = lower_type(unwrap_type(inst_ty, span~), span~)
           let inst_id = id_of_path(path).join("_\{self.next_id()}")
           scope.add_stmt(Wire(id=inst_id, ty=inst_ty))
-          inst_id
+          Id(inst_id)
         }
       }
 
       for port_name, expr in ports {
-        if not(ports_sig.contains(port_name)) {
+        if !ports_sig.contains(port_name) {
           extra_ports.push(port_name)
         }
 
         inline_connections[port_name] = self.lower_expr(expr, scope~, env~).as_expr(self, scope~)
       }
       
-      if not(extra_ports.is_empty()) {
+      if !extra_ports.is_empty() {
         let extras = extra_ports.join(", ")
         raise ElaborationError(message="Instance references undefined ports: \{extras}", span~)
       }
@@ -885,7 +876,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
           }
           None => {
             if uses_port(port_name) && not(accessed_ports.contains(port_name)) {
-              let port_id = id_of_str("\{inst_name.inner()}_\{port_name}")
+              let port_id = self.gen_id(port_name)
               scope.add_stmt(Wire(id=port_id, ty=port_sig.ty))
               connections[port_name] = Reference(Id(port_id))
             }
@@ -897,7 +888,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         match connections.get(port_name) {
           Some(expr) => expr
           None => {
-            @firrtl.Expr::Reference(@firrtl.FieldAccess(lhs=Id(inst_name), field=id_of_str(port_name)))
+            @firrtl.Expr::Reference(@firrtl.FieldAccess(lhs=inst_ref, field=@firrtl.Id::from(port_name)))
           }
         }
       }
@@ -920,7 +911,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             let sync_reset = internal_module_name == "Reg"
             let uses_rst = uses_port("rst")
             let uses_en = uses_port("en")
-            let reg_id = id_of_str("reg_\{self.next_idx()}")
+            let reg_id = @firrtl.Id::from("reg_\{self.next_idx()}")
             let clk = get_port("clk")
 
             let reg_stmt = if uses_rst {
@@ -963,7 +954,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               }
 
               if accessed_ports.contains("q") {
-                scope.add_stmt(Connect(FieldAccess(lhs=Id(inst_name), field=id_of_str("q")), Reference(Id(reg_id))))
+                scope.add_stmt(Connect(FieldAccess(lhs=inst_ref, field=@firrtl.Id::from("q")), Reference(Id(reg_id))))
               }
             }
 
@@ -983,8 +974,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               if uses_port("q") {
                 // connect d to q by default
                 scope.add_stmt(Connect(
-                  FieldAccess(lhs=Id(inst_name), field=id_of_str("d")),
-                  Reference(FieldAccess(lhs=Id(inst_name), field=id_of_str("q")))
+                  FieldAccess(lhs=inst_ref, field=@firrtl.Id::from("d")),
+                  Reference(FieldAccess(lhs=inst_ref, field=@firrtl.Id::from("q")))
                 ))
               }
             }
@@ -994,21 +985,17 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             let depth = get_param("Depth").as_int()
             let read_ports = get_param("ReadPorts").as_int()
             let write_ports = get_param("WritePorts").as_int()
-
-            let mem_id = id_of_str("mem_\{self.next_idx()}")
+            let mem_id = self.gen_id("mem")
             
-            match binding {
-              Some(name) => {
-                self.memories[name] = mem_id
-              }
-              None => ()
+            if binding is Some(Id(id)) {
+              self.memories[id.value()] = mem_id
             }
 
             let readers = {
               let readers = Array::new(capacity=read_ports)
 
               for i in 0..<read_ports {
-                readers.push(id_of_str(mem_id.inner() + "_reader\{i}"))
+                readers.push(@firrtl.Id::from(mem_id.inner() + "_reader\{i}"))
               }
 
               readers
@@ -1018,7 +1005,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               let writers = Array::new(capacity=write_ports)
 
               for i in 0..<write_ports {
-                writers.push(id_of_str(mem_id.inner() + "_writer\{i}"))
+                writers.push(@firrtl.Id::from(mem_id.inner() + "_writer\{i}"))
               }
 
               writers
@@ -1058,10 +1045,10 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               for i in 0..<read_ports {
                 let reader = @firrtl.Indexing(lhs=ports, index=Int(BigInt::from_int(i)))
                 let reader_id = @firrtl.FieldAccess(lhs=Id(mem_id), field=readers[i])
-                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("addr")), Reference(FieldAccess(lhs=reader, field=id_of_str("addr")))))
-                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("en")), Reference(FieldAccess(lhs=reader, field=id_of_str("en")))))
-                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=id_of_str("clk")), Reference(FieldAccess(lhs=reader, field=id_of_str("clk")))))
-                data_out.push(@firrtl.FieldAccess(lhs=reader_id, field=id_of_str("data")))
+                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=@firrtl.Id::from("addr")), Reference(FieldAccess(lhs=reader, field=@firrtl.Id::from("addr")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=@firrtl.Id::from("en")), Reference(FieldAccess(lhs=reader, field=@firrtl.Id::from("en")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=@firrtl.Id::from("clk")), Reference(FieldAccess(lhs=reader, field=@firrtl.Id::from("clk")))))
+                data_out.push(@firrtl.FieldAccess(lhs=reader_id, field=@firrtl.Id::from("data")))
               }
             }
 
@@ -1071,11 +1058,11 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               for i in 0..<write_ports {
                 let writer = @firrtl.Indexing(lhs=ports, index=Int(BigInt::from_int(i)))
                 let writer_id = @firrtl.FieldAccess(lhs=Id(mem_id), field=writers[i])
-                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("addr")), Reference(FieldAccess(lhs=writer, field=id_of_str("addr")))))
-                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("en")), Reference(FieldAccess(lhs=writer, field=id_of_str("en")))))
-                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("clk")), Reference(FieldAccess(lhs=writer, field=id_of_str("clk")))))
-                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("data")), Reference(FieldAccess(lhs=writer, field=id_of_str("data")))))
-                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=id_of_str("mask")), Reference(FieldAccess(lhs=writer, field=id_of_str("mask")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=@firrtl.Id::from("addr")), Reference(FieldAccess(lhs=writer, field=@firrtl.Id::from("addr")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=@firrtl.Id::from("en")), Reference(FieldAccess(lhs=writer, field=@firrtl.Id::from("en")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=@firrtl.Id::from("clk")), Reference(FieldAccess(lhs=writer, field=@firrtl.Id::from("clk")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=@firrtl.Id::from("data")), Reference(FieldAccess(lhs=writer, field=@firrtl.Id::from("data")))))
+                scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=@firrtl.Id::from("mask")), Reference(FieldAccess(lhs=writer, field=@firrtl.Id::from("mask")))))
               }
             }
 
@@ -1089,16 +1076,16 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
           _ => raise ElaborationError(message="Module '\{path.to_string()}' is marked as internal but has no elaboration handler", span~)
         }
       } else {
-        let inst_id = id_of_str("inst_\{self.next_idx()}")
+        let inst_id = @firrtl.Id::from("inst_\{self.next_idx()}")
         scope.add_stmt(Inst(id=inst_id, of=id_of_path(path)))
 
         for port_name, sig in ports_sig {
           if uses_port(port_name) {
-            let lhs = Expr(expr=Reference(FieldAccess(lhs=Id(inst_id), field=id_of_str(port_name))), ty=sig.ty, span~)
+            let lhs = Expr(expr=Reference(FieldAccess(lhs=Id(inst_id), field=@firrtl.Id::from(port_name))), ty=sig.ty, span~)
             let rhss = Array::new(capacity=2)
 
             if accessed_ports.contains(port_name) {
-              rhss.push(Expr(expr=Reference(FieldAccess(lhs=Id(inst_name), field=id_of_str(port_name))), ty=sig.ty, span~))
+              rhss.push(Expr(expr=Reference(FieldAccess(lhs=inst_ref, field=@firrtl.Id::from(port_name))), ty=sig.ty, span~))
             }
             
             if inline_connections.contains(port_name) {
@@ -1119,7 +1106,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         }
       }
 
-      Expr(expr=Reference(Id(inst_name)), ty~, span~)
+      Expr(expr=Reference(inst_ref), ty~, span~)
     }
     Indexing(expr~, index~, span~, ty=_) => {
       let val = self.lower_expr(expr, scope~, env~)
@@ -1183,7 +1170,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
     }
     FieldAccess(expr=accessed_expr, field~, span~, ty=_) => {
       let val = self.lower_expr(accessed_expr, scope~, env~)
-      Expr(expr=Reference(FieldAccess(lhs=val.as_ref(self, scope~), field=id_of_str(field))), ty~, span~)
+      Expr(expr=Reference(FieldAccess(lhs=val.as_ref(self, scope~), field=@firrtl.Id::from(field))), ty~, span~)
     }
     Block(body~, last~, span~, ..) => {
       let block_env = env.child()
