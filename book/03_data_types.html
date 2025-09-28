@@ -210,6 +210,32 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
     let ints: uint&lt;16&gt;[4] = [16'd1, 16'd12, 16'd3, 16'd4]
 <span class="boring"> }
 </span></code></pre>
+<blockquote>
+<p><strong>Note</strong>: Instead of storing multiple register instances in a vector, define a single register instance with a vector type:</p>
+</blockquote>
+<pre><code class="language-yodl">module RegisterFile(
+    clk: clock,
+    rst: bool,
+    write_enable: bool,
+    write_dest: uint&lt;3&gt;,
+    write_data: uint&lt;16&gt;,
+    read_src1: uint&lt;3&gt;,
+    read_src2: uint&lt;3&gt;,
+) -&gt; (
+    read_data1: uint&lt;16&gt;,
+    read_data2: uint&lt;16&gt;,
+) {
+    // A register storing a vector of eight 16-bit unsigned integers
+    let regs = Reg&lt;uint&lt;16&gt;[8]&gt;(clk, rst)
+
+    if write_enable {
+        regs.d[write_dest] = write_data
+    }
+
+    read_data1 = regs.q[read_src1]
+    read_data2 = regs.q[read_src2]
+}
+</code></pre>
 <h2 id="characters-and-strings"><a class="header" href="#characters-and-strings">Characters and Strings</a></h2>
 <p>Characters use the ISO 8601 encoding (extended ASCII).</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
