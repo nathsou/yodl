@@ -1,18 +1,18 @@
 {
     "type": "commonjs",
     "name": "yodl",
-    "main": "target/js/release/build/main.js",
+    "main": "target/js/release/build/main.min.js",
     "types": "target/js/release/build/main.d.ts",
     "description": "Modern Hardware Description Language",
-    "version": "0.0.7",
+    "version": "0.0.8",
     "files": [
         "/target/js/release/build/main/"
     ],
     "bin": {
-        "yodl": "target/js/release/build/main/main.js"
+        "yodl": "target/js/release/build/main/main.min.js"
     },
     "scripts": {
-        "prepublishOnly": "moon build --target js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' target/js/release/build/main/main.js"
+        "prepublishOnly": "moon build --target js && bunx esbuild@0.25.10 target/js/release/build/main/main.js --minify --outfile=target/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' target/js/release/build/main/main.min.js"
     },
     "repository": {
         "type": "git",

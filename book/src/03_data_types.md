@@ -80,6 +80,33 @@ Vectors are ordered and sized collections of elements.
 # }
 ```
 
+> **Note**: Instead of storing multiple register instances in a vector, define a single register instance with a vector type:
+
+```yodl
+module RegisterFile(
+    clk: clock,
+    rst: bool,
+    write_enable: bool,
+    write_dest: uint<3>,
+    write_data: uint<16>,
+    read_src1: uint<3>,
+    read_src2: uint<3>,
+) -> (
+    read_data1: uint<16>,
+    read_data2: uint<16>,
+) {
+    // A register storing a vector of eight 16-bit unsigned integers
+    let regs = Reg<uint<16>[8]>(clk, rst)
+
+    if write_enable {
+        regs.d[write_dest] = write_data
+    }
+
+    read_data1 = regs.q[read_src1]
+    read_data2 = regs.q[read_src2]
+}
+```
+
 ## Characters and Strings
 
 Characters use the ISO 8601 encoding (extended ASCII).
