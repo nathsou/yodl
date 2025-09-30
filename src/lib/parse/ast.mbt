@@ -48,7 +48,7 @@ pub(all) enum Type {
   SInt(IntParam)
   Clock
   Vector(ty~: Type, len~: IntParam)
-  Instance(sig~: ModuleSignature, params~: Map[String, Param], accessed_ports~: Set[String])
+  Instance(sig~: ModuleSignature, params~: Map[String, Param], accessed_ports~: AccessedPorts)
   Name(path~: Path, params~: Array[Param])
   Struct(Map[String, Type])
   String(len~: Int)

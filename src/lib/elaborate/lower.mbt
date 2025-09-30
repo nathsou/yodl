@@ -139,10 +139,10 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
       raise ElaborationError(message="Integer parameters must be compile-time constants", span~)
     }
     Instance(sig~, params~, accessed_ports~) => {
-      let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.size())
+      let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.0.size())
       let resolved_params = @parse.keep_and_check_resolved(params, span~)
 
-      for port in accessed_ports {
+      for port, _ in accessed_ports.0 {
         let port_sig = sig.get_port(port).or_error(ElaborationError::ElaborationError(
           message="Module '\{sig.path.to_string()}' does not declare a port named '\{port}'",
           span~,
@@ -871,11 +871,11 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
 
       for port_name, port_sig in ports_sig {
         match inline_connections.get(port_name) {
-          Some(expr) => {
+          Some(expr) if !(accessed_ports.is_written_to(port_name)) => {
             connections[port_name] = expr
           }
-          None => {
-            if uses_port(port_name) && not(accessed_ports.contains(port_name)) {
+          _ => {
+            if uses_port(port_name) && !accessed_ports.contains(port_name) {
               let port_id = self.gen_id(port_name)
               scope.add_stmt(Wire(id=port_id, ty=port_sig.ty))
               connections[port_name] = Reference(Id(port_id))
@@ -890,6 +890,16 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
           None => {
             @firrtl.Expr::Reference(@firrtl.FieldAccess(lhs=inst_ref, field=@firrtl.Id::from(port_name)))
           }
+        }
+      }
+ 
+      // connect ports with inline expressions which are written to afterwards
+      for port_name, access in accessed_ports.0 {
+        if access == Write && inline_connections.get(port_name) is Some(inline_expr) {
+          scope.add_stmt(Connect(
+            FieldAccess(lhs=inst_ref, field=@firrtl.Id::from(port_name)),
+            inline_expr
+          ))
         }
       }
 

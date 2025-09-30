@@ -121,13 +121,8 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
                     raise IncompatibleTypes(ty1~, ty2~, span~)
                 } else if params1 == params2 {
                     // merge accessed ports
-                    for port in accessed_ports1 {
-                        accessed_ports2.add(port)
-                    }
-
-                    for port in accessed_ports2 {
-                        accessed_ports1.add(port)
-                    }
+                    accessed_ports1.merge_inplace(accessed_ports2)
+                    accessed_ports2.merge_inplace(accessed_ports1)
                 } else {
                         raise IncompatibleTypes(ty1~, ty2~, span~)
                 }
@@ -181,7 +176,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
                         raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span)
                     }
 
-                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params.map(p => p.name), params)), accessed_ports=Set::new())
+                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params.map(p => p.name), params)), accessed_ports=@parse.AccessedPorts::new())
                 }
                 None => raise UnknownModule(path~, span~)
             }
@@ -363,7 +358,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
                     match sig.get_port(port) {
                         Some(port_def) => {
-                            accessed_ports.add(port)
+                            accessed_ports.set(port, Read)
                             port_def.ty.substitute(resolved_params, span~)
                         }
                         None => raise UnknownModulePort(module_path=sig.path, port_name=port, span~)
@@ -383,7 +378,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 Some(sig) => {
                     let subst: Map[String, UnificationParam] = {}
                     let params_env: Map[String, @parse.ResolvedParam] = {}
-                    let accessed_ports = Set::new()
+                    let accessed_ports = @parse.AccessedPorts::new()
                     let params_map = params.as_map(names=sig.params.map(fn(p) { p.name }))
 
                     // check monomorphized (erased) parameters
@@ -444,8 +439,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                     }
 
                     if (path.member == "Reg" || path.member == "RegAsyncReset") && path.packages.is_empty() {
-                        accessed_ports.add("d")
-                        accessed_ports.add("q")
+                        accessed_ports.register_access("d")
+                        accessed_ports.register_access("q")
                     }
 
                     @parse.Type::Instance(sig~, params=params_map, accessed_ports~)
@@ -823,8 +818,13 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
             let lhs_ty = self.check_expr(lhs, env)
             let valid_lhs = is_valid_assignment_target(lhs)
 
-            if not(valid_lhs) {
+            if !valid_lhs {
                 raise InvalidAssignmentTarget(span~)
+            }
+
+            // mark instance port as being written to
+            if lhs is FieldAccess(expr~, field~, ..) && expr.ty().val is Some(@parse.Type::Instance(accessed_ports~, ..)) {
+                accessed_ports.register_write(field)
             }
 
             let rhs_ty = self.check_expr(rhs, env, expected_ty=Some(lhs_ty))

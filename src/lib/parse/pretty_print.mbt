@@ -609,12 +609,8 @@ pub impl Show for Type with output(ty, logger) {
       }
 
       if show_instance_accessed_ports {
-        logger.write_iter(
-          prefix=".[",
-          { let ports = accessed_ports.iter().collect(); ports.sort(); ports.iter() },
-          suffix="]",
-          sep=", ",
-        )
+        logger.write_char('.')
+        logger.write_object(accessed_ports)
       }
     }
     Name(path~, params~) => {
