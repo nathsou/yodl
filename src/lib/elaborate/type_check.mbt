@@ -823,7 +823,11 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
             }
 
             // mark instance port as being written to
-            if lhs is FieldAccess(expr~, field~, ..) && expr.ty().val is Some(@parse.Type::Instance(accessed_ports~, ..)) {
+            if lhs is FieldAccess(expr~, field~, ..) && expr.ty().val is Some(@parse.Type::Instance(sig~, accessed_ports~, ..)) {
+                if sig.get_port(field) is Some(port_sig) && port_sig.direction == Output {
+                    raise type_error("Cannot assign to output port '\{field}' of module '\{sig.path}'", span)
+                }
+
                 accessed_ports.register_write(field)
             }
 
