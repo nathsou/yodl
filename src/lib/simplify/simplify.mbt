@@ -119,15 +119,15 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
         }
       }
       Replicate(expr~, count~, concat~, span~, ty~) => Some({
-        // Replication of single-bit integers can be rewritten using the $pad function
-        // e.g. 21*{a.q[31]} -> $pad(sint(a.q[31]), 21)
+        // Replication of single-bit integers can be rewritten using the pad! function
+        // e.g. 21*{a.q[31]} -> pad!(sint(a.q[31]), 21)
         if concat && expr.ty() is { val: Some(UInt(_) | SInt(_) as expr_ty) } && expr_ty.width(span) == 1 {
           let width = count.as_int()
           let pad_expr = @parse.Expr::FunCall(
-            name="$pad", 
+            name="pad", 
             args=[
               if expr_ty is UInt(_) {
-                // $pad sign-extends if the input is signed, so we need to convert to sint first
+                // pad! sign-extends if the input is signed, so we need to convert to sint first
                 @parse.Expr::FunCall(name="sint", args=[expr], span=expr.span(), ty={ val: Some(SInt(Fixed(1))) })
               } else {
                 expr
@@ -206,7 +206,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
 
         Some(self.simplify_expr(match_expr, env~, scope~))
       }
-      FunCall(name="$assert", args=[pred, ..], span~, ty~) => {
+      FunCall(name="assert", args=[pred, ..], span~, ty~) => {
         match (try? pred.as_int()) {
           Ok(0) => raise AssertionAlwaysFails(span~)
           Ok(1) => Some(@parse.Expr::Tuple(elems=[], span~, ty~))

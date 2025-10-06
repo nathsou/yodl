@@ -551,7 +551,7 @@ pub fn Expr::is_constant_expr(self: Expr) -> Bool {
     Tuple(_) => false
     Struct(_) => false
     Replicate(_) => false
-    FunCall(name="$flip" | "$rev", args=[arg], ..) => arg.is_constant_expr()
+    FunCall(name="flip" | "rev", args=[arg], ..) => arg.is_constant_expr()
     FunCall(_) => false
     Block(body=[], last=Some(last), ..) => last.is_constant_expr()
     Block(..) => false
@@ -885,7 +885,7 @@ priv struct BuiltinFunction {
 }
 
 let builtin_functions: Map[String, BuiltinFunction] = {
-  "$clog2": {
+  "clog2": {
     arity: Fixed(1),
     apply: fn(args, span) {
       let arg = args[0].as_bigint()
@@ -893,7 +893,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       Some(Expr::bignat(value, width=None, span~))
     }
   },
-  "$pow": {
+  "pow": {
     arity: Fixed(2),
     apply: fn(args, span) {
       let base = args[0].as_bigint()
@@ -901,7 +901,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       Some(Expr::bignat(@utils.pow(base, exp), span~))
     }
   },
-  "$cdiv": {
+  "cdiv": {
     arity: Fixed(2),
     apply: fn(args, span) {
       let dividend = args[0].as_bigint()
@@ -909,28 +909,28 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       Some(Expr::bignat(@utils.cdiv(dividend, divisor), span~))
     }
   },
-  "$csqrt": {
+  "csqrt": {
     arity: Fixed(1),
     apply: fn(args, span) {
       let arg = args[0].as_bigint()
       Some(Expr::bignat(@utils.csqrt(arg), span~))
     }
   },
-  "$rev": {
+  "rev": {
     arity: Fixed(1),
-    apply: fn(_, _) { None }
+    apply: (_, _) => None
   },
-  "$flip": {
+  "flip": {
     arity: Fixed(1),
-    apply: fn(_, _) { None }
+    apply: (_, _) => None
   },
-  "$pad": {
+  "pad": {
     arity: Fixed(2),
-    apply: fn(_, _) { None }
+    apply: (_, _) => None
   },
-  "$readmemb": {
-    arity: Range(min=2, max=2),
-    apply: fn(args, _) {
+  "readmemb": {
+    arity: Fixed(2),
+    apply: (args, _) => {
       match args {
         [path, _mem] => { let _ = path.expect_string() }
         _ => ()
@@ -939,9 +939,9 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       None
     }
   },
-  "$readmemh": {
-    arity: Range(min=2, max=2),
-    apply: fn(args, _) {
+  "readmemh": {
+    arity: Fixed(2),
+    apply: (args, _) => {
       match args {
         [path, _mem] => { let _ = path.expect_string() }
         _ => ()
@@ -950,29 +950,29 @@ let builtin_functions: Map[String, BuiltinFunction] = {
       None
     }
   },
-  "$printf": {
+  "printf": {
     arity: Range(min=1, max=@int.max_value),
-    apply: fn(_, _) { None }
+    apply: (_, _) => None
   },
-  "$assert": {
+  "assert": {
     arity: Range(min=1, max=@int.max_value),
-    apply: fn(_, _) { None }
+    apply: (_, _) => None
   },
-  "$stop": {
+  "stop": {
     arity: Range(min=0, max=1),
-    apply: fn(_, _) { None }
+    apply: (_, _) => None
   },
   "uint": {
     arity: Fixed(1),
-    apply: fn(_, _) { None }
+    apply: (_, _) => None
   },
   "sint": {
     arity: Fixed(1),
-    apply: fn(_, _) { None }
+    apply: (_, _) => None
   },
   "clock": {
     arity: Fixed(1),
-    apply: fn(_, _) { None }
+    apply: (_, _) => None
   },
 }
 

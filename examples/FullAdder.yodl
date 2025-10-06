@@ -35,7 +35,7 @@ module Adder<N: uint>(
     }
 
     carry_out = carry_chain[N]
-    sum = uint(bits)
+    sum = uint!(bits)
 }
 
 module Top(

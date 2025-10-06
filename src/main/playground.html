@@ -429,9 +429,11 @@
                     'and', 'or', 'not', 'xor', 'nand', 'nor', 'xnor', 'shl', 'shr', 'andr', 'orr', 'xorr'
                 ],
                 symbols: /[=><!~?:&|+\-*\/\^%\.]+/,
-                
                 tokenizer: {
                     root: [
+                        // Function names: end with !
+                        [/[A-Za-z_0-9]+!/, 'function'],
+
                         // Identifiers and keywords
                         [/[a-zA-Z_]\w*/, { 
                             cases: { 
@@ -440,13 +442,7 @@
                                 '@default': 'identifier'
                             }
                         }],
-                        
-                        // Function names: start with $
-                        [/\$[A-Za-z_0-9]+/, 'function'],
-                        
-                        // Attributes: start with @
-                        [/@[A-Za-z_][A-Za-z0-9_]*/, 'meta'],
-                        
+                         
                         // Strings
                         [/"([^"\\]|\\.)*$/, 'string.invalid'], // Non-terminated string
                         [/"/, { token: 'string.quote', bracket: '@open', next: '@string' }],

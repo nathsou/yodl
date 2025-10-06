@@ -21,9 +21,9 @@ module RAM(
         write: [{ clk: clk, en: true, addr: addr[10:0], data: write_data, mask: mask }],
     )
 
-    $readmemh("prog.hex", mem)
+    readmemh!("prog.hex", mem)
 
-    q = uint(mem.q[0])
+    q = uint!(mem.q[0])
 }
 
 // One-hot encoding of MMIO devices
@@ -49,7 +49,7 @@ module Top(
     let slow_clk = {
         let counter = Reg<uint<2>>(clk, rst)
         counter.d = counter.q + 1'b1
-        clock(counter.q[1])
+        clock!(counter.q[1])
     }
     let ram = RAM(clk: slow_clk)
     let cpu = RISCV::CPU(clk: slow_clk, rst, mem_read_busy: false)
@@ -60,7 +60,7 @@ module Top(
     ram.read_enable = is_ram and cpu.mem_read_enable
     ram.write_data = cpu.mem_write_data
     ram.mask = is_ram ? cpu.mem_write_mask : 4*[false]
-    let write_enable = orr uint(cpu.mem_write_mask)
+    let write_enable = orr uint!(cpu.mem_write_mask)
 
     // devices
     let leds = Reg<uint<32>>(clk: slow_clk, rst)
@@ -78,11 +78,11 @@ module Top(
     )
 
     if is_io and write_enable and word_addr[MemoryMappedIO::LEDs] {
-        leds.d = uint(cpu.mem_write_data)
+        leds.d = uint!(cpu.mem_write_data)
     }
 
     if is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA] and uart_transmitter.ready {
-        $printf("%c", cpu.mem_write_data[0])
+        printf!("%c", cpu.mem_write_data[0])
     }
 
     let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?

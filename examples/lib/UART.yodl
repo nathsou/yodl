@@ -10,7 +10,7 @@ module Transmitter<ClockFreq: uint, BaudRate: uint>(
     ready: bool,
 ) {
     const START_VALUE = ClockFreq / BaudRate
-    const WIDTH = $clog2(START_VALUE)
+    const WIDTH = clog2!(START_VALUE)
     let counter = Reg<uint<WIDTH + 1>>(clk, rst)
     let data = Reg<uint<10>>(clk, rst)
     let ready_reg = Reg<bool>(clk, rst, q: ready)

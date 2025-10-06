@@ -639,7 +639,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let _ = self.check_expr(arg, env, expected_ty=Some(@parse.Type::uint(1)))
             @parse.Type::Clock
         }
-        FunCall(name="$pad", args=[arg, width], span~, ..) => {
+        FunCall(name="pad", args=[arg, width], span~, ..) => {
             let arg_ty = self.check_expr(arg, env)
             let width_ty = self.check_expr(width, env)
             let _ = unify(width_ty, @parse.Nat(min_width=0), span=width.span())
@@ -659,7 +659,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 _ => raise Unreachable(message="", span~)
             }
         }
-        FunCall(name="$readmemb" | "$readmemh", args=[path, mem], span~, ..) => {
+        FunCall(name="readmemb" | "readmemh", args=[path, mem], span~, ..) => {
             let _ = self.check_expr(path, env)
             let mem_ty = self.check_expr(mem, env)
 
@@ -676,11 +676,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             @parse.Type::empty()
         }
-        FunCall(name="$printf", args=[format_str, ..args], span~, ..) => {
+        FunCall(name="printf", args=[format_str, ..args], span~, ..) => {
             self.check_format_string(format_str~, args~, env~, span~)
             @parse.Type::empty()
         }
-        FunCall(name="$assert", args=[pred,..rest], span~, ..) => {
+        FunCall(name="assert", args=[pred,..rest], span~, ..) => {
             let _ = self.check_expr(pred, env, expected_ty=Some(@parse.Type::bool()))
 
             if rest is [format_str, ..args] {
@@ -689,7 +689,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             @parse.Type::empty()
         }
-        FunCall(name="$stop", args~, span~, ..) => {
+        FunCall(name="stop", args~, span~, ..) => {
             match args {
                 [] => ()
                 [exit_code] => {
@@ -709,7 +709,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             @parse.Type::empty()
         }
-        FunCall(name="$rev", args=[arg], span~, ..) => {
+        FunCall(name="rev", args=[arg], span~, ..) => {
             let arg_ty = self.check_expr(arg, env)
 
             match arg_ty {
@@ -719,7 +719,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 }
             }
         }
-        FunCall(name="$flip", args=[arg], span~, ..) => {
+        FunCall(name="flip", args=[arg], span~, ..) => {
             let arg_ty = self.check_expr(arg, env)
 
             match arg_ty {

@@ -9,14 +9,16 @@ enum TokenType {
   LchevronEqual; RchevronEqual
   DotDotLeftChevron; DotDotEqual; DotDot
   Percent; QuestionMark; At; Underscore; X // Replication operator
-  Dollar; ColonColon; MinusColon
+  ColonColon; MinusColon
   // keywords
   Module; Let; UInt; SInt; Bool; In; For; Declare; Const
   And; Or; Not; Xor; Nand; Nor; Xnor; Shl; Shr
   Match; Package; Import; If; Else; Type; Clock
   Andr; Orr; Xorr
   // literals
-  Identifier(String); Natural(value~: BigInt, width~: Int?, base~: Int)
+  Identifier(String)
+  BuiltinFunction(String)
+  Natural(value~: BigInt, width~: Int?, base~: Int)
   StringLiteral(String); CharacterLiteral(Char)
 } derive(Eq, Show)
 

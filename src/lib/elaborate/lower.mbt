@@ -1243,13 +1243,13 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
 
       Expr(expr=@firrtl.primop(AsClock, [Reference(clk_ref)]), ty=Clock, span~)
     }
-    FunCall(name="$pad", args=[arg, width_arg], span~, ty~) => {
+    FunCall(name="pad", args=[arg, width_arg], span~, ty~) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let width = self.lower_expr(width_arg, scope~, env~).as_int().to_int()
       let ty = lower_type(unwrap_type(ty, span~), span~)
       Expr(expr=@firrtl.primop(Pad, [arg.as_expr(self, scope~), Int(BigInt::from_int(width))]), ty~, span~)
     }
-    FunCall(name="$readmemb" | "$readmemh" as name, args=[path, mem], span~, ..) => {
+    FunCall(name="readmemb" | "readmemh" as name, args=[path, mem], span~, ..) => {
       let path = path.expect_string()
       let mem_ref = self.lower_expr(mem, scope~, env~).as_ref(self, scope~)
       let mem_name = match mem_ref {
@@ -1266,14 +1266,14 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         "class": "firrtl.annotations.MemoryFileInlineAnnotation",
         "target": [..self.current_target, mem_id].join("."),
         "filename": path,
-        "hexOrBinary": if name == "$readmemh" { "h" } else { "b" },
+        "hexOrBinary": if name == "readmemh" { "h" } else { "b" },
         "originalMemoryNameOpt": mem_id,
       }
 
       self.annotations.push(annotation.to_json())
       Empty(span~)
     }
-    FunCall(name="$printf", args=[fmt, ..args], span~, ..) => {
+    FunCall(name="printf", args=[fmt, ..args], span~, ..) => {
       let fmt = fmt.expect_string()
       let new_args = Array::new(capacity=args.length())
 
@@ -1281,15 +1281,15 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         new_args.push(self.lower_expr(arg, scope~, env~).as_expr(self, scope~))
       }
 
-      let clk = self.get_clock(source="$printf", span~)
+      let clk = self.get_clock(source="printf", span~)
       let cond = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
  
       scope.add_stmt(Command(Printf(clk~, cond~, fmt~, args=new_args)))
       Empty(span~)
     }
-    FunCall(name="$assert", args=[pred, ..rest], span~, ..) => {
+    FunCall(name="assert", args=[pred, ..rest], span~, ..) => {
       let pred_val = self.lower_expr(pred, scope~, env~)
-      let clk = self.get_clock(source="$assert", span~)
+      let clk = self.get_clock(source="assert", span~)
       let en = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
 
       let (fmt, args) = if rest is [format_str, ..args] {
@@ -1315,19 +1315,19 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
 
       Empty(span~)
     }
-    FunCall(name="$stop", args~, span~, ..) => {
-      let clk = self.get_clock(source="$stop", span~)
+    FunCall(name="stop", args~, span~, ..) => {
+      let clk = self.get_clock(source="stop", span~)
       let cond = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
       let code = match args {
         [] => 0
         [code] => self.lower_expr(code, scope~, env~).as_int().to_int()
-        _ => raise Failure("Unexpected number of arguments to $stop")
+        _ => raise Failure("Unexpected number of arguments to stop!")
       }
 
       scope.add_stmt(Command(Stop(clk~, cond~, code~)))
       Empty(span~)
     }
-    FunCall(name="$rev", args=[arg], span~, ty={val: Some(Vector(ty=elem_ty, len=Fixed(len)))}) => {
+    FunCall(name="rev", args=[arg], span~, ty={val: Some(Vector(ty=elem_ty, len=Fixed(len)))}) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let arg_ref = arg.as_ref(self, scope~)
       let elems = Array::new(capacity=len)
@@ -1340,10 +1340,9 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         elems.push(val)
       }
 
-
       Value::Vector(elems~, ty=@firrtl.Type::Vec(fir_elem_ty, len), span~)
     }
-    FunCall(name="$flip", args=[arg], span~, ty~) => {
+    FunCall(name="flip", args=[arg], span~, ty~) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let arg_ref = arg.as_ref(self, scope~)
       let width = unwrap_type(ty, span~).width(span)

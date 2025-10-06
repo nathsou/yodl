@@ -97,8 +97,8 @@ Some configurations may be synthesised as block RAMs in FPGAs.
 
 | Port | Direction | Type | Description |
 |------|-----|------|-------------|
-| `read` | Input | {`clk`: `clock`, `en`: `bool`, `addr`: `uint<$clog2(Depth)>`}[`ReadPorts`] | Read port(s) |
-| `write` | Input | {`clk`: `clock`, `en`: `bool`, `addr`: `uint<$clog2(Depth)>`, `data`: `T`, `mask`: `MemoryMask<T>`}[`WritePorts`] | Write port(s) |
+| `read` | Input | {`clk`: `clock`, `en`: `bool`, `addr`: `uint<clog2!(Depth)>`}[`ReadPorts`] | Read port(s) |
+| `write` | Input | {`clk`: `clock`, `en`: `bool`, `addr`: `uint<clog2!(Depth)>`, `data`: `T`, `mask`: `MemoryMask<T>`}[`WritePorts`] | Write port(s) |
 | `q` | Output | `T`[`ReadPorts`] | Read data port(s) |
 
 ### Basic Memory
@@ -154,7 +154,7 @@ module ByteAddressableRAM(
         write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask }],
     )
 
-    read_data = uint(mem.q[0])
+    read_data = uint!(mem.q[0])
 }
 ```
 

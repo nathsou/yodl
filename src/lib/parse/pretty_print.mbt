@@ -347,7 +347,7 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
     }
     FunCall(name~, args~, ..) => {
       self.write(name)
-      self.write("(")
+      self.write("!(")
 
       for i, arg in args {
         if i > 0 {

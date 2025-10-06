@@ -344,10 +344,6 @@ fn next(self: Lexer) -> Bool raise LexerError {
       self.advance()
       Ok(At)
     }
-    '$' => {
-      self.advance()
-      Ok(Dollar)
-    }
     '_' => {
       self.advance()
       Ok(Underscore)
@@ -416,37 +412,41 @@ fn next(self: Lexer) -> Bool raise LexerError {
       } else if @utils.is_alpha(char) || char == '_' {
         let identifier = self.parse_identifier()
 
-        Ok(match identifier {
-          "module" => Module
-          "let" => Let
-          "bool" => Bool
-          "uint" => UInt
-          "sint" => SInt
-          "in" => In
-          "for" => For
-          "declare" => Declare
-          "if" => If
-          "else" => Else
-          "match" => Match
-          "const" => Const
-          "package" => Package
-          "import" => Import
-          "and" => And
-          "or" => Or
-          "not" => Not
-          "xor" => Xor
-          "nand" => Nand
-          "nor" => Nor
-          "xnor" => Xnor
-          "shl" => Shl
-          "shr" => Shr
-          "type" => Type
-          "clock" => Clock
-          "andr" => Andr
-          "orr" => Orr
-          "xorr" => Xorr
-          _ => Identifier(identifier)
-        })
+        if self.consumes('!') {
+          Ok(BuiltinFunction(identifier))
+        } else {
+          Ok(match identifier {
+            "module" => Module
+            "let" => Let
+            "bool" => Bool
+            "uint" => UInt
+            "sint" => SInt
+            "in" => In
+            "for" => For
+            "declare" => Declare
+            "if" => If
+            "else" => Else
+            "match" => Match
+            "const" => Const
+            "package" => Package
+            "import" => Import
+            "and" => And
+            "or" => Or
+            "not" => Not
+            "xor" => Xor
+            "nand" => Nand
+            "nor" => Nor
+            "xnor" => Xnor
+            "shl" => Shl
+            "shr" => Shr
+            "type" => Type
+            "clock" => Clock
+            "andr" => Andr
+            "orr" => Orr
+            "xorr" => Xorr
+            _ => Identifier(identifier)
+          })
+        }
       } else {
         self.advance()
         Err(UnexepectedChar(char~, span=self.span(start)))

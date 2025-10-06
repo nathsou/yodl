@@ -15,8 +15,8 @@ package VGA {
     ) -> (
         hsync: bool,
         vsync: bool,
-        row: uint<$clog2(SCREEN_HEIGHT)>,
-        col: uint<$clog2(SCREEN_WIDTH)>,
+        row: uint<clog2!(SCREEN_HEIGHT)>,
+        col: uint<clog2!(SCREEN_WIDTH)>,
     ) {
         // ...
 #       hsync = 1'b0
@@ -130,7 +130,7 @@ module Adder<N: uint>(
     }
 
     carry_out = carry_chain[N]
-    sum = uint(bits)
+    sum = uint!(bits)
 }
 
 # module Top() -> () {}
@@ -226,6 +226,6 @@ Block expressions group multiple statements in a new lexical scope and optionall
         (a + b)  // Last expression becomes the block's value
     }
 
-    $assert(result == 15)
+    assert!(result == 15)
 # }
 ```

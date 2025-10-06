@@ -1,6 +1,6 @@
 
 module PowerOnReset<ClockCycles: uint>(clk: clock) -> (rst: bool) {
-    let counter = Reg<uint<$clog2(ClockCycles)>>(clk)
+    let counter = Reg<uint<clog2!(ClockCycles)>>(clk)
 
     if counter.q <: ClockCycles - 1 {
         counter.d = counter.q + 1'b1

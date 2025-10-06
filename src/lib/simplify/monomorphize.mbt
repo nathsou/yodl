@@ -251,9 +251,8 @@ fn register_monomorphized_module(
     }
   }
 
-  match monomorphized.get(hash) {
-    Some(mono_mod) => return mono_mod
-    None => ()
+  if monomorphized.get(hash) is Some(mono_mod) {
+    return mono_mod
   }
 
   let mono_path = @parse.Path::new(path.packages, "\{path.member}$\{monomorphized.size()}")
@@ -274,11 +273,8 @@ fn[T] resolve_member(env: @elaborate.Scope[@parse.Path, T], path~: @parse.Path, 
       while true {
         let subpath = path.prepend(subpackages)
 
-        match env.resolve(subpath) {
-          Some(entry) => {
-            break Some((entry, subpath))
-          }
-          None => ()
+        if env.resolve(subpath) is Some(entry) {
+          break Some((entry, subpath))
         }
 
         if subpackages.is_empty() {

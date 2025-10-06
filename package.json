@@ -4,7 +4,7 @@
     "main": "target/js/release/build/main.min.js",
     "types": "target/js/release/build/main.d.ts",
     "description": "Modern Hardware Description Language",
-    "version": "0.0.9",
+    "version": "0.0.10",
     "files": [
         "/target/js/release/build/main/"
     ],

@@ -104,9 +104,9 @@ module CPU(
     let alu_equ = alu_minus[31:0] == 32'b0
     let alu_lss_unsigned = alu_minus[32]
     let alu_lss_signed = alu_in1[31] xor alu_in2[31] ? alu_in1[31] : alu_minus[32]
-    let shifter_in = funct3 == 3'd1 ? $flip(alu_in1) : alu_in1
-    let shifter: uint<32> = sint({inst.q[30] and alu_in1[31], shifter_in}) shr alu_in2[4:0]
-    let left_shift = $flip(shifter)
+    let shifter_in = funct3 == 3'd1 ? flip!(alu_in1) : alu_in1
+    let shifter: uint<32> = sint!({inst.q[30] and alu_in1[31], shifter_in}) shr alu_in2[4:0]
+    let left_shift = flip!(shifter)
 
     let alu_out = match funct3 {
         3'b000 => (funct7[5] and inst.q[5] ? alu_minus : alu_plus)[31:0]
@@ -155,7 +155,7 @@ module CPU(
         is_load ? load_data :
         alu_out
 
-    mem_write_data = $rev([
+    mem_write_data = rev!([
         load_store_addr[0] ? rs2.q[7:0] : load_store_addr[1] ? rs2.q[15:8] : rs2.q[31:24],
         load_store_addr[1] ? rs2.q[7:0] : rs2.q[23:16],
         load_store_addr[0] ? rs2.q[7:0] : rs2.q[15:8],
@@ -191,7 +191,7 @@ module CPU(
                     pc.d = next_pc
                     stage.d = is_load ? Stage::WAIT_DATA : Stage::FETCH_INST
                 } else {
-                    $stop()
+                    stop!()
                 }
             }
             Stage::WAIT_DATA => {
@@ -204,5 +204,5 @@ module CPU(
 
     mem_addr = stage.q == Stage::WAIT_INST or stage.q == Stage::FETCH_INST ? pc.q : load_store_addr
     mem_read_enable = stage.q == Stage::FETCH_INST or (stage.q == Stage::EXECUTE and is_load)
-    status = {uint(clk), opcode, 6'd0, stage.q, pc.q[7:0]}
+    status = {uint!(clk), opcode, 6'd0, stage.q, pc.q[7:0]}
 }

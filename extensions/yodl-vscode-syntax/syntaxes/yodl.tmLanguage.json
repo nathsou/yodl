@@ -11,6 +11,10 @@
             "match": "\\b(declare|module|let|match|if|else|for|in|const|package|import)\\b"
         },
         {
+            "name": "entity.name.function.yodl",
+            "match": "[A-Za-z_0-9]+!"
+        },
+        {
             "name": "storage.type.yodl",
             "match": "\\b(uint|sint|bool|clock|type)\\b"
         },
@@ -21,10 +25,6 @@
         {
             "name": "punctuation.separator.parameters.yodl",
             "match": "[(),;:]|(->)"
-        },
-        {
-            "name": "entity.name.function.yodl",
-            "match": "\\$[A-Za-z_0-9]+"
         },
         {
             "name": "keyword.operator.yodl",

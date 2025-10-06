@@ -276,10 +276,7 @@ fn parse_primary_expr(self: Parser) -> Expr raise {
     Match => self.parse_match_expr()
     If => self.parse_if_expr()
     DotDot => self.parse_spread_expr()
-    Dollar => { self.advance(); self.parse_function_call_expr(None) }
-    UInt => { self.advance(); self.parse_function_call_expr(Some("uint")) }
-    SInt => { self.advance(); self.parse_function_call_expr(Some("sint")) }
-    Clock => { self.advance(); self.parse_function_call_expr(Some("clock")) }
+    BuiltinFunction(name) => { self.advance(); self.parse_function_call_expr(name) }
     Lchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '<', did you mean '<:' (less than operator) instead?")
     Rchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '>', did you mean '>:' (greater than operator) instead?")
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
@@ -293,16 +290,9 @@ fn parse_spread_expr(self: Parser) -> Expr raise {
   Spread(expr~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_function_call_expr(self: Parser, name: String?) -> Expr raise {
+fn parse_function_call_expr(self: Parser, name: String) -> Expr raise {
   let start_idx = self.index
-  let prefix = if name.is_empty() { "$" } else { "" }
-
-  let name = match name {
-    Some(name) => name
-    None => self.parse_identifier()
-  }
-
-  let args = []
+  let args: Array[Expr] = []
   self.expect(Lparen, start_idx)
 
   while not(self.matches(Rparen)) {
@@ -316,7 +306,7 @@ fn parse_function_call_expr(self: Parser, name: String?) -> Expr raise {
 
   self.expect(Rparen, start_idx)
 
-  FunCall(name="\{prefix}\{name}", args~, span=self.span(start_idx), ty={ val: None })
+  FunCall(name~, args~, span=self.span(start_idx), ty={ val: None })
 }
 
 fn parse_replication_expr(self: Parser) -> Expr raise {

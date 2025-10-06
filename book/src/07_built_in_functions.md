@@ -4,14 +4,14 @@ Yodl provides several built-in functions and operations to facilitate hardware d
 
 ## Type Conversion Functions
 
-### `uint(x)`
+### `uint!(x)`
 
 Reinterprets a value as an unsigned integer.
 
 ```yodl
 # module Test() -> () {
     let a: sint<8> = -7'd11
-    let b: uint<8> = uint(a) // 8'd11
+    let b: uint<8> = uint!(a) // 8'd11
 # }
 ```
 
@@ -22,21 +22,21 @@ Note that the first element of the vector becomes the least significant bit (LSB
 ```yodl
 # module Test(clk: clock) -> () {
     let bits = [true, false, true, true]
-    $assert(uint(bits) == 4'b1101)
+    assert!(uint!(bits) == 4'b1101)
 # }
 ```
 
-### `sint(x)`
+### `sint!(x)`
 
 Reinterprets a value as a signed integer.
 
 ```yodl
 # module Test() -> () {
-    let a: sint<8> = sint(8'b10101010)
+    let a: sint<8> = sint!(8'b10101010)
 # }
 ```
 
-### `clock(x)`
+### `clock!(x)`
 
 Converts a boolean signal to a clock signal.
 
@@ -44,13 +44,13 @@ Converts a boolean signal to a clock signal.
 # module Test(clk: clock) -> () {
     let counter = Reg<uint<24>>(clk)
     counter.d = counter.q + 1
-    let slow_clk = clock(counter.q[23]) // Divide the clock by 2^23
+    let slow_clk = clock!(counter.q[23]) // Divide the clock by 2^23
 # }
 ```
 
 ## Mathematical Functions
 
-### `$clog2(n)`
+### `clog2!(n)`
 
 Computes the ceiling of the base-2 logarithm of `n`.
 
@@ -58,24 +58,24 @@ Often used to determine the minimum number of bits required to represent a value
 
 ```yodl
 # module Test(clk: clock) -> () {
-    const AddrWidth = $clog2(1024)
+    const AddrWidth = clog2!(1024)
     let addr: uint<AddrWidth> = 10'd0
-    $assert(AddrWidth == 10)
+    assert!(AddrWidth == 10)
 # }
 ```
 
-### `$pow(base, exp)`
+### `pow!(base, exp)`
 
 Computes the power of `base` raised to `exp`.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    const kilobyte = $pow(2, 10)
-    $assert(kilobyte == 1024)
+    const kilobyte = pow!(2, 10)
+    assert!(kilobyte == 1024)
 # }
 ```
 
-### `$cdiv(a, b)`
+### `cdiv!(a, b)`
 
 Computes the ceiling of the division of `a` by `b`.
 
@@ -83,27 +83,27 @@ Computes the ceiling of the division of `a` by `b`.
 # module Test(clk: clock) -> () {
     const data_size = 1024
     const block_size = 100
-    const blocks_needed = $cdiv(data_size, block_size)
-    $assert(blocks_needed == 11)
+    const blocks_needed = cdiv!(data_size, block_size)
+    assert!(blocks_needed == 11)
 # }
 ```
 
 ## Bit Manipulation
 
-### `$flip(x)`
+### `flip!(x)`
 
 Reverses the bit order of `x`.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    const flipped = $flip(5'b11100)
-    $assert(flipped == 5'b00111)
+    const flipped = flip!(5'b11100)
+    assert!(flipped == 5'b00111)
 # }
 ```
 
 ## Vector Functions
 
-### `$rev(vec)`
+### `rev!(vec)`
 
 Reverses the order of elements in a vector.
 
@@ -112,19 +112,19 @@ since vectors are indexed from least to most significant, i.e. `vec[0]` is the f
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let reversed = $rev([1'1, 1'0, 1'0, 1'0])
-    $assert(reversed[0] == 1'0)
-    $assert(reversed[1] == 1'0)
-    $assert(reversed[2] == 1'0)
-    $assert(reversed[3] == 1'1)
+    let reversed = rev!([1'1, 1'0, 1'0, 1'0])
+    assert!(reversed[0] == 1'0)
+    assert!(reversed[1] == 1'0)
+    assert!(reversed[2] == 1'0)
+    assert!(reversed[3] == 1'1)
 # }
 ```
 
-### `$pad(x, width)`
+### `pad!(x, width)`
 Extends the bit-width of an integer `x` to `width` bits.
 If `x` is signed, it performs sign-extension; if `x` is unsigned, it performs zero-extension:
 
-| type of `x` | $pad(x, width) |
+| type of `x` | pad!(x, width) |
 |-------------|----------------|
 | sint<W>     | sign-extend    |
 | uint<W>     | zero-extend    | 
@@ -132,11 +132,11 @@ If `x` is signed, it performs sign-extension; if `x` is unsigned, it performs ze
 ```yodl
 # module Test(clk: clock) -> () {
     let a = -4'd3 // 5'b1101
-    let b: sint<8> = $pad(a, 8) // 8'b11111101 (sign-extended)
-    $assert(uint(b) == 8'b11111101)
+    let b: sint<8> = pad!(a, 8) // 8'b11111101 (sign-extended)
+    assert!(uint!(b) == 8'b11111101)
     let c: uint<4> = 4'd3 // 4'b0011
-    let d: uint<8> = $pad(c, 8) // 8'b00000011 (zero-extended)
-    $assert(d == 8'b00000011)
+    let d: uint<8> = pad!(c, 8) // 8'b00000011 (zero-extended)
+    assert!(d == 8'b00000011)
 # }
 ```
 
@@ -144,7 +144,7 @@ If `x` is signed, it performs sign-extension; if `x` is unsigned, it performs ze
 
 Yodl provides familiar [`$readmemb` and `$readmemh`](https://projectf.io/posts/initialize-memory-in-verilog/) functions to initialize Memory instances from files.
 
-### `$readmemb(file, memory)`
+### `readmemb!(file, memory)`
 
 Initializes a memory from a binary format file.
 
@@ -160,13 +160,13 @@ Initializes a memory from a binary format file.
     )
 
     // Initialize memory from binary file
-    $readmemb("rom_data.bin", rom)
+    readmemb!("rom_data.bin", rom)
 
     let data = rom.q[0]
 # }
 ```
 
-### `$readmemh(file, memory)`
+### `readmemh!(file, memory)`
 
 Initializes a memory from a hexadecimal format file.
 
@@ -182,7 +182,7 @@ Initializes a memory from a hexadecimal format file.
     )
 
     // Initialize memory from hex file
-    $readmemh("rom_data.hex", rom)
+    readmemh!("rom_data.hex", rom)
 
     let data = rom.q[0]
 # }
@@ -190,29 +190,29 @@ Initializes a memory from a hexadecimal format file.
 
 ## Debug Functions
 
-### `$printf(format_string, args..)`
+### `printf!(format_string, args..)`
 
 Prints formatted text during simulation. Similar to C's printf.
 
 ```yodl
 # module Test(clk: clock, data: uint<8>) -> () {
-    $printf("Value of data: %d", data)
+    printf!("Value of data: %d", data)
 # }
 ```
 
-### `$assert(predicate, [format_string, args..])`
+### `assert!(predicate, [format_string, args..])`
 
 Asserts that the predicate is true. If the predicate is false, the simulation stops and prints an optional error message.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    $assert(true == 1'b1)
+    assert!(true == 1'b1)
     const two_plus_two = 2 + 2
-    $assert(two_plus_two == 4, "Math is broken, expected 4, got %d", two_plus_two)
+    assert!(two_plus_two == 4, "Math is broken, expected 4, got %d", two_plus_two)
 # }
 ```
 
-### `$stop([exit_code])`
+### `stop!([exit_code])`
 
 Stops the simulation with an optional exit code.
 
@@ -220,7 +220,7 @@ Stops the simulation with an optional exit code.
 # module Test(clk: clock) -> () {
 #   const error_condition = false
     if error_condition {
-        $stop(1)
+        stop!(1)
     }
 # }
 ```

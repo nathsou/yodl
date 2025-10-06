@@ -22,7 +22,7 @@ Yodl supports two integer types, which require a width specifier.
 # module Test() -> () {
     // a 7-bit signed ingeger
     let b: sint<7> = -6'd8
-    let c: sint<32> = sint(32'd11)
+    let c: sint<32> = sint!(32'd11)
 # }
 ```
 
@@ -141,7 +141,7 @@ Individual characters can be accessed using the following syntax:
 ```yodl
 # module Test(clk: clock) -> () {
     let first_char = "Yo!"[0]
-    $assert(first_char == 'Y')
+    assert!(first_char == 'Y')
 # }
 ```
 
