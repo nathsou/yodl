@@ -167,8 +167,8 @@
     ) -&gt; (
         hsync: bool,
         vsync: bool,
-        row: uint&lt;$clog2(SCREEN_HEIGHT)&gt;,
-        col: uint&lt;$clog2(SCREEN_WIDTH)&gt;,
+        row: uint&lt;clog2!(SCREEN_HEIGHT)&gt;,
+        col: uint&lt;clog2!(SCREEN_WIDTH)&gt;,
     ) {
         // ...
 <span class="boring">       hsync = 1'b0
@@ -271,7 +271,7 @@ module Top() -&gt; () {
     }
 
     carry_out = carry_chain[N]
-    sum = uint(bits)
+    sum = uint!(bits)
 }
 
 <span class="boring"> module Top() -&gt; () {}
@@ -360,7 +360,7 @@ otherwise, the type must be explicitly specified.</li>
         (a + b)  // Last expression becomes the block's value
     }
 
-    $assert(result == 15)
+    assert!(result == 15)
 <span class="boring"> }
 </span></code></pre>
 

@@ -40,7 +40,7 @@ hljs.registerLanguage('yodl', function (hljs) {
       // Function names: identifiers starting with a '$'
       {
         className: 'function',
-        begin: /\$[A-Za-z_0-9]+/
+        begin: /[A-Za-z_0-9]+!/
       },
       // Attributes: identifiers preceded by '@'
       {

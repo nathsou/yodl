@@ -224,8 +224,8 @@
 </div>
 <h3 id="ports-1"><a class="header" href="#ports-1">Ports</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Port</th><th>Direction</th><th>Type</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>read</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;$clog2(Depth)&gt;</code>}[<code>ReadPorts</code>]</td><td>Read port(s)</td></tr>
-<tr><td><code>write</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;$clog2(Depth)&gt;</code>, <code>data</code>: <code>T</code>, <code>mask</code>: <code>MemoryMask&lt;T&gt;</code>}[<code>WritePorts</code>]</td><td>Write port(s)</td></tr>
+<tr><td><code>read</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;clog2!(Depth)&gt;</code>}[<code>ReadPorts</code>]</td><td>Read port(s)</td></tr>
+<tr><td><code>write</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;clog2!(Depth)&gt;</code>, <code>data</code>: <code>T</code>, <code>mask</code>: <code>MemoryMask&lt;T&gt;</code>}[<code>WritePorts</code>]</td><td>Write port(s)</td></tr>
 <tr><td><code>q</code></td><td>Output</td><td><code>T</code>[<code>ReadPorts</code>]</td><td>Read data port(s)</td></tr>
 </tbody></table>
 </div>
@@ -276,7 +276,7 @@
         write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask }],
     )
 
-    read_data = uint(mem.q[0])
+    read_data = uint!(mem.q[0])
 }
 </code></pre>
 <h4 id="mask-type"><a class="header" href="#mask-type">Mask Type</a></h4>

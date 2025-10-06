@@ -170,7 +170,7 @@
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    // a 7-bit signed ingeger
     let b: sint&lt;7&gt; = -6'd8
-    let c: sint&lt;32&gt; = sint(32'd11)
+    let c: sint&lt;32&gt; = sint!(32'd11)
 <span class="boring"> }
 </span></code></pre>
 <p>Integer literals can be specified in decimal, binary, octal, or hexadecimal format.
@@ -259,7 +259,7 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <p>Individual characters can be accessed using the following syntax:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let first_char = "Yo!"[0]
-    $assert(first_char == 'Y')
+    assert!(first_char == 'Y')
 <span class="boring"> }
 </span></code></pre>
 <h2 id="tuples"><a class="header" href="#tuples">Tuples</a></h2>

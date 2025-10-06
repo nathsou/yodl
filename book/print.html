@@ -284,7 +284,7 @@ endmodule
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    // a 7-bit signed ingeger
     let b: sint&lt;7&gt; = -6'd8
-    let c: sint&lt;32&gt; = sint(32'd11)
+    let c: sint&lt;32&gt; = sint!(32'd11)
 <span class="boring"> }
 </span></code></pre>
 <p>Integer literals can be specified in decimal, binary, octal, or hexadecimal format.
@@ -373,7 +373,7 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <p>Individual characters can be accessed using the following syntax:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let first_char = "Yo!"[0]
-    $assert(first_char == 'Y')
+    assert!(first_char == 'Y')
 <span class="boring"> }
 </span></code></pre>
 <h2 id="tuples"><a class="header" href="#tuples">Tuples</a></h2>
@@ -431,8 +431,8 @@ module Top() -&gt; () {
     ) -&gt; (
         hsync: bool,
         vsync: bool,
-        row: uint&lt;$clog2(SCREEN_HEIGHT)&gt;,
-        col: uint&lt;$clog2(SCREEN_WIDTH)&gt;,
+        row: uint&lt;clog2!(SCREEN_HEIGHT)&gt;,
+        col: uint&lt;clog2!(SCREEN_WIDTH)&gt;,
     ) {
         // ...
 <span class="boring">       hsync = 1'b0
@@ -535,7 +535,7 @@ module Top() -&gt; () {
     }
 
     carry_out = carry_chain[N]
-    sum = uint(bits)
+    sum = uint!(bits)
 }
 
 <span class="boring"> module Top() -&gt; () {}
@@ -624,7 +624,7 @@ otherwise, the type must be explicitly specified.</li>
         (a + b)  // Last expression becomes the block's value
     }
 
-    $assert(result == 15)
+    assert!(result == 15)
 <span class="boring"> }
 </span></code></pre>
 <div style="break-before: page; page-break-before: always;"></div><h1 id="operators"><a class="header" href="#operators">Operators</a></h1>
@@ -641,13 +641,13 @@ otherwise, the type must be explicitly specified.</li>
 <p>Reduction operators apply the corresponding logic operation across all bits of the operand, returning a single bit result.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let all_ones = andr 8'b11111111
-    $assert(all_ones == 1)
+    assert!(all_ones == 1)
 
     let any_one = orr 8'b00000001
-    $assert(any_one == 1)
+    assert!(any_one == 1)
 
     let parity = xorr 8'b10101010
-    $assert(parity == 0)
+    assert!(parity == 0)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="binary-operators"><a class="header" href="#binary-operators">Binary Operators</a></h2>
@@ -698,13 +698,13 @@ otherwise, the type must be explicitly specified.</li>
 </span>    let upper_nibble = 8'hAB
     let lower_nibble = 8'hCD
     let word = {upper_nibble, lower_nibble}
-    $assert(word == 16'hABCD)
+    assert!(word == 16'hABCD)
 <span class="boring"> }
 </span></code></pre>
 <p>The concatenation operator also accepts Vectors of integers.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let value = {[1'1, 1'0, 1'0, 1'0]} // 4'b1000
-    $assert(value == 4'b1000)
+    assert!(value == 4'b1000)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="slicing-and-indexing"><a class="header" href="#slicing-and-indexing">Slicing and Indexing</a></h2>
@@ -715,9 +715,9 @@ otherwise, the type must be explicitly specified.</li>
     let nibble = bits[7:4] // Extract a range of bits (inclusive)
     let byte = bits[7-:8]   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
 
-    $assert(first == 1'b1)
-    $assert(uint(nibble) == 4'hE)
-    $assert(uint(byte) == 8'hE9)
+    assert!(first == 1'b1)
+    assert!(uint!(nibble) == 4'hE)
+    assert!(uint!(byte) == 8'hE9)
 <span class="boring"> }
 </span></code></pre>
 <p>There are two forms of bit slicing:</p>
@@ -733,8 +733,8 @@ otherwise, the type must be explicitly specified.</li>
 <p>When a bit vector (<code>bool[N]</code> i.e. <code>uint&lt;1&gt;[N]</code>) is used as the argument of the <code>uint</code> and <code>sint</code> built-in functions,
 the first element of the vector becomes the MSB of the resulting integer:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let n = uint([1'b1, 1'b0, 1'b0])
-    $assert(n == 3'b0001)
+</span>    let n = uint!([1'b1, 1'b0, 1'b0])
+    assert!(n == 3'b0001)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="replication"><a class="header" href="#replication">Replication</a></h2>
@@ -745,8 +745,8 @@ the first element of the vector becomes the MSB of the resulting integer:</p>
 </span>    let zeros = 4*[1'b0]   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
     let ones = 3*{1'b1} // Expands to {1'b, 1'b, 1'b1}
 
-    $assert(uint(zeros) == 4'd0)
-    $assert(uint(ones) == 3'b111)
+    assert!(uint!(zeros) == 4'd0)
+    assert!(uint!(ones) == 3'b111)
 <span class="boring"> }
 </span></code></pre>
 <p>The repeated expressions can contain any value, including instances:</p>
@@ -767,8 +767,8 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 </span>    let concat_args = {16'hBABA, 16'hFABE}
     let concat_vec = {[16'hBABA, 16'hFABE]}
 
-    $assert(concat_args == 32'hBABAFABE)
-    $assert(concat_vec == 32'hBABAFABE)
+    assert!(concat_args == 32'hBABAFABE)
+    assert!(concat_vec == 32'hBABAFABE)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="spread"><a class="header" href="#spread">Spread</a></h2>
@@ -778,16 +778,16 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
     let chars: uint&lt;8&gt;[3] = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
     let flat: uint&lt;2&gt;[3] = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
 
-    $assert(bits[0] == 1'b0)
-    $assert(bits[1] == 1'b0)
-    $assert(bits[2] == 1'b1)
-    $assert(bits[3] == 1'b1)
-    $assert(chars[0] == 8'h59)
-    $assert(chars[1] == 8'h6F)
-    $assert(chars[2] == 8'h21)
-    $assert(flat[0] == 2'd1)
-    $assert(flat[1] == 2'd2)
-    $assert(flat[2] == 2'd3)
+    assert!(bits[0] == 1'b0)
+    assert!(bits[1] == 1'b0)
+    assert!(bits[2] == 1'b1)
+    assert!(bits[3] == 1'b1)
+    assert!(chars[0] == 8'h59)
+    assert!(chars[1] == 8'h6F)
+    assert!(chars[2] == 8'h21)
+    assert!(flat[0] == 2'd1)
+    assert!(flat[1] == 2'd2)
+    assert!(flat[2] == 2'd3)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="operator-precedence"><a class="header" href="#operator-precedence">Operator Precedence</a></h2>
@@ -871,8 +871,8 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <h3 id="for-loops"><a class="header" href="#for-loops">For Loops</a></h3>
 <p>The <code>for</code> loop duplicates its body a fixed number of times, substituting the loop variable with the current iteration index.</p>
 <pre><code class="language-yodl">// Simple parallel hexadecimal to character decoder
-module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[$cdiv(Bits, 4)]) {
-    const Len = $cdiv(Bits, 4)
+module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[cdiv!(Bits, 4)]) {
+    const Len = cdiv!(Bits, 4)
     for i in 0..&lt;Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
             4'h0 =&gt; '0'
@@ -916,101 +916,101 @@ module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[$c
 <div style="break-before: page; page-break-before: always;"></div><h1 id="built-in-functions-and-operations"><a class="header" href="#built-in-functions-and-operations">Built-in Functions and Operations</a></h1>
 <p>Yodl provides several built-in functions and operations to facilitate hardware design.</p>
 <h2 id="type-conversion-functions"><a class="header" href="#type-conversion-functions">Type Conversion Functions</a></h2>
-<h3 id="uintx"><a class="header" href="#uintx"><code>uint(x)</code></a></h3>
+<h3 id="uintx"><a class="header" href="#uintx"><code>uint!(x)</code></a></h3>
 <p>Reinterprets a value as an unsigned integer.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    let a: sint&lt;8&gt; = -7'd11
-    let b: uint&lt;8&gt; = uint(a) // 8'd11
+    let b: uint&lt;8&gt; = uint!(a) // 8'd11
 <span class="boring"> }
 </span></code></pre>
 <p>When applied to a vector of bits, it concatenates them into a single unsigned integer.</p>
 <p>Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the <code>{&lt;expr_list&gt;}</code> concatenation operator.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let bits = [true, false, true, true]
-    $assert(uint(bits) == 4'b1101)
+    assert!(uint!(bits) == 4'b1101)
 <span class="boring"> }
 </span></code></pre>
-<h3 id="sintx"><a class="header" href="#sintx"><code>sint(x)</code></a></h3>
+<h3 id="sintx"><a class="header" href="#sintx"><code>sint!(x)</code></a></h3>
 <p>Reinterprets a value as a signed integer.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let a: sint&lt;8&gt; = sint(8'b10101010)
+</span>    let a: sint&lt;8&gt; = sint!(8'b10101010)
 <span class="boring"> }
 </span></code></pre>
-<h3 id="clockx"><a class="header" href="#clockx"><code>clock(x)</code></a></h3>
+<h3 id="clockx"><a class="header" href="#clockx"><code>clock!(x)</code></a></h3>
 <p>Converts a boolean signal to a clock signal.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let counter = Reg&lt;uint&lt;24&gt;&gt;(clk)
     counter.d = counter.q + 1
-    let slow_clk = clock(counter.q[23]) // Divide the clock by 2^23
+    let slow_clk = clock!(counter.q[23]) // Divide the clock by 2^23
 <span class="boring"> }
 </span></code></pre>
 <h2 id="mathematical-functions"><a class="header" href="#mathematical-functions">Mathematical Functions</a></h2>
-<h3 id="clog2n"><a class="header" href="#clog2n"><code>$clog2(n)</code></a></h3>
+<h3 id="clog2n"><a class="header" href="#clog2n"><code>clog2!(n)</code></a></h3>
 <p>Computes the ceiling of the base-2 logarithm of <code>n</code>.</p>
 <p>Often used to determine the minimum number of bits required to represent a value.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    const AddrWidth = $clog2(1024)
+</span>    const AddrWidth = clog2!(1024)
     let addr: uint&lt;AddrWidth&gt; = 10'd0
-    $assert(AddrWidth == 10)
+    assert!(AddrWidth == 10)
 <span class="boring"> }
 </span></code></pre>
-<h3 id="powbase-exp"><a class="header" href="#powbase-exp"><code>$pow(base, exp)</code></a></h3>
+<h3 id="powbase-exp"><a class="header" href="#powbase-exp"><code>pow!(base, exp)</code></a></h3>
 <p>Computes the power of <code>base</code> raised to <code>exp</code>.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    const kilobyte = $pow(2, 10)
-    $assert(kilobyte == 1024)
+</span>    const kilobyte = pow!(2, 10)
+    assert!(kilobyte == 1024)
 <span class="boring"> }
 </span></code></pre>
-<h3 id="cdiva-b"><a class="header" href="#cdiva-b"><code>$cdiv(a, b)</code></a></h3>
+<h3 id="cdiva-b"><a class="header" href="#cdiva-b"><code>cdiv!(a, b)</code></a></h3>
 <p>Computes the ceiling of the division of <code>a</code> by <code>b</code>.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    const data_size = 1024
     const block_size = 100
-    const blocks_needed = $cdiv(data_size, block_size)
-    $assert(blocks_needed == 11)
+    const blocks_needed = cdiv!(data_size, block_size)
+    assert!(blocks_needed == 11)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="bit-manipulation"><a class="header" href="#bit-manipulation">Bit Manipulation</a></h2>
-<h3 id="flipx"><a class="header" href="#flipx"><code>$flip(x)</code></a></h3>
+<h3 id="flipx"><a class="header" href="#flipx"><code>flip!(x)</code></a></h3>
 <p>Reverses the bit order of <code>x</code>.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    const flipped = $flip(5'b11100)
-    $assert(flipped == 5'b00111)
+</span>    const flipped = flip!(5'b11100)
+    assert!(flipped == 5'b00111)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="vector-functions"><a class="header" href="#vector-functions">Vector Functions</a></h2>
-<h3 id="revvec"><a class="header" href="#revvec"><code>$rev(vec)</code></a></h3>
+<h3 id="revvec"><a class="header" href="#revvec"><code>rev!(vec)</code></a></h3>
 <p>Reverses the order of elements in a vector.</p>
 <p>Particularly useful when constructing a bit vector from a list of bits from most to least significant
 since vectors are indexed from least to most significant, i.e. <code>vec[0]</code> is the first element.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let reversed = $rev([1'1, 1'0, 1'0, 1'0])
-    $assert(reversed[0] == 1'0)
-    $assert(reversed[1] == 1'0)
-    $assert(reversed[2] == 1'0)
-    $assert(reversed[3] == 1'1)
+</span>    let reversed = rev!([1'1, 1'0, 1'0, 1'0])
+    assert!(reversed[0] == 1'0)
+    assert!(reversed[1] == 1'0)
+    assert!(reversed[2] == 1'0)
+    assert!(reversed[3] == 1'1)
 <span class="boring"> }
 </span></code></pre>
-<h3 id="padx-width"><a class="header" href="#padx-width"><code>$pad(x, width)</code></a></h3>
+<h3 id="padx-width"><a class="header" href="#padx-width"><code>pad!(x, width)</code></a></h3>
 <p>Extends the bit-width of an integer <code>x</code> to <code>width</code> bits.
 If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is unsigned, it performs zero-extension:</p>
-<div class="table-wrapper"><table><thead><tr><th>type of <code>x</code></th><th>$pad(x, width)</th></tr></thead><tbody>
+<div class="table-wrapper"><table><thead><tr><th>type of <code>x</code></th><th>pad!(x, width)</th></tr></thead><tbody>
 <tr><td>sint<W></td><td>sign-extend</td></tr>
 <tr><td>uint<W></td><td>zero-extend</td></tr>
 </tbody></table>
 </div>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let a = -4'd3 // 5'b1101
-    let b: sint&lt;8&gt; = $pad(a, 8) // 8'b11111101 (sign-extended)
-    $assert(uint(b) == 8'b11111101)
+    let b: sint&lt;8&gt; = pad!(a, 8) // 8'b11111101 (sign-extended)
+    assert!(uint!(b) == 8'b11111101)
     let c: uint&lt;4&gt; = 4'd3 // 4'b0011
-    let d: uint&lt;8&gt; = $pad(c, 8) // 8'b00000011 (zero-extended)
-    $assert(d == 8'b00000011)
+    let d: uint&lt;8&gt; = pad!(c, 8) // 8'b00000011 (zero-extended)
+    assert!(d == 8'b00000011)
 <span class="boring"> }
 </span></code></pre>
 <h2 id="memory-functions"><a class="header" href="#memory-functions">Memory Functions</a></h2>
 <p>Yodl provides familiar <a href="https://projectf.io/posts/initialize-memory-in-verilog/"><code>$readmemb</code> and <code>$readmemh</code></a> functions to initialize Memory instances from files.</p>
-<h3 id="readmembfile-memory"><a class="header" href="#readmembfile-memory"><code>$readmemb(file, memory)</code></a></h3>
+<h3 id="readmembfile-memory"><a class="header" href="#readmembfile-memory"><code>readmemb!(file, memory)</code></a></h3>
 <p>Initializes a memory from a binary format file.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: uint&lt;8&gt;) -&gt; () {
 </span>    let rom = Memory&lt;
@@ -1023,12 +1023,12 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
     )
 
     // Initialize memory from binary file
-    $readmemb("rom_data.bin", rom)
+    readmemb!("rom_data.bin", rom)
 
     let data = rom.q[0]
 <span class="boring"> }
 </span></code></pre>
-<h3 id="readmemhfile-memory"><a class="header" href="#readmemhfile-memory"><code>$readmemh(file, memory)</code></a></h3>
+<h3 id="readmemhfile-memory"><a class="header" href="#readmemhfile-memory"><code>readmemh!(file, memory)</code></a></h3>
 <p>Initializes a memory from a hexadecimal format file.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: uint&lt;8&gt;) -&gt; () {
 </span>    let rom = Memory&lt;
@@ -1041,32 +1041,32 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
     )
 
     // Initialize memory from hex file
-    $readmemh("rom_data.hex", rom)
+    readmemh!("rom_data.hex", rom)
 
     let data = rom.q[0]
 <span class="boring"> }
 </span></code></pre>
 <h2 id="debug-functions"><a class="header" href="#debug-functions">Debug Functions</a></h2>
-<h3 id="printfformat_string-args"><a class="header" href="#printfformat_string-args"><code>$printf(format_string, args..)</code></a></h3>
+<h3 id="printfformat_string-args"><a class="header" href="#printfformat_string-args"><code>printf!(format_string, args..)</code></a></h3>
 <p>Prints formatted text during simulation. Similar to C's printf.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, data: uint&lt;8&gt;) -&gt; () {
-</span>    $printf("Value of data: %d", data)
+</span>    printf!("Value of data: %d", data)
 <span class="boring"> }
 </span></code></pre>
-<h3 id="assertpredicate-format_string-args"><a class="header" href="#assertpredicate-format_string-args"><code>$assert(predicate, [format_string, args..])</code></a></h3>
+<h3 id="assertpredicate-format_string-args"><a class="header" href="#assertpredicate-format_string-args"><code>assert!(predicate, [format_string, args..])</code></a></h3>
 <p>Asserts that the predicate is true. If the predicate is false, the simulation stops and prints an optional error message.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    $assert(true == 1'b1)
+</span>    assert!(true == 1'b1)
     const two_plus_two = 2 + 2
-    $assert(two_plus_two == 4, "Math is broken, expected 4, got %d", two_plus_two)
+    assert!(two_plus_two == 4, "Math is broken, expected 4, got %d", two_plus_two)
 <span class="boring"> }
 </span></code></pre>
-<h3 id="stopexit_code"><a class="header" href="#stopexit_code"><code>$stop([exit_code])</code></a></h3>
+<h3 id="stopexit_code"><a class="header" href="#stopexit_code"><code>stop!([exit_code])</code></a></h3>
 <p>Stops the simulation with an optional exit code.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span><span class="boring">   const error_condition = false
 </span>    if error_condition {
-        $stop(1)
+        stop!(1)
     }
 <span class="boring"> }
 </span></code></pre>
@@ -1139,8 +1139,8 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 </div>
 <h3 id="ports-1"><a class="header" href="#ports-1">Ports</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Port</th><th>Direction</th><th>Type</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>read</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;$clog2(Depth)&gt;</code>}[<code>ReadPorts</code>]</td><td>Read port(s)</td></tr>
-<tr><td><code>write</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;$clog2(Depth)&gt;</code>, <code>data</code>: <code>T</code>, <code>mask</code>: <code>MemoryMask&lt;T&gt;</code>}[<code>WritePorts</code>]</td><td>Write port(s)</td></tr>
+<tr><td><code>read</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;clog2!(Depth)&gt;</code>}[<code>ReadPorts</code>]</td><td>Read port(s)</td></tr>
+<tr><td><code>write</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;clog2!(Depth)&gt;</code>, <code>data</code>: <code>T</code>, <code>mask</code>: <code>MemoryMask&lt;T&gt;</code>}[<code>WritePorts</code>]</td><td>Write port(s)</td></tr>
 <tr><td><code>q</code></td><td>Output</td><td><code>T</code>[<code>ReadPorts</code>]</td><td>Read data port(s)</td></tr>
 </tbody></table>
 </div>
@@ -1191,7 +1191,7 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
         write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask }],
     )
 
-    read_data = uint(mem.q[0])
+    read_data = uint!(mem.q[0])
 }
 </code></pre>
 <h4 id="mask-type"><a class="header" href="#mask-type">Mask Type</a></h4>
