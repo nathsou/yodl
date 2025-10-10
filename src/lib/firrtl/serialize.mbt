@@ -344,12 +344,12 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
     }
     Command(command) => {
       match command {
-        Printf(clk~, cond~, fmt~, args~) => {
+        Printf(clk~, en~, fmt~, args~) => {
           self.inner().write_indent()
           self.inner().write("printf(")
           self.emit_expr(clk)
           self.inner().write(", ")
-          self.emit_expr(cond)
+          self.emit_expr(en)
           self.inner().write(", \"")
           self.inner().write(show_format_string(fmt))
           self.inner().write("\"")
@@ -394,12 +394,12 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
 
           self.inner().write(")\n")
         }
-        Stop(clk~, cond~, code~) => {
+        Stop(clk~, en~, code~) => {
           self.inner().write_indent()
           self.inner().write("stop(")
           self.emit_expr(clk)
           self.inner().write(", ")
-          self.emit_expr(cond)
+          self.emit_expr(en)
           self.inner().write(", ")
           self.inner().write(code)
           self.inner().write(")\n")

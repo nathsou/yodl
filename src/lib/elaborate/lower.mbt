@@ -1282,9 +1282,9 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       }
 
       let clk = self.get_clock(source="printf", span~)
-      let cond = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
- 
-      scope.add_stmt(Command(Printf(clk~, cond~, fmt~, args=new_args)))
+      let en = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
+
+      scope.add_stmt(Command(Printf(clk~, en~, fmt~, args=new_args)))
       Empty(span~)
     }
     FunCall(name="assert", args=[pred, ..rest], span~, ..) => {
@@ -1317,14 +1317,14 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
     }
     FunCall(name="stop", args~, span~, ..) => {
       let clk = self.get_clock(source="stop", span~)
-      let cond = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
+      let en = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
       let code = match args {
         [] => 0
         [code] => self.lower_expr(code, scope~, env~).as_int().to_int()
         _ => raise Failure("Unexpected number of arguments to stop!")
       }
 
-      scope.add_stmt(Command(Stop(clk~, cond~, code~)))
+      scope.add_stmt(Command(Stop(clk~, en~, code~)))
       Empty(span~)
     }
     FunCall(name="rev", args=[arg], span~, ty={val: Some(Vector(ty=elem_ty, len=Fixed(len)))}) => {

@@ -7,7 +7,7 @@ pub fn min_version() -> (Int, Int, Int) {
 pub(all) enum Id {
   Ident(String)
   Literal(String)
-} derive(Eq)
+} derive (Eq, Hash)
 
 pub fn Id::from(s: String) -> Id {
   Ident(s)
@@ -83,12 +83,12 @@ pub(all) enum Expr {
   Literal(Literal)
   Mux(cond~: Expr, tval~: Expr, fval~: Expr)
   PrimOp(op~: PrimOp, args~: Array[Expr])
-}
+} derive (Eq, Hash)
 
 pub(all) enum Literal {
   UInt(width~: Int, radix~: Int?, value~: BigInt)
   SInt(width~: Int, radix~: Int?, value~: BigInt)
-}
+} derive (Eq, Hash)
 
 pub fn Literal::value(self: Literal) -> BigInt {
   match self {
@@ -100,7 +100,7 @@ pub(all) enum Reference {
   Id(Id)
   Indexing(lhs~: Reference, index~: Expr) // static or dynamic
   FieldAccess(lhs~: Reference, field~: Id)
-}
+} derive (Eq, Hash)
 
 pub impl Show for Reference with output(self, logger) {
   match self {
@@ -178,7 +178,7 @@ pub(all) enum PrimOp {
   And; Or; Xor; Cat
   Pad; Shl; Shr; Head; Tail
   Bits
-} derive(Eq)
+} derive (Eq, Hash)
 
 pub fn primop(op: PrimOp, args: Array[Expr]) -> Expr {
   // ensure that integer arguments for some operations are not Literals
@@ -205,7 +205,19 @@ pub fn primop(op: PrimOp, args: Array[Expr]) -> Expr {
 }
 
 pub(all) enum Command {
-  Printf(clk~: Expr, cond~: Expr, fmt~: String, args~: Array[Expr])
+  Printf(clk~: Expr, en~: Expr, fmt~: String, args~: Array[Expr])
   Assert(clk~: Expr, pred~: Expr, en~: Expr, fmt~: String, args~: Array[Expr])
-  Stop(clk~: Expr, cond~: Expr, code~: Int)
+  Stop(clk~: Expr, en~: Expr, code~: Int)
+}
+
+pub fn Command::replace_en(self: Command, update_en: (Expr) -> Expr) -> Command {
+  match self {
+    Printf(clk~, en~, fmt~, args~) => Printf(clk~, en=update_en(en), fmt~, args~)
+    Assert(clk~, pred~, en~, fmt~, args~) => Assert(clk~, pred~, en=update_en(en), fmt~, args~)
+    Stop(clk~, en~, code~) => Stop(clk~, en=update_en(en), code~)
+  }
+}
+
+pub trait FIRRTLPass {
+  run(self: Self, Circuit) -> Circuit raise
 }
