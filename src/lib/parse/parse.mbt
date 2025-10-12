@@ -857,7 +857,7 @@ fn parse_type(self: Parser) -> Type raise {
   base_ty
 }
 
-fn parse_port(self: Parser, dir~: PortDirection) -> Port raise {
+fn parse_port(self: Parser, flow~: Flow) -> Port raise {
   let start_idx = self.index
   let name = self.parse_identifier()
   let optional = self.consumes(QuestionMark)
@@ -866,25 +866,25 @@ fn parse_port(self: Parser, dir~: PortDirection) -> Port raise {
   let ty = self.parse_type()
   let attributes2 = self.parse_attributes()
   let attributes = @utils.merge(attributes1, attributes2)
-  let dir = match attributes.get("inout") {
+  let flow = match attributes.get("inout") {
     Some(_) => Inout
-    None => dir
+    None => flow
   }
 
-  { name, ty, direction: dir, optional, attributes, span: self.span(start_idx) }
+  { name, ty, flow, optional, attributes, span: self.span(start_idx) }
 }
 
-fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port] raise {
+fn parse_port_list(self: Parser, flow~: Flow) -> Array[Port] raise {
   let start_idx = self.index
   let ports = []
 
   self.expect(Lparen, start_idx)
 
-  while not(self.matches(Rparen)) {
-    let port = self.parse_port(dir~)
+  while !self.matches(Rparen) {
+    let port = self.parse_port(flow~)
     ports.push(port)
 
-    if not(self.consumes(Comma)) {
+    if !self.consumes(Comma) {
       break
     }
   }
@@ -1018,9 +1018,9 @@ fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> 
     
     { name, ty, span: self.span(param_start_idx) }
   })
-  let inputs = self.parse_port_list(dir=Input)
+  let inputs = self.parse_port_list(flow=Input)
   self.expect(RightThinArrow, start_idx)
-  let outputs = self.parse_port_list(dir=Output)
+  let outputs = self.parse_port_list(flow=Output)
   let ports = @utils.concat(inputs, outputs)
 
   { path: Path::new([], name), params, attributes, ports, span: self.span(start_idx) }

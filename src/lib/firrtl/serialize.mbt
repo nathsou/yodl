@@ -155,7 +155,7 @@ pub fn emit_ext_module(self: FIRRTLEmitter, ext_mod: ExtModule) -> Unit {
 
 pub fn emit_port(self: FIRRTLEmitter, port: Port) -> Unit {
   self.inner().write_indent()
-  self.inner().write(port.direction)
+  self.inner().write(port.flow)
   self.inner().write(" ")
   self.inner().write(port.id)
   self.inner().write(": ")
@@ -202,7 +202,7 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
       self.inner().write(", ")
       self.emit_expr(rhs)
     }
-    Inst(id~, of~) => {
+    Inst(id~, of~, sig=_) => {
       self.inner().write_indent()
       self.inner().write("inst ")
       self.inner().write(id)

@@ -171,13 +171,21 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   for cmd in commands {
     match cmd {
       WriteFIRRTL(path~) => {
-        let emitter = @firrtl.FIRRTLEmitter::new()
-        emitter.emit_circuit({
+        let circuit: @firrtl.Circuit = {
           version: @firrtl.min_version(),
           id: Ident(firrtl.circuit_name),
           annotations: firrtl.annotations,
           decls: (firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod)) + (firrtl.extmodules.values().map(mod => @firrtl.Decl::ExtModule(mod)))).collect(),
-        })
+        }
+
+        let expand_whens_pass = @firrtl.ExpandWhensPass::new()
+        let circuit = match (try? expand_whens_pass.run(circuit)) {
+          Err(err) => raise Failure(err.to_string())
+          Ok(circuit) => circuit
+        }
+
+        let emitter = @firrtl.FIRRTLEmitter::new()
+        emitter.emit_circuit(circuit)
 
         match path {
           Some(path) => {

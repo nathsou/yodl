@@ -48,7 +48,7 @@ pub(all) enum Decl {
 pub(all) enum Stmt {
   Node(id~: Id, expr~: Expr)
   Wire(id~: Id, ty~: Type)
-  Inst(id~: Id, of~: Id)
+  Inst(id~: Id, of~: Id, sig~: ModuleSignature)
   Reg(id~: Id, ty~: Type, clock~: Expr)
   RegReset(id~: Id, ty~: Type, clock~: Expr, reset~: Expr, init~: Expr)
   Mem(
@@ -131,6 +131,15 @@ pub(all) struct Module {
   body: Array[Stmt]
 }
 
+pub(all) struct PortSignature {
+  flow: @parse.Flow
+  ty: Type
+}
+
+pub(all) struct ModuleSignature {
+  ports: Map[String, PortSignature]
+}
+
 pub(all) struct ExtModule {
   id: Id
   ports: Array[Port]
@@ -145,7 +154,7 @@ pub(all) enum ParameterLiteral {
 }
 
 pub(all) struct Port {
-  direction: @parse.PortDirection
+  flow: @parse.Flow
   id: Id
   ty: Type
 }
@@ -168,6 +177,76 @@ pub(all) struct BundleField {
   flip: Bool
   ty: Type
 } derive(Eq)
+
+pub struct MemReaderWriterTypes {
+  reader_type: Type
+  writer_type: Type
+}
+
+pub fn Type::mem_mask(self: Type) -> Type {
+  match self {
+    UInt(_) | UIntInferred | SInt(_) | SIntInferred |
+    Clock | AsyncReset | Reset | Const(_) => UInt(1)
+    Bundle(fields) => Bundle(fields.map(field => {
+        id: field.id,
+        flip: field.flip,
+        ty: field.ty.mem_mask(),
+      }
+    ))
+    Vec(elem_ty, size) => Vec(elem_ty.mem_mask(), size)
+  }
+}
+
+pub fn Type::mem_reader_writer_types(self: Type, depth~: Int) -> MemReaderWriterTypes {
+  let depth_clog2 = @utils.clog2(BigInt::from_int(depth)).to_int()
+  
+  {
+    reader_type: Bundle([
+      {
+        id: Id::from("clk"),
+        flip: false,
+        ty: Clock,
+      },
+      {
+        id: Id::from("en"),
+        flip: false,
+        ty: UInt(1),
+      },
+      {
+        id: Id::from("addr"),
+        flip: false,
+        ty: UInt(depth_clog2),
+      },
+    ]),
+    writer_type: Bundle([
+      {
+        id: Id::from("clk"),
+        flip: false,
+        ty: Clock,
+      },
+      {
+        id: Id::from("en"),
+        flip: false,
+        ty: UInt(1),
+      },
+      {
+        id: Id::from("addr"),
+        flip: false,
+        ty: UInt(depth_clog2),
+      },
+      {
+        id: Id::from("data"),
+        flip: false,
+        ty: self,
+      },
+      {
+        id: Id::from("mask"),
+        flip: false,
+        ty: self.mem_mask(),
+      }
+    ]),
+  }
+}
 
 pub(all) enum PrimOp {
   AsUInt; AsSInt; AsClock; AsAsyncReset; Cvt

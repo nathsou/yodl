@@ -385,11 +385,19 @@ pub fn expect_fixed(self: IntParam, span: Span) -> Int raise {
   }
 }
 
-pub(all) enum PortDirection {
+pub(all) enum Flow {
   Input; Output; Inout
 } derive(Hash, Eq)
 
-pub impl Show for PortDirection with output(self, logger) {
+pub fn Flow::swap(self: Flow) -> Flow {
+  match self {
+    Input => Output
+    Output => Input
+    Inout => Inout
+  }
+}
+
+pub impl Show for Flow with output(self, logger) {
   logger.write_string(match self {
     Input => "input"
     Output => "output"
@@ -400,7 +408,7 @@ pub impl Show for PortDirection with output(self, logger) {
 pub(all) struct Port {
   name: String
   ty: Type
-  direction: PortDirection
+  flow: Flow
   span: Span
   optional: Bool
   attributes: Map[String, Attribute]
@@ -1130,15 +1138,15 @@ pub fn signature(self: ModuleDecl) -> ModuleSignature {
 }
 
 pub fn inputs(self: ModuleSignature) -> Iter[Port] {
-  self.ports.iter().filter(fn(port) { port.direction == Input })
+  self.ports.iter().filter(fn(port) { port.flow == Input })
 }
 
 pub fn outputs(self: ModuleSignature) -> Iter[Port] {
-  self.ports.iter().filter(fn(port) { port.direction == Output })
+  self.ports.iter().filter(fn(port) { port.flow == Output })
 }
 
 pub fn inouts(self: ModuleSignature) -> Iter[Port] {
-  self.ports.iter().filter(fn(port) { port.direction == Inout })
+  self.ports.iter().filter(fn(port) { port.flow == Inout })
 }
 
 pub fn is_numerical(self: Type) -> Bool {

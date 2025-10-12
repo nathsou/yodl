@@ -151,7 +151,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
         let field: @firrtl.BundleField = {
           id: @firrtl.Id::from(port),
           ty: lower_type(port_sig.ty.substitute(resolved_params, span~), span~),
-          flip: port_sig.direction == Input,
+          flip: port_sig.flow == Input,
         }
 
         fields.push(field)
@@ -258,7 +258,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit ra
         }
 
         let fir_port: @firrtl.Port = {
-          direction: port.direction,
+          flow: port.flow,
           id: port_id,
           ty: fir_ty,
         }
@@ -317,7 +317,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: @parse.ModuleSignatu
     }
 
     let fir_port: @firrtl.Port = {
-      direction: port.direction,
+      flow: port.flow,
       id: port_id,
       ty: fir_ty,
     }
@@ -802,12 +802,12 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
 
       let (ports_sig, params_map, attributes) = match self.modules.get(path) {
         Some(inst_mod) => {
-          let ports_sig = {}
+          let ports_sig: Map[String, @firrtl.PortSignature] = {}
 
           for port in inst_mod.ports {
             ports_sig[port.id.inner()] = {
               ty: port.ty,
-              direction: port.direction,
+              flow: port.flow,
             }
           }
 
@@ -821,10 +821,12 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
 
             for port in sig.ports {
               let ty = lower_type(port.ty.substitute(resolved_params, span~), span~)
-              ports_sig[port.name] = {
-                ty,
-                direction: port.direction,
+              let port_sig: @firrtl.PortSignature = {
+                flow: port.flow,
+                ty
               }
+              
+              ports_sig[port.name] = port_sig
             }
 
             (ports_sig, params_map, sig.attributes)
@@ -1087,7 +1089,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         }
       } else {
         let inst_id = @firrtl.Id::from("inst_\{self.next_idx()}")
-        scope.add_stmt(Inst(id=inst_id, of=id_of_path(path)))
+        scope.add_stmt(Inst(id=inst_id, of=id_of_path(path), sig={ ports: ports_sig }))
 
         for port_name, sig in ports_sig {
           if uses_port(port_name) {
@@ -1103,7 +1105,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             }
 
             for rhs in rhss {
-              match sig.direction {
+              match sig.flow {
                 Input => {
                   self.connect(lhs=lhs.as_ref(self, scope~), value=rhs, scope~)
                 }
@@ -1377,9 +1379,4 @@ pub fn Elaborator::lower(self: Elaborator, decls: Iter[@parse.Decl]) -> Unit rai
       Const(_) | Package(_) | Import(_) | TypeAlias(_) => ()
     }
   }
-}
-
-priv struct PortSignature {
-  direction: @parse.PortDirection
-  ty: @firrtl.Type
 }

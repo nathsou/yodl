@@ -430,7 +430,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                                 let expr_ty = self.check_expr(port_expr, env).substitute(params_env, span~)
                                 let _ = unify(port_def.ty.substitute(params_env, span~), expr_ty, span=port_expr.span(), subst~)
 
-                                if port_def.direction != Input && not(is_valid_assignment_target(port_expr)) {
+                                if port_def.flow != Input && !is_valid_assignment_target(port_expr) {
                                     raise InvalidAssignmentTarget(span=port_expr.span())
                                 }
                             }
@@ -824,7 +824,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
 
             // mark instance port as being written to
             if lhs is FieldAccess(expr~, field~, ..) && expr.ty().val is Some(@parse.Type::Instance(sig~, accessed_ports~, ..)) {
-                if sig.get_port(field) is Some(port_sig) && port_sig.direction == Output {
+                if sig.get_port(field) is Some(port_sig) && port_sig.flow == Output {
                     raise type_error("Cannot assign to output port '\{field}' of module '\{sig.path}'", span)
                 }
 
