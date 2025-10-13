@@ -275,17 +275,17 @@ pub fn[T: Show] emit_stmt(self: FIRRTLEmitter, stmt: Stmt[T], glued~: Bool = fal
         None => ()
       }
     }
-    Mem(
-      id~,
-      data_type~,
-      depth~,
-      read_latency~,
-      write_latency~,
-      read_under_write~,
-      readers~,
-      writers~,
-      readwriters~,
-    ) => {
+    Mem({
+      id,
+      data_type,
+      depth,
+      read_latency,
+      write_latency,
+      read_under_write,
+      readers,
+      writers,
+      readwriters,
+    }) => {
       self.inner().write_indent()
       self.inner().write("mem ")
       self.inner().write(id)
@@ -338,11 +338,6 @@ pub fn[T: Show] emit_stmt(self: FIRRTLEmitter, stmt: Stmt[T], glued~: Bool = fal
       }
 
       self.inner().indent -= 1
-    }
-    Invalidate(reference) => {
-      self.inner().write_indent()
-      self.inner().write("invalidate ")
-      self.inner().write(reference)
     }
     Skip => {
       self.inner().write_indent()
@@ -535,14 +530,14 @@ priv trait AsInt {
 
 impl AsInt for Expr with as_int(self: Expr) -> BigInt? {
   match self {
-    Literal(lit) => Some(lit.value())
+    Literal(lit) => Some(lit.as_bigint())
     _ => None
   }
 }
 
 impl AsInt for TypedExpr with as_int(self: TypedExpr) -> BigInt? {
   match self {
-    Literal(value~, ..) => Some(value.value())
+    Literal(value~, ..) => Some(value.as_bigint())
     _ => None
   }
 }

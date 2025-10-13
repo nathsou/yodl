@@ -110,24 +110,32 @@ fn ExpandWhensPass::process_block(
 
         stmts.push(stmt)
       }
-      Mem(id~, data_type~, readers~, writers~, depth~, ..) => {
+      Mem({id, readers, writers, readwriters, ..} as mem) => {
         // Track memory input ports
         let reference = Id(id)
-        let { reader_type, writer_type } = data_type.mem_reader_writer_types(depth~) 
+        let ports = mem.reader_writer_types()
 
         for reader in readers {
           scope.declare_sinks(
             reference=FieldAccess(lhs=reference, field=reader),
-            ty=reader_type,
-            flow=Input,
+            ty=ports.read,
+            flow=Output,
           )
         }
 
         for writer in writers {
           scope.declare_sinks(
             reference=FieldAccess(lhs=reference, field=writer),
-            ty=writer_type,
+            ty=ports.write,
             flow=Input,
+          )
+        }
+
+        for rw in readwriters {
+          scope.declare_sinks(
+            reference=FieldAccess(lhs=reference, field=rw),
+            ty=ports.read_write,
+            flow=Inout,
           )
         }
 

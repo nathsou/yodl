@@ -55,22 +55,91 @@ pub(all) enum Stmt[T] {
   Inst(id~: Id, of~: Id, sig~: ModuleSignature)
   Reg(id~: Id, ty~: Type, clock~: T)
   RegReset(id~: Id, ty~: Type, clock~: T, reset~: T, init~: T)
-  Mem(
-    id~: Id,
-    data_type~: Type,
-    depth~: Int,
-    read_latency~: Int,
-    write_latency~: Int,
-    read_under_write~: ReadUnderWrite,
-    readers~: Array[Id],
-    writers~: Array[Id],
-    readwriters~: Array[Id],
-  )
+  Mem(Mem)
   Connect(Reference[T], T)
   When(When[T])
-  Invalidate(Reference[T])
   Command(Command[T])
   Skip
+}
+
+pub(all) struct Mem {
+    id: Id
+    data_type: Type
+    depth: Int
+    read_latency: Int
+    write_latency: Int
+    read_under_write: ReadUnderWrite
+    readers: Array[Id]
+    writers: Array[Id]
+    readwriters: Array[Id]
+}
+
+pub fn Type::mem_mask(self: Type) -> Type {
+  match self {
+    UInt(_) | UIntInferred | SInt(_) | SIntInferred |
+    Clock | AsyncReset | Reset | Const(_) => UInt(1)
+    Bundle(fields) => Bundle(fields.map(field => {
+        id: field.id,
+        flip: field.flip,
+        ty: field.ty.mem_mask(),
+      }
+    ))
+    Vec(elem_ty, size) => Vec(elem_ty.mem_mask(), size)
+  }
+}
+
+pub struct MemPorts {
+  read: Type
+  write: Type
+  read_write: Type
+}
+
+pub fn Mem::reader_writer_types(self: Mem) -> MemPorts {
+  let depth_clog2 = @utils.clog2(BigInt::from_int(self.depth)).to_int()
+  
+  {
+    read: Bundle([
+      BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
+      BundleField::from(id=Id::from("en"), ty=UInt(1)),
+      BundleField::from(id=Id::from("clk"), ty=Clock),
+      BundleField::from(id=Id::from("data"), ty=self.data_type, flip=true),
+    ]),
+    write: Bundle([
+      BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
+      BundleField::from(id=Id::from("en"), ty=UInt(1)),
+      BundleField::from(id=Id::from("clk"), ty=Clock),
+      BundleField::from(id=Id::from("data"), ty=self.data_type, flip=true),
+      BundleField::from(id=Id::from("mask"), ty=self.data_type.mem_mask()),
+    ]),
+    read_write: Bundle([
+      BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
+      BundleField::from(id=Id::from("en"), ty=UInt(1)),
+      BundleField::from(id=Id::from("clk"), ty=Clock),
+      BundleField::from(id=Id::from("rdata"), ty=self.data_type, flip=true),
+      BundleField::from(id=Id::from("wmode"), ty=UInt(1)),
+      BundleField::from(id=Id::from("wdata"), ty=self.data_type),
+      BundleField::from(id=Id::from("wmask"), ty=self.data_type.mem_mask()),
+    ]),
+  }
+}
+
+pub fn Mem::as_bundle(self: Mem) -> Type {
+  let ports = self.reader_writer_types()
+  let fields: Array[BundleField] = []
+
+  for r in self.readers {
+    fields.push(BundleField::from(flip=true, id=r, ty=ports.read))
+  }
+
+  for w in self.writers {
+    fields.push(BundleField::from(flip=true, id=w, ty=ports.write))
+  }
+
+  for rw in self.readwriters {
+    fields.push(BundleField::from(flip=true, id=rw, ty=ports.read_write))
+  }
+
+  Bundle(fields)
 }
 
 pub typealias Stmt[TypedExpr] as TypedStmt
@@ -128,9 +197,15 @@ pub fn Literal::sint(n: Int) -> Literal {
   SInt(width~, radix=None, value=BigInt::from_int(n))
 }
 
-pub fn Literal::value(self: Literal) -> BigInt {
+pub fn Literal::as_bigint(self: Literal) -> BigInt {
   match self {
     UInt(value~, ..) | SInt(value~, ..) => value
+  }
+}
+
+pub fn Literal::as_int(self: Literal) -> Int {
+  match self {
+    UInt(value~, ..) | SInt(value~, ..) => value.to_int()
   }
 }
 
@@ -175,6 +250,16 @@ pub(all) struct ModuleSignature {
   ports: Map[String, PortSignature]
 }
 
+pub fn ModuleSignature::as_bundle(self: ModuleSignature) -> Type {
+  let fields: Array[BundleField] = []
+
+  for name, port in self.ports.iter2() {
+    fields.push(BundleField::from(id=Id::from(name), ty=port.ty, flip=port.flow is Input))
+  }
+
+  Bundle(fields)
+}
+
 pub(all) struct ExtModule {
   id: Id
   ports: Array[Port]
@@ -211,6 +296,32 @@ pub fn Type::bool() -> Type {
   UInt(1)
 }
 
+// see FIRRTL spec. 5.0 "Type Equivalence"
+pub fn Type::is_equivalent_to(self: Type, other: Type) -> Bool {
+  match (self, other) {
+    (UInt(_), UInt(_)) => true
+    (SInt(_), SInt(_)) => true
+    (Clock, Clock) => true
+    (Reset, Reset | UInt(1) | AsyncReset) => true
+    (AsyncReset, AsyncReset | Reset) => true
+    (Vec(ty1, size1), Vec(ty2, size2)) => size1 == size2 && ty1.is_equivalent_to(ty2)
+    (Bundle(fields1), Bundle(fields2)) => {
+      if fields1.length() != fields2.length() {
+        return false
+      }
+      
+      for f1, f2 in @utils.zip2(fields1, fields2) {
+        if f1.id != f2.id || f1.flip != f2.flip || !f1.ty.is_equivalent_to(f2.ty) {
+          return false
+        }
+      }
+
+      true
+    }
+    _ => false
+  }
+}
+
 pub(all) struct BundleField {
   id: Id
   flip: Bool
@@ -219,44 +330,6 @@ pub(all) struct BundleField {
 
 pub fn BundleField::from(id~: Id, ty~: Type, flip~: Bool = false) -> BundleField {
   { id, flip, ty }
-}
-
-pub struct MemReaderWriterTypes {
-  reader_type: Type
-  writer_type: Type
-}
-
-pub fn Type::mem_mask(self: Type) -> Type {
-  match self {
-    UInt(_) | UIntInferred | SInt(_) | SIntInferred |
-    Clock | AsyncReset | Reset | Const(_) => UInt(1)
-    Bundle(fields) => Bundle(fields.map(field => {
-        id: field.id,
-        flip: field.flip,
-        ty: field.ty.mem_mask(),
-      }
-    ))
-    Vec(elem_ty, size) => Vec(elem_ty.mem_mask(), size)
-  }
-}
-
-pub fn Type::mem_reader_writer_types(self: Type, depth~: Int) -> MemReaderWriterTypes {
-  let depth_clog2 = @utils.clog2(BigInt::from_int(depth)).to_int()
-  
-  {
-    reader_type: Bundle([
-      BundleField::from(id=Id::from("clk"), ty=Clock),
-      BundleField::from(id=Id::from("en"), ty=UInt(1)),
-      BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
-    ]),
-    writer_type: Bundle([
-      BundleField::from(id=Id::from("clk"), ty=Clock),
-      BundleField::from(id=Id::from("en"), ty=UInt(1)),
-      BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
-      BundleField::from(id=Id::from("data"), ty=self),
-      BundleField::from(id=Id::from("mask"), ty=self.mem_mask()),
-    ]),
-  }
 }
 
 pub(all) enum PrimOp {

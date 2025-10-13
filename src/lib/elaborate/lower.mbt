@@ -1035,17 +1035,17 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               1
             }
 
-            let mem_stmt = @firrtl.Mem(
-              id=mem_id,
-              data_type~,
-              depth~,
-              read_latency~,
-              write_latency~,
-              read_under_write=Undefined,
-              readers~,
-              writers~,
-              readwriters=[],
-            )
+            let mem_stmt = @firrtl.Mem({
+              id: mem_id,
+              data_type,
+              depth,
+              read_latency,
+              write_latency,
+              read_under_write: Undefined,
+              readers,
+              writers,
+              readwriters: [],
+            })
 
             scope.add_stmt(mem_stmt)
 
