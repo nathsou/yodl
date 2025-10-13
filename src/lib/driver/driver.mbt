@@ -183,11 +183,11 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
           Ok(typed_circuit) => typed_circuit
         }
 
-        let expand_whens_pass = @firrtl.ExpandWhensPass::new()
-        let circuit = match (try? expand_whens_pass.run(circuit)) {
-          Err(err) => raise Failure(err.to_string())
-          Ok(circuit) => circuit
-        }
+        // let expand_whens_pass = @firrtl.ExpandWhensPass::new()
+        // let circuit = match (try? expand_whens_pass.run(circuit)) {
+        //   Err(err) => raise Failure(err.to_string())
+        //   Ok(circuit) => circuit
+        // }
 
         let emitter = @firrtl.FIRRTLEmitter::new()
         emitter.emit_circuit(circuit)

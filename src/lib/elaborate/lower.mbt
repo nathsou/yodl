@@ -135,7 +135,7 @@ fn id_of_path(path: @parse.Path) -> @firrtl.Id {
 
 fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
   match ty {
-    Nat(min_width=_) => UIntInferred
+    Nat(min_width~) => UInt(min_width)
     UInt(Fixed(width)) => UInt(width)
     SInt(Fixed(width)) => SInt(width)
     Clock => Clock

@@ -155,11 +155,14 @@ fn TypeEnv::check_expr(self: Self, expr: Expr) -> TypedExpr raise {
         raise Failure("Mux condition must be of type UInt<1>, got '\{cond.ty()}'")
       }
 
-      if tval_ty != fval_ty {
-        raise Failure("Mux true and false values must have the same type, got '\{tval_ty}' and '\{fval_ty}'")
+      let ty: Type = match (tval_ty, fval_ty) {
+        (UInt(w1), UInt(w2)) => UInt(@utils.max(w1, w2))
+        (SInt(w1), SInt(w2)) => SInt(@utils.max(w1, w2))
+        (_, _) if tval_ty == fval_ty => tval_ty
+        _ => raise Failure("Mux true and false values must be both UInt or both SInt, got '\{tval_ty}' and '\{fval_ty}'")
       }
 
-      TypedExpr::Mux(cond~, tval~, fval~, ty=tval_ty)
+      TypedExpr::Mux(cond~, tval~, fval~, ty~)
     }
     PrimOp(op~, args~) => {
       let args = args.map(arg => self.check_expr(arg))
