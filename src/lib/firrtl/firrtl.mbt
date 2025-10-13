@@ -83,7 +83,7 @@ pub(all) enum Expr {
   Literal(Literal)
   Mux(cond~: Expr, tval~: Expr, fval~: Expr)
   PrimOp(op~: PrimOp, args~: Array[Expr])
-} derive (Eq, Hash)
+}
 
 pub(all) enum Literal {
   UInt(width~: Int, radix~: Int?, value~: BigInt)
@@ -98,14 +98,21 @@ pub fn Literal::value(self: Literal) -> BigInt {
 
 pub(all) enum Reference {
   Id(Id)
-  Indexing(lhs~: Reference, index~: Expr) // static or dynamic
+  StaticIndexing(lhs~: Reference, index~: Int)
+  DynamicIndexing(lhs~: Reference, index~: Expr)
   FieldAccess(lhs~: Reference, field~: Id)
-} derive (Eq, Hash)
+}
 
 pub impl Show for Reference with output(self, logger) {
   match self {
     Id(id) => logger.write_string(id.value())
-    Indexing(lhs~, index=_) => {
+    StaticIndexing(lhs~, index~) => {
+      lhs.output(logger)
+      logger.write_char('[')
+      logger.write_string(index.to_string())
+      logger.write_char(']')
+    }
+    DynamicIndexing(lhs~, index=_) => {
       lhs.output(logger)
       logger.write_string("[expr]")
     }
@@ -114,6 +121,13 @@ pub impl Show for Reference with output(self, logger) {
       logger.write_char('.')
       logger.write_string(field.value())
     }
+  }
+}
+
+pub fn Reference::indexing_from(lhs~: Reference, index~: Expr) -> Reference {
+  match index {
+    Int(value) | Literal(UInt(value~, ..) | SInt(value~, ..)) => StaticIndexing(lhs~, index=value.to_int())
+    _ => DynamicIndexing(lhs~, index~)
   }
 }
 
@@ -178,6 +192,10 @@ pub(all) struct BundleField {
   ty: Type
 } derive(Eq)
 
+pub fn BundleField::from(id~: Id, ty~: Type, flip~: Bool = false) -> BundleField {
+  { id, flip, ty }
+}
+
 pub struct MemReaderWriterTypes {
   reader_type: Type
   writer_type: Type
@@ -202,48 +220,16 @@ pub fn Type::mem_reader_writer_types(self: Type, depth~: Int) -> MemReaderWriter
   
   {
     reader_type: Bundle([
-      {
-        id: Id::from("clk"),
-        flip: false,
-        ty: Clock,
-      },
-      {
-        id: Id::from("en"),
-        flip: false,
-        ty: UInt(1),
-      },
-      {
-        id: Id::from("addr"),
-        flip: false,
-        ty: UInt(depth_clog2),
-      },
+      BundleField::from(id=Id::from("clk"), ty=Clock),
+      BundleField::from(id=Id::from("en"), ty=UInt(1)),
+      BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
     ]),
     writer_type: Bundle([
-      {
-        id: Id::from("clk"),
-        flip: false,
-        ty: Clock,
-      },
-      {
-        id: Id::from("en"),
-        flip: false,
-        ty: UInt(1),
-      },
-      {
-        id: Id::from("addr"),
-        flip: false,
-        ty: UInt(depth_clog2),
-      },
-      {
-        id: Id::from("data"),
-        flip: false,
-        ty: self,
-      },
-      {
-        id: Id::from("mask"),
-        flip: false,
-        ty: self.mem_mask(),
-      }
+      BundleField::from(id=Id::from("clk"), ty=Clock),
+      BundleField::from(id=Id::from("en"), ty=UInt(1)),
+      BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
+      BundleField::from(id=Id::from("data"), ty=self),
+      BundleField::from(id=Id::from("mask"), ty=self.mem_mask()),
     ]),
   }
 }

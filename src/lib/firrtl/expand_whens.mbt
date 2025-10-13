@@ -16,6 +16,34 @@ pub impl FIRRTLPass for ExpandWhensPass with run(_: ExpandWhensPass, circuit) ->
   }
 }
 
+// Supporting arbitrary dynamic indexing would make initialisation analysis undecidable
+impl Hash for Reference with hash_combine(self, hasher) {
+  match self {
+    Id(id) => id.hash_combine(hasher)
+    StaticIndexing(lhs~, index~) => {
+      lhs.hash_combine(hasher)
+      hasher.combine_int(index)
+    }
+    DynamicIndexing(..) => {
+      abort("Dynamic indexing is not supported in hashing")
+    }
+    FieldAccess(lhs~, field~) => {
+      lhs.hash_combine(hasher)
+      field.hash_combine(hasher)
+    }
+  }
+}
+
+impl Eq for Reference with equal(self, other) {
+  match (self, other) {
+    (Id(id1), Id(id2)) => id1 == id2
+    (StaticIndexing(lhs=lhs1, index=idx1), StaticIndexing(lhs=lhs2, index=idx2)) => lhs1 == lhs2 && idx1 == idx2
+    (DynamicIndexing(..), DynamicIndexing(..)) => abort("Dynamic indexing is not supported in equality")
+    (FieldAccess(lhs=lhs1, field=field1), FieldAccess(lhs=lhs2, field=field2)) => lhs1 == lhs2 && field1 == field2
+    _ => false
+  }
+}
+
 typealias Map[Reference, Expr?] as ScopeMap
 
 fn rewrite_module(mod: Module) -> Module raise {
@@ -28,41 +56,46 @@ fn rewrite_module(mod: Module) -> Module raise {
     }
   }
 
-  let result_body = []
   // Process module body
-  process_block(block=mod.body, result=result_body, module_scope~, scope=module_scope, condition=None)
-  
+  let body_stmts = process_block(block=mod.body, module_scope~, scope=module_scope, condition=None)
+  let not_fully_init = []
+
   // Check for incomplete initialisation and add final connections
   for dest, conn_opt in module_scope {
     match conn_opt {
-      Some(conn) => result_body.push(Connect(dest, conn))
-      None => raise Failure("Port '\{mod.id}.\{dest}' not fully initialised")
+      Some(conn) => body_stmts.push(Connect(dest, conn))
+      None => not_fully_init.push(dest)
     }
   }
 
-  { ..mod, body: result_body }
+  if not_fully_init.length() > 0 {
+    raise Failure("The following wires are not fully initialised: \{not_fully_init}")
+  }
+
+  { ..mod, body: body_stmts }
 }
 
 fn process_block(
   block~: Array[Stmt],
-  result~: Array[Stmt],
   module_scope~: ScopeMap,
   scope~: ScopeMap,
   condition~: Expr?,
-) -> Unit raise {
+) -> Array[Stmt] raise {
+  let stmts: Array[Stmt] = []
+
   for stmt in block {
     match stmt {
       // Track declarations that need connections
       Wire(id~, ty~) => {
         scope.declare_sinks(reference=Id(id), ty~, flow=Input)
-        result.push(stmt)
+        stmts.push(stmt)
       }
       Reg(id~, ..) | RegReset(id~, ..) => {
         // registers are initialised to themselves
         // TODO: registers of bundle type are not supported.
         let reference = Id(id)
         scope[reference] = Some(Reference(reference))
-        result.push(stmt)
+        stmts.push(stmt)
       }
       Inst(id~, sig~, ..) => {
         // Track input ports
@@ -74,7 +107,7 @@ fn process_block(
           )
         }
 
-        result.push(stmt)
+        stmts.push(stmt)
       }
       Mem(id~, data_type~, readers~, writers~, depth~, ..) => {
         // Track memory input ports
@@ -97,9 +130,9 @@ fn process_block(
           )
         }
 
-        result.push(stmt)
+        stmts.push(stmt)
       }
-      // Handle connections with last connect semantics
+      // Handle unconditional connections with last connect semantics
       Connect(dest, src) => {
         scope[dest] = Some(src)
       }
@@ -107,20 +140,22 @@ fn process_block(
       When(when) => {
         expand_whens(
           when~,
-          parent_result=result,
+          parent_result=stmts,
           module_scope~,
           outer_condition=condition,
         )
       }
       Command(cmd) => {
-        result.push(Command(cmd.replace_en(en => and_conditions(condition, en))))
+        stmts.push(Command(cmd.replace_en(en => and_conditions(condition, en))))
       }
       // Pass through other statements
       _ => {
-        result.push(stmt)
+        stmts.push(stmt)
       }
     }
   }
+
+  stmts
 }
 
 fn ScopeMap::declare_sinks(self: ScopeMap, reference~: Reference, ty~: Type, flow~: @parse.Flow) -> Unit {
@@ -150,10 +185,8 @@ fn expand_whens(when~: When, parent_result~: Array[Stmt], module_scope~: ScopeMa
   // Move non-connect statements to parent
   let then_cond = and_conditions(outer_condition, when.cond)
   let then_scope: ScopeMap = {}
-  let then_stmts: Array[Stmt] = []
-  process_block(
+  let then_stmts = process_block(
     block=when.body,
-    result=then_stmts,
     module_scope~,
     scope=then_scope,
     condition=Some(then_cond),
@@ -170,11 +203,9 @@ fn expand_whens(when~: When, parent_result~: Array[Stmt], module_scope~: ScopeMa
   let else_scope: ScopeMap = {}
 
   if when.otherwise is Some(else_body) {
-    let else_stmts: Array[Stmt] = []
     let else_cond = and_conditions(outer_condition, PrimOp(op=Not, args=[when.cond]))
-    process_block(
+    let else_stmts = process_block(
       block=else_body,
-      result=else_stmts,
       module_scope~,
       scope=else_scope,
       condition=Some(else_cond),

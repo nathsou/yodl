@@ -165,7 +165,13 @@ pub fn emit_port(self: FIRRTLEmitter, port: Port) -> Unit {
 pub fn emit_reference(self: FIRRTLEmitter, reference: Reference) -> Unit {
   match reference {
     Id(id) => self.inner().write(id)
-    Indexing(lhs~, index~) => {
+    StaticIndexing(lhs~, index~) => {
+      self.emit_reference(lhs)
+      self.inner().write("[")
+      self.inner().write(index.to_string())
+      self.inner().write("]")
+    }
+    DynamicIndexing(lhs~, index~) => {
       self.emit_reference(lhs)
       self.inner().write("[")
       self.emit_expr(index)

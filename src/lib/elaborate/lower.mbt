@@ -422,8 +422,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       scope.add_stmt(Wire(id~, ty~))
       
       for i, elem in elems {
-        let index = @firrtl.Expr::Int(BigInt::from_int(i))
-        elaborator.connect(lhs=Indexing(lhs=Id(id), index~), value=elem, scope~)
+        elaborator.connect(lhs=StaticIndexing(lhs=Id(id), index=i), value=elem, scope~)
       }
 
       Reference(Id(id))
@@ -478,8 +477,7 @@ fn flatten_int(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Spa
       let refs = Array::new(capacity=len)
 
       for i in 0..<len {
-        let index = @firrtl.Expr::Int(BigInt::from_int(i))
-        let r = @firrtl.Reference::Indexing(lhs=reference, index~)
+        let r = @firrtl.Reference::StaticIndexing(lhs=reference, index=i)
         refs.push(flatten_int(r, elem_ty, span~))
       }
 
@@ -624,8 +622,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               Vec(elem_ty, len) => {
                 let reference = val.as_ref(self, scope~, binding=None)
                 for i in 0..<len {
-                  let index = @firrtl.Expr::Int(BigInt::from_int(i))
-                  values.push(Expr(expr=Reference(Indexing(lhs=reference, index~)), ty=elem_ty, span=elem.span()))
+                  values.push(Expr(expr=Reference(StaticIndexing(lhs=reference, index=i)), ty=elem_ty, span=elem.span()))
                 }
               }
               UInt(len) | SInt(len) => {
@@ -660,8 +657,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             let vec_ref = value.as_ref(self, scope~, binding=None)
             
             for i in 0..<len {
-              let index = @firrtl.Expr::Int(BigInt::from_int(i))
-              flatten(Expr(expr=Reference(Indexing(lhs=vec_ref, index~)), ty=elem_ty, span=value.span()))
+              flatten(Expr(expr=Reference(StaticIndexing(lhs=vec_ref, index=i)), ty=elem_ty, span=value.span()))
             }
           }
           _ => raise ElaborationError::Unreachable(message="Cannot flatten value of type \{value.ty()}", span=value.span())
@@ -1055,7 +1051,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               let ports = self.expr_as_ref(get_port("read"), scope~)
 
               for i in 0..<read_ports {
-                let reader = @firrtl.Indexing(lhs=ports, index=Int(BigInt::from_int(i)))
+                let reader = @firrtl.StaticIndexing(lhs=ports, index=i)
                 let reader_id = @firrtl.FieldAccess(lhs=Id(mem_id), field=readers[i])
                 scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=@firrtl.Id::from("addr")), Reference(FieldAccess(lhs=reader, field=@firrtl.Id::from("addr")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=reader_id, field=@firrtl.Id::from("en")), Reference(FieldAccess(lhs=reader, field=@firrtl.Id::from("en")))))
@@ -1068,7 +1064,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               let ports = self.expr_as_ref(get_port("write"), scope~)
 
               for i in 0..<write_ports {
-                let writer = @firrtl.Indexing(lhs=ports, index=Int(BigInt::from_int(i)))
+                let writer = @firrtl.StaticIndexing(lhs=ports, index=i)
                 let writer_id = @firrtl.FieldAccess(lhs=Id(mem_id), field=writers[i])
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=@firrtl.Id::from("addr")), Reference(FieldAccess(lhs=writer, field=@firrtl.Id::from("addr")))))
                 scope.add_stmt(Connect(FieldAccess(lhs=writer_id, field=@firrtl.Id::from("en")), Reference(FieldAccess(lhs=writer, field=@firrtl.Id::from("en")))))
@@ -1081,8 +1077,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             let q = self.expr_as_ref(get_port("q"), scope~)
 
             for i, data in data_out {
-              let index = @firrtl.Expr::Int(BigInt::from_int(i))
-              scope.add_stmt(Connect(@firrtl.Reference::Indexing(lhs=q, index~), Reference(data)))
+              scope.add_stmt(Connect(@firrtl.Reference::StaticIndexing(lhs=q, index=i), Reference(data)))
             }
           }
           _ => raise ElaborationError(message="Module '\{path.to_string()}' is marked as internal but has no elaboration handler", span~)
@@ -1149,7 +1144,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               Expr(expr=@firrtl.primop(Bits, [val.as_expr(self, scope~), index_expr, index_expr]), ty=UInt(1), span~)
             }
             _ => {
-              Expr(expr=@firrtl.Reference(Indexing(lhs=val.as_ref(self, scope~), index=index_expr)), ty~, span~)
+              Expr(expr=Reference(@firrtl.Reference::indexing_from(lhs=val.as_ref(self, scope~), index=index_expr)), ty~, span~)
             }
           }
         }
@@ -1171,8 +1166,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
           let lhs = val.as_ref(self, scope~)
 
           for i in lo.to_int()..=hi.to_int() {
-            let index = @firrtl.Expr::Int(BigInt::from_int(i))
-            elems.push(Expr(expr=Reference(Indexing(lhs~, index~)), ty=elem_ty, span~))
+            elems.push(Expr(expr=Reference(StaticIndexing(lhs~, index=i)), ty=elem_ty, span~))
           }
 
           Vector(elems~, ty=Vec(elem_ty, slice_len), span~)
@@ -1336,8 +1330,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       let fir_elem_ty = lower_type(elem_ty, span~)
 
       for i in 0..<len {
-        let index = @firrtl.Expr::Int(BigInt::from_int(len - 1 - i))
-        let elem = @firrtl.Reference::Indexing(lhs=arg_ref, index~)
+        let elem = @firrtl.Reference::StaticIndexing(lhs=arg_ref, index=len - 1 - i)
         let val = Value::Expr(expr=Reference(elem), ty=fir_elem_ty, span~)
         elems.push(val)
       }
