@@ -1,14 +1,19 @@
 
+typealias @firrtl.Expr as FExpr
+typealias @firrtl.Stmt[FExpr] as FStmt
+typealias @firrtl.Module[FExpr] as FModule
+typealias @firrtl.Reference[FExpr] as FRef
+
 pub struct Elaborator {
   mut autoidx: Int
   circuit_name: String
-  modules: Map[@parse.Path, @firrtl.Module]
+  modules: Map[@parse.Path, FModule]
   extmodules: Map[@parse.Path, @firrtl.ExtModule]
   annotations: Array[Json]
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
   current_target: Array[String]
   memories: Map[String, @firrtl.Id]
-  mut current_clock: @firrtl.Expr?
+  mut current_clock: FExpr?
 }
 
 pub fn Elaborator::new(circuit_name: String) -> Elaborator {
@@ -32,7 +37,7 @@ fn Elaborator::next_idx(self: Elaborator) -> Int {
 }
 
 priv enum Value {
-  Expr(expr~: @firrtl.Expr, ty~: @firrtl.Type, span~: @parse.Span)
+  Expr(expr~: FExpr, ty~: @firrtl.Type, span~: @parse.Span)
   Vector(elems~: Array[Value], ty~: @firrtl.Type, span~: @parse.Span)
   Struct(fields~: Map[String, Value], ty~: @firrtl.Type, span~: @parse.Span)
   Empty(span~: @parse.Span)
@@ -104,14 +109,14 @@ impl Show for ElaborationError with output(self, logger) {
 }
 
 priv trait ScopeLike {
-  add_stmt(Self, @firrtl.Stmt) -> Unit
+  add_stmt(Self, FStmt) -> Unit
 }
 
-impl ScopeLike for @firrtl.Module with add_stmt(self, stmt) {
+impl ScopeLike for FModule with add_stmt(self, stmt) {
   self.body.push(stmt)
 }
 
-priv struct StmtContainer(Array[@firrtl.Stmt])
+priv struct StmtContainer(Array[FStmt])
 
 fn StmtContainer::new() -> StmtContainer {
   Array::new()
@@ -242,7 +247,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit ra
   self.current_target.push([..mod.path.packages, mod.path.member].join("_"))
   self.current_clock = None
 
-  let fir_mod: @firrtl.Module = {
+  let fir_mod: FModule = {
     public: true,
     id: id_of_path(mod.path),
     ports: {
@@ -264,7 +269,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit ra
         }
         
         ports.push(fir_port)
-        env.declare(@parse.Path::new([], port.name), Expr(expr=@firrtl.Reference(Id(port_id)), ty=fir_ty, span=port.span))
+        env.declare(@parse.Path::new([], port.name), Expr(expr=Reference(Id(port_id)), ty=fir_ty, span=port.span))
       }
 
       ports
@@ -372,11 +377,11 @@ fn Elaborator::gen_id(self: Elaborator, prefix: String) -> @firrtl.Id {
   Ident("\{prefix}_\{self.next_id()}$")
 }
 
-fn Elaborator::binding_name(self: Elaborator, binding: @firrtl.Reference?, default_prefix: String) -> @firrtl.Id {
-  binding.map(@firrtl.Reference::as_id).flatten().unwrap_or(self.gen_id(default_prefix))
+fn Elaborator::binding_name(self: Elaborator, binding: FRef?, default_prefix: String) -> @firrtl.Id {
+  binding.map(FRef::as_id).flatten().unwrap_or(self.gen_id(default_prefix))
 }
 
-fn Elaborator::expr_as_ref(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeLike, binding~: @firrtl.Reference? = None) -> @firrtl.Reference {
+fn Elaborator::expr_as_ref(self: Elaborator, expr: FExpr, scope~: &ScopeLike, binding~: FRef? = None) -> FRef {
   match expr {
     Reference(value) => value
     _ => {
@@ -387,18 +392,18 @@ fn Elaborator::expr_as_ref(self: Elaborator, expr: @firrtl.Expr, scope~: &ScopeL
   }
 }
 
-fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: @firrtl.Reference? = None) -> @firrtl.Reference raise {
+fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: FRef? = None) -> FRef raise {
   let expr = self.as_expr(elaborator, scope~, binding~)
   elaborator.expr_as_ref(expr, scope~, binding~)
 }
 
-fn Elaborator::connect(self: Elaborator, lhs~: @firrtl.Reference, value~: Value, scope~: &ScopeLike) -> Unit raise {
+fn Elaborator::connect(self: Elaborator, lhs~: FRef, value~: Value, scope~: &ScopeLike) -> Unit raise {
   if !(lhs is Id(lhs_id) && value is Expr(expr=Reference(Id(rhs_id)), ..) && lhs_id.inner() == rhs_id.inner()) {
     scope.add_stmt(Connect(lhs, value.as_expr(self, scope~)))
   }
 }
 
-fn Elaborator::get_clock(self: Elaborator, source~: String, span~: @parse.Span) -> @firrtl.Expr raise {
+fn Elaborator::get_clock(self: Elaborator, source~: String, span~: @parse.Span) -> FExpr raise {
   self.current_clock.or_error(ElaborationError::ElaborationError(
     message="No clock found in current module for \{source}",
     span~,
@@ -414,7 +419,7 @@ fn Value::ty(self: Value) -> @firrtl.Type {
   }
 }
 
-fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: @firrtl.Reference? = None) -> @firrtl.Expr raise {
+fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, binding~: FRef? = None) -> FExpr raise {
   match self {
     Expr(expr~, ..) => expr
     Vector(elems~, ty~, span=_) => {
@@ -446,22 +451,22 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
 
 fn Value::as_int(self: Value) -> BigInt raise {
   match self {
-    Expr(expr=Literal(UInt(value~, ..)) | Int(value), ..) => value
+    Expr(expr=Literal(UInt(value~, ..) | SInt(value~, ..)), ..) => value
     _ => raise ElaborationError(message="Expected integer literal", span=self.span())
   }
 }
 
-fn concat_rev(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr raise {
+fn concat_rev(exprs: Array[FExpr]) -> FExpr raise {
     if exprs.is_empty() {
       return Literal(UInt(width=0, radix=Some(2), value=BigInt::from_int(0)))
     }
 
     let list = @list.from_array(exprs)
 
-    fn go(lst: @list.List[@firrtl.Expr], acc: @firrtl.Expr) -> @firrtl.Expr raise {
+    fn go(lst: @list.List[FExpr], acc: FExpr) -> FExpr raise {
       match lst.head() {
         Some(expr) => {
-          go(lst.unsafe_tail(), @firrtl.primop(Cat, [expr, acc]))
+          go(lst.unsafe_tail(), PrimOp(op=Cat, args=[expr, acc]))
         }
         None => acc
       }
@@ -470,14 +475,14 @@ fn concat_rev(exprs: Array[@firrtl.Expr]) -> @firrtl.Expr raise {
     go(list.unsafe_tail(), exprs[0])
 }
 
-fn flatten_int(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Span) -> @firrtl.Expr raise {
+fn flatten_int(reference: FRef, ty: @firrtl.Type, span~: @parse.Span) -> FExpr raise {
   match ty {
     Const(inner_ty) => flatten_int(reference, inner_ty, span~)
     Vec(elem_ty, len) => {
       let refs = Array::new(capacity=len)
 
       for i in 0..<len {
-        let r = @firrtl.Reference::StaticIndexing(lhs=reference, index=i)
+        let r = FRef::StaticIndexing(lhs=reference, index=i)
         refs.push(flatten_int(r, elem_ty, span~))
       }
 
@@ -487,7 +492,7 @@ fn flatten_int(reference: @firrtl.Reference, ty: @firrtl.Type, span~: @parse.Spa
       let refs = Array::new(capacity=fields.length())
 
       for field in fields {
-        let r = @firrtl.Reference::FieldAccess(lhs=reference, field=field.id)
+        let r = FRef::FieldAccess(lhs=reference, field=field.id)
         refs.push(flatten_int(r, field.ty, span~))
       }
 
@@ -509,7 +514,7 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLik
       let ty = lower_type(unwrap_type(ty, span~), span~)
       let id = @firrtl.Id::from(name)
       scope.add_stmt(Wire(id~, ty~))
-      let var = @firrtl.Reference::Id(id)
+      let var = FRef::Id(id)
       let val = match expr {
         Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(var)))
         None => None
@@ -535,7 +540,7 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLik
   }
 }
 
-fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: @firrtl.Reference? = None) -> Value raise {
+fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: FRef? = None) -> Value raise {
   let expr_span = expr.span()
   let ty = lower_type(unwrap_type(expr.ty(), span=expr_span), span=expr_span)
   
@@ -564,7 +569,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         Xorr => Xorr
       }
 
-      Expr(expr=@firrtl.primop(primop, [fir_expr]), ty~, span~)
+      Expr(expr=PrimOp(op=primop, args=[fir_expr]), ty~, span~)
     }
     Binary(op~, lhs~, rhs~, output_width~, span~, ty=bin_ty) => {
       let fir_lhs = self.lower_expr(lhs, scope~, env~).as_expr(self, scope~)
@@ -594,17 +599,16 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         Ternary(_) => raise Unreachable(message="ternary operator", span~)
       }
 
-      let mut res = @firrtl.primop(primop, [fir_lhs, fir_rhs])
+      let mut res = FExpr::PrimOp(op=primop, args=[fir_lhs, fir_rhs])
 
       if negate { 
-        res = @firrtl.primop(Not, [res])
+        res = PrimOp(op=Not, args=[res])
       }
-
 
       if output_width.val is Some(output_width) {
         let width = unwrap_type(bin_ty, span~).width(span)
         if width < output_width {
-          res = @firrtl.primop(Bits, [res, @firrtl.Expr::Int(BigInt::from_int(width - 1)), @firrtl.Expr::Int(BigInt::from_int(0))])
+          res = PrimOp(op=Bits, args=[res, FExpr::uint(width - 1), FExpr::uint(0)])
         }
       }
 
@@ -628,8 +632,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               UInt(len) | SInt(len) => {
                 let reference = val.as_ref(self, scope~, binding=None)
                 for i in 0..<len {
-                  let index = @firrtl.Expr::Int(BigInt::from_int(i))
-                  values.push(Expr(expr=@firrtl.primop(Bits, [Reference(reference), index, index]), ty=UInt(1), span=elem.span()))
+                  let index = FExpr::uint(i)
+                  values.push(Expr(expr=PrimOp(op=Bits, args=[Reference(reference), index, index]), ty=UInt(1), span=elem.span()))
                 }
               }
               _ => {
@@ -680,7 +684,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         // Require both cases to be simple expressions without statements
         !cases.iter().any(case => case.1.contains_statements()) {
         // Rewrite 1-bit match with two cases as a mux
-        let cases_map: Map[Int, @firrtl.Expr] = {}
+        let cases_map: Map[Int, FExpr] = {}
 
         for case in cases {
           let int_val = case.0.as_int()
@@ -706,9 +710,9 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         }
         
         let subject_binding = self.binding_name(binding, "subject")
-        let fir_subject = @firrtl.Reference(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(Id(subject_binding))))
+        let fir_subject = FExpr::Reference(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(Id(subject_binding))))
         let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width(span)).to_int()
-        let mut last_when: @firrtl.When? = None
+        let mut last_when: @firrtl.When[FExpr]? = None
 
         for idx, case in cases {
           let (lhs, rhs) = case
@@ -723,8 +727,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             case_scope.inner()
           }
 
-          let when: @firrtl.When = {
-            cond: @firrtl.primop(Eq, [fir_subject, fir_lhs]),
+          let when: @firrtl.When[FExpr] = {
+            cond: PrimOp(op=Eq, args=[fir_subject, fir_lhs]),
             body,
             otherwise: None,
           }
@@ -785,7 +789,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
 
       for field in sorted_keys {
         let field_expr = fields[field]
-        let field_name = binding.map(@firrtl.Reference::as_id).flatten().map(id => @firrtl.Id(id.join("$\{field}")))
+        let field_name = binding.map(FRef::as_id).flatten().map(id => @firrtl.Id(id.join("$\{field}")))
         val[field] = self.lower_expr(field_expr, scope~, env~, binding=field_name)
       }
 
@@ -831,8 +835,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         }
       }
 
-      let inline_connections: Map[String, @firrtl.Expr] = {}
-      let connections: Map[String, @firrtl.Expr] = {}
+      let inline_connections: Map[String, FExpr] = {}
+      let connections: Map[String, FExpr] = {}
       let accessed_ports = match inst_ty.val {
         Some(Instance(sig=_, params=_, accessed_ports~)) => accessed_ports
         _ => raise ElaborationError::Unreachable(message="Untyped instance", span~)
@@ -882,11 +886,11 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         }
       }
 
-      fn get_port(port_name: String) -> @firrtl.Expr {
+      fn get_port(port_name: String) -> FExpr {
         match connections.get(port_name) {
           Some(expr) => expr
           None => {
-            @firrtl.Expr::Reference(@firrtl.FieldAccess(lhs=inst_ref, field=@firrtl.Id::from(port_name)))
+            FExpr::Reference(@firrtl.FieldAccess(lhs=inst_ref, field=@firrtl.Id::from(port_name)))
           }
         }
       }
@@ -925,7 +929,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             let reg_stmt = if uses_rst {
               let init = default_value(reg_ty, span~).as_expr(self, scope~)
 
-              @firrtl.Stmt::RegReset(
+              FStmt::RegReset(
                 id=reg_id,
                 ty=reg_ty,
                 clock=clk,
@@ -935,13 +939,13 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
                   if sync_reset {
                     rst
                   } else {
-                    @firrtl.primop(AsAsyncReset, [rst])
+                    PrimOp(op=AsAsyncReset, args=[rst])
                   }
                 },
                 init~,
               )
             } else {
-              @firrtl.Stmt::Reg(
+              FStmt::Reg(
                 id=reg_id,
                 ty=reg_ty,
                 clock=clk,
@@ -967,8 +971,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             }
 
             if uses_port("d") {
-              let en_stmt: @firrtl.Stmt = if uses_en {
-                @firrtl.Stmt::When({
+              let en_stmt: FStmt = if uses_en {
+                FStmt::When({
                   cond: get_port("en"),
                   body: [Connect(Id(reg_id), Reference(d_ref))],
                   otherwise: None,
@@ -1077,7 +1081,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             let q = self.expr_as_ref(get_port("q"), scope~)
 
             for i, data in data_out {
-              scope.add_stmt(Connect(@firrtl.Reference::StaticIndexing(lhs=q, index=i), Reference(data)))
+              scope.add_stmt(Connect(FRef::StaticIndexing(lhs=q, index=i), Reference(data)))
             }
           }
           _ => raise ElaborationError(message="Module '\{path.to_string()}' is marked as internal but has no elaboration handler", span~)
@@ -1135,16 +1139,16 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         }
         _ => {
           let index_expr = match idx_int {
-            Some(idx) => @firrtl.Expr::Int(BigInt::from_int(idx))
+            Some(idx) => FExpr::uint(idx)
             None => index.as_expr(self, scope~)
           }
 
           match expr.ty().val {
             Some(UInt(_)) => {
-              Expr(expr=@firrtl.primop(Bits, [val.as_expr(self, scope~), index_expr, index_expr]), ty=UInt(1), span~)
+              Expr(expr=PrimOp(op=Bits, args=[val.as_expr(self, scope~), index_expr, index_expr]), ty=UInt(1), span~)
             }
             _ => {
-              Expr(expr=Reference(@firrtl.Reference::indexing_from(lhs=val.as_ref(self, scope~), index=index_expr)), ty~, span~)
+              Expr(expr=Reference(FRef::indexing_from(lhs=val.as_ref(self, scope~), index=index_expr)), ty~, span~)
             }
           }
         }
@@ -1152,20 +1156,20 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
     }
     Slicing(expr~, hi~, lo~, span~, ..) => {
       let val = self.lower_expr(expr, scope~, env~)
-      let hi = self.lower_expr(hi, scope~, env~).as_int()
-      let lo = self.lower_expr(lo, scope~, env~).as_int()
+      let hi = self.lower_expr(hi, scope~, env~).as_int().to_int()
+      let lo = self.lower_expr(lo, scope~, env~).as_int().to_int()
 
       match val.ty() {
         UInt(_) | SInt(_) => {
           let expr = val.as_expr(self, scope~)
-          Expr(expr=@firrtl.primop(Bits, [expr, Int(hi), Int(lo)]), ty~, span~)
+          Expr(expr=PrimOp(op=Bits, args=[expr, FExpr::uint(hi), FExpr::uint(lo)]), ty~, span~)
         }
         Vec(elem_ty, _) => {
-          let slice_len = (hi + 1 - lo).to_int()
+          let slice_len = hi + 1 - lo
           let elems = Array::new(capacity=slice_len)
           let lhs = val.as_ref(self, scope~)
 
-          for i in lo.to_int()..=hi.to_int() {
+          for i in lo..=hi {
             elems.push(Expr(expr=Reference(StaticIndexing(lhs~, index=i)), ty=elem_ty, span~))
           }
 
@@ -1224,12 +1228,12 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         ("uint", Vec(_)) => Expr(expr=flatten_int(arg.as_ref(self, scope~), arg.ty(), span~), ty=fir_ty, span~)
         ("sint", Vec(_)) => {
           let flattened = flatten_int(arg.as_ref(self, scope~), arg.ty(), span~)
-          Expr(expr=@firrtl.primop(AsSInt, [flattened]), ty=fir_ty, span~)
+          Expr(expr=PrimOp(op=AsSInt, args=[flattened]), ty=fir_ty, span~)
         }
         ("uint", UInt(_) | UIntInferred | AsyncReset | Reset) | ("sint", SInt(_) | SIntInferred) => arg
-        ("uint", SInt(_) | SIntInferred) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr(self, scope~)]), ty=fir_ty, span~)
-        ("uint", Clock) => Expr(expr=@firrtl.primop(AsUInt, [arg.as_expr(self, scope~)]), ty=fir_ty, span~)
-        ("sint", UInt(_) | UIntInferred) => Expr(expr=@firrtl.primop(AsSInt, [arg.as_expr(self, scope~)]), ty=fir_ty, span~)
+        ("uint", SInt(_) | SIntInferred) => Expr(expr=PrimOp(op=AsUInt, args=[arg.as_expr(self, scope~)]), ty=fir_ty, span~)
+        ("uint", Clock) => Expr(expr=PrimOp(op=AsUInt, args=[arg.as_expr(self, scope~)]), ty=fir_ty, span~)
+        ("sint", UInt(_) | UIntInferred) => Expr(expr=PrimOp(op=AsSInt, args=[arg.as_expr(self, scope~)]), ty=fir_ty, span~)
         _ => raise ElaborationError::Unsupported(message="Cannot convert type '\{arg.ty()}' to UInt or SInt with '\{name}'", span~)
       }
     }
@@ -1237,13 +1241,13 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       let clk = self.lower_expr(clk, scope~, env~)
       let clk_ref = clk.as_ref(self, scope~)
 
-      Expr(expr=@firrtl.primop(AsClock, [Reference(clk_ref)]), ty=Clock, span~)
+      Expr(expr=PrimOp(op=AsClock, args=[Reference(clk_ref)]), ty=Clock, span~)
     }
     FunCall(name="pad", args=[arg, width_arg], span~, ty~) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let width = self.lower_expr(width_arg, scope~, env~).as_int().to_int()
       let ty = lower_type(unwrap_type(ty, span~), span~)
-      Expr(expr=@firrtl.primop(Pad, [arg.as_expr(self, scope~), Int(BigInt::from_int(width))]), ty~, span~)
+      Expr(expr=PrimOp(op=Pad, args=[arg.as_expr(self, scope~), FExpr::uint(width)]), ty~, span~)
     }
     FunCall(name="readmemb" | "readmemh" as name, args=[path, mem], span~, ..) => {
       let path = path.expect_string()
@@ -1278,7 +1282,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       }
 
       let clk = self.get_clock(source="printf", span~)
-      let en = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
+      let en = FExpr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
 
       scope.add_stmt(Command(Printf(clk~, en~, fmt~, args=new_args)))
       Empty(span~)
@@ -1286,7 +1290,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
     FunCall(name="assert", args=[pred, ..rest], span~, ..) => {
       let pred_val = self.lower_expr(pred, scope~, env~)
       let clk = self.get_clock(source="assert", span~)
-      let en = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
+      let en = FExpr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
 
       let (fmt, args) = if rest is [format_str, ..args] {
         let fmt = format_str.expect_string()
@@ -1313,7 +1317,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
     }
     FunCall(name="stop", args~, span~, ..) => {
       let clk = self.get_clock(source="stop", span~)
-      let en = @firrtl.Expr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
+      let en = FExpr::Literal(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
       let code = match args {
         [] => 0
         [code] => self.lower_expr(code, scope~, env~).as_int().to_int()
@@ -1330,7 +1334,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       let fir_elem_ty = lower_type(elem_ty, span~)
 
       for i in 0..<len {
-        let elem = @firrtl.Reference::StaticIndexing(lhs=arg_ref, index=len - 1 - i)
+        let elem = FRef::StaticIndexing(lhs=arg_ref, index=len - 1 - i)
         let val = Value::Expr(expr=Reference(elem), ty=fir_elem_ty, span~)
         elems.push(val)
       }
@@ -1344,8 +1348,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       let bits = Array::new(capacity=width)
 
       for i in 0..<width {
-        let index = @firrtl.Expr::Int(BigInt::from_int(width - 1 - i))
-        bits.push(@firrtl.primop(Bits, [Reference(arg_ref), index, index]))
+        let index = FExpr::uint(width - 1 - i)
+        bits.push(FExpr::PrimOp(op=Bits, args=[Reference(arg_ref), index, index]))
       }
 
        Value::Expr(expr=concat_rev(bits), ty=UInt(width), span~)

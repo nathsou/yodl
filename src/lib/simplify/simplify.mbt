@@ -23,7 +23,7 @@ pub enum SimplifierEnvEntry {
   Const(@parse.Expr)
 }
 
-typealias @elaborate.Scope[@parse.Path, SimplifierEnvEntry] as SimplifierEnv
+typealias Scope[@parse.Path, SimplifierEnvEntry] as SimplifierEnv
 
 pub fn Simplifier::new() -> Simplifier {
   { name_counts: {} }
@@ -302,7 +302,7 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
 
 pub fn simplify_decls(decls: Array[@parse.Decl]) -> Array[@parse.Decl] raise {
   let simplifier = Simplifier::new()
-  let top_env = @elaborate.Scope::new()
+  let top_env = Scope::new()
   let simplified_decls = []
 
   for decl in decls {

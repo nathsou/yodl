@@ -1,15 +1,16 @@
+
 pub struct ExpandWhensPass(Unit)
 
 pub fn ExpandWhensPass::new() -> Self {
   ExpandWhensPass(())
 }
 
-pub impl FIRRTLPass for ExpandWhensPass with run(_: ExpandWhensPass, circuit) -> Circuit raise {
+pub impl FIRRTLPass for ExpandWhensPass with run(_, circuit) -> TypedCircuit raise {
   {
     ..circuit,
     decls: circuit.decls.map(decl => {
       match decl {
-        Module(mod) => Module(rewrite_module(mod))
+        Module(mod) => Module(ExpandWhensPass::rewrite_module(mod))
         ExtModule(extmod) => ExtModule(extmod)
       }
     })
@@ -17,7 +18,7 @@ pub impl FIRRTLPass for ExpandWhensPass with run(_: ExpandWhensPass, circuit) ->
 }
 
 // Supporting arbitrary dynamic indexing would make initialisation analysis undecidable
-impl Hash for Reference with hash_combine(self, hasher) {
+impl[T] Hash for Reference[T] with hash_combine(self, hasher) {
   match self {
     Id(id) => id.hash_combine(hasher)
     StaticIndexing(lhs~, index~) => {
@@ -34,7 +35,7 @@ impl Hash for Reference with hash_combine(self, hasher) {
   }
 }
 
-impl Eq for Reference with equal(self, other) {
+impl[T] Eq for Reference[T] with equal(self, other) {
   match (self, other) {
     (Id(id1), Id(id2)) => id1 == id2
     (StaticIndexing(lhs=lhs1, index=idx1), StaticIndexing(lhs=lhs2, index=idx2)) => lhs1 == lhs2 && idx1 == idx2
@@ -44,9 +45,9 @@ impl Eq for Reference with equal(self, other) {
   }
 }
 
-typealias Map[Reference, Expr?] as ScopeMap
+typealias Map[TypedReference, TypedExpr?] as ScopeMap
 
-fn rewrite_module(mod: Module) -> Module raise {
+fn ExpandWhensPass::rewrite_module(mod: TypedModule) -> TypedModule raise {
   // Track last connection to each destination
   let module_scope: ScopeMap = {}
 
@@ -57,7 +58,7 @@ fn rewrite_module(mod: Module) -> Module raise {
   }
 
   // Process module body
-  let body_stmts = process_block(block=mod.body, module_scope~, scope=module_scope, condition=None)
+  let body_stmts = ExpandWhensPass::process_block(block=mod.body, module_scope~, scope=module_scope, condition=None)
   let not_fully_init = []
 
   // Check for incomplete initialisation and add final connections
@@ -75,13 +76,13 @@ fn rewrite_module(mod: Module) -> Module raise {
   { ..mod, body: body_stmts }
 }
 
-fn process_block(
-  block~: Array[Stmt],
+fn ExpandWhensPass::process_block(
+  block~: Array[TypedStmt],
   module_scope~: ScopeMap,
   scope~: ScopeMap,
-  condition~: Expr?,
-) -> Array[Stmt] raise {
-  let stmts: Array[Stmt] = []
+  condition~: TypedExpr?,
+) -> Array[TypedStmt] raise {
+  let stmts: Array[TypedStmt] = []
 
   for stmt in block {
     match stmt {
@@ -90,11 +91,11 @@ fn process_block(
         scope.declare_sinks(reference=Id(id), ty~, flow=Input)
         stmts.push(stmt)
       }
-      Reg(id~, ..) | RegReset(id~, ..) => {
+      Reg(id~, ty~, ..) | RegReset(id~, ty~, ..) => {
         // registers are initialised to themselves
         // TODO: registers of bundle type are not supported.
         let reference = Id(id)
-        scope[reference] = Some(Reference(reference))
+        scope[reference] = Some(Reference(reference~, ty~))
         stmts.push(stmt)
       }
       Inst(id~, sig~, ..) => {
@@ -138,7 +139,7 @@ fn process_block(
       }
       // Expand when statements
       When(when) => {
-        expand_whens(
+        ExpandWhensPass::expand_whens(
           when~,
           parent_result=stmts,
           module_scope~,
@@ -158,7 +159,7 @@ fn process_block(
   stmts
 }
 
-fn ScopeMap::declare_sinks(self: ScopeMap, reference~: Reference, ty~: Type, flow~: @parse.Flow) -> Unit {
+fn ScopeMap::declare_sinks(self: ScopeMap, reference~: TypedReference, ty~: Type, flow~: @parse.Flow) -> Unit {
   if ty is Bundle(fields) {
     for field in fields {
       self.declare_sinks(
@@ -174,18 +175,23 @@ fn ScopeMap::declare_sinks(self: ScopeMap, reference~: Reference, ty~: Type, flo
   }
 }
 
-fn and_conditions(outer: Expr?, inner: Expr) -> Expr {
+fn and_conditions(outer: TypedExpr?, inner: TypedExpr) -> TypedExpr {
   match outer {
     None => inner
-    Some(cond) => PrimOp(op=And, args=[cond, inner])
+    Some(cond) => PrimOp(op=And, args=[cond, inner], ty=Type::bool())
   }
 }
 
-fn expand_whens(when~: When, parent_result~: Array[Stmt], module_scope~: ScopeMap, outer_condition~: Expr?) -> Unit raise {
+fn ExpandWhensPass::expand_whens(
+  when~: When[TypedExpr],
+  parent_result~: Array[TypedStmt],
+  module_scope~: ScopeMap,
+  outer_condition~: TypedExpr?
+) -> Unit raise {
   // Move non-connect statements to parent
   let then_cond = and_conditions(outer_condition, when.cond)
   let then_scope: ScopeMap = {}
-  let then_stmts = process_block(
+  let then_stmts = ExpandWhensPass::process_block(
     block=when.body,
     module_scope~,
     scope=then_scope,
@@ -203,8 +209,8 @@ fn expand_whens(when~: When, parent_result~: Array[Stmt], module_scope~: ScopeMa
   let else_scope: ScopeMap = {}
 
   if when.otherwise is Some(else_body) {
-    let else_cond = and_conditions(outer_condition, PrimOp(op=Not, args=[when.cond]))
-    let else_stmts = process_block(
+    let else_cond = and_conditions(outer_condition, PrimOp(op=Not, args=[when.cond], ty=Type::bool()))
+    let else_stmts = ExpandWhensPass::process_block(
       block=else_body,
       module_scope~,
       scope=else_scope,
@@ -219,7 +225,7 @@ fn expand_whens(when~: When, parent_result~: Array[Stmt], module_scope~: ScopeMa
     }
   }
 
-  merge_scopes(
+  ExpandWhensPass::merge_scopes(
     outer_scope=module_scope,
     then_scope~,
     else_scope~,
@@ -227,11 +233,11 @@ fn expand_whens(when~: When, parent_result~: Array[Stmt], module_scope~: ScopeMa
   )
 }
 
-fn merge_scopes(
+fn ExpandWhensPass::merge_scopes(
   outer_scope~: ScopeMap,
   then_scope~: ScopeMap,
   else_scope~: ScopeMap,
-  condition~: Expr,
+  condition~: TypedExpr,
 ) -> Unit raise {
   let all_refs = Set::from_iter(then_scope.keys() + else_scope.keys())
 
@@ -243,17 +249,18 @@ fn merge_scopes(
     match (then_conn, else_conn, outer_conn) {
       (Some(then_conn), Some(else_conn), _) => {
         // connected in both branches
-        outer_scope[reference] = Some(Mux(cond=condition, tval=then_conn, fval=else_conn))
+        outer_scope[reference] = Some(Mux(cond=condition, tval=then_conn, fval=else_conn, ty=then_conn.ty()))
       }
       (Some(then_conn), None, Some(outer_conn)) => {
         // connected in then branch and previously
-        outer_scope[reference] = Some(Mux(cond=condition, tval=then_conn, fval=outer_conn))
+        outer_scope[reference] = Some(Mux(cond=condition, tval=then_conn, fval=outer_conn, ty=then_conn.ty()))
       }
       (None, Some(else_conn), Some(outer_conn)) => {
         // connected in else branch and previously
-        outer_scope[reference] = Some(Mux(cond=PrimOp(op=Not, args=[condition]), tval=else_conn, fval=outer_conn))
+        let cond = TypedExpr::PrimOp(op=Not, args=[condition], ty=Type::bool())
+        outer_scope[reference] = Some(Mux(cond~, tval=else_conn, fval=outer_conn, ty=else_conn.ty()))
       }
-      (Some(_), None, None) | (None, Some(_), None) | (None, None, Some(_)) | (None, None, None) => {
+      _ => {
         // connected in one branch only
         raise Failure("Port '\{reference}' not fully initialised")
       }

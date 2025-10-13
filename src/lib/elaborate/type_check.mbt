@@ -1,3 +1,4 @@
+typealias @utils.Scope as Scope
 
 struct TypeChecker {
     modules: Map[@parse.Path, @parse.ModuleSignature]

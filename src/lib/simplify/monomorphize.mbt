@@ -1,5 +1,6 @@
 
 typealias UInt as ParamsHash
+typealias @utils.Scope as Scope
 
 pub struct Monomorphizer {
   modules: Map[@parse.Path, @parse.ModuleDecl]
@@ -21,7 +22,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
     instanciated_modules: Set::new(),
     constants: {},
     type_aliases: {},
-    top_env: @elaborate.Scope::new(),
+    top_env: Scope::new(),
   }
 }
 
@@ -83,7 +84,7 @@ pub enum MonoEnvEntry {
   GenVar(Int)
 }
 
-typealias @elaborate.Scope[@parse.Path, MonoEnvEntry] as MonoEnv
+typealias Scope[@parse.Path, MonoEnvEntry] as MonoEnv
 
 fn monomorphize_int_param(self: Monomorphizer, param: @parse.IntParam, env~: MonoEnv, packages~: Array[String]) -> @parse.IntParam raise {
   match param {
@@ -263,7 +264,7 @@ fn register_monomorphized_module(
   mono_mod
 }
 
-fn[T] resolve_member(env: @elaborate.Scope[@parse.Path, T], path~: @parse.Path, packages~: Array[String]) -> (T, @parse.Path)? {
+fn[T] resolve_member(env: Scope[@parse.Path, T], path~: @parse.Path, packages~: Array[String]) -> (T, @parse.Path)? {
   // attempt to resolve the identifier in all the subpackages top-down
   match env.resolve(path) {
     Some(entry) => Some((entry, path))

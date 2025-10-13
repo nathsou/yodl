@@ -33,24 +33,28 @@ pub fn Id::join(self: Id, str: String) -> Id {
   }
 }
 
-pub(all) struct Circuit {
+pub(all) struct Circuit[T] {
   version: (Int, Int, Int)
   id: Id
   annotations: Array[Json]
-  decls: Array[Decl]
+  decls: Array[Decl[T]]
 }
 
-pub(all) enum Decl {
-  Module(Module)
+pub typealias Circuit[TypedExpr] as TypedCircuit
+
+pub(all) enum Decl[T] {
+  Module(Module[T])
   ExtModule(ExtModule)
 }
 
-pub(all) enum Stmt {
-  Node(id~: Id, expr~: Expr)
+pub typealias Decl[TypedExpr] as TypedDecl
+
+pub(all) enum Stmt[T] {
+  Node(id~: Id, expr~: T)
   Wire(id~: Id, ty~: Type)
   Inst(id~: Id, of~: Id, sig~: ModuleSignature)
-  Reg(id~: Id, ty~: Type, clock~: Expr)
-  RegReset(id~: Id, ty~: Type, clock~: Expr, reset~: Expr, init~: Expr)
+  Reg(id~: Id, ty~: Type, clock~: T)
+  RegReset(id~: Id, ty~: Type, clock~: T, reset~: T, init~: T)
   Mem(
     id~: Id,
     data_type~: Type,
@@ -62,27 +66,45 @@ pub(all) enum Stmt {
     writers~: Array[Id],
     readwriters~: Array[Id],
   )
-  Connect(Reference, Expr)
-  When(When)
-  Invalidate(Reference)
-  Command(Command)
+  Connect(Reference[T], T)
+  When(When[T])
+  Invalidate(Reference[T])
+  Command(Command[T])
   Skip
 }
 
-pub(all) struct When {
-  cond: Expr
-  body: Array[Stmt]
-  mut otherwise: Array[Stmt]?
+pub typealias Stmt[TypedExpr] as TypedStmt
+
+pub(all) struct When[T] {
+  cond: T
+  body: Array[Stmt[T]]
+  mut otherwise: Array[Stmt[T]]?
 }
 
 pub(all) enum ReadUnderWrite { Undefined; Old; New }
 
 pub(all) enum Expr {
-  Reference(Reference)
-  Int(BigInt)
+  Reference(Reference[Expr])
   Literal(Literal)
   Mux(cond~: Expr, tval~: Expr, fval~: Expr)
   PrimOp(op~: PrimOp, args~: Array[Expr])
+}
+
+pub fn Expr::uint(n: Int) -> Expr {
+  Literal(Literal::uint(n))
+}
+
+pub enum TypedExpr {
+  Reference(reference~: Reference[TypedExpr], ty~: Type)
+  Literal(value~: Literal, ty~: Type)
+  Mux(cond~: TypedExpr, tval~: TypedExpr, fval~: TypedExpr, ty~: Type)
+  PrimOp(op~: PrimOp, args~: Array[TypedExpr], ty~: Type)
+}
+
+pub fn TypedExpr::ty(self: TypedExpr) -> Type {
+  match self {
+    Reference(ty~, ..) | Literal(ty~, ..) | Mux(ty~, ..) | PrimOp(ty~, ..) => ty
+  }
 }
 
 pub(all) enum Literal {
@@ -90,60 +112,59 @@ pub(all) enum Literal {
   SInt(width~: Int, radix~: Int?, value~: BigInt)
 } derive (Eq, Hash)
 
+pub fn Literal::uint(n: Int) -> Literal {
+  guard n >= 0 else {
+    abort("Literal::uint: n must be non-negative")
+  }
+
+  let value = BigInt::from_int(n)
+  let width = @utils.max(@utils.clog2(value).to_int(), 1)
+  UInt(width~, radix=None, value~)
+}
+
+pub fn Literal::sint(n: Int) -> Literal {
+  let abs_value = BigInt::from_int(n.abs())
+  let width = @utils.max(@utils.clog2(abs_value).to_int(), 1) + (if n < 0 { 1 } else { 0 })
+  SInt(width~, radix=None, value=BigInt::from_int(n))
+}
+
 pub fn Literal::value(self: Literal) -> BigInt {
   match self {
     UInt(value~, ..) | SInt(value~, ..) => value
   }
 }
 
-pub(all) enum Reference {
+pub(all) enum Reference[T] {
   Id(Id)
-  StaticIndexing(lhs~: Reference, index~: Int)
-  DynamicIndexing(lhs~: Reference, index~: Expr)
-  FieldAccess(lhs~: Reference, field~: Id)
+  StaticIndexing(lhs~: Reference[T], index~: Int)
+  DynamicIndexing(lhs~: Reference[T], index~: T)
+  FieldAccess(lhs~: Reference[T], field~: Id)
 }
 
-pub impl Show for Reference with output(self, logger) {
-  match self {
-    Id(id) => logger.write_string(id.value())
-    StaticIndexing(lhs~, index~) => {
-      lhs.output(logger)
-      logger.write_char('[')
-      logger.write_string(index.to_string())
-      logger.write_char(']')
-    }
-    DynamicIndexing(lhs~, index=_) => {
-      lhs.output(logger)
-      logger.write_string("[expr]")
-    }
-    FieldAccess(lhs~, field~) => {
-      lhs.output(logger)
-      logger.write_char('.')
-      logger.write_string(field.value())
-    }
-  }
-}
+pub typealias Reference[TypedExpr] as TypedReference
 
-pub fn Reference::indexing_from(lhs~: Reference, index~: Expr) -> Reference {
+pub fn Reference::indexing_from(lhs~: Reference[Expr], index~: Expr) -> Reference[Expr] {
   match index {
-    Int(value) | Literal(UInt(value~, ..) | SInt(value~, ..)) => StaticIndexing(lhs~, index=value.to_int())
+    Literal(UInt(value~, ..) | SInt(value~, ..)) => StaticIndexing(lhs~, index=value.to_int())
     _ => DynamicIndexing(lhs~, index~)
   }
 }
 
-pub fn Reference::as_id(self: Reference) -> Id? {
+pub fn[T] Reference::as_id(self: Reference[T]) -> Id? {
   match self {
     Id(id) => Some(id)
     _ => None
   }
 }
 
-pub(all) struct Module {
+pub(all) struct Module[T] {
   public: Bool
   id: Id
   ports: Array[Port]
-  body: Array[Stmt]
+  body: Array[Stmt[T]]
 }
+
+pub typealias Module[TypedExpr] as TypedModule
 
 pub(all) struct PortSignature {
   flow: @parse.Flow
@@ -185,6 +206,10 @@ pub(all) enum Type {
   Bundle(Array[BundleField])
   Vec(Type, Int)
 } derive(Eq)
+
+pub fn Type::bool() -> Type {
+  UInt(1)
+}
 
 pub(all) struct BundleField {
   id: Id
@@ -245,44 +270,20 @@ pub(all) enum PrimOp {
   Bits
 } derive (Eq, Hash)
 
-pub fn primop(op: PrimOp, args: Array[Expr]) -> Expr {
-  // ensure that integer arguments for some operations are not Literals
-  match op {
-    Pad | Shl | Shr | Head | Tail | Bits => {
-      if args.length() > 1 {
-        args[1] = match args[1] {
-          Literal(lit) => Int(lit.value())
-          _ => args[1]
-        }
-
-        if op == Bits && args.length() > 2 {
-          args[2] = match args[2] {
-            Literal(lit) => Int(lit.value())
-            _ => args[2]
-          }
-        }
-      }
-    }
-    _ => ()
-  }
-
-  PrimOp(op~, args~)
+pub(all) enum Command[T] {
+  Printf(clk~: T, en~: T, fmt~: String, args~: Array[T])
+  Assert(clk~: T, pred~: T, en~: T, fmt~: String, args~: Array[T])
+  Stop(clk~: T, en~: T, code~: Int)
 }
 
-pub(all) enum Command {
-  Printf(clk~: Expr, en~: Expr, fmt~: String, args~: Array[Expr])
-  Assert(clk~: Expr, pred~: Expr, en~: Expr, fmt~: String, args~: Array[Expr])
-  Stop(clk~: Expr, en~: Expr, code~: Int)
-}
-
-pub fn Command::replace_en(self: Command, update_en: (Expr) -> Expr) -> Command {
+pub fn[T] Command::replace_en(self: Command[T], update_en: (T) -> T) -> Command[T] {
   match self {
     Printf(clk~, en~, fmt~, args~) => Printf(clk~, en=update_en(en), fmt~, args~)
     Assert(clk~, pred~, en~, fmt~, args~) => Assert(clk~, pred~, en=update_en(en), fmt~, args~)
     Stop(clk~, en~, code~) => Stop(clk~, en=update_en(en), code~)
   }
 }
-
+    
 pub trait FIRRTLPass {
-  run(self: Self, Circuit) -> Circuit raise
+  run(self: Self, TypedCircuit) -> TypedCircuit raise
 }
