@@ -415,7 +415,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                             (Unresolved(_), _) => raise type_error("Unresolved parameter '\{name}'", span)
                             _ => {
                                 let ty = match param {
-                                    Unresolved(_) => raise @utils.unreachable()
+                                    Unresolved(_) => @utils.unreachable()
                                     Resolved(ConstParam(value~, ..)) => self.check_expr(value.as_expr(), env)
                                     Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
                                 }

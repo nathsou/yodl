@@ -265,7 +265,7 @@ fn parse_primary_expr(self: Parser) -> Expr raise {
         Andr => Andr
         Orr => Orr
         Xorr => Xorr
-        _ => raise @utils.unreachable()
+        _ => @utils.unreachable()
       }
 
       Unary(op=unop, expr~, span=self.span(start_idx), ty={ val: None })

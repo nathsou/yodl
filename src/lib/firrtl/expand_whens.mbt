@@ -280,15 +280,15 @@ fn ExpandWhensPass::merge_scopes(
         let cond = TypedExpr::PrimOp(op=Not, args=[condition], ty=Type::bool())
         outer_scope[reference] = Some(Mux(cond~, tval=else_conn, fval=outer_conn, ty=else_conn.ty()))
       }
-      _ => {
-        // connected in one branch only
-        // raise Failure("Reference '\{reference}' not fully initialised")
-        outer_scope[reference] = match (then_conn, else_conn) {
-          (Some(then_conn), _) => Some(then_conn)
-          (_, Some(else_conn)) => Some(else_conn)
-          _ => None
-        }
+      (Some(then_conn), None, None) => {
+        // declared and connected in then branch only
+        outer_scope[reference] = Some(then_conn)
       }
+      (None, Some(else_conn), None) => {
+        // declared and connected in else branch only
+        outer_scope[reference] = Some(else_conn)
+      }
+      (None, None, _) => ()
     }
   }
 }

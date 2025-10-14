@@ -756,7 +756,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Exp
               Andr => BigInt::from_int(@utils.bits(value).all(fn(b) { b }).to_int())
               Orr => BigInt::from_int(@utils.bits(value).any(fn(b) { b }).to_int())
               Xorr => BigInt::from_int(@utils.bits(value).fold(init=0, fn(acc, b) { acc ^ b.to_int() }))
-              Neg => raise @utils.unreachable()
+              Neg => @utils.unreachable()
             }
 
             Some(Natural(value=value, width=None, base=10, span~, ty~))

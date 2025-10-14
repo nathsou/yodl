@@ -68,6 +68,7 @@ pub impl @parse.Spanned for SimplifierError with span(self) -> @parse.Span {
 // - Rewrite slicing expressions using width and offset to absolute slicing expressions
 // - Rewrite if expressions into match expressions
 // - Check static assertions
+// - Rewrite dynamic indexing into static indexing
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr raise {
   let rewr_stmt = fn(stmt) raise { self.simplify_stmt(stmt, env~, scope~) }
 
@@ -212,6 +213,31 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
           Ok(1) => Some(@parse.Expr::Tuple(elems=[], span~, ty~))
           _ => None
         }
+      }
+      // TODO: Move this to a FIRRTL pass
+      Indexing(expr~, index~, span~, ty~) if !(index is Natural(_)) && expr.ty().val is Some(Vector(ty=elem_ty, len=Fixed(len))) => {
+        let cases: Array[(@parse.Expr, @parse.Expr)] = Array::new(capacity=len)
+
+        for i in 0..<len {
+          cases.push((
+            @parse.Expr::nat(i, span~),
+            Indexing(expr~, index=@parse.Expr::nat(i, span~), span~, ty={ val: Some(elem_ty) })
+          ))
+        }
+
+        let default = if cases.length() > 1 {
+          cases.pop().map(case => case.1)
+        } else {
+          None
+        }
+
+        let match_expr = @parse.Expr::Match(subject=index, cases~, default~, span~, ty~)
+        let var = self.declare_unique("dynidx")
+        let var_path = @parse.Path::new([], var.to_string())
+        env.declare(var_path, Name(var))
+        scope.push(Let(name=var.to_string(), ty~, expr=Some(match_expr), span~))
+
+        Some(Identifier(path=var_path, span~, ty~))
       }
       _ => None
     }
