@@ -322,6 +322,16 @@ pub fn Type::is_equivalent_to(self: Type, other: Type) -> Bool {
   }
 }
 
+pub fn Type::without_const(self: Type) -> Type {
+  let mut ty = self
+
+  while ty is Const(inner) {
+    ty = inner
+  }
+
+  ty
+}
+
 pub(all) struct BundleField {
   id: Id
   flip: Bool

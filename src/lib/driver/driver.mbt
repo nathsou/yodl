@@ -183,11 +183,23 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
           Ok(typed_circuit) => typed_circuit
         }
 
-        // let expand_whens_pass = @firrtl.ExpandWhensPass::new()
-        // let circuit = match (try? expand_whens_pass.run(circuit)) {
-        //   Err(err) => raise Failure(err.to_string())
-        //   Ok(circuit) => circuit
-        // }
+        let passes: Array[&@firrtl.FIRRTLPass] = [
+          @firrtl.ExpandConnectsPass::new(),
+          @firrtl.ExpandWhensPass::new(),
+        ]
+
+        let circuit = {
+          let mut circ = circuit
+
+          for pass in passes {
+            circ = match (try? pass.run(circ)) {
+              Err(err) => raise Failure(err.to_string())
+              Ok(circ) => circ
+            }
+          }
+
+          circ
+        }
 
         let emitter = @firrtl.FIRRTLEmitter::new()
         emitter.emit_circuit(circuit)

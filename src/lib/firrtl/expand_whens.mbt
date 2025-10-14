@@ -26,7 +26,7 @@ impl[T] Hash for Reference[T] with hash_combine(self, hasher) {
       hasher.combine_int(index)
     }
     DynamicIndexing(..) => {
-      abort("Dynamic indexing is not supported in hashing")
+      @utils.fail("Dynamic indexing is not supported in hashing")
     }
     FieldAccess(lhs~, field~) => {
       lhs.hash_combine(hasher)
@@ -39,7 +39,7 @@ impl[T] Eq for Reference[T] with equal(self, other) {
   match (self, other) {
     (Id(id1), Id(id2)) => id1 == id2
     (StaticIndexing(lhs=lhs1, index=idx1), StaticIndexing(lhs=lhs2, index=idx2)) => lhs1 == lhs2 && idx1 == idx2
-    (DynamicIndexing(..), DynamicIndexing(..)) => abort("Dynamic indexing is not supported in equality")
+    (DynamicIndexing(..), DynamicIndexing(..)) => @utils.fail("Dynamic indexing is not supported in equality")
     (FieldAccess(lhs=lhs1, field=field1), FieldAccess(lhs=lhs2, field=field2)) => lhs1 == lhs2 && field1 == field2
     _ => false
   }
@@ -53,7 +53,7 @@ fn ExpandWhensPass::rewrite_module(mod: TypedModule) -> TypedModule raise {
 
   for port in mod.ports {
     if port.flow is (Output | Inout) {
-      module_scope[Id(port.id)] = None
+      module_scope.declare_sinks(reference=Id(port.id), ty=port.ty, flow=port.flow)
     }
   }
 
@@ -168,17 +168,29 @@ fn ExpandWhensPass::process_block(
 }
 
 fn ScopeMap::declare_sinks(self: ScopeMap, reference~: TypedReference, ty~: Type, flow~: @parse.Flow) -> Unit {
-  if ty is Bundle(fields) {
-    for field in fields {
-      self.declare_sinks(
-        reference=FieldAccess(lhs=reference, field=field.id),
-        ty=field.ty,
-        flow=if field.flip { flow.swap() } else { flow },
-      )
+  match ty {
+    Bundle(fields) => {
+      for field in fields {
+        self.declare_sinks(
+          reference=FieldAccess(lhs=reference, field=field.id),
+          ty=field.ty,
+          flow=if field.flip { flow.swap() } else { flow },
+        )
+      }
     }
-  } else {
-    if flow is (Output | Inout) && !self.contains(reference) {
-      self[reference] = None
+    Vec(elem_ty, size) => {
+      for i in 0 ..<size {
+        self.declare_sinks(
+          reference=StaticIndexing(lhs=reference, index=i),
+          ty=elem_ty,
+          flow~,
+        )
+      }
+    }
+    _ => {
+      if flow is (Output | Inout) && !self.contains(reference) {
+        self[reference] = None
+      }
     }
   }
 }
@@ -246,7 +258,7 @@ fn ExpandWhensPass::merge_scopes(
   then_scope~: ScopeMap,
   else_scope~: ScopeMap,
   condition~: TypedExpr,
-) -> Unit raise {
+) -> Unit {
   let all_refs = Set::from_iter(then_scope.keys() + else_scope.keys())
 
   for reference in all_refs {
@@ -270,7 +282,12 @@ fn ExpandWhensPass::merge_scopes(
       }
       _ => {
         // connected in one branch only
-        raise Failure("Port '\{reference}' not fully initialised")
+        // raise Failure("Reference '\{reference}' not fully initialised")
+        outer_scope[reference] = match (then_conn, else_conn) {
+          (Some(then_conn), _) => Some(then_conn)
+          (_, Some(else_conn)) => Some(else_conn)
+          _ => None
+        }
       }
     }
   }

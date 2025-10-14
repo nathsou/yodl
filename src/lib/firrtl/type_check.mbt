@@ -159,7 +159,7 @@ fn TypeEnv::check_expr(self: Self, expr: Expr) -> TypedExpr raise {
         (UInt(w1), UInt(w2)) => UInt(@utils.max(w1, w2))
         (SInt(w1), SInt(w2)) => SInt(@utils.max(w1, w2))
         (_, _) if tval_ty == fval_ty => tval_ty
-        _ => raise Failure("Mux true and false values must be both UInt or both SInt, got '\{tval_ty}' and '\{fval_ty}'")
+        _ => raise Failure("Mux true and false values are incompatible, got '\{tval_ty}' and '\{fval_ty}'")
       }
 
       TypedExpr::Mux(cond~, tval~, fval~, ty~)
