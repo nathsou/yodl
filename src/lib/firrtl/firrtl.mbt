@@ -195,7 +195,7 @@ pub(all) enum Expr[T] {
   Literal(Literal, ty~: T)
   Mux(cond~: Expr[T], tval~: Expr[T], fval~: Expr[T], ty~: T)
   PrimOp(op~: PrimOp, args~: Array[Expr[T]], ty~: T)
-}
+} derive (Eq)
 
 pub trait Default {
   default() -> Self

@@ -186,7 +186,32 @@ fn ScopeMap::declare_sinks(self: ScopeMap, reference~: TypedRef, flow~: Flow) ->
 fn and_conditions(outer: TypedExpr?, inner: TypedExpr) -> TypedExpr {
   match outer {
     None => inner
-    Some(cond) => PrimOp(op=And, args=[cond, inner], ty=Type::bool())
+    Some(cond) => simplify_and(cond, inner).0
+  }
+}
+
+// simplify some patterns of `and` expressions which cannot be satisfied simultaneously
+fn simplify_and(lhs: TypedExpr, rhs: TypedExpr) -> (TypedExpr, Bool) {
+  match (lhs, rhs) {
+    // and(x == a, x != b) ~> x == a (if a != b)
+    (PrimOp(op=Eq, args=[x1, a], ..), PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x2, b], ..)], ..)) if x1 == x2 && a != b => (lhs, true)
+    (PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x2, b], ..)], ..), PrimOp(op=Eq, args=[x1, a], ..)) if x1 == x2 && a != b => (rhs, true)
+    // and(and(x != b, rhs), x == a) ~> and(rhs, x == a) (if a != b)
+    (PrimOp(op=And, args=[PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x2, b], ..)], ..), rest], ..), PrimOp(op=Eq, args=[x1, a], ..)) if x1 == x2 && a != b => {
+      simplify_and(rest, rhs)
+    }
+    // recurse left
+    (PrimOp(op~, args~, ty~), _) => {
+      let simpl_args = args.map(arg => simplify_and(arg, rhs))
+      let changed = simpl_args.iter().any(res => res.1)
+
+      if changed {
+        (PrimOp(op~, args=simpl_args.map(res => res.0), ty~), true)
+      } else {
+        (PrimOp(op=And, args=[lhs, rhs], ty=Type::bool()), false)
+      }
+    }
+    _ => (PrimOp(op=And, args=[lhs, rhs], ty=Type::bool()), false)
   }
 }
 
