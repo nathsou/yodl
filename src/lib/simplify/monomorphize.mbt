@@ -256,7 +256,7 @@ fn register_monomorphized_module(
     return mono_mod
   }
 
-  let mono_path = @parse.Path::new(path.packages, "\{path.member}$\{monomorphized.size()}")
+  let mono_path = @parse.Path::new(path.packages, "\{path.member}$\{monomorphized.length()}")
   let mono_mod = self.monomorphize_module(mod=mod_decl, params=params_map, path=mono_path, packages~)
   monomorphized[hash] = mono_mod
   self.modules[mono_path] = mono_mod
@@ -490,7 +490,7 @@ fn monomorphize_module(
     mono_ports.push({
       name: port.name,
       ty: self.monomorphize_type(port.ty, env=child_env, packages=full_path.packages, span=mod.span).ty,
-      flow: port.flow,
+      dir: port.dir,
       optional: port.optional,
       span: port.span,
       attributes: port.attributes,

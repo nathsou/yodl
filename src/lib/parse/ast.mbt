@@ -99,7 +99,7 @@ pub fn Type::mask(self: Type, span~: Span) -> Type raise {
     UInt(_) | SInt(_) | Nat(_) | Clock | String(_) => UInt(Fixed(1))
     Vector(ty~, len~) => Vector(ty=ty.mask(span~), len~)
     Struct(fields) => Struct({
-      let new_fields = Map::new(capacity=fields.size())
+      let new_fields = Map::new(capacity=fields.length())
 
       for name, ty in fields {
         new_fields[name] = ty.mask(span~)
@@ -385,30 +385,22 @@ pub fn expect_fixed(self: IntParam, span: Span) -> Int raise {
   }
 }
 
-pub(all) enum Flow {
-  Input; Output; Inout
-} derive(Hash, Eq)
+pub(all) enum PortDir {
+  Input; Output; InOut
+} derive(Eq)
 
-pub fn Flow::swap(self: Flow) -> Flow {
-  match self {
-    Input => Output
-    Output => Input
-    Inout => Inout
-  }
-}
-
-pub impl Show for Flow with output(self, logger) {
+pub impl Show for PortDir with output(self, logger) {
   logger.write_string(match self {
     Input => "input"
     Output => "output"
-    Inout => "inout"
+    InOut => "inout"
   })
 }
 
 pub(all) struct Port {
   name: String
   ty: Type
-  flow: Flow
+  dir: PortDir
   span: Span
   optional: Bool
   attributes: Map[String, Attribute]
@@ -718,7 +710,7 @@ pub fn ResolvedParam::as_expr(self: ResolvedParam) -> Expr raise {
 }
 
 pub fn keep_and_check_resolved(params: Map[String, Param], span~: Span) -> Map[String, ResolvedParam] raise AstError {
-  let resolved_params = Map::new(capacity=params.size())
+  let resolved_params = Map::new(capacity=params.length())
 
   for name, param in params {
     if param is Resolved(p) {
@@ -1074,7 +1066,7 @@ pub fn substitute(self: Type, params_env: Map[String, ResolvedParam], span~: Spa
     }
     Vector(ty~, len~) => Vector(ty=ty.substitute(params_env, span~), len~)
     Instance(sig~, params~, accessed_ports~) => {
-      let new_params = Map::new(capacity=params.size()) 
+      let new_params = Map::new(capacity=params.length()) 
 
       for name, value in params {
         new_params[name] = match params_env.get(name) {
@@ -1116,7 +1108,7 @@ pub fn substitute(self: Type, params_env: Map[String, ResolvedParam], span~: Spa
       }
     }
     Struct(fields) => Struct({
-      let new_fields = Map::new(capacity=fields.size())
+      let new_fields = Map::new(capacity=fields.length())
 
       for name, ty in fields {
         new_fields[name] = ty.substitute(params_env, span~)
@@ -1137,26 +1129,26 @@ pub fn signature(self: ModuleDecl) -> ModuleSignature {
   }
 }
 
-pub fn inputs(self: ModuleSignature) -> Iter[Port] {
-  self.ports.iter().filter(fn(port) { port.flow == Input })
+pub fn ModuleSignature::inputs(self: ModuleSignature) -> Iter[Port] {
+  self.ports.iter().filter(port => port.dir == Input)
 }
 
-pub fn outputs(self: ModuleSignature) -> Iter[Port] {
-  self.ports.iter().filter(fn(port) { port.flow == Output })
+pub fn ModuleSignature::outputs(self: ModuleSignature) -> Iter[Port] {
+  self.ports.iter().filter(port => port.dir == Output)
 }
 
-pub fn inouts(self: ModuleSignature) -> Iter[Port] {
-  self.ports.iter().filter(fn(port) { port.flow == Inout })
+pub fn ModuleSignature::inouts(self: ModuleSignature) -> Iter[Port] {
+  self.ports.iter().filter(port => port.dir == InOut)
 }
 
-pub fn is_numerical(self: Type) -> Bool {
+pub fn Type::is_numerical(self: Type) -> Bool {
   match self {
     Nat(_) | UInt(_) | SInt(_) => true
     _ => false
   }
 }
 
-pub fn has_zero_width(self: Type) -> Bool {
+pub fn Type::has_zero_width(self: Type) -> Bool {
   match self {
     Nat(_) => false
     UInt(Fixed(width)) | SInt(Fixed(width)) => width == 0
@@ -1168,7 +1160,7 @@ pub fn has_zero_width(self: Type) -> Bool {
     }
     Instance(sig~, ..) => sig.ports.is_empty()
     Name(_) => false
-    Struct(fields) => fields.values().all(fn(ty) { ty.has_zero_width() })
+    Struct(fields) => fields.values().all(Type::has_zero_width)
     String(len~) => len == 0
   }
 }

@@ -1,5 +1,7 @@
 // FIRRTL https://github.com/chipsalliance/firrtl-spec
 
+using @parse { type PortDir }
+
 pub fn min_version() -> (Int, Int, Int) {
   (4, 1, 0)
 }
@@ -40,23 +42,25 @@ pub(all) struct Circuit[T] {
   decls: Array[Decl[T]]
 }
 
-pub typealias Circuit[TypedExpr] as TypedCircuit
+pub typealias Circuit[Unit] as UntypedCircuit
+pub typealias Circuit[Type] as TypedCircuit
 
 pub(all) enum Decl[T] {
   Module(Module[T])
   ExtModule(ExtModule)
 }
 
-pub typealias Decl[TypedExpr] as TypedDecl
+pub typealias Decl[Unit] as UntypedDecl
+pub typealias Decl[Type] as TypedDecl
 
 pub(all) enum Stmt[T] {
-  Node(id~: Id, expr~: T)
+  Node(id~: Id, expr~: Expr[T])
   Wire(id~: Id, ty~: Type)
   Inst(id~: Id, of~: Id, sig~: ModuleSignature)
-  Reg(id~: Id, ty~: Type, clock~: T)
-  RegReset(id~: Id, ty~: Type, clock~: T, reset~: T, init~: T)
+  Reg(id~: Id, ty~: Type, clock~: Expr[T])
+  RegReset(id~: Id, ty~: Type, clock~: Expr[T], reset~: Expr[T], init~: Expr[T])
   Mem(Mem)
-  Connect(Reference[T], T)
+  Connect(Reference[T], Expr[T])
   When(When[T])
   Command(Command[T])
   Skip
@@ -142,37 +146,70 @@ pub fn Mem::as_bundle(self: Mem) -> Type {
   Bundle(fields)
 }
 
-pub typealias Stmt[TypedExpr] as TypedStmt
+pub typealias Stmt[Unit] as UntypedStmt
+pub typealias Stmt[Type] as TypedStmt
 
 pub(all) struct When[T] {
-  cond: T
+  cond: Expr[T]
   body: Array[Stmt[T]]
   mut otherwise: Array[Stmt[T]]?
 }
 
+pub typealias When[Unit] as UntypedWhen
+pub typealias When[Type] as TypedWhen
+
+pub fn[T] Expr::mux_tree_from(cases: Array[(Expr[T], Expr[T])], default: Expr[T]) -> Expr[T] {
+  fn aux(cases: @list.List[(Expr[T], Expr[T])], acc: Expr[T]) -> Expr[T] {
+    match cases {
+      Empty => acc
+      More((cond, tval), tail~) => aux(tail, Mux(cond~, tval~, fval=acc, ty=tval.ty()))
+    }
+  }
+
+  aux(@list.List::from_array(cases), default)
+}
+
 pub(all) enum ReadUnderWrite { Undefined; Old; New }
 
-pub(all) enum Expr {
-  Reference(Reference[Expr])
-  Literal(Literal)
-  Mux(cond~: Expr, tval~: Expr, fval~: Expr)
-  PrimOp(op~: PrimOp, args~: Array[Expr])
+pub(all) enum Expr[T] {
+  Reference(Reference[T], ty~: T)
+  Literal(Literal, ty~: T)
+  Mux(cond~: Expr[T], tval~: Expr[T], fval~: Expr[T], ty~: T)
+  PrimOp(op~: PrimOp, args~: Array[Expr[T]], ty~: T)
 }
 
-pub fn Expr::uint(n: Int) -> Expr {
-  Literal(Literal::uint(n))
+pub trait Default {
+  default() -> Self
 }
 
-pub enum TypedExpr {
-  Reference(reference~: Reference[TypedExpr], ty~: Type)
-  Literal(value~: Literal, ty~: Type)
-  Mux(cond~: TypedExpr, tval~: TypedExpr, fval~: TypedExpr, ty~: Type)
-  PrimOp(op~: PrimOp, args~: Array[TypedExpr], ty~: Type)
+pub impl Default for Unit with default() -> Unit { () }
+
+pub fn[T: Default] mk_ref(r: Reference[T]) -> Expr[T] {
+  Reference(r, ty=T::default())
 }
 
-pub fn TypedExpr::ty(self: TypedExpr) -> Type {
+pub fn[T: Default] mk_lit(lit: Literal) -> Expr[T] {
+  Literal(lit, ty=T::default())
+}
+
+pub fn[T: Default] mk_mux(cond: Expr[T], tval: Expr[T], fval: Expr[T]) -> Expr[T] {
+  Mux(cond~, tval~, fval~, ty=T::default())
+}
+
+pub fn[T: Default] mk_prim(op: PrimOp, args: Array[Expr[T]]) -> Expr[T] {
+  PrimOp(op~, args~, ty=T::default())
+}
+
+pub typealias Expr[Unit] as UntypedExpr
+pub typealias Expr[Type] as TypedExpr
+
+pub fn Expr::uint(n: Int) -> UntypedExpr {
+  Literal(Literal::uint(n), ty=())
+}
+
+pub fn[T] Expr::ty(self: Expr[T]) -> T {
   match self {
-    Reference(ty~, ..) | Literal(ty~, ..) | Mux(ty~, ..) | PrimOp(ty~, ..) => ty
+    Reference(_, ty~) | Literal(_, ty~) | Mux(ty~, ..) | PrimOp(ty~, ..) => ty
   }
 }
 
@@ -210,24 +247,47 @@ pub fn Literal::as_int(self: Literal) -> Int {
 }
 
 pub(all) enum Reference[T] {
-  Id(Id)
-  StaticIndexing(lhs~: Reference[T], index~: Int)
-  DynamicIndexing(lhs~: Reference[T], index~: T)
-  FieldAccess(lhs~: Reference[T], field~: Id)
+  Id(Id, ty~: T)
+  StaticIndexing(lhs~: Reference[T], index~: Int, ty~: T)
+  DynamicIndexing(lhs~: Reference[T], index~: Expr[T], ty~: T)
+  FieldAccess(lhs~: Reference[T], field~: Id, ty~: T)
 }
 
-pub typealias Reference[TypedExpr] as TypedReference
+pub fn[T: Default] mk_id(id: Id) -> Reference[T] {
+  Id(id, ty=T::default())
+}
 
-pub fn Reference::indexing_from(lhs~: Reference[Expr], index~: Expr) -> Reference[Expr] {
+pub fn[T: Default] mk_static_indexing(lhs~: Reference[T], index~: Int) -> Reference[T] {
+  StaticIndexing(lhs~, index~, ty=T::default())
+}
+
+pub fn[T: Default] mk_dynamic_indexing(lhs~: Reference[T], index~: Expr[T]) -> Reference[T] {
+  DynamicIndexing(lhs~, index~, ty=T::default())
+}
+
+pub fn[T: Default] mk_field_access(lhs~: Reference[T], field~: Id) -> Reference[T] {
+  FieldAccess(lhs~, field~, ty=T::default())
+}
+
+pub fn[T] Reference::ty(self: Reference[T]) -> T {
+  match self {
+    Id(_, ty~) | StaticIndexing(ty~, ..) | DynamicIndexing(ty~, ..) | FieldAccess(ty~, ..) => ty
+  }
+}
+
+pub typealias Reference[Unit] as UntypedRef
+pub typealias Reference[Type] as TypedRef
+
+pub fn[T] Reference::indexing_from(lhs~: Reference[T], index~: Expr[T], ty~: T) -> Reference[T] {
   match index {
-    Literal(UInt(value~, ..) | SInt(value~, ..)) => StaticIndexing(lhs~, index=value.to_int())
-    _ => DynamicIndexing(lhs~, index~)
+    Literal(UInt(value~, ..) | SInt(value~, ..), ..) => StaticIndexing(lhs~, index=value.to_int(), ty~)
+    _ => DynamicIndexing(lhs~, index~, ty~)
   }
 }
 
 pub fn[T] Reference::as_id(self: Reference[T]) -> Id? {
   match self {
-    Id(id) => Some(id)
+    Id(id, ..) => Some(id)
     _ => None
   }
 }
@@ -239,10 +299,31 @@ pub(all) struct Module[T] {
   body: Array[Stmt[T]]
 }
 
-pub typealias Module[TypedExpr] as TypedModule
+pub typealias Module[Unit] as UntypedModule
+pub typealias Module[Type] as TypedModule
+
+pub(all) enum Flow {
+  Sink; Source; Duplex
+} derive(Hash, Eq)
+
+pub fn Flow::swap(self: Flow) -> Flow {
+  match self {
+    Sink => Source
+    Source => Sink
+    Duplex => Duplex
+  }
+}
+
+pub fn Flow::from_port_dir(self: PortDir) -> Flow {
+  match self {
+    Input => Sink
+    Output => Source
+    InOut => Duplex
+  }
+}
 
 pub(all) struct PortSignature {
-  flow: @parse.Flow
+  dir: PortDir
   ty: Type
 }
 
@@ -254,7 +335,7 @@ pub fn ModuleSignature::as_bundle(self: ModuleSignature) -> Type {
   let fields: Array[BundleField] = []
 
   for name, port in self.ports.iter2() {
-    fields.push(BundleField::from(id=Id::from(name), ty=port.ty, flip=port.flow is Input))
+    fields.push(BundleField::from(id=Id::from(name), ty=port.ty, flip=port.dir is Input))
   }
 
   Bundle(fields)
@@ -274,7 +355,7 @@ pub(all) enum ParameterLiteral {
 }
 
 pub(all) struct Port {
-  flow: @parse.Flow
+  dir: PortDir
   id: Id
   ty: Type
 }
@@ -354,12 +435,12 @@ pub(all) enum PrimOp {
 } derive (Eq, Hash)
 
 pub(all) enum Command[T] {
-  Printf(clk~: T, en~: T, fmt~: String, args~: Array[T])
-  Assert(clk~: T, pred~: T, en~: T, fmt~: String, args~: Array[T])
-  Stop(clk~: T, en~: T, code~: Int)
+  Printf(clk~: Expr[T], en~: Expr[T], fmt~: String, args~: Array[Expr[T]])
+  Assert(clk~: Expr[T], pred~: Expr[T], en~: Expr[T], fmt~: String, args~: Array[Expr[T]])
+  Stop(clk~: Expr[T], en~: Expr[T], code~: Int)
 }
-
-pub fn[T] Command::replace_en(self: Command[T], update_en: (T) -> T) -> Command[T] {
+    
+pub fn[T] Command::replace_en(self: Command[T], update_en: (Expr[T]) -> Expr[T]) -> Command[T] {
   match self {
     Printf(clk~, en~, fmt~, args~) => Printf(clk~, en=update_en(en), fmt~, args~)
     Assert(clk~, pred~, en~, fmt~, args~) => Assert(clk~, pred~, en=update_en(en), fmt~, args~)

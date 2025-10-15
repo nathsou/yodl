@@ -34,20 +34,20 @@ fn ExpandConnectsPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModu
   }
 }
 
-fn ExpandConnectsPass::expr_as_ref(self: Self, expr~: TypedExpr, body~: Array[TypedStmt]) -> TypedReference {
+fn ExpandConnectsPass::expr_as_ref(self: Self, expr~: TypedExpr, body~: Array[TypedStmt]) -> TypedRef {
   match expr {
-    Reference(reference~, ..) => reference
+    Reference(reference, ..) => reference
     _ => {
       let id = Id::from("expconn\{self.next_ref_id}$")
       self.next_ref_id += 1
       body.push(Node(id~, expr=expr))
-      Id(id)
+      Id(id, ty=expr.ty())
     }
   }
 }
 
 // FIRRTL spec 5.0 - Section 8.3.1 - The Connection Algorithm
-fn ExpandConnectsPass::connect(self: Self, lhs~: TypedReference, rhs~: TypedExpr, body~: Array[TypedStmt]) -> Unit {
+fn ExpandConnectsPass::connect(self: Self, lhs~: TypedRef, rhs~: TypedExpr, body~: Array[TypedStmt]) -> Unit {
   match rhs.ty().without_const() {
     Const(_) | UInt(_) | SInt(_) | UIntInferred | SIntInferred | Clock | Reset | AsyncReset => {
       body.push(Connect(lhs, rhs))
@@ -56,8 +56,8 @@ fn ExpandConnectsPass::connect(self: Self, lhs~: TypedReference, rhs~: TypedExpr
       let rhs_ref = self.expr_as_ref(expr=rhs, body~)
 
       for i in 0 ..<size {
-        let elem_lhs = StaticIndexing(lhs~, index=i)
-        let elem_rhs = TypedExpr::Reference(reference=StaticIndexing(lhs=rhs_ref, index=i), ty=elem_ty)
+        let elem_lhs = StaticIndexing(lhs~, index=i, ty=elem_ty)
+        let elem_rhs = TypedExpr::Reference(StaticIndexing(lhs=rhs_ref, index=i, ty=elem_ty), ty=elem_ty)
         self.connect(lhs=elem_lhs, rhs=elem_rhs, body~)
       }
     }
@@ -65,20 +65,20 @@ fn ExpandConnectsPass::connect(self: Self, lhs~: TypedReference, rhs~: TypedExpr
       let rhs_ref = self.expr_as_ref(expr=rhs, body~)
 
       for field in fields {
-        let field_lhs = FieldAccess(lhs~, field=field.id)
-        let field_rhs = FieldAccess(lhs=rhs_ref, field=field.id)
+        let field_lhs = FieldAccess(lhs~, field=field.id, ty=field.ty)
+        let field_rhs = FieldAccess(lhs=rhs_ref, field=field.id, ty=field.ty)
 
         if !field.flip {
-          self.connect(lhs=field_lhs, rhs=Reference(reference=field_rhs, ty=field.ty), body~)
+          self.connect(lhs=field_lhs, rhs=Reference(field_rhs, ty=field.ty), body~)
         } else {
-          self.connect(lhs=field_rhs, rhs=Reference(reference=field_lhs, ty=field.ty), body~)
+          self.connect(lhs=field_rhs, rhs=Reference(field_lhs, ty=field.ty), body~)
         }
       }
     }
   }
 }
 
-fn ExpandConnectsPass::process_stmt(self: Self, stmt: Stmt[TypedExpr], outer_body: Array[TypedStmt]) -> Unit {
+fn ExpandConnectsPass::process_stmt(self: Self, stmt: TypedStmt, outer_body: Array[TypedStmt]) -> Unit {
   match stmt {
     Connect(lhs, rhs) => {
       self.connect(lhs~, rhs~, body=outer_body)

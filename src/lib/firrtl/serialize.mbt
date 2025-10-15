@@ -56,7 +56,7 @@ pub impl Show for Type with output(self, logger) {
   }
 }
 
-pub fn[T: Show] emit_circuit(self: FIRRTLEmitter, circuit: Circuit[T]) -> Unit {
+pub fn[T] emit_circuit(self: FIRRTLEmitter, circuit: Circuit[T]) -> Unit {
   let (major, minor, patch) = circuit.version
   self.inner().write("FIRRTL version \{major}.\{minor}.\{patch}\n")
   self.inner().write("circuit ")
@@ -79,7 +79,7 @@ pub fn[T: Show] emit_circuit(self: FIRRTLEmitter, circuit: Circuit[T]) -> Unit {
   self.inner().indent -= 1
 }
 
-pub fn[T: Show] emit_decl(self: FIRRTLEmitter, decl: Decl[T]) -> Unit {
+pub fn[T] emit_decl(self: FIRRTLEmitter, decl: Decl[T]) -> Unit {
   match decl {
     Module(mod) => self.emit_module(mod)
     ExtModule(ext_mod) => self.emit_ext_module(ext_mod)
@@ -88,7 +88,7 @@ pub fn[T: Show] emit_decl(self: FIRRTLEmitter, decl: Decl[T]) -> Unit {
   self.inner().write("\n")
 }
 
-pub fn[T: Show] emit_module(self: FIRRTLEmitter, mod: Module[T]) -> Unit {
+pub fn[T] emit_module(self: FIRRTLEmitter, mod: Module[T]) -> Unit {
   self.inner().write_indent()
 
   if mod.public {
@@ -155,29 +155,29 @@ pub fn emit_ext_module(self: FIRRTLEmitter, ext_mod: ExtModule) -> Unit {
 
 pub fn emit_port(self: FIRRTLEmitter, port: Port) -> Unit {
   self.inner().write_indent()
-  self.inner().write(port.flow)
+  self.inner().write(port.dir)
   self.inner().write(" ")
   self.inner().write(port.id)
   self.inner().write(": ")
   self.inner().write(port.ty)
 }
 
-pub impl[T: Show] Show for Reference[T] with output(self, logger) {
+pub impl[T] Show for Reference[T] with output(self, logger) {
   match self {
-    Id(id) => logger.write_string(id.value())
-    StaticIndexing(lhs~, index~) => {
+    Id(id, ty=_) => logger.write_string(id.value())
+    StaticIndexing(lhs~, index~, ty=_) => {
       lhs.output(logger)
       logger.write_char('[')
       logger.write_string(index.to_string())
       logger.write_char(']')
     }
-    DynamicIndexing(lhs~, index~) => {
+    DynamicIndexing(lhs~, index~, ty=_) => {
       lhs.output(logger)
       logger.write_char('[')
       logger.write_object(index)
       logger.write_char(']')
     }
-    FieldAccess(lhs~, field~) => {
+    FieldAccess(lhs~, field~, ty=_) => {
       lhs.output(logger)
       logger.write_char('.')
       logger.write_string(field.value())
@@ -185,7 +185,7 @@ pub impl[T: Show] Show for Reference[T] with output(self, logger) {
   }
 }
 
-pub fn[T: Show] emit_stmt(self: FIRRTLEmitter, stmt: Stmt[T], glued~: Bool = false) -> Unit {
+pub fn[T] emit_stmt(self: FIRRTLEmitter, stmt: Stmt[T], glued~: Bool = false) -> Unit {
   match stmt {
     Node(id~, expr~) => {
       self.inner().write_indent()
@@ -493,7 +493,7 @@ fn[T: Show] show_mux(cond~: T, tval~: T, fval~: T, logger: &Logger) -> Unit {
   logger.write_string(")")
 }
 
-fn[T: Show + AsInt] show_primop(op~: PrimOp, args~: Array[T], logger: &Logger) -> Unit {
+fn[T] show_primop(op~: PrimOp, args~: Array[Expr[T]], logger: &Logger) -> Unit {
   logger.write_object(op)
   logger.write_string("(")
 
@@ -524,38 +524,18 @@ fn[T: Show + AsInt] show_primop(op~: PrimOp, args~: Array[T], logger: &Logger) -
   logger.write_string(")")
 }
 
-priv trait AsInt {
-  as_int(self: Self) -> BigInt?
-}
-
-impl AsInt for Expr with as_int(self: Expr) -> BigInt? {
+fn[T] Expr::as_int(self: Expr[T]) -> BigInt? {
   match self {
-    Literal(lit) => Some(lit.as_bigint())
+    Literal(lit, ty=_) => Some(lit.as_bigint())
     _ => None
   }
 }
 
-impl AsInt for TypedExpr with as_int(self: TypedExpr) -> BigInt? {
+pub impl[T] Show for Expr[T] with output(self, logger) {
   match self {
-    Literal(value~, ..) => Some(value.as_bigint())
-    _ => None
-  }
-}
-
-pub impl Show for Expr with output(self, logger) {
-  match self {
-    Reference(reference) => logger.write_object(reference)
-    Literal(literal) => logger.write_object(literal)
-    Mux(cond~, tval~, fval~) => show_mux(cond~, tval~, fval~, logger)
-    PrimOp(op~, args~) => show_primop(op~, args~, logger)
-  }
-}
-
-pub impl Show for TypedExpr with output(self, logger) {
-  match self {
-    Reference(reference~, ..) => logger.write_object(reference)
-    Literal(value~, ..) => logger.write_object(value)
-    Mux(cond~, tval~, fval~, ..) => show_mux(cond~, tval~, fval~, logger)
-    PrimOp(op~, args~, ..) => show_primop(op~, args~, logger)
+    Reference(reference, ty=_) => logger.write_object(reference)
+    Literal(literal, ty=_) => logger.write_object(literal)
+    Mux(cond~, tval~, fval~, ty=_) => show_mux(cond~, tval~, fval~, logger)
+    PrimOp(op~, args~, ty=_) => show_primop(op~, args~, logger)
   }
 }

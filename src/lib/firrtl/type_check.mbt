@@ -1,6 +1,6 @@
 pub typealias @utils.Scope[Id, Type] as TypeEnv
 
-pub fn type_check_circuit(circ: Circuit[Expr]) -> Circuit[TypedExpr] raise {
+pub fn type_check_circuit(circ: UntypedCircuit) -> TypedCircuit raise {
   let circuit_scope = TypeEnv::new()
 
   {
@@ -14,7 +14,7 @@ pub fn type_check_circuit(circ: Circuit[Expr]) -> Circuit[TypedExpr] raise {
   }
 }
 
-fn TypeEnv::check_module(self: Self, mod: Module[Expr]) -> Module[TypedExpr] raise {
+fn TypeEnv::check_module(self: Self, mod: UntypedModule) -> TypedModule raise {
   let mod_scope = self.child()
 
   for port in mod.ports {
@@ -29,7 +29,7 @@ fn TypeEnv::check_module(self: Self, mod: Module[Expr]) -> Module[TypedExpr] rai
   }
 }
 
-fn TypeEnv::check_stmt(self: Self, stmt: Stmt[Expr]) -> Stmt[TypedExpr] raise {
+fn TypeEnv::check_stmt(self: Self, stmt: UntypedStmt) -> TypedStmt raise {
   match stmt {
     Node(id~, expr~) => {
       let expr = self.check_expr(expr)
@@ -70,11 +70,11 @@ fn TypeEnv::check_stmt(self: Self, stmt: Stmt[Expr]) -> Stmt[TypedExpr] raise {
       let rhs = self.check_expr(rhs)
       let rhs_ty = rhs.ty()
 
-      if !lhs.ty.is_equivalent_to(rhs_ty) {
-        raise Failure("Cannot connect '\{rhs_ty}' to '\{lhs.ty}'")
+      if !lhs.ty().is_equivalent_to(rhs_ty) {
+        raise Failure("Cannot connect '\{rhs_ty}' to '\{lhs.ty()}'")
       }
 
-      Connect(lhs.value, rhs)
+      Connect(lhs, rhs)
     }
     When({ cond, body, otherwise }) => {
       let cond = self.expect(cond, UInt(1))
@@ -119,7 +119,7 @@ fn TypeEnv::check_stmt(self: Self, stmt: Stmt[Expr]) -> Stmt[TypedExpr] raise {
   }
 }
 
-fn TypeEnv::expect(self: Self, expr: Expr, expected: Type) -> TypedExpr raise {
+fn TypeEnv::expect(self: Self, expr: UntypedExpr, expected: Type) -> TypedExpr raise {
   let typed = self.check_expr(expr)
 
   if typed.ty() != expected {
@@ -129,22 +129,22 @@ fn TypeEnv::expect(self: Self, expr: Expr, expected: Type) -> TypedExpr raise {
   typed
 }
 
-fn TypeEnv::check_expr(self: Self, expr: Expr) -> TypedExpr raise {
+fn TypeEnv::check_expr(self: Self, expr: UntypedExpr) -> TypedExpr raise {
   match expr {
-    Reference(r) => {
-      let { value, ty } = self.check_ref(r)
-      TypedExpr::Reference(reference=value, ty~)
+    Reference(r, ty=_) => {
+      let reference = self.check_ref(r)
+      TypedExpr::Reference(reference, ty=reference.ty())
     }
-    Literal(UInt(width~, ..) | SInt(width~, ..) as lit) => {
+    Literal(UInt(width~, ..) | SInt(width~, ..) as lit, ty=_) => {
       let ty = if lit is UInt(..) {
         Type::UInt(width)
       } else {
         Type::SInt(width)
       }
 
-      TypedExpr::Literal(value=lit, ty~)
+      TypedExpr::Literal(lit, ty~)
     }
-    Mux(cond~, tval~, fval~) => {
+    Mux(cond~, tval~, fval~, ty=_) => {
       let cond = self.check_expr(cond)
       let tval = self.check_expr(tval)
       let fval = self.check_expr(fval)
@@ -164,7 +164,7 @@ fn TypeEnv::check_expr(self: Self, expr: Expr) -> TypedExpr raise {
 
       TypedExpr::Mux(cond~, tval~, fval~, ty~)
     }
-    PrimOp(op~, args~) => {
+    PrimOp(op~, args~, ty=_) => {
       let args = args.map(arg => self.check_expr(arg))
       let arg_tys = args.map(arg => arg.ty())
 
@@ -178,18 +178,18 @@ fn TypeEnv::check_expr(self: Self, expr: Expr) -> TypedExpr raise {
         (Rem, [UInt(num), UInt(den)], _) => UInt(@utils.min(num, den))
         (Rem, [SInt(num), SInt(den)], _) => SInt(@utils.min(num, den))
         (Eq | Neq | Lt | Leq | Gt | Geq, [UInt(_), UInt(_)] | [SInt(_), SInt(_)], _) => UInt(1)
-        (Pad, [UInt(w), _], [_, Literal(value~, ..)]) => UInt(@utils.max(w, value.as_int()))
-        (Pad, [SInt(w), _], [_, Literal(value~, ..)]) => SInt(@utils.max(w, value.as_int()))
+        (Pad, [UInt(w), _], [_, Literal(value, ..)]) => UInt(@utils.max(w, value.as_int()))
+        (Pad, [SInt(w), _], [_, Literal(value, ..)]) => SInt(@utils.max(w, value.as_int()))
         (AsUInt, [UInt(w) | SInt(w)], _) => UInt(w)
         (AsUInt, [Clock | Reset | AsyncReset], _) => UInt(1)
         (AsSInt, [UInt(w) | SInt(w)], _) => SInt(w)
         (AsSInt, [Clock | Reset | AsyncReset], _) => SInt(1)
         (AsClock, [UInt(1) | SInt(1) | Clock | Reset | AsyncReset], _) => Clock
         (AsAsyncReset, [AsyncReset | UInt(1) | SInt(1) | Clock | Reset], _) => AsyncReset
-        (Shl, [UInt(w), _], [_, Literal(value~, ..)]) => UInt(w + value.as_int())
-        (Shl, [SInt(w), _], [_, Literal(value~, ..)]) => SInt(w + value.as_int())
-        (Shr, [UInt(w), _], [_, Literal(value~, ..)]) => UInt(@utils.max(w - value.as_int(), 0))
-        (Shr, [SInt(w), _], [_, Literal(value~, ..)]) => SInt(@utils.max(w - value.as_int(), 1))
+        (Shl, [UInt(w), _], [_, Literal(value, ..)]) => UInt(w + value.as_int())
+        (Shl, [SInt(w), _], [_, Literal(value, ..)]) => SInt(w + value.as_int())
+        (Shr, [UInt(w), _], [_, Literal(value, ..)]) => UInt(@utils.max(w - value.as_int(), 0))
+        (Shr, [SInt(w), _], [_, Literal(value, ..)]) => SInt(@utils.max(w - value.as_int(), 1))
         (Dshl, [UInt(w1), UInt(w2)], _) => UInt(w1 + @utils.pow2(w2).to_int() - 1)
         (Dshl, [SInt(w1), UInt(w2)], _) => SInt(w1 + @utils.pow2(w2).to_int() - 1)
         (Dshr, [UInt(w1), UInt(_)], _) => UInt(w1)
@@ -201,7 +201,7 @@ fn TypeEnv::check_expr(self: Self, expr: Expr) -> TypedExpr raise {
         (And | Or | Xor, [UInt(w1), UInt(w2)] | [SInt(w1), SInt(w2)], _) => UInt(@utils.max(w1, w2))
         (Andr | Orr | Xorr, [UInt(_) | SInt(_)], _) => UInt(1)
         (Cat, [UInt(w1), UInt(w2)] | [SInt(w1), SInt(w2)], _) => UInt(w1 + w2)
-        (Bits, [UInt(w) | SInt(w), _, _], [_, Literal(value=hi, ..), Literal(value=lo, ..)]) => {
+        (Bits, [UInt(w) | SInt(w), _, _], [_, Literal(hi, ..), Literal(lo, ..)]) => {
           let hi = hi.as_int()
           let lo = lo.as_int()
 
@@ -211,7 +211,7 @@ fn TypeEnv::check_expr(self: Self, expr: Expr) -> TypedExpr raise {
 
           UInt(hi - lo + 1)
         }
-        (Head, [UInt(w) | SInt(w), _], [_, Literal(value~, ..)]) => {
+        (Head, [UInt(w) | SInt(w), _], [_, Literal(value, ..)]) => {
           let n = value.as_int()
 
           if n < 0 || n > w {
@@ -220,7 +220,7 @@ fn TypeEnv::check_expr(self: Self, expr: Expr) -> TypedExpr raise {
 
           UInt(n)
         }
-        (Tail, [UInt(w) | SInt(w), _], [_, Literal(value~, ..)]) => {
+        (Tail, [UInt(w) | SInt(w), _], [_, Literal(value, ..)]) => {
           let n = value.as_int()
 
           if n < 0 || n > w {
@@ -232,56 +232,51 @@ fn TypeEnv::check_expr(self: Self, expr: Expr) -> TypedExpr raise {
         _ => raise Failure("Unsupported primitive operation '\{op}' with argument types '\{arg_tys}'")
       }
 
-      TypedExpr::PrimOp(op~, args~, ty~)
+      PrimOp(op~, args~, ty~)
     }
   }
 }
 
-priv struct Typed[T] {
-  value: T
-  ty: Type
-}
-
-fn TypeEnv::check_ref(self: Self, r: Reference[Expr]) -> Typed[Reference[TypedExpr]] raise {
+fn TypeEnv::check_ref(self: Self, r: UntypedRef) -> TypedRef raise {
   match r {
-    Id(id) => { value: Id(id), ty: self.resolve(id).or_error(Failure("Undefined identifier '\{id}'")) }
-    StaticIndexing(lhs~, index~) => {
+    Id(id, ty=_) => Id(id, ty=self.resolve(id).or_error(Failure("Undefined identifier '\{id}'")))
+    StaticIndexing(lhs~, index~, ty=_) => {
       let lhs = self.check_ref(lhs)
 
-      if lhs.ty is Vec(elem_ty, size) {
+      if lhs.ty() is Vec(elem_ty, size) {
         if index < 0 || index >= size {
           raise Failure("Index '\{index}' out of bounds for vector of size '\{size}'")
         }
 
-        { value: StaticIndexing(lhs=lhs.value, index~), ty: elem_ty }
+        StaticIndexing(lhs~, index~, ty=elem_ty)
       } else {
-        raise Failure("Cannot index non-vector type '\{lhs.ty}'")
+        raise Failure("Cannot index non-vector type '\{lhs.ty()}'")
       }
     }
-    DynamicIndexing(lhs~, index~) => {
+    DynamicIndexing(lhs~, index~, ty=_) => {
       let lhs = self.check_ref(lhs)
       let index = self.check_expr(index)
 
-      if lhs.ty is Vec(elem_ty, _) {
+      if lhs.ty() is Vec(elem_ty, _) {
         if !(index.ty() is UInt(_)) {
           raise Failure("Dynamic index must be of type UInt, got '\{index.ty()}'")
         }
 
-        { value: DynamicIndexing(lhs=lhs.value, index~), ty: elem_ty }
+        DynamicIndexing(lhs~, index~, ty=elem_ty)
       } else {
-        raise Failure("Cannot index non-vector type '\{lhs.ty}'")
+        raise Failure("Cannot index non-vector type '\{lhs.ty()}'")
       }
     }
-    FieldAccess(lhs~, field~) => {
+    FieldAccess(lhs~, field~, ty=_) => {
       let lhs = self.check_ref(lhs)
 
-      if lhs.ty is Bundle(fields) {
+      if lhs.ty() is Bundle(fields) {
         match fields.search_by(f => f.id == field) {
-          Some(idx) => { value: FieldAccess(lhs=lhs.value, field~), ty: fields[idx].ty }
-          None => raise Failure("Field '\{field}' not found in bundle type '\{lhs.ty}'")
+          Some(idx) => FieldAccess(lhs~, field~, ty=fields[idx].ty)
+          None => raise Failure("Field '\{field}' not found in bundle type '\{lhs.ty()}'")
         }
       } else {
-        raise Failure("Cannot access field '\{field}' of non-bundle type '\{lhs.ty}'")
+        raise Failure("Cannot access field '\{field}' of non-bundle type '\{lhs.ty()}'")
       }
     }
   }

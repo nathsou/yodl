@@ -20,15 +20,15 @@ pub impl FIRRTLPass for ExpandWhensPass with run(_, circuit) -> TypedCircuit rai
 // Supporting arbitrary dynamic indexing would make initialisation analysis undecidable
 impl[T] Hash for Reference[T] with hash_combine(self, hasher) {
   match self {
-    Id(id) => id.hash_combine(hasher)
-    StaticIndexing(lhs~, index~) => {
+    Id(id, ty=_) => id.hash_combine(hasher)
+    StaticIndexing(lhs~, index~, ty=_) => {
       lhs.hash_combine(hasher)
       hasher.combine_int(index)
     }
     DynamicIndexing(..) => {
       @utils.fail("Dynamic indexing is not supported in hashing")
     }
-    FieldAccess(lhs~, field~) => {
+    FieldAccess(lhs~, field~, ty=_) => {
       lhs.hash_combine(hasher)
       field.hash_combine(hasher)
     }
@@ -37,23 +37,23 @@ impl[T] Hash for Reference[T] with hash_combine(self, hasher) {
 
 impl[T] Eq for Reference[T] with equal(self, other) {
   match (self, other) {
-    (Id(id1), Id(id2)) => id1 == id2
-    (StaticIndexing(lhs=lhs1, index=idx1), StaticIndexing(lhs=lhs2, index=idx2)) => lhs1 == lhs2 && idx1 == idx2
+    (Id(id1, ty=_), Id(id2, ty=_)) => id1 == id2
+    (StaticIndexing(lhs=lhs1, index=idx1, ty=_), StaticIndexing(lhs=lhs2, index=idx2, ty=_)) => lhs1 == lhs2 && idx1 == idx2
     (DynamicIndexing(..), DynamicIndexing(..)) => @utils.fail("Dynamic indexing is not supported in equality")
-    (FieldAccess(lhs=lhs1, field=field1), FieldAccess(lhs=lhs2, field=field2)) => lhs1 == lhs2 && field1 == field2
+    (FieldAccess(lhs=lhs1, field=field1, ty=_), FieldAccess(lhs=lhs2, field=field2, ty=_)) => lhs1 == lhs2 && field1 == field2
     _ => false
   }
 }
 
-typealias Map[TypedReference, TypedExpr?] as ScopeMap
+typealias Map[TypedRef, TypedExpr?] as ScopeMap
 
 fn ExpandWhensPass::rewrite_module(mod: TypedModule) -> TypedModule raise {
   // Track last connection to each destination
   let module_scope: ScopeMap = {}
 
   for port in mod.ports {
-    if port.flow is (Output | Inout) {
-      module_scope.declare_sinks(reference=Id(port.id), ty=port.ty, flow=port.flow)
+    if port.dir is (Output | InOut) {
+      module_scope.declare_sinks(reference=Id(port.id, ty=port.ty), flow=match port.dir { Input => Source; _ => Sink })
     }
   }
 
@@ -88,54 +88,43 @@ fn ExpandWhensPass::process_block(
     match stmt {
       // Track declarations that need connections
       Wire(id~, ty~) => {
-        scope.declare_sinks(reference=Id(id), ty~, flow=Input)
+        scope.declare_sinks(reference=Id(id, ty~), flow=Duplex)
         stmts.push(stmt)
       }
       Reg(id~, ty~, ..) | RegReset(id~, ty~, ..) => {
         // registers are initialised to themselves
         // TODO: registers of bundle type are not supported.
-        let reference = Id(id)
-        scope[reference] = Some(Reference(reference~, ty~))
+        let reference = Id(id, ty~)
+        scope[reference] = Some(Reference(reference, ty~))
         stmts.push(stmt)
       }
       Inst(id~, sig~, ..) => {
         // Track input ports
         for field, port in sig.ports {
           scope.declare_sinks(
-            reference=FieldAccess(lhs=Id(id), field=Id::from(field)),
-            ty=port.ty,
-            flow=port.flow.swap(),
+            reference=FieldAccess(lhs=Id(id, ty=sig.as_bundle()), field=Id::from(field), ty=port.ty),
+            flow=match port.dir { Output => Source; _ => Sink },
           )
         }
 
         stmts.push(stmt)
       }
-      Mem({id, readers, writers, readwriters, ..} as mem) => {
+      Mem({id, writers, readwriters, ..} as mem) => {
         // Track memory input ports
-        let reference = Id(id)
+        let reference = Id(id, ty=mem.as_bundle())
         let ports = mem.reader_writer_types()
-
-        for reader in readers {
-          scope.declare_sinks(
-            reference=FieldAccess(lhs=reference, field=reader),
-            ty=ports.read,
-            flow=Output,
-          )
-        }
 
         for writer in writers {
           scope.declare_sinks(
-            reference=FieldAccess(lhs=reference, field=writer),
-            ty=ports.write,
-            flow=Input,
+            reference=FieldAccess(lhs=reference, field=writer, ty=ports.write),
+            flow=Sink,
           )
         }
 
         for rw in readwriters {
           scope.declare_sinks(
-            reference=FieldAccess(lhs=reference, field=rw),
-            ty=ports.read_write,
-            flow=Inout,
+            reference=FieldAccess(lhs=reference, field=rw, ty=ports.read_write),
+            flow=Sink,
           )
         }
 
@@ -167,13 +156,12 @@ fn ExpandWhensPass::process_block(
   stmts
 }
 
-fn ScopeMap::declare_sinks(self: ScopeMap, reference~: TypedReference, ty~: Type, flow~: @parse.Flow) -> Unit {
-  match ty {
+fn ScopeMap::declare_sinks(self: ScopeMap, reference~: TypedRef, flow~: Flow) -> Unit {
+  match reference.ty() {
     Bundle(fields) => {
       for field in fields {
         self.declare_sinks(
-          reference=FieldAccess(lhs=reference, field=field.id),
-          ty=field.ty,
+          reference=FieldAccess(lhs=reference, field=field.id, ty=field.ty),
           flow=if field.flip { flow.swap() } else { flow },
         )
       }
@@ -181,14 +169,14 @@ fn ScopeMap::declare_sinks(self: ScopeMap, reference~: TypedReference, ty~: Type
     Vec(elem_ty, size) => {
       for i in 0 ..<size {
         self.declare_sinks(
-          reference=StaticIndexing(lhs=reference, index=i),
-          ty=elem_ty,
+          reference=StaticIndexing(lhs=reference, index=i, ty=elem_ty),
           flow~,
         )
       }
     }
     _ => {
-      if flow is (Output | Inout) && !self.contains(reference) {
+      // If it is a leaf node with Flow::Sink or Flow::Duplex, it must be initialised.
+      if flow != Source && !self.contains(reference) {
         self[reference] = None
       }
     }
@@ -203,7 +191,7 @@ fn and_conditions(outer: TypedExpr?, inner: TypedExpr) -> TypedExpr {
 }
 
 fn ExpandWhensPass::expand_whens(
-  when~: When[TypedExpr],
+  when~: TypedWhen,
   parent_result~: Array[TypedStmt],
   module_scope~: ScopeMap,
   outer_condition~: TypedExpr?

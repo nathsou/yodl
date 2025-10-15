@@ -82,8 +82,18 @@ priv enum UnificationParam {
 }
 
 fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
-    while not(eqs.is_empty()) {
-        let (ty1, ty2) = eqs.pop().unwrap()
+    while eqs.pop() is Some((ty1, ty2)) {
+        let identical_instances = if (ty1, ty2) is (
+            Instance(sig=sig1, params=params1, accessed_ports=ports1),
+            Instance(sig=sig2, params=params2, accessed_ports=ports2)
+        ) && sig1.path == sig2.path && params1 == params2 {
+            // merge accessed ports
+            ports1.merge_inplace(ports2)
+            ports2.mutate(ports1)
+            true
+        } else {
+            false
+        }
 
         if ty1 == ty2 {
             continue
@@ -107,27 +117,13 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
 
                 eqs.push((ty1_inner, ty2_inner))
             }
-            (UInt(Fixed(width)) | SInt(Fixed(width)), Nat(min_width~)) | (Nat(min_width~), UInt(Fixed(width)) | SInt(Fixed(width))) => {
-                if width < min_width {
-                    raise IncompatibleTypes(ty1~, ty2~, span~)
-                }
-            }
-            (UInt(_) | SInt(_), Nat(_)) | (Nat(_), UInt(_) | SInt(_)) => ()
-            (Nat(_), Nat(_)) => ()
             (Vector(ty=_, len=Dynamic(Identifier(_))), Vector(ty=_, len=Fixed(_))) => {
                 eqs.push((ty2, ty1))
             }
-            (Instance(sig=sig1, params=params1, accessed_ports=accessed_ports1), Instance(sig=sig2, params=params2, accessed_ports=accessed_ports2)) => {
-                if sig1.path != sig2.path {
-                    raise IncompatibleTypes(ty1~, ty2~, span~)
-                } else if params1 == params2 {
-                    // merge accessed ports
-                    accessed_ports1.merge_inplace(accessed_ports2)
-                    accessed_ports2.merge_inplace(accessed_ports1)
-                } else {
-                        raise IncompatibleTypes(ty1~, ty2~, span~)
-                }
-            }
+            (UInt(Fixed(width)) | SInt(Fixed(width)), Nat(min_width~)) | (Nat(min_width~), UInt(Fixed(width)) | SInt(Fixed(width))) if width >= min_width => ()
+            (UInt(_) | SInt(_), Nat(_)) | (Nat(_), UInt(_) | SInt(_)) => ()
+            (Nat(_), Nat(_)) => ()
+            (Instance(..), Instance(..)) if identical_instances => ()
             (String(len~), ty2) | (ty2, String(len~)) => {
                 eqs.push((Vector(ty=@parse.Type::uint(@parse.BITS_PER_CHAR), len=Fixed(len)), ty2))
             }
@@ -183,7 +179,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
             }
         }
         Struct(fields) => {
-            let field_tys = Map::new(capacity=fields.size())
+            let field_tys = Map::new(capacity=fields.length())
 
             for name, ty in fields {
                 field_tys[name] = self.resolve_ty(ty, span~)
@@ -431,7 +427,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                                 let expr_ty = self.check_expr(port_expr, env).substitute(params_env, span~)
                                 let _ = unify(port_def.ty.substitute(params_env, span~), expr_ty, span=port_expr.span(), subst~)
 
-                                if port_def.flow != Input && !is_valid_assignment_target(port_expr) {
+                                if port_def.dir != Input && !is_valid_assignment_target(port_expr) {
                                     raise InvalidAssignmentTarget(span=port_expr.span())
                                 }
                             }
@@ -736,7 +732,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             raise type_error("Function call after monomorphization", span)
         }
         Struct(fields~, ..) => {
-            let field_tys = Map::new(capacity=fields.size())
+            let field_tys = Map::new(capacity=fields.length())
 
             for name, ty in fields {
                 field_tys[name] = self.check_expr(ty, env)
@@ -825,7 +821,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
 
             // mark instance port as being written to
             if lhs is FieldAccess(expr~, field~, ..) && expr.ty().val is Some(@parse.Type::Instance(sig~, accessed_ports~, ..)) {
-                if sig.get_port(field) is Some(port_sig) && port_sig.flow == Output {
+                if sig.get_port(field) is Some({ dir: Output, .. }) {
                     raise type_error("Cannot assign to output port '\{field}' of module '\{sig.path}'", span)
                 }
 
