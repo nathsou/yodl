@@ -3,34 +3,98 @@ pub struct ExpandConnectsPass {
   mut next_ref_id: Int
 }
 
+impl FIRRTLRewriter for ExpandConnectsPass
+
 pub fn ExpandConnectsPass::new() -> Self {
   { next_ref_id: 0 }
 }
 
 pub impl FIRRTLPass for ExpandConnectsPass with run(self, circuit) -> TypedCircuit raise {
-  {
-    ..circuit,
-    decls: circuit.decls.map(decl => {
-      match decl {
-        Module(mod) => Module(self.rewrite_module(mod))
-        ExtModule(extmod) => ExtModule(extmod)
+  self.rewrite_circuit(circuit)
+}
+
+impl FIRRTLRewriter for ExpandConnectsPass with rewrite_connect_stmt(self, lhs, rhs, stmts~) -> Unit raise {
+  let rhs = self.rewrite_expr(rhs, stmts~)
+
+  if lhs is DynamicIndexing(lhs=indexing_lhs, index~, ty=_) {
+    let target = match rhs {
+      Reference(reference, ty=_) => reference
+      _ => {
+        let id = Id::from("dynassign\{self.next_ref_id}$")
+        self.next_ref_id += 1
+        stmts.push(Node(id~, expr=rhs))
+        Id(id, ty=rhs.ty())
       }
-    })
+    }
+
+    let _ = self.dynamic_indexing_to_static(
+      lhs=indexing_lhs,
+      index~,
+      stmts~,
+      target~,
+      flip=true,
+    )
+  } else {
+    self.connect(
+      lhs=self.rewrite_ref(lhs, stmts),
+      rhs~,
+      body=stmts,
+    )
   }
 }
 
-fn ExpandConnectsPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule {
-  let new_body = []
-
-  for stmt in mod.body {
-    self.process_stmt(stmt, new_body)
+impl FIRRTLRewriter for ExpandConnectsPass with rewrite_ref(self, reference, stmts) -> TypedRef raise {
+  match reference {
+    DynamicIndexing(lhs~, index~, ty~) => {
+      let target = Id::from("dynidx\{self.next_ref_id}$")
+      self.next_ref_id += 1
+      stmts.push(Wire(id=target, ty~))
+      self.dynamic_indexing_to_static(lhs~, index~, stmts~, target=Id(target, ty~), flip=false)
+    }
+    _ => reference
   }
+}
 
-  {
-    public: mod.public,
-    id: mod.id,
-    ports: mod.ports,
-    body: new_body,
+fn ExpandConnectsPass::dynamic_indexing_to_static(
+  self: Self,
+  lhs~: TypedRef,
+  index~: TypedExpr,
+  stmts~: Array[TypedStmt],
+  target~: TypedRef,
+  flip~: Bool,
+) -> TypedRef raise {
+  if lhs.ty() is Vec(elem_ty, len) {
+    let cases: Array[(TypedExpr, Array[TypedStmt])] = []
+    let index_bits = @utils.clog2(BigInt::from_int(len - 1)).to_int()
+
+    for i in 0 ..<len {
+      let case_cond = PrimOp(
+        op=Eq,
+        args=[index, Literal(UInt(width=index_bits, radix=None, value=BigInt::from_int(i)), ty=UInt(index_bits))],
+        ty=Type::bool(),
+      )
+      let case_ref = StaticIndexing(lhs~, index=i, ty=elem_ty)
+
+      if !flip {
+        let body = []
+        self.connect(lhs=target, rhs=Reference(case_ref, ty=elem_ty), body~)
+        cases.push((case_cond, body))
+      } else {
+        let body = []
+        self.connect(lhs=case_ref, rhs=Reference(target, ty=elem_ty), body~)
+        cases.push((case_cond, body))
+      }
+    }
+
+    let default = cases.unsafe_pop().1
+
+    let when_tree = Expr::build_when_tree(cases, default)
+    self.next_ref_id += 1
+    stmts.push_iter(when_tree.iter())
+
+    target
+  } else {
+    raise Failure("Dynamic indexing is only supported on Vec types, got: \{lhs.ty()}")
   }
 }
 
@@ -74,39 +138,6 @@ fn ExpandConnectsPass::connect(self: Self, lhs~: TypedRef, rhs~: TypedExpr, body
           self.connect(lhs=field_rhs, rhs=Reference(field_lhs, ty=field.ty), body~)
         }
       }
-    }
-  }
-}
-
-fn ExpandConnectsPass::process_stmt(self: Self, stmt: TypedStmt, outer_body: Array[TypedStmt]) -> Unit {
-  match stmt {
-    Connect(lhs, rhs) => {
-      self.connect(lhs~, rhs~, body=outer_body)
-    }
-    When({ cond, body, otherwise }) => {
-      let new_body = Array::new(capacity=body.length())
-
-      for stmt in body {
-        self.process_stmt(stmt, new_body)
-      }
-
-      let new_otherwise = match otherwise {
-        None => None
-        Some(otherwise) => {
-          let new_otherwise = Array::new(capacity=otherwise.length())
-
-          for stmt in otherwise {
-            self.process_stmt(stmt, new_otherwise)
-          }
-
-          Some(new_otherwise)
-        }
-      }
-
-      outer_body.push(When({ cond, body: new_body, otherwise: new_otherwise }))
-    }
-    _ => {
-      outer_body.push(stmt)
     }
   }
 }

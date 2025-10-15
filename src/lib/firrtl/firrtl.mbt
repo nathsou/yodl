@@ -158,7 +158,7 @@ pub(all) struct When[T] {
 pub typealias When[Unit] as UntypedWhen
 pub typealias When[Type] as TypedWhen
 
-pub fn[T] Expr::mux_tree_from(cases: Array[(Expr[T], Expr[T])], default: Expr[T]) -> Expr[T] {
+pub fn[T] Expr::build_mux_tree(cases: Array[(Expr[T], Expr[T])], default: Expr[T]) -> Expr[T] {
   fn aux(cases: @list.List[(Expr[T], Expr[T])], acc: Expr[T]) -> Expr[T] {
     match cases {
       Empty => acc
@@ -166,7 +166,26 @@ pub fn[T] Expr::mux_tree_from(cases: Array[(Expr[T], Expr[T])], default: Expr[T]
     }
   }
 
-  aux(@list.List::from_array(cases), default)
+  aux(@list.List::from_array({ cases.rev_inplace(); cases }), default)
+}
+
+pub fn[T] Expr::build_when_tree(cases: Array[(Expr[T], Array[Stmt[T]])], default: Array[Stmt[T]]) -> Array[Stmt[T]] {
+  fn aux(cases: @list.List[(Expr[T], Array[Stmt[T]])], acc: Array[Stmt[T]]) -> Array[Stmt[T]] {
+    match cases {
+      Empty => acc
+      More((cond, body), tail~) => {
+        let when: When[T] = {
+          cond,
+          body,
+          otherwise: Some(acc),
+        }
+
+        aux(tail, [When(when)])
+      }
+    }
+  }
+
+  aux(@list.List::from_array({ cases.rev_inplace(); cases }), default)
 }
 
 pub(all) enum ReadUnderWrite { Undefined; Old; New }
@@ -439,6 +458,9 @@ pub(all) enum Command[T] {
   Assert(clk~: Expr[T], pred~: Expr[T], en~: Expr[T], fmt~: String, args~: Array[Expr[T]])
   Stop(clk~: Expr[T], en~: Expr[T], code~: Int)
 }
+
+pub typealias Command[Unit] as UntypedCommand
+pub typealias Command[Type] as TypedCommand
     
 pub fn[T] Command::replace_en(self: Command[T], update_en: (Expr[T]) -> Expr[T]) -> Command[T] {
   match self {
@@ -446,8 +468,4 @@ pub fn[T] Command::replace_en(self: Command[T], update_en: (Expr[T]) -> Expr[T])
     Assert(clk~, pred~, en~, fmt~, args~) => Assert(clk~, pred~, en=update_en(en), fmt~, args~)
     Stop(clk~, en~, code~) => Stop(clk~, en=update_en(en), code~)
   }
-}
-    
-pub trait FIRRTLPass {
-  run(self: Self, TypedCircuit) -> TypedCircuit raise
 }
