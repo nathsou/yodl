@@ -45,7 +45,7 @@ pub fn[T] fill(n: Int, value: T) -> Array[T] {
 }
 
 pub fn[K: Eq + Hash, V] merge(map1: Map[K, V], map2: Map[K, V]) -> Map[K, V] {
-  let result = Map::new(capacity=map1.size() + map2.size())
+  let result = Map::new(capacity=map1.length() + map2.length())
 
   for key, value in map1 {
     result[key] = value
@@ -69,7 +69,7 @@ pub fn[A, B, E: Error] map(values: Array[A], f: (A) -> B raise E) -> Array[B] ra
 }
 
 pub fn[K: Eq + Hash, U, V] map_values(map: Map[K, U], f: (U) -> V) -> Map[K, V] {
-  let result = Map::new(capacity=map.size())
+  let result = Map::new(capacity=map.length())
 
   for key, value in map {
     result[key] = f(value)
@@ -79,7 +79,7 @@ pub fn[K: Eq + Hash, U, V] map_values(map: Map[K, U], f: (U) -> V) -> Map[K, V] 
 }
 
 pub fn[K1, K2: Eq + Hash, V] map_keys(map: Map[K1, V], f: (K1, V) -> K2) -> Map[K2, V] {
-  let result = Map::new(capacity=map.size())
+  let result = Map::new(capacity=map.length())
 
   for key, value in map {
     result[f(key, value)] = value
@@ -90,7 +90,7 @@ pub fn[K1, K2: Eq + Hash, V] map_keys(map: Map[K1, V], f: (K1, V) -> K2) -> Map[
 
 pub fn[K: Eq + Hash + Compare, V] sorted_keys(map: Map[K, V]) -> Map[K, V] {
   let sorted_keys = { let keys = map.keys().collect(); keys.sort(); keys }
-  let new_map = Map::new(capacity=map.size())
+  let new_map = Map::new(capacity=map.length())
 
   for key in sorted_keys {
     new_map[key] = map.get(key).unwrap()

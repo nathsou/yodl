@@ -218,7 +218,7 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
 
       self.write("(")
 
-      let wrap = ports.size() > 2
+      let wrap = ports.length() > 2
 
       if wrap {
         self.indent += 1
@@ -236,7 +236,7 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
         self.write(": ")
         self.emit_expr(expr)
 
-        if wrap || i < ports.size() - 1 {
+        if wrap || i < ports.length() - 1 {
           self.write(", ")
         }
 
@@ -599,7 +599,7 @@ pub impl Show for Type with output(ty, logger) {
     Instance(sig={ path, .. }, params~, accessed_ports~) => {
       logger.write_object(path)
 
-      if params.size() > 0 {
+      if params.length() > 0 {
         logger.write_iter(
           params.values(),
           prefix="<",
@@ -735,7 +735,7 @@ pub impl Show for ModuleParameter with output(param, logger) {
 }
 
 fn emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
-  if sig.attributes.size() > 0 {
+  if sig.attributes.length() > 0 {
     for attr in sig.attributes.values() {
       self.emit(attr.to_string())
       self.write("\n")

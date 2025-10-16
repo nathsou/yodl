@@ -265,7 +265,7 @@ fn parse_primary_expr(self: Parser) -> Expr raise {
         Andr => Andr
         Orr => Orr
         Xorr => Xorr
-        _ => raise @utils.unreachable()
+        _ => @utils.unreachable()
       }
 
       Unary(op=unop, expr~, span=self.span(start_idx), ty={ val: None })
@@ -857,7 +857,7 @@ fn parse_type(self: Parser) -> Type raise {
   base_ty
 }
 
-fn parse_port(self: Parser, dir~: PortDirection) -> Port raise {
+fn parse_port(self: Parser, dir~: PortDir) -> Port raise {
   let start_idx = self.index
   let name = self.parse_identifier()
   let optional = self.consumes(QuestionMark)
@@ -867,24 +867,24 @@ fn parse_port(self: Parser, dir~: PortDirection) -> Port raise {
   let attributes2 = self.parse_attributes()
   let attributes = @utils.merge(attributes1, attributes2)
   let dir = match attributes.get("inout") {
-    Some(_) => Inout
+    Some(_) => InOut
     None => dir
   }
 
-  { name, ty, direction: dir, optional, attributes, span: self.span(start_idx) }
+  { name, ty, dir, optional, attributes, span: self.span(start_idx) }
 }
 
-fn parse_port_list(self: Parser, dir~: PortDirection) -> Array[Port] raise {
+fn parse_port_list(self: Parser, dir~: PortDir) -> Array[Port] raise {
   let start_idx = self.index
   let ports = []
 
   self.expect(Lparen, start_idx)
 
-  while not(self.matches(Rparen)) {
+  while !self.matches(Rparen) {
     let port = self.parse_port(dir~)
     ports.push(port)
 
-    if not(self.consumes(Comma)) {
+    if !self.consumes(Comma) {
       break
     }
   }

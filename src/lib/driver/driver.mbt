@@ -1,10 +1,10 @@
 
 pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> Unit raise Failure {
-  if not(path.has_suffix(".yodl")) {
+  if !path.has_suffix(".yodl") {
     raise Failure("Input file must have a .yodl extension")
   }
 
-  if not((fs.path_exists)("output/")) {
+  if !(fs.path_exists)("output/") {
     (fs.create_dir)("output/")
   }
 
@@ -19,27 +19,24 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 
   for cmd in commands {
-    match cmd {
-      WriteSource(path~) => {
-        let emitter = @parse.AstEmitter::new()
+    if cmd is WriteSource(path~) {
+      let emitter = @parse.AstEmitter::new()
 
-        for decl in pkg.body {
-          emitter.emit_decl(decl)
-          emitter.emit("\n")
+      for decl in pkg.body {
+        emitter.emit_decl(decl)
+        emitter.emit("\n")
+      }
+
+      let source = emitter.to_string()
+
+      match path {
+        Some(path) => {
+          (fs.write_string_to_file)(path, source)
         }
-
-        let source = emitter.to_string()
-
-        match path {
-          Some(path) => {
-            (fs.write_string_to_file)(path, source)
-          }
-          None => {
-            println(source)
-          }
+        None => {
+          println(source)
         }
       }
-      _ => ()
     }
   }
 
@@ -50,27 +47,24 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 
   for cmd in commands {
-    match cmd {
-      WriteMono(path~) => {
-        let emitter = @parse.AstEmitter::new()
+    if cmd is WriteMono(path~) {
+      let emitter = @parse.AstEmitter::new()
 
-        for decl in mono_decls {
-          emitter.emit_decl(decl)
-          emitter.emit("\n")
+      for decl in mono_decls {
+        emitter.emit_decl(decl)
+        emitter.emit("\n")
+      }
+
+      let mono = emitter.to_string()
+
+      match path {
+        Some(path) => {
+          (fs.write_string_to_file)(path, mono)
         }
-
-        let mono = emitter.to_string()
-
-        match path {
-          Some(path) => {
-            (fs.write_string_to_file)(path, mono)
-          }
-          None => {
-            println(mono)
-          }
+        None => {
+          println(mono)
         }
       }
-      _ => ()
     }
   }
 
@@ -83,25 +77,22 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 
   for cmd in commands {
-    match cmd {
-      WriteTyped(path~) => {
-        let emitter = @parse.AstEmitter::new(show_expr_types=true)
+    if cmd is WriteTyped(path~) {
+      let emitter = @parse.AstEmitter::new(show_expr_types=true)
 
-        for decl in mono_decls {
-          emitter.emit_decl(decl)
-          emitter.emit("\n")
+      for decl in mono_decls {
+        emitter.emit_decl(decl)
+        emitter.emit("\n")
+      }
+
+      match path {
+        Some(path) => {
+          (fs.write_string_to_file)(path, emitter.to_string())
         }
-
-        match path {
-          Some(path) => {
-            (fs.write_string_to_file)(path, emitter.to_string())
-          }
-          None => {
-            println(emitter.to_string())
-          }
+        None => {
+          println(emitter.to_string())
         }
       }
-      _ => ()
     }
   }
 
@@ -111,27 +102,24 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 
   for cmd in commands {
-    match cmd {
-      WriteSimplified(path~) => {
-        let emitter = @parse.AstEmitter::new()
+    if cmd is WriteSimplified(path~) {
+      let emitter = @parse.AstEmitter::new()
 
-        for decl in simplified_decls {
-          emitter.emit_decl(decl)
-          emitter.emit("\n")
+      for decl in simplified_decls {
+        emitter.emit_decl(decl)
+        emitter.emit("\n")
+      }
+
+      let simplified = emitter.to_string()
+
+      match path {
+        Some(path) => {
+          (fs.write_string_to_file)(path, simplified)
         }
-
-        let simplified = emitter.to_string()
-
-        match path {
-          Some(path) => {
-            (fs.write_string_to_file)(path, simplified)
-          }
-          None => {
-            println(simplified)
-          }
+        None => {
+          println(simplified)
         }
       }
-      _ => ()
     }
   }
 
@@ -143,7 +131,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
       }
     })
 
-    let top_candidates = top_level_pkg_modules.filter(fn(path) { not(monomorphizer.instanciated_modules.contains(path)) })
+    let top_candidates = top_level_pkg_modules.filter(fn(path) { !monomorphizer.instanciated_modules.contains(path) })
 
     match top_candidates {
       [] => raise Failure("No top-level module found")
@@ -169,26 +157,43 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 
   for cmd in commands {
-    match cmd {
-      WriteFIRRTL(path~) => {
-        let emitter = @firrtl.FIRRTLEmitter::new()
-        emitter.emit_circuit({
-          version: @firrtl.min_version(),
-          id: Ident(firrtl.circuit_name),
-          annotations: firrtl.annotations,
-          decls: (firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod)) + (firrtl.extmodules.values().map(mod => @firrtl.Decl::ExtModule(mod)))).collect(),
-        })
+    if cmd is WriteFIRRTL(path~, passes~) {
+      let circuit: @firrtl.UntypedCircuit = {
+        version: @firrtl.min_version(),
+        id: Ident(firrtl.circuit_name),
+        annotations: firrtl.annotations,
+        decls: (firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod)) + (firrtl.extmodules.values().map(mod => @firrtl.Decl::ExtModule(mod)))).collect(),
+      }
 
-        match path {
-          Some(path) => {
-            (fs.write_string_to_file)(path, emitter.0.to_string())
-          }
-          None => {
-            println(emitter.0.to_string())
+      let circuit: @firrtl.TypedCircuit = match (try? @firrtl.type_check_circuit(circuit)) {
+        Err(err) => raise Failure(err.to_string())
+        Ok(typed_circuit) => typed_circuit
+      }
+
+      let circuit = {
+        let mut circ = circuit
+
+        for pass in passes {
+          circ = match (try? pass.run(circ)) {
+            Err(err) => raise Failure(err.to_string())
+            Ok(circ) => circ
           }
         }
+
+        circ
       }
-      _ => ()
+
+      let emitter = @firrtl.FIRRTLEmitter::new()
+      emitter.emit_circuit(circuit)
+
+      match path {
+        Some(path) => {
+          (fs.write_string_to_file)(path, emitter.0.to_string())
+        }
+        None => {
+          println(emitter.0.to_string())
+        }
+      }
     }
   }
 }

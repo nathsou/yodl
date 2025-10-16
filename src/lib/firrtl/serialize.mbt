@@ -22,12 +22,6 @@ pub impl Show for Type with output(self, logger) {
     SInt(width) => {
       logger.write_string("SInt<\{width}>")
     }
-    UIntInferred => {
-      logger.write_string("UInt")
-    }
-    SIntInferred => {
-      logger.write_string("SInt")
-    }
     Const(ty) => {
       logger.write_string("const \{ty}")
     }
@@ -56,7 +50,7 @@ pub impl Show for Type with output(self, logger) {
   }
 }
 
-pub fn emit_circuit(self: FIRRTLEmitter, circuit: Circuit) -> Unit {
+pub fn[T] emit_circuit(self: FIRRTLEmitter, circuit: Circuit[T]) -> Unit {
   let (major, minor, patch) = circuit.version
   self.inner().write("FIRRTL version \{major}.\{minor}.\{patch}\n")
   self.inner().write("circuit ")
@@ -79,7 +73,7 @@ pub fn emit_circuit(self: FIRRTLEmitter, circuit: Circuit) -> Unit {
   self.inner().indent -= 1
 }
 
-pub fn emit_decl(self: FIRRTLEmitter, decl: Decl) -> Unit {
+pub fn[T] emit_decl(self: FIRRTLEmitter, decl: Decl[T]) -> Unit {
   match decl {
     Module(mod) => self.emit_module(mod)
     ExtModule(ext_mod) => self.emit_ext_module(ext_mod)
@@ -88,7 +82,7 @@ pub fn emit_decl(self: FIRRTLEmitter, decl: Decl) -> Unit {
   self.inner().write("\n")
 }
 
-pub fn emit_module(self: FIRRTLEmitter, mod: Module) -> Unit {
+pub fn[T] emit_module(self: FIRRTLEmitter, mod: Module[T]) -> Unit {
   self.inner().write_indent()
 
   if mod.public {
@@ -155,38 +149,44 @@ pub fn emit_ext_module(self: FIRRTLEmitter, ext_mod: ExtModule) -> Unit {
 
 pub fn emit_port(self: FIRRTLEmitter, port: Port) -> Unit {
   self.inner().write_indent()
-  self.inner().write(port.direction)
+  self.inner().write(port.dir)
   self.inner().write(" ")
   self.inner().write(port.id)
   self.inner().write(": ")
   self.inner().write(port.ty)
 }
 
-pub fn emit_reference(self: FIRRTLEmitter, reference: Reference) -> Unit {
-  match reference {
-    Id(id) => self.inner().write(id)
-    Indexing(lhs~, index~) => {
-      self.emit_reference(lhs)
-      self.inner().write("[")
-      self.emit_expr(index)
-      self.inner().write("]")
+pub impl[T] Show for Reference[T] with output(self, logger) {
+  match self {
+    Id(id, ty=_) => logger.write_string(id.value())
+    StaticIndexing(lhs~, index~, ty=_) => {
+      lhs.output(logger)
+      logger.write_char('[')
+      logger.write_string(index.to_string())
+      logger.write_char(']')
     }
-    FieldAccess(lhs~, field~) => {
-      self.emit_reference(lhs)
-      self.inner().write(".")
-      self.inner().write(field)
+    DynamicIndexing(lhs~, index~, ty=_) => {
+      lhs.output(logger)
+      logger.write_char('[')
+      logger.write_object(index)
+      logger.write_char(']')
+    }
+    FieldAccess(lhs~, field~, ty=_) => {
+      lhs.output(logger)
+      logger.write_char('.')
+      logger.write_string(field.value())
     }
   }
 }
 
-pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit {
+pub fn[T] emit_stmt(self: FIRRTLEmitter, stmt: Stmt[T], glued~: Bool = false) -> Unit {
   match stmt {
     Node(id~, expr~) => {
       self.inner().write_indent()
       self.inner().write("node ")
       self.inner().write(id)
       self.inner().write(" = ")
-      self.emit_expr(expr)
+      self.inner().write(expr)
     }
     Wire(id~, ty~) => {
       self.inner().write_indent()
@@ -198,11 +198,11 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
     Connect(lhs, rhs) => {
       self.inner().write_indent()
       self.inner().write("connect ")
-      self.emit_reference(lhs)
+      self.inner().write(lhs)
       self.inner().write(", ")
-      self.emit_expr(rhs)
+      self.inner().write(rhs)
     }
-    Inst(id~, of~) => {
+    Inst(id~, of~, sig=_) => {
       self.inner().write_indent()
       self.inner().write("inst ")
       self.inner().write(id)
@@ -216,7 +216,7 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
       self.inner().write(": ")
       self.inner().write(ty)
       self.inner().write(", ")
-      self.emit_expr(clock)
+      self.inner().write(clock)
     }
     RegReset(id~, ty~, clock~, reset~, init~) => {
       self.inner().write_indent()
@@ -225,19 +225,19 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
       self.inner().write(": ")
       self.inner().write(ty)
       self.inner().write(", ")
-      self.emit_expr(clock)
+      self.inner().write(clock)
       self.inner().write(", ")
-      self.emit_expr(reset)
+      self.inner().write(reset)
       self.inner().write(", ")
-      self.emit_expr(init)
+      self.inner().write(init)
     }
     When({ cond, body, otherwise }) => {
-      if not(glued) {
+      if !glued {
         self.inner().write_indent()
       }
 
       self.inner().write("when ")
-      self.emit_expr(cond)
+      self.inner().write(cond)
       self.inner().write(":\n")
       self.inner().indent += 1
 
@@ -269,17 +269,17 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
         None => ()
       }
     }
-    Mem(
-      id~,
-      data_type~,
-      depth~,
-      read_latency~,
-      write_latency~,
-      read_under_write~,
-      readers~,
-      writers~,
-      readwriters~,
-    ) => {
+    Mem({
+      id,
+      data_type,
+      depth,
+      read_latency,
+      write_latency,
+      read_under_write,
+      readers,
+      writers,
+      readwriters,
+    }) => {
       self.inner().write_indent()
       self.inner().write("mem ")
       self.inner().write(id)
@@ -333,23 +333,18 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
 
       self.inner().indent -= 1
     }
-    Invalidate(reference) => {
-      self.inner().write_indent()
-      self.inner().write("invalidate ")
-      self.emit_reference(reference)
-    }
     Skip => {
       self.inner().write_indent()
       self.inner().write("skip")
     }
     Command(command) => {
       match command {
-        Printf(clk~, cond~, fmt~, args~) => {
+        Printf(clk~, en~, fmt~, args~) => {
           self.inner().write_indent()
           self.inner().write("printf(")
-          self.emit_expr(clk)
+          self.inner().write(clk)
           self.inner().write(", ")
-          self.emit_expr(cond)
+          self.inner().write(en)
           self.inner().write(", \"")
           self.inner().write(show_format_string(fmt))
           self.inner().write("\"")
@@ -358,7 +353,7 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
             self.inner().write(", ")
             
             for idx, arg in args {
-              self.emit_expr(arg)
+              self.inner().write(arg)
 
               if idx < args.length() - 1 {
                 self.inner().write(", ")
@@ -371,11 +366,11 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
         Assert(clk~, pred~, en~, fmt~, args~) => {
           self.inner().write_indent()
           self.inner().write("assert(")
-          self.emit_expr(clk)
+          self.inner().write(clk)
           self.inner().write(", ")
-          self.emit_expr(pred)
+          self.inner().write(pred)
           self.inner().write(", ")
-          self.emit_expr(en)
+          self.inner().write(en)
           self.inner().write(", \"")
           self.inner().write(show_format_string(fmt))
           self.inner().write("\"")
@@ -384,7 +379,7 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
             self.inner().write(", ")
             
             for idx, arg in args {
-              self.emit_expr(arg)
+              self.inner().write(arg)
 
               if idx < args.length() - 1 {
                 self.inner().write(", ")
@@ -394,12 +389,12 @@ pub fn emit_stmt(self: FIRRTLEmitter, stmt: Stmt, glued~: Bool = false) -> Unit 
 
           self.inner().write(")\n")
         }
-        Stop(clk~, cond~, code~) => {
+        Stop(clk~, en~, code~) => {
           self.inner().write_indent()
           self.inner().write("stop(")
-          self.emit_expr(clk)
+          self.inner().write(clk)
           self.inner().write(", ")
-          self.emit_expr(cond)
+          self.inner().write(en)
           self.inner().write(", ")
           self.inner().write(code)
           self.inner().write(")\n")
@@ -433,13 +428,13 @@ fn show_int(radix~: Int?, value: BigInt) -> String {
   }
 }
 
-pub fn emit_literal(self: FIRRTLEmitter, literal: Literal) -> Unit {
-  match literal {
+pub impl Show for Literal with output(self, logger) {
+  match self {
     UInt(width~, radix~, value~) => {
-      self.inner().write("UInt<\{width}>(\{show_int(radix~, value)})")
+      logger.write_string("UInt<\{width}>(\{show_int(radix~, value)})")
     }
     SInt(width~, radix~, value~) => {
-      self.inner().write("SInt<\{width}>(\{show_int(radix~, value)})")
+      logger.write_string("SInt<\{width}>(\{show_int(radix~, value)})")
     }
   }
 }
@@ -482,33 +477,59 @@ pub impl Show for PrimOp with output(self, logger) {
   })
 }
 
-pub fn emit_expr(self: FIRRTLEmitter, expr: Expr) -> Unit {
-  match expr {
-    Reference(reference) => self.emit_reference(reference)
-    Int(value) => self.inner().write(value)
-    Literal(literal) => self.emit_literal(literal)
-    Mux(cond~, tval~, fval~) => {
-      self.inner().write("mux(")
-      self.emit_expr(cond)
-      self.inner().write(", ")
-      self.emit_expr(tval)
-      self.inner().write(", ")
-      self.emit_expr(fval)
-      self.inner().write(")")
-    }
-    PrimOp(op~, args~) => {
-      self.inner().write(op)
-      self.inner().write("(")
+fn[T: Show] show_mux(cond~: T, tval~: T, fval~: T, logger: &Logger) -> Unit {
+  logger.write_string("mux(")
+  logger.write_object(cond)
+  logger.write_string(", ")
+  logger.write_object(tval)
+  logger.write_string(", ")
+  logger.write_object(fval)
+  logger.write_string(")")
+}
 
+fn[T] show_primop(op~: PrimOp, args~: Array[Expr[T]], logger: &Logger) -> Unit {
+  logger.write_object(op)
+  logger.write_string("(")
+
+  match op {
+    Pad | Shl | Shr | Head | Tail => {
+      logger.write_object(args[0])
+      logger.write_string(", ")
+      logger.write_object(args[1].as_int().unwrap())
+    }
+    Bits => {
+      logger.write_object(args[0])
+      logger.write_string(", ")
+      logger.write_object(args[1].as_int().unwrap())
+      logger.write_string(", ")
+      logger.write_object(args[2].as_int().unwrap())
+    }
+    _ => {
       for idx, arg in args {
-        self.emit_expr(arg)
+        logger.write_object(arg)
 
         if idx < args.length() - 1 {
-          self.inner().write(", ")
+          logger.write_string(", ")
         }
       }
-
-      self.inner().write(")")
     }
+  }
+
+  logger.write_string(")")
+}
+
+fn[T] Expr::as_int(self: Expr[T]) -> BigInt? {
+  match self {
+    Literal(lit, ty=_) => Some(lit.as_bigint())
+    _ => None
+  }
+}
+
+pub impl[T] Show for Expr[T] with output(self, logger) {
+  match self {
+    Reference(reference, ty=_) => logger.write_object(reference)
+    Literal(literal, ty=_) => logger.write_object(literal)
+    Mux(cond~, tval~, fval~, ty=_) => show_mux(cond~, tval~, fval~, logger)
+    PrimOp(op~, args~, ty=_) => show_primop(op~, args~, logger)
   }
 }

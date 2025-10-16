@@ -23,7 +23,7 @@ pub enum SimplifierEnvEntry {
   Const(@parse.Expr)
 }
 
-typealias @elaborate.Scope[@parse.Path, SimplifierEnvEntry] as SimplifierEnv
+typealias Scope[@parse.Path, SimplifierEnvEntry] as SimplifierEnv
 
 pub fn Simplifier::new() -> Simplifier {
   { name_counts: {} }
@@ -68,6 +68,7 @@ pub impl @parse.Spanned for SimplifierError with span(self) -> @parse.Span {
 // - Rewrite slicing expressions using width and offset to absolute slicing expressions
 // - Rewrite if expressions into match expressions
 // - Check static assertions
+// - Rewrite dynamic indexing into static indexing
 pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr raise {
   let rewr_stmt = fn(stmt) raise { self.simplify_stmt(stmt, env~, scope~) }
 
@@ -302,7 +303,7 @@ fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @p
 
 pub fn simplify_decls(decls: Array[@parse.Decl]) -> Array[@parse.Decl] raise {
   let simplifier = Simplifier::new()
-  let top_env = @elaborate.Scope::new()
+  let top_env = Scope::new()
   let simplified_decls = []
 
   for decl in decls {

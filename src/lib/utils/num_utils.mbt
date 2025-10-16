@@ -12,7 +12,7 @@ pub fn clamp(n: Int, min~: Int, max~: Int) -> Int {
 }
 
 pub fn sum(iter: Iter[Int]) -> Int {
-  iter.fold(Int::op_add, init=0)
+  iter.fold(Int::add, init=0)
 }
 
 pub fn clog2(n: BigInt) -> BigInt {
