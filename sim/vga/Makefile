@@ -15,7 +15,7 @@ VTopSim: VTopSim.mk
 	make -C ./obj_dir -f VTopSim.mk
 
 Sim.sv:
-	cd ../.. && moon run src/main examples/Sim.yodl "write_firrtl sim/vga/Sim.fir"
+	cd ../.. && moon run src/main examples/Sim.yodl "write_low_firrtl sim/vga/Sim.fir"
 	firtool -O=release --format=fir --verilog -disable-all-randomization -strip-debug-info Sim.fir -o Sim.sv
 
 clean:
