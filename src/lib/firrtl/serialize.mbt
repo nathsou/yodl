@@ -22,12 +22,6 @@ pub impl Show for Type with output(self, logger) {
     SInt(width) => {
       logger.write_string("SInt<\{width}>")
     }
-    UIntInferred => {
-      logger.write_string("UInt")
-    }
-    SIntInferred => {
-      logger.write_string("SInt")
-    }
     Const(ty) => {
       logger.write_string("const \{ty}")
     }

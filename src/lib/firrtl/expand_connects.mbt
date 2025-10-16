@@ -113,7 +113,7 @@ fn ExpandConnectsPass::expr_as_ref(self: Self, expr~: TypedExpr, body~: Array[Ty
 // FIRRTL spec 5.0 - Section 8.3.1 - The Connection Algorithm
 fn ExpandConnectsPass::connect(self: Self, lhs~: TypedRef, rhs~: TypedExpr, body~: Array[TypedStmt]) -> Unit {
   match rhs.ty().without_const() {
-    Const(_) | UInt(_) | SInt(_) | UIntInferred | SIntInferred | Clock | Reset | AsyncReset => {
+    Const(_) | UInt(_) | SInt(_) | Clock | Reset | AsyncReset => {
       body.push(Connect(lhs, rhs))
     }
     Vec(elem_ty, size) => {

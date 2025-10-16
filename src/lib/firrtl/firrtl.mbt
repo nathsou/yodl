@@ -80,8 +80,8 @@ pub(all) struct Mem {
 
 pub fn Type::mem_mask(self: Type) -> Type {
   match self {
-    UInt(_) | UIntInferred | SInt(_) | SIntInferred |
-    Clock | AsyncReset | Reset | Const(_) => UInt(1)
+    Const(inner) => Const(inner.mem_mask())
+    UInt(_) | SInt(_) | Clock | AsyncReset | Reset => UInt(1)
     Bundle(fields) => Bundle(fields.map(field => {
         id: field.id,
         flip: field.flip,
@@ -386,8 +386,6 @@ pub(all) enum Type {
   AsyncReset
   UInt(Int)
   SInt(Int)
-  UIntInferred
-  SIntInferred
   Bundle(Array[BundleField])
   Vec(Type, Int)
 } derive(Eq)

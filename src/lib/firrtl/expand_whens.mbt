@@ -58,8 +58,14 @@ fn ExpandWhensPass::rewrite_module(mod: TypedModule) -> TypedModule raise {
   }
 
   // Process module body
-  let body_stmts = ExpandWhensPass::process_block(block=mod.body, module_scope~, scope=module_scope, condition=None)
-  let not_fully_init = []
+  let body_stmts = ExpandWhensPass::process_block(
+    block=mod.body,
+    module_scope~,
+    scope=module_scope,
+    condition=ConditionStack::new(),
+  )
+
+  let not_fully_init: Array[TypedRef] = []
 
   // Check for incomplete initialisation and add final connections
   for dest, conn_opt in module_scope {
@@ -80,7 +86,7 @@ fn ExpandWhensPass::process_block(
   block~: Array[TypedStmt],
   module_scope~: ScopeMap,
   scope~: ScopeMap,
-  condition~: TypedExpr?,
+  condition~: ConditionStack,
 ) -> Array[TypedStmt] raise {
   let stmts: Array[TypedStmt] = []
 
@@ -144,7 +150,7 @@ fn ExpandWhensPass::process_block(
         )
       }
       Command(cmd) => {
-        stmts.push(Command(cmd.replace_en(en => and_conditions(condition, en))))
+        stmts.push(Command(cmd.replace_en(en => condition.anded_with(en).as_expr())))
       }
       // Pass through other statements
       _ => {
@@ -183,52 +189,20 @@ fn ScopeMap::declare_sinks(self: ScopeMap, reference~: TypedRef, flow~: Flow) ->
   }
 }
 
-fn and_conditions(outer: TypedExpr?, inner: TypedExpr) -> TypedExpr {
-  match outer {
-    None => inner
-    Some(cond) => simplify_and(cond, inner).0
-  }
-}
-
-// simplify some patterns of `and` expressions which cannot be satisfied simultaneously
-fn simplify_and(lhs: TypedExpr, rhs: TypedExpr) -> (TypedExpr, Bool) {
-  match (lhs, rhs) {
-    // and(x == a, x != b) ~> x == a (if a != b)
-    (PrimOp(op=Eq, args=[x1, a], ..), PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x2, b], ..)], ..)) if x1 == x2 && a != b => (lhs, true)
-    (PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x2, b], ..)], ..), PrimOp(op=Eq, args=[x1, a], ..)) if x1 == x2 && a != b => (rhs, true)
-    // and(and(x != b, rhs), x == a) ~> and(rhs, x == a) (if a != b)
-    (PrimOp(op=And, args=[PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x2, b], ..)], ..), rest], ..), PrimOp(op=Eq, args=[x1, a], ..)) if x1 == x2 && a != b => {
-      simplify_and(rest, rhs)
-    }
-    // recurse left
-    (PrimOp(op~, args~, ty~), _) => {
-      let simpl_args = args.map(arg => simplify_and(arg, rhs))
-      let changed = simpl_args.iter().any(res => res.1)
-
-      if changed {
-        (PrimOp(op~, args=simpl_args.map(res => res.0), ty~), true)
-      } else {
-        (PrimOp(op=And, args=[lhs, rhs], ty=Type::bool()), false)
-      }
-    }
-    _ => (PrimOp(op=And, args=[lhs, rhs], ty=Type::bool()), false)
-  }
-}
-
 fn ExpandWhensPass::expand_whens(
   when~: TypedWhen,
   parent_result~: Array[TypedStmt],
   module_scope~: ScopeMap,
-  outer_condition~: TypedExpr?
+  outer_condition~: ConditionStack,
 ) -> Unit raise {
   // Move non-connect statements to parent
-  let then_cond = and_conditions(outer_condition, when.cond)
+  let then_cond = outer_condition.anded_with(when.cond)
   let then_scope: ScopeMap = {}
   let then_stmts = ExpandWhensPass::process_block(
     block=when.body,
     module_scope~,
     scope=then_scope,
-    condition=Some(then_cond),
+    condition=then_cond,
   )
   
   // Move non-connect statements to parent
@@ -242,12 +216,12 @@ fn ExpandWhensPass::expand_whens(
   let else_scope: ScopeMap = {}
 
   if when.otherwise is Some(else_body) {
-    let else_cond = and_conditions(outer_condition, PrimOp(op=Not, args=[when.cond], ty=Type::bool()))
+    let else_cond = outer_condition.anded_with(PrimOp(op=Not, args=[when.cond], ty=Type::bool()))
     let else_stmts = ExpandWhensPass::process_block(
       block=else_body,
       module_scope~,
       scope=else_scope,
-      condition=Some(else_cond),
+      condition=else_cond,
     )
 
     // Move non-connect statements to parent
@@ -262,7 +236,7 @@ fn ExpandWhensPass::expand_whens(
     outer_scope=module_scope,
     then_scope~,
     else_scope~,
-    condition=and_conditions(outer_condition, when.cond),
+    condition=then_cond,
   )
 }
 
@@ -270,7 +244,7 @@ fn ExpandWhensPass::merge_scopes(
   outer_scope~: ScopeMap,
   then_scope~: ScopeMap,
   else_scope~: ScopeMap,
-  condition~: TypedExpr,
+  condition~: ConditionStack,
 ) -> Unit {
   let all_refs = Set::from_iter(then_scope.keys() + else_scope.keys())
 
@@ -282,15 +256,15 @@ fn ExpandWhensPass::merge_scopes(
     match (then_conn, else_conn, outer_conn) {
       (Some(then_conn), Some(else_conn), _) => {
         // connected in both branches
-        outer_scope[reference] = Some(Mux(cond=condition, tval=then_conn, fval=else_conn, ty=then_conn.ty()))
+        outer_scope[reference] = Some(Mux(cond=condition.as_expr(), tval=then_conn, fval=else_conn, ty=then_conn.ty()))
       }
       (Some(then_conn), None, Some(outer_conn)) => {
         // connected in then branch and previously
-        outer_scope[reference] = Some(Mux(cond=condition, tval=then_conn, fval=outer_conn, ty=then_conn.ty()))
+        outer_scope[reference] = Some(Mux(cond=condition.as_expr(), tval=then_conn, fval=outer_conn, ty=then_conn.ty()))
       }
       (None, Some(else_conn), Some(outer_conn)) => {
         // connected in else branch and previously
-        let cond = TypedExpr::PrimOp(op=Not, args=[condition], ty=Type::bool())
+        let cond = condition.negated().as_expr()
         outer_scope[reference] = Some(Mux(cond~, tval=else_conn, fval=outer_conn, ty=else_conn.ty()))
       }
       (Some(then_conn), None, None) => {
@@ -304,4 +278,76 @@ fn ExpandWhensPass::merge_scopes(
       (None, None, _) => ()
     }
   }
+}
+
+priv struct ConditionStack {
+  stack: Array[TypedExpr]
+}
+
+fn ConditionStack::new() -> Self {
+  { stack: [] }
+}
+
+
+priv enum MutualExclusivityResult {
+  KeepBoth
+  KeepNone
+  KeepLeft
+  KeepRight
+}
+
+fn check_mutual_exclusivity(a: TypedExpr, b: TypedExpr) -> MutualExclusivityResult {
+  match (a, b) {
+    (x1, PrimOp(op=Not, args=[x2], ..)) | (PrimOp(op=Not, args=[x1], ..), x2) if x1 == x2 => KeepNone
+    (PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x1, a], ..), ..], ..), PrimOp(op=Eq, args=[x2, b], ..)) if x1 == x2 && a != b => KeepRight
+    (PrimOp(op=Eq, args=[x2, b], ..), PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x1, a], ..), ..], ..)) if x1 == x2 && a != b => KeepLeft
+    _ => KeepBoth
+  }
+}
+
+fn ConditionStack::anded_with(self: Self, new_cond: TypedExpr) -> Self {
+  // remove mutually exclusive conditions
+  let new_stack = Array::new(capacity=self.stack.length() + 1)
+  let mut should_add = true
+
+  for cond in self.stack {
+    match check_mutual_exclusivity(cond, new_cond) {
+      KeepBoth | KeepLeft => new_stack.push(cond)
+      KeepNone => should_add = false
+      KeepRight => ()
+    }
+  }
+
+  if should_add {
+    new_stack.push(new_cond)
+  }
+
+  { stack: new_stack }
+}
+
+fn ConditionStack::as_expr(self: Self) -> TypedExpr {
+  if self.stack.length() == 0 {
+    return Literal(Literal::uint(1), ty=Type::bool())
+  }
+
+  let mut expr = self.stack[0]
+
+  for i in 1 ..<self.stack.length() {
+    expr = PrimOp(op=And, args=[expr, self.stack[i]], ty=Type::bool())
+  }
+
+  expr
+}
+
+fn ConditionStack::negated(self: Self) -> Self {
+  if self.stack.length() == 0 {
+    return self
+  }
+
+  let negated = self.stack.map(cond => match cond {
+    PrimOp(op=Not, args=[inner], ..) => inner
+    _ => PrimOp(op=Not, args=[cond], ty=Type::bool())
+  })
+
+  { stack: negated }
 }

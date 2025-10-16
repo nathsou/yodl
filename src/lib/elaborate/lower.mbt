@@ -198,7 +198,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
   }
 }
 
-fn default_value(ty: @firrtl.Type, span~: @parse.Span) -> Value raise {
+fn default_value(ty: @firrtl.Type, span~: @parse.Span) -> Value {
   match ty {
     Const(sub_ty) => default_value(sub_ty, span~)
     Clock | Reset | AsyncReset => Value::Expr(expr=mk_lit(UInt(width=1, radix=Some(2), value=0)), ty=UInt(1), span~)
@@ -228,14 +228,13 @@ fn default_value(ty: @firrtl.Type, span~: @parse.Span) -> Value raise {
 
       Struct(fields=values, ty~, span~)
     }
-    UIntInferred | SIntInferred => raise ElaborationError::Unsupported(message="Cannot get init value of inferred integer type", span~)
   }
 }
 
 fn _default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
   match ty {
     Const(ty) => _default_mask(ty, span~)
-    Clock | Reset | AsyncReset | UInt(_) | SInt(_) | UIntInferred | SIntInferred => {
+    Clock | Reset | AsyncReset | UInt(_) | SInt(_) => {
       Value::Expr(expr=mk_lit(UInt(width=1, radix=Some(2), value=1)), ty=UInt(1), span~)
     }
     Vec(elem_ty, len) => {
@@ -665,7 +664,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
 
       fn flatten(value: Value) -> Unit raise {
         match value.ty() {
-          UInt(_) | SInt(_) | UIntInferred | SIntInferred => {
+          UInt(_) | SInt(_) => {
             refs.push(value.as_expr(self, scope~, binding=None))
           }
           Vec(elem_ty, len) => {
@@ -1241,10 +1240,10 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
           let flattened = flatten_int(arg.as_ref(self, scope~), arg.ty(), span~)
           Expr(expr=mk_prim(AsSInt, [flattened]), ty=fir_ty, span~)
         }
-        ("uint", UInt(_) | UIntInferred | AsyncReset | Reset) | ("sint", SInt(_) | SIntInferred) => arg
-        ("uint", SInt(_) | SIntInferred) => Expr(expr=mk_prim(AsUInt, [arg.as_expr(self, scope~)]), ty=fir_ty, span~)
+        ("uint", UInt(_) | AsyncReset | Reset) | ("sint", SInt(_)) => arg
+        ("uint", SInt(_)) => Expr(expr=mk_prim(AsUInt, [arg.as_expr(self, scope~)]), ty=fir_ty, span~)
         ("uint", Clock) => Expr(expr=mk_prim(AsUInt, [arg.as_expr(self, scope~)]), ty=fir_ty, span~)
-        ("sint", UInt(_) | UIntInferred) => Expr(expr=mk_prim(AsSInt, [arg.as_expr(self, scope~)]), ty=fir_ty, span~)
+        ("sint", UInt(_)) => Expr(expr=mk_prim(AsSInt, [arg.as_expr(self, scope~)]), ty=fir_ty, span~)
         _ => raise ElaborationError::Unsupported(message="Cannot convert type '\{arg.ty()}' to UInt or SInt with '\{name}'", span~)
       }
     }
