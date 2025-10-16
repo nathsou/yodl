@@ -33,7 +33,7 @@ fn main {
   
   match @sys.get_cli_args() {
     [_, path] => {
-      match (try? @driver.run(path~, commands=[@driver.WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")))], fs~)) {
+      match (try? @driver.run(path~, commands=[@driver.WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")), passes=[])], fs~)) {
         Ok(_) => ()
         Err(Failure(error)) => {
           println(error)
@@ -67,6 +67,7 @@ fn main {
       println("  write_typed [path]      - Write the typed code.")
       println("  write_simplified [path] - Write the simplified code.")
       println("  write_firrtl [path]     - Write the FIRRTL output (alias: write_fir).")
+      println("  write_low_firrtl [path] - Write the low FIRRTL output (alias: write_lofir).")
       println("\nExample: yodl my_design.yodl \"write_firrtl my_design.fir; write_typed my_design.typed.txt\"")
     }
   }

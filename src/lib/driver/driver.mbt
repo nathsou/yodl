@@ -157,7 +157,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 
   for cmd in commands {
-    if cmd is WriteFIRRTL(path~) {
+    if cmd is WriteFIRRTL(path~, passes~) {
       let circuit: @firrtl.UntypedCircuit = {
         version: @firrtl.min_version(),
         id: Ident(firrtl.circuit_name),
@@ -169,11 +169,6 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
         Err(err) => raise Failure(err.to_string())
         Ok(typed_circuit) => typed_circuit
       }
-
-      let passes: Array[&@firrtl.FIRRTLPass] = [
-        @firrtl.ExpandConnectsPass::new(),
-        @firrtl.ExpandWhensPass::new(),
-      ]
 
       let circuit = {
         let mut circ = circuit
