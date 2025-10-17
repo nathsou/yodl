@@ -120,9 +120,14 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
             (Vector(ty=_, len=Dynamic(Identifier(_))), Vector(ty=_, len=Fixed(_))) => {
                 eqs.push((ty2, ty1))
             }
-            (UInt(Fixed(width)) | SInt(Fixed(width)), Nat(min_width~)) | (Nat(min_width~), UInt(Fixed(width)) | SInt(Fixed(width))) if width >= min_width => ()
+            (UInt(Fixed(width)) | SInt(Fixed(width)), Nat(min_width)) | (Nat(min_width), UInt(Fixed(width)) | SInt(Fixed(width))) => {
+                min_width.update(width)
+            }
             (UInt(_) | SInt(_), Nat(_)) | (Nat(_), UInt(_) | SInt(_)) => ()
-            (Nat(_), Nat(_)) => ()
+            (Nat(mw1), Nat(mw2)) if mw1.min_width != mw2.min_width => {
+                mw1.update(mw2.min_width)
+                mw2.update(mw1.min_width)
+            }
             (Instance(..), Instance(..)) if identical_instances => ()
             (String(len~), ty2) | (ty2, String(len~)) => {
                 eqs.push((Vector(ty=@parse.Type::uint(@parse.BITS_PER_CHAR), len=Fixed(len)), ty2))
@@ -162,7 +167,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
     match ty {
         UInt(width) => UInt(width)
         SInt(width) => SInt(width)
-        Nat(min_width~) => Nat(min_width~)
+        Nat(mw) => Nat(mw)
         Clock => Clock
         Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty(inner_ty, span~), len~)
         Instance(_) => ty
@@ -203,7 +208,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Natural(value~, width~, ..) => match width {
             Some(width) => @parse.Type::uint(width)
-            None => Nat(min_width=@utils.significant_bits(value, is_signed=false))
+            None => Nat({min_width: @utils.significant_bits(value, is_signed=false)})
         }
         String(value=str,  span~, ..) => {
             for char in str {
@@ -246,12 +251,12 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
 
             let lhs_ty = match lhs_ty {
-                Nat(min_width~) => @parse.Type::UInt(Fixed(min_width))
+                Nat({min_width}) => @parse.Type::UInt(Fixed(min_width))
                 _ => lhs_ty
             }
 
             let rhs_ty = match rhs_ty {
-                Nat(min_width~) => @parse.Type::UInt(Fixed(min_width))
+                Nat({min_width}) => @parse.Type::UInt(Fixed(min_width))
                 _ => rhs_ty
             }
 
@@ -604,7 +609,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         }
         Replicate(expr~, count~, concat~, span~, ..) => {
             let count_ty = self.check_expr(count, env)
-            let _ = unify(count_ty, @parse.Nat(min_width=0), span~)
+            let _ = unify(count_ty, @parse.Nat({min_width: 0}), span~)
             let expr_ty = self.check_expr(expr, env)
             let count = eval_const_expr(count)
             
@@ -639,7 +644,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         FunCall(name="pad", args=[arg, width], span~, ..) => {
             let arg_ty = self.check_expr(arg, env)
             let width_ty = self.check_expr(width, env)
-            let _ = unify(width_ty, @parse.Nat(min_width=0), span=width.span())
+            let _ = unify(width_ty, @parse.Nat({min_width: 0}), span=width.span())
             let width = eval_const_expr(width)
             let required_width = arg_ty.width(arg.span())
 

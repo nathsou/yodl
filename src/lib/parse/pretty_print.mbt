@@ -578,7 +578,7 @@ impl Show for IntParam with output(param, logger) {
 
 pub impl Show for Type with output(ty, logger) {
   match ty {
-    Nat(min_width~) => {
+    Nat({min_width}) => {
       logger.write_string("nat<\{min_width}>")
     }
     UInt(width) => {

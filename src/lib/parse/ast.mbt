@@ -43,7 +43,7 @@ pub(all) enum Decl {
 pub const BITS_PER_CHAR = 8
 
 pub(all) enum Type {
-  Nat(min_width~: Int)
+  Nat(MinWidth)
   UInt(IntParam)
   SInt(IntParam)
   Clock
@@ -53,6 +53,16 @@ pub(all) enum Type {
   Struct(Map[String, Type])
   String(len~: Int)
 } derive(Eq)
+
+pub(all) struct MinWidth {
+  mut min_width: Int
+} derive(Eq)
+
+pub fn MinWidth::update(self: Self, width: Int) -> Unit {
+  if width > self.min_width {
+    self.min_width = width
+  }
+}
 
 pub fn Type::bool() -> Type {
   UInt(Fixed(1))
@@ -1011,7 +1021,7 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
 
 pub fn width(self: Type, span: Span) -> Int raise AstError {
   match self {
-    Nat(min_width~) => min_width
+    Nat({min_width}) => min_width
     UInt(Fixed(width)) => width
     SInt(Fixed(width)) => width
     Clock => 1
@@ -1172,7 +1182,7 @@ pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> E
 pub fn Expr::bignat(n: BigInt, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
   let ty = match width {
     Some(width) => if n > 0 { Type::uint(width) } else { Type::uint(width) }
-    None => Nat(min_width=@utils.significant_bits(n))
+    None => Nat({min_width: @utils.significant_bits(n)})
   }
 
   Natural(value=n, width~, base~, span~, ty={ val: Some(ty) })
@@ -1223,7 +1233,7 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
 
 pub fn Type::clone(self: Type) -> Type {
   match self {
-    Nat(min_width~) => Nat(min_width~)
+    Nat({min_width}) => Nat({min_width,})
     UInt(width) => UInt(width)
     SInt(width) => SInt(width)
     Vector(ty~, len~) => Vector(ty=ty.clone(), len~)

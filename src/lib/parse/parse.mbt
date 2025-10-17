@@ -733,7 +733,7 @@ fn parse_type(self: Parser) -> Type raise {
         self.expect(Rchevron, start_idx)
         UInt(width)
       } else {
-        Nat(min_width=0)
+        Nat({min_width: 0})
       }
     }
     SInt => {
