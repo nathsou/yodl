@@ -87,8 +87,7 @@ fn ExpandConnectsPass::dynamic_indexing_to_static(
     }
 
     let default = cases.unsafe_pop().1
-
-    let when_tree = Expr::build_when_tree(cases, default)
+    let when_tree = Expr::build_when_tree(cases, default=Some(default))
     self.next_ref_id += 1
     stmts.push_iter(when_tree.iter())
 

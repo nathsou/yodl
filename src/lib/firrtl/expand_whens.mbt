@@ -1,16 +1,18 @@
 
-pub struct ExpandWhensPass(Unit)
-
-pub fn ExpandWhensPass::new() -> Self {
-  ExpandWhensPass(())
+struct ExpandWhensPass {
+  scopes: ScopeStack
 }
 
-pub impl FIRRTLPass for ExpandWhensPass with run(_, circuit) -> TypedCircuit raise {
+pub fn ExpandWhensPass::new() -> Self {
+  { scopes: ScopeStack::new() }
+}
+
+pub impl FIRRTLPass for ExpandWhensPass with run(self, circuit) -> TypedCircuit raise {
   {
     ..circuit,
     decls: circuit.decls.map(decl => {
       match decl {
-        Module(mod) => Module(ExpandWhensPass::rewrite_module(mod))
+        Module(mod) => Module(self.rewrite_module(mod))
         ExtModule(extmod) => ExtModule(extmod)
       }
     })
@@ -45,11 +47,9 @@ impl[T] Eq for Reference[T] with equal(self, other) {
   }
 }
 
-typealias Map[TypedRef, TypedExpr?] as ScopeMap
-
-fn ExpandWhensPass::rewrite_module(mod: TypedModule) -> TypedModule raise {
+fn ExpandWhensPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule raise {
   // Track last connection to each destination
-  let module_scope: ScopeMap = {}
+  let module_scope: DriverMap = {}
 
   for port in mod.ports {
     if port.dir is (Output | InOut) {
@@ -57,14 +57,10 @@ fn ExpandWhensPass::rewrite_module(mod: TypedModule) -> TypedModule raise {
     }
   }
 
-  // Process module body
-  let body_stmts = ExpandWhensPass::process_block(
-    block=mod.body,
-    module_scope~,
-    scope=module_scope,
-    condition=ConditionStack::new(),
-  )
+  self.scopes.push(module_scope)
 
+  // Process module body
+  let body_stmts = self.process_block(block=mod.body, condition=ConditionStack::new())
   let not_fully_init: Array[TypedRef] = []
 
   // Check for incomplete initialisation and add final connections
@@ -79,16 +75,14 @@ fn ExpandWhensPass::rewrite_module(mod: TypedModule) -> TypedModule raise {
     raise Failure("The following wires are not fully initialised: \{not_fully_init}")
   }
 
+  self.scopes.pop()
+
   { ..mod, body: body_stmts }
 }
 
-fn ExpandWhensPass::process_block(
-  block~: Array[TypedStmt],
-  module_scope~: ScopeMap,
-  scope~: ScopeMap,
-  condition~: ConditionStack,
-) -> Array[TypedStmt] raise {
+fn ExpandWhensPass::process_block(self: Self, block~: Array[TypedStmt], condition~: ConditionStack) -> Array[TypedStmt] raise {
   let stmts: Array[TypedStmt] = []
+  let scope = self.scopes.unsafe_top()
 
   for stmt in block {
     match stmt {
@@ -142,10 +136,9 @@ fn ExpandWhensPass::process_block(
       }
       // Expand when statements
       When(when) => {
-        ExpandWhensPass::expand_whens(
+        self.expand_whens(
           when~,
           parent_result=stmts,
-          module_scope~,
           outer_condition=condition,
         )
       }
@@ -162,7 +155,7 @@ fn ExpandWhensPass::process_block(
   stmts
 }
 
-fn ScopeMap::declare_sinks(self: ScopeMap, reference~: TypedRef, flow~: Flow) -> Unit {
+fn DriverMap::declare_sinks(self: DriverMap, reference~: TypedRef, flow~: Flow) -> Unit {
   match reference.ty() {
     Bundle(fields) => {
       for field in fields {
@@ -190,21 +183,18 @@ fn ScopeMap::declare_sinks(self: ScopeMap, reference~: TypedRef, flow~: Flow) ->
 }
 
 fn ExpandWhensPass::expand_whens(
+  self: Self,
   when~: TypedWhen,
   parent_result~: Array[TypedStmt],
-  module_scope~: ScopeMap,
   outer_condition~: ConditionStack,
 ) -> Unit raise {
   // Move non-connect statements to parent
   let then_cond = outer_condition.anded_with(when.cond)
-  let then_scope: ScopeMap = {}
-  let then_stmts = ExpandWhensPass::process_block(
-    block=when.body,
-    module_scope~,
-    scope=then_scope,
-    condition=then_cond,
-  )
-  
+  let then_scope: DriverMap = {}
+  self.scopes.push(then_scope)
+  let then_stmts = self.process_block(block=when.body, condition=then_cond)
+  self.scopes.pop()
+
   // Move non-connect statements to parent
   for stmt in then_stmts {
     if !(stmt is Connect(_)) {
@@ -213,16 +203,13 @@ fn ExpandWhensPass::expand_whens(
   }
 
   // Process else block if present
-  let else_scope: ScopeMap = {}
+  let else_scope: DriverMap = {}
 
   if when.otherwise is Some(else_body) {
     let else_cond = outer_condition.anded_with(PrimOp(op=Not, args=[when.cond], ty=Type::bool()))
-    let else_stmts = ExpandWhensPass::process_block(
-      block=else_body,
-      module_scope~,
-      scope=else_scope,
-      condition=else_cond,
-    )
+    self.scopes.push(else_scope)
+    let else_stmts = self.process_block(block=else_body, condition=else_cond)
+    self.scopes.pop()
 
     // Move non-connect statements to parent
     for stmt in else_stmts {
@@ -232,8 +219,7 @@ fn ExpandWhensPass::expand_whens(
     }
   }
 
-  ExpandWhensPass::merge_scopes(
-    outer_scope=module_scope,
+  self.merge_scopes(
     then_scope~,
     else_scope~,
     condition=then_cond,
@@ -241,43 +227,86 @@ fn ExpandWhensPass::expand_whens(
 }
 
 fn ExpandWhensPass::merge_scopes(
-  outer_scope~: ScopeMap,
-  then_scope~: ScopeMap,
-  else_scope~: ScopeMap,
+  self: Self,
+  then_scope~: DriverMap,
+  else_scope~: DriverMap,
   condition~: ConditionStack,
 ) -> Unit {
   let all_refs = Set::from_iter(then_scope.keys() + else_scope.keys())
+  let outer_scope = self.scopes.unsafe_top()
 
   for reference in all_refs {
     let then_conn = then_scope.get(reference).flatten()
     let else_conn = else_scope.get(reference).flatten()
-    let outer_conn = outer_scope.get(reference).flatten()
+    let outer_conn = self.scopes.lookup(reference)
 
     match (then_conn, else_conn, outer_conn) {
       (Some(then_conn), Some(else_conn), _) => {
         // connected in both branches
         outer_scope[reference] = Some(Mux(cond=condition.as_expr(), tval=then_conn, fval=else_conn, ty=then_conn.ty()))
       }
-      (Some(then_conn), None, Some(outer_conn)) => {
+      (Some(then_conn), None, Found(Some(outer_conn))) => {
         // connected in then branch and previously
         outer_scope[reference] = Some(Mux(cond=condition.as_expr(), tval=then_conn, fval=outer_conn, ty=then_conn.ty()))
       }
-      (None, Some(else_conn), Some(outer_conn)) => {
+      (None, Some(else_conn), Found(Some(outer_conn))) => {
         // connected in else branch and previously
-        let cond = condition.negated().as_expr()
-        outer_scope[reference] = Some(Mux(cond~, tval=else_conn, fval=outer_conn, ty=else_conn.ty()))
+        outer_scope[reference] = Some(Mux(cond=condition.as_expr(), tval=outer_conn, fval=else_conn, ty=else_conn.ty()))
       }
-      (Some(then_conn), None, None) => {
-        // declared and connected in then branch only
-        outer_scope[reference] = Some(then_conn)
+      (Some(conn), None, NotFound) | (None, Some(conn), NotFound) => {
+        // declared and connected in one branch only
+        // this reference is only accessible within the branch
+        // so we can safely convert it to an unconditional connection
+        outer_scope[reference] = Some(conn)
       }
-      (None, Some(else_conn), None) => {
-        // declared and connected in else branch only
-        outer_scope[reference] = Some(else_conn)
-      }
-      (None, None, _) => ()
+      (None, None, _) | (_, _, Found(None)) => ()
     }
   }
+}
+
+// internal data structures
+
+typealias Map[TypedRef, TypedExpr?] as DriverMap
+
+priv struct ScopeStack {
+  scopes: Array[DriverMap]
+}
+
+fn ScopeStack::new() -> Self {
+  { scopes: [] }
+}
+
+fn ScopeStack::push(self: Self, scope: DriverMap) -> Unit {
+  self.scopes.push(scope)
+}
+
+fn ScopeStack::pop(self: Self) -> Unit {
+  let _ = self.scopes.pop()
+}
+
+fn ScopeStack::unsafe_top(self: Self) -> DriverMap {
+  guard self.scopes.length() > 0 else {
+    @utils.fail("ScopeStack is empty")
+  }
+
+  self.scopes[self.scopes.length() - 1]
+}
+
+priv enum ScopeStackLookupResult {
+  Found(TypedExpr?)
+  NotFound
+}
+
+fn ScopeStack::lookup(self: Self, reference: TypedRef) -> ScopeStackLookupResult {
+  for i = self.scopes.length() - 1; i >= 0; i = i - 1 {
+    let scope = self.scopes[i]
+
+    if scope.get(reference) is Some(expr_opt) { 
+      return Found(expr_opt)
+    }
+  }
+
+  NotFound
 }
 
 priv struct ConditionStack {
@@ -337,17 +366,4 @@ fn ConditionStack::as_expr(self: Self) -> TypedExpr {
   }
 
   expr
-}
-
-fn ConditionStack::negated(self: Self) -> Self {
-  if self.stack.length() == 0 {
-    return self
-  }
-
-  let negated = self.stack.map(cond => match cond {
-    PrimOp(op=Not, args=[inner], ..) => inner
-    _ => PrimOp(op=Not, args=[cond], ty=Type::bool())
-  })
-
-  { stack: negated }
 }

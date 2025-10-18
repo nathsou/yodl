@@ -169,18 +169,21 @@ pub fn[T] Expr::build_mux_tree(cases: Array[(Expr[T], Expr[T])], default: Expr[T
   aux(@list.List::from_array({ cases.rev_inplace(); cases }), default)
 }
 
-pub fn[T] Expr::build_when_tree(cases: Array[(Expr[T], Array[Stmt[T]])], default: Array[Stmt[T]]) -> Array[Stmt[T]] {
-  fn aux(cases: @list.List[(Expr[T], Array[Stmt[T]])], acc: Array[Stmt[T]]) -> Array[Stmt[T]] {
+pub fn[T] Expr::build_when_tree(cases: Array[(Expr[T], Array[Stmt[T]])], default~: Array[Stmt[T]]? = None) -> Array[Stmt[T]] {
+  fn aux(cases: @list.List[(Expr[T], Array[Stmt[T]])], acc: Array[Stmt[T]]?) -> Array[Stmt[T]] {
     match cases {
-      Empty => acc
+      Empty => match acc {
+        Some(stmts) => stmts
+        None => [Skip]
+      }
       More((cond, body), tail~) => {
         let when: When[T] = {
           cond,
           body,
-          otherwise: Some(acc),
+          otherwise: acc,
         }
 
-        aux(tail, [When(when)])
+        aux(tail, Some([When(when)]))
       }
     }
   }
