@@ -23,12 +23,12 @@ impl FIRRTLRewriter for ExpandConnectsPass with rewrite_connect_stmt(self, lhs, 
         let id = Id::from("dynassign\{self.next_ref_id}$")
         self.next_ref_id += 1
         stmts.push(Node(id~, expr=rhs))
-        Id(id, ty=rhs.ty())
+        Id(id, ty=rhs.ty().no_flips())
       }
     }
 
     let _ = self.dynamic_indexing_to_static(
-      lhs=indexing_lhs,
+      lhs=self.rewrite_ref(indexing_lhs, stmts),
       index~,
       stmts~,
       target~,
@@ -48,8 +48,23 @@ impl FIRRTLRewriter for ExpandConnectsPass with rewrite_ref(self, reference, stm
     DynamicIndexing(lhs~, index~, ty~) => {
       let target = Id::from("dynidx\{self.next_ref_id}$")
       self.next_ref_id += 1
-      stmts.push(Wire(id=target, ty~))
-      self.dynamic_indexing_to_static(lhs~, index~, stmts~, target=Id(target, ty~), flip=false)
+      let no_flips_ty = ty.no_flips()
+      stmts.push(Wire(id=target, ty=no_flips_ty))
+      self.dynamic_indexing_to_static(lhs=self.rewrite_ref(lhs, stmts), index~, stmts~, target=Id(target, ty=no_flips_ty), flip=false)
+    }
+    StaticIndexing(lhs~, index~, ty~) => {
+      StaticIndexing(
+        lhs=self.rewrite_ref(lhs, stmts),
+        index~,
+        ty~,
+      )
+    }
+    FieldAccess(lhs~, field~, ty~) => {
+      FieldAccess(
+        lhs=self.rewrite_ref(lhs, stmts),
+        field~,
+        ty~,
+      )
     }
     _ => reference
   }
@@ -110,10 +125,10 @@ fn ExpandConnectsPass::expr_as_ref(self: Self, expr~: TypedExpr, body~: Array[Ty
 }
 
 // FIRRTL spec 5.0 - Section 8.3.1 - The Connection Algorithm
-fn ExpandConnectsPass::connect(self: Self, lhs~: TypedRef, rhs~: TypedExpr, body~: Array[TypedStmt]) -> Unit {
-  match rhs.ty().without_const() {
+fn ExpandConnectsPass::connect(self: Self, lhs~: TypedRef, rhs~: TypedExpr, body~: Array[TypedStmt]) -> Unit raise {
+  match lhs.ty().without_const() {
     Const(_) | UInt(_) | SInt(_) | Clock | Reset | AsyncReset => {
-      body.push(Connect(lhs, rhs))
+      body.push(Connect(self.rewrite_ref(lhs, body), self.rewrite_expr(rhs, stmts=body)))
     }
     Vec(elem_ty, size) => {
       let rhs_ref = self.expr_as_ref(expr=rhs, body~)

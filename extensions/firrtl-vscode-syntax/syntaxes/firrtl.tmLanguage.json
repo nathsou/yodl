@@ -156,7 +156,7 @@
       "patterns": [
         {
           "name": "keyword.other.firrtl",
-          "match": "\\b(?:attach|circuit|const|connect|cover|define|else|enablelayer|enum|flip|formal|invalidate|inst|knownlayer|layer|match|mem|mport|node|of|output|parameter|printf|private|probe|public|read|reg|regreset|release|skip|smem|stop|type|when|wire|with|propassign|assume|assert|force|rwprobe|enable|input)\\b"
+          "match": "\\b(?:attach|circuit|const|connect|cover|define|else|enablelayer|enum|flip|formal|invalidate|inst|knownlayer|layer|match|mem|mport|node|of|output|parameter|printf|private|probe|public|read|reg|regreset|release|skip|smem|stop|type|when|wire|with|propassign|assume|assert|force|rwprobe|input)\\b"
         }
       ]
     },

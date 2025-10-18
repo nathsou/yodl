@@ -433,6 +433,20 @@ pub fn Type::without_const(self: Type) -> Type {
   ty
 }
 
+pub fn Type::no_flips(self: Type) -> Type {
+  match self {
+    Bundle(fields) => Bundle(fields.map(field => {
+        id: field.id,
+        flip: false,
+        ty: field.ty.no_flips(),
+      }
+    ))
+    Vec(elem_ty, size) => Vec(elem_ty.no_flips(), size)
+    Const(inner) => Const(inner.no_flips())
+    other => other
+  }
+}
+
 pub(all) struct BundleField {
   id: Id
   flip: Bool
