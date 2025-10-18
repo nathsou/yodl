@@ -1,8 +1,14 @@
-typealias @utils.Scope as Scope
+using @utils { type Scope, min, max, pow2, zip, zip2, is_ascii, significant_bits, unreachable }
+using @parse {
+    type Type, type ModuleSignature, trait Spanned,
+    type Expr, type Decl, type Stmt, type Attribute, type AttributeValue,
+    type AccessedPorts, type ConstDecl, type ResolvedParam,
+    BITS_PER_CHAR, keep_and_check_resolved,
+}
 
 struct TypeChecker {
-    modules: Map[@parse.Path, @parse.ModuleSignature]
-    top_env: Scope[@parse.Path, @parse.Type]
+    modules: Map[Path, ModuleSignature]
+    top_env: Scope[Path, Type]
 }
 
 pub fn TypeChecker::new() -> TypeChecker {
@@ -13,18 +19,18 @@ pub fn TypeChecker::new() -> TypeChecker {
 }
 
 priv suberror TypeCheckerError {
-    TypeCheckerError(message~: String, span~: @parse.Span)
-    IncompatibleTypes(ty1~: @parse.Type, ty2~: @parse.Type, span~: @parse.Span)
-    InvalidAssignmentTarget(span~: @parse.Span)
-    IndexedExpressionMustBeVector(span~: @parse.Span)
-    UnknownModule(path~: @parse.Path, span~: @parse.Span)
-    UnknownModulePort(module_path~: @parse.Path, port_name~: String, span~: @parse.Span)
-    InvalidSlicingRange(reason~: String, span~: @parse.Span)
-    ExpectedConstantExpr(span~: @parse.Span)
-    InvalidAttributeArgs(name~: String, args~: Array[@parse.AttributeValue], expected~: Array[AttributeValueType], span~: @parse.Span)
+    TypeCheckerError(message~: String, span~: Span)
+    IncompatibleTypes(ty1~: Type, ty2~: Type, span~: Span)
+    InvalidAssignmentTarget(span~: Span)
+    IndexedExpressionMustBeVector(span~: Span)
+    UnknownModule(path~: Path, span~: Span)
+    UnknownModulePort(module_path~: Path, port_name~: String, span~: Span)
+    InvalidSlicingRange(reason~: String, span~: Span)
+    ExpectedConstantExpr(span~: Span)
+    InvalidAttributeArgs(name~: String, args~: Array[AttributeValue], expected~: Array[AttributeValueType], span~: Span)
 }
 
-impl @parse.Spanned for TypeCheckerError with span(self) -> @parse.Span {
+impl Spanned for TypeCheckerError with span(self) -> Span {
     match self {
         TypeCheckerError(span~, ..) => span
         IncompatibleTypes(span~, ..) => span
@@ -72,16 +78,16 @@ impl Show for TypeCheckerError with output(self, logger) {
     logger.write_string(self.show_context(use_ansi_colors=false))
 }
 
-fn type_error(message: String, span: @parse.Span) -> TypeCheckerError {
+fn type_error(message: String, span: Span) -> TypeCheckerError {
     TypeCheckerError(message~, span~)
 }
 
 priv enum UnificationParam {
     Int(Int)
-    Type(@parse.Type)
+    Type(Type)
 }
 
-fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
+fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
     while eqs.pop() is Some((ty1, ty2)) {
         let identical_instances = if (ty1, ty2) is (
             Instance(sig=sig1, params=params1, accessed_ports=ports1),
@@ -130,7 +136,7 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
             }
             (Instance(..), Instance(..)) if identical_instances => ()
             (String(len~), ty2) | (ty2, String(len~)) => {
-                eqs.push((Vector(ty=@parse.Type::uint(@parse.BITS_PER_CHAR), len=Fixed(len)), ty2))
+                eqs.push((Vector(ty=Type::uint(BITS_PER_CHAR), len=Fixed(len)), ty2))
             }
             _ => {
                 raise IncompatibleTypes(ty1~, ty2~, span~)
@@ -141,11 +147,11 @@ fn unify_aux(eqs: Array[(@parse.Type, @parse.Type)], span~: @parse.Span, subst~:
     subst
 }
 
-fn unify(ty1: @parse.Type, ty2: @parse.Type, span~: @parse.Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
+fn unify(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
     unify_aux([(ty1, ty2)], span~, subst~)
 }
 
-fn declare_name(env~: Scope[@parse.Path, @parse.Type], path~: @parse.Path, ty~: @parse.Type, span~: @parse.Span) -> Unit raise TypeCheckerError {
+fn declare_name(env~: Scope[Path, Type], path~: Path, ty~: Type, span~: Span) -> Unit raise TypeCheckerError {
     match (try? env.declare(path, ty)) {
         Ok(_) => ()
         Err(MemberAlreadyDeclared(_)) => {
@@ -156,14 +162,14 @@ fn declare_name(env~: Scope[@parse.Path, @parse.Type], path~: @parse.Path, ty~: 
 
 // expr should already have been partially evaluated using `Expr::partial_eval`
 // during the monomorphization pass
-fn eval_const_expr(expr: @parse.Expr) -> Int raise {
+fn eval_const_expr(expr: Expr) -> Int raise {
     match expr {
         Natural(value~, ..) => value.to_int()
         _ => raise ExpectedConstantExpr(span=expr.span())
     }
 }
 
-fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.Type raise {
+fn resolve_ty(self: TypeChecker, ty: Type, span~: Span) -> Type raise {
     match ty {
         UInt(width) => UInt(width)
         SInt(width) => SInt(width)
@@ -178,7 +184,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
                         raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span)
                     }
 
-                    Instance(sig~, params=Map::from_iter(@utils.zip(sig.params.map(p => p.name), params)), accessed_ports=@parse.AccessedPorts::new())
+                    Instance(sig~, params=Map::from_iter(zip(sig.params.map(p => p.name), params)), accessed_ports=AccessedPorts::new())
                 }
                 None => raise UnknownModule(path~, span~)
             }
@@ -196,7 +202,7 @@ fn resolve_ty(self: TypeChecker, ty: @parse.Type, span~: @parse.Span) -> @parse.
     }
 }
 
-fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @parse.Type], expected_ty~: @parse.Type? = None) -> @parse.Type raise {
+fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty~: Type? = None) -> Type raise {
     let ty = match expr {
         Identifier(path~, span~, ..) => {
             match env.resolve(path) {
@@ -207,17 +213,17 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
         }
         Natural(value~, width~, ..) => match width {
-            Some(width) => @parse.Type::uint(width)
-            None => Nat({min_width: @utils.significant_bits(value, is_signed=false)})
+            Some(width) => Type::uint(width)
+            None => Nat({min_width: significant_bits(value, is_signed=false)})
         }
         String(value=str,  span~, ..) => {
             for char in str {
-                if !@utils.is_ascii(char) {
+                if !is_ascii(char) {
                     raise type_error("String contains non-ASCII character '\{char}'", span)
                 }
             }
 
-            @parse.Type::String(len=str.length())
+            Type::String(len=str.length())
         }
         Unary(op~, expr~, span~, ..) => {
             let ty = self.check_expr(expr, env, expected_ty~)
@@ -229,7 +235,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             match op {
                 Not => ty
                 Neg => SInt(Fixed(ty.width(span) + 1))
-                Andr | Orr | Xorr => @parse.Type::uint(1)
+                Andr | Orr | Xorr => Type::uint(1)
             }
         }
         Binary(op~, lhs~, rhs~, output_width~, span~, ..) => {
@@ -251,46 +257,46 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
 
             let lhs_ty = match lhs_ty {
-                Nat({min_width}) => @parse.Type::UInt(Fixed(min_width))
+                Nat({min_width}) => Type::UInt(Fixed(min_width))
                 _ => lhs_ty
             }
 
             let rhs_ty = match rhs_ty {
-                Nat({min_width}) => @parse.Type::UInt(Fixed(min_width))
+                Nat({min_width}) => Type::UInt(Fixed(min_width))
                 _ => rhs_ty
             }
 
             let out_ty = match (op, lhs_ty, rhs_ty) {
-                (Add | Sub, UInt(_), UInt(_)) => @parse.Type::uint(@utils.max(wa, wb) + 1)
-                (Add | Sub, SInt(_), SInt(_)) => @parse.Type::sint(@utils.max(wa, wb) + 1)
-                (Mul, UInt(_), UInt(_)) => @parse.Type::uint(wa + wb)
-                (Mul, SInt(_), SInt(_)) => @parse.Type::sint(wa + wb)
-                (Div, UInt(_), UInt(_)) => @parse.Type::uint(wa)
-                (Div, SInt(_), SInt(_)) => @parse.Type::sint(wa + 1)
-                (Mod, UInt(_), UInt(_)) => @parse.Type::uint(@utils.min(wa, wb))
-                (Mod, SInt(_), SInt(_)) => @parse.Type::sint(@utils.min(wa, wb))
-                (Equ | Neq | Gtr | Lss | Geq | Leq, UInt(_), UInt(_)) => @parse.Type::uint(1)
-                (Equ | Neq | Gtr | Lss | Geq | Leq, SInt(_), SInt(_)) => @parse.Type::uint(1)
+                (Add | Sub, UInt(_), UInt(_)) => Type::uint(max(wa, wb) + 1)
+                (Add | Sub, SInt(_), SInt(_)) => Type::sint(max(wa, wb) + 1)
+                (Mul, UInt(_), UInt(_)) => Type::uint(wa + wb)
+                (Mul, SInt(_), SInt(_)) => Type::sint(wa + wb)
+                (Div, UInt(_), UInt(_)) => Type::uint(wa)
+                (Div, SInt(_), SInt(_)) => Type::sint(wa + 1)
+                (Mod, UInt(_), UInt(_)) => Type::uint(min(wa, wb))
+                (Mod, SInt(_), SInt(_)) => Type::sint(min(wa, wb))
+                (Equ | Neq | Gtr | Lss | Geq | Leq, UInt(_), UInt(_)) => Type::uint(1)
+                (Equ | Neq | Gtr | Lss | Geq | Leq, SInt(_), SInt(_)) => Type::uint(1)
                 (Shl, UInt(_), UInt(_)) => match shift_amount {
-                    Some(amount) => @parse.Type::uint(wa + amount)
-                    None => @parse.Type::uint(wa + @utils.pow2(wb).to_int() - 1)
+                    Some(amount) => Type::uint(wa + amount)
+                    None => Type::uint(wa + pow2(wb).to_int() - 1)
                 }
                 (Shl, SInt(_), UInt(_)) => match shift_amount {
-                    Some(amount) => @parse.Type::sint(wa + amount)
-                    None => @parse.Type::sint(wa + @utils.pow2(wb).to_int() - 1)
+                    Some(amount) => Type::sint(wa + amount)
+                    None => Type::sint(wa + pow2(wb).to_int() - 1)
                 }
                 (Shr, UInt(_), UInt(_)) => match shift_amount {
-                    Some(amount) => @parse.Type::uint(@utils.max(wa - amount, 0))
-                    None => @parse.Type::uint(wa)
+                    Some(amount) => Type::uint(max(wa - amount, 0))
+                    None => Type::uint(wa)
                 }
                 (Shr, SInt(_), UInt(_)) => {
                     match shift_amount {
-                        Some(amount) => @parse.Type::sint(@utils.max(wa - amount, 1))
-                        None => @parse.Type::sint(wa)
+                        Some(amount) => Type::sint(max(wa - amount, 1))
+                        None => Type::sint(wa)
                     }
                 }
-                (And | Or | Xor | Nand | Nor | Xnor | Ternary, UInt(_), UInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
-                (And | Or | Xor | Nand | Nor | Xnor | Ternary, SInt(_), SInt(_)) => @parse.Type::uint(@utils.max(wa, wb))
+                (And | Or | Xor | Nand | Nor | Xnor | Ternary, UInt(_), UInt(_)) => Type::uint(max(wa, wb))
+                (And | Or | Xor | Nand | Nor | Xnor | Ternary, SInt(_), SInt(_)) => Type::uint(max(wa, wb))
                 _ => raise type_error("Invalid operands '\{lhs_ty}' and '\{rhs_ty}' for binary operator '\{op}'", span)
             }
 
@@ -312,8 +318,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
 
             match ty {
                 Vector(ty=inner_ty, ..) => inner_ty
-                UInt(_) | SInt(_) => @parse.Type::uint(1)
-                String(_) => @parse.Type::uint(@parse.BITS_PER_CHAR)
+                UInt(_) | SInt(_) => Type::uint(1)
+                String(_) => Type::uint(BITS_PER_CHAR)
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
@@ -336,8 +342,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let width = hi + 1 - lo
 
             match ty {
-                UInt(_) | SInt(_) => @parse.Type::uint(width)
-                String(_) => @parse.Type::Vector(ty=@parse.Type::uint(@parse.BITS_PER_CHAR), len=Fixed(width))
+                UInt(_) | SInt(_) => Type::uint(width)
+                String(_) => Type::Vector(ty=Type::uint(BITS_PER_CHAR), len=Fixed(width))
                 Vector(ty=inner_ty, len~) => {
                     let len = len.expect_fixed(expr.span())
                     if hi >= len {
@@ -348,7 +354,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                         raise InvalidSlicingRange(reason="end index must be less than start index", span~)
                     }
 
-                    @parse.Type::Vector(ty=inner_ty, len=Fixed(width))
+                    Type::Vector(ty=inner_ty, len=Fixed(width))
                 }
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
@@ -356,7 +362,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
         FieldAccess(expr~, field=port, span~, ..) => {
             match self.check_expr(expr, env) {
                 Instance(sig~, params~, accessed_ports~) => {
-                    let resolved_params = @parse.keep_and_check_resolved(params, span~)
+                    let resolved_params = keep_and_check_resolved(params, span~)
 
                     match sig.get_port(port) {
                         Some(port_def) => {
@@ -379,8 +385,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             match self.modules.get(path) {
                 Some(sig) => {
                     let subst: Map[String, UnificationParam] = {}
-                    let params_env: Map[String, @parse.ResolvedParam] = {}
-                    let accessed_ports = @parse.AccessedPorts::new()
+                    let params_env: Map[String, ResolvedParam] = {}
+                    let accessed_ports = AccessedPorts::new()
                     let params_map = params.as_map(names=sig.params.map(fn(p) { p.name }))
 
                     // check monomorphized (erased) parameters
@@ -416,7 +422,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                             (Unresolved(_), _) => raise type_error("Unresolved parameter '\{name}'", span)
                             _ => {
                                 let ty = match param {
-                                    Unresolved(_) => @utils.unreachable()
+                                    Unresolved(_) => unreachable()
                                     Resolved(ConstParam(value~, ..)) => self.check_expr(value.as_expr(), env)
                                     Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
                                 }
@@ -445,21 +451,21 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                         accessed_ports.register_access("q")
                     }
 
-                    @parse.Type::Instance(sig~, params=params_map, accessed_ports~)
+                    Type::Instance(sig~, params=params_map, accessed_ports~)
                 }
                 None => raise UnknownModule(path~, span~)
             }
         }
         Vector(elems~, span~, ..) => {
             if elems.is_empty() {
-                return @parse.Type::empty()
+                return Type::empty()
             }
 
             let mut elem_ty = None
             let mut len = 0
             let subst = {}
 
-            fn check_elem_ty(ty: @parse.Type) -> Unit raise TypeCheckerError {
+            fn check_elem_ty(ty: Type) -> Unit raise TypeCheckerError {
                 match elem_ty {
                     Some(ty2) => {
                         let _ = unify(ty, ty2, span~, subst~)
@@ -484,7 +490,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                                 len += int_len
                             }
                             String(len=str_len) => {
-                                check_elem_ty(UInt(Fixed(@parse.BITS_PER_CHAR)))
+                                check_elem_ty(UInt(Fixed(BITS_PER_CHAR)))
                                 len += str_len
                             }
                             _ => {
@@ -500,7 +506,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 }
             }
 
-            @parse.Type::Vector(ty=elem_ty.unwrap(), len=Fixed(len))
+            Type::Vector(ty=elem_ty.unwrap(), len=Fixed(len))
         }
         Spread(span~, ..) => {
             raise type_error("Spread outside vector", span)
@@ -543,17 +549,17 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
 
             if is_signed is Some(true) {
-                @parse.Type::sint(len)
+                Type::sint(len)
             } else {
-                @parse.Type::uint(len)
+                Type::uint(len)
             }
         }
         Ternary(cond~, then~, else_~, span~, ..) => {
-            let cond_ty = self.check_expr(cond, env, expected_ty=Some(@parse.Type::uint(1)))
+            let cond_ty = self.check_expr(cond, env, expected_ty=Some(Type::uint(1)))
             let then_ty = self.check_expr(then, env, expected_ty~)
             let else_ty = self.check_expr(else_, env, expected_ty~)
 
-            let _ = unify(cond_ty, @parse.Type::uint(1), span~)
+            let _ = unify(cond_ty, Type::uint(1), span~)
             let ty = self.resolve_ty(then_ty, span~)
             let _ = unify(ty, else_ty, span~)
 
@@ -569,7 +575,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             let mut ret_ty = None
             let subst = {}
 
-            fn check_ret_ty(ty: @parse.Type) -> Unit raise TypeCheckerError {
+            fn check_ret_ty(ty: Type) -> Unit raise TypeCheckerError {
                 match ret_ty {
                     Some(ty2) => {
                         let _ = unify(ty, ty2, span~, subst~)
@@ -605,46 +611,46 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 fields[idx.to_string()] = self.check_expr(elem, env)
             }
 
-            @parse.Type::Struct(fields)
+            Type::Struct(fields)
         }
         Replicate(expr~, count~, concat~, span~, ..) => {
             let count_ty = self.check_expr(count, env)
-            let _ = unify(count_ty, @parse.Nat({min_width: 0}), span~)
+            let _ = unify(count_ty, Nat({min_width: 0}), span~)
             let expr_ty = self.check_expr(expr, env)
             let count = eval_const_expr(count)
             
             let (elem_ty, len) = match concat {
                 true => {
                     let expr_width = expr_ty.width(expr.span())
-                    (@parse.Type::uint(1), count * expr_width)
+                    (Type::uint(1), count * expr_width)
                 }
                 false => (expr_ty, count)
             }
 
             match expr_ty {
-                UInt(_) if concat => @parse.Type::uint(len)
-                SInt(_) if concat => @parse.Type::sint(len)
+                UInt(_) if concat => Type::uint(len)
+                SInt(_) if concat => Type::sint(len)
                 _ => Vector(ty=elem_ty, len=Fixed(len))
             }
         }
         FunCall(name="uint", args=[arg], ..) => {
             let arg_ty = self.check_expr(arg, env)
             let width = arg_ty.width(arg.span())
-            @parse.Type::uint(width)
+            Type::uint(width)
         }
         FunCall(name="sint", args=[arg], ..) => {
             let arg_ty = self.check_expr(arg, env)
             let width = arg_ty.width(arg.span())
-            @parse.Type::sint(width)
+            Type::sint(width)
         }
         FunCall(name="clock", args=[arg], ..) => {
-            let _ = self.check_expr(arg, env, expected_ty=Some(@parse.Type::uint(1)))
-            @parse.Type::Clock
+            let _ = self.check_expr(arg, env, expected_ty=Some(Type::uint(1)))
+            Type::Clock
         }
         FunCall(name="pad", args=[arg, width], span~, ..) => {
             let arg_ty = self.check_expr(arg, env)
             let width_ty = self.check_expr(width, env)
-            let _ = unify(width_ty, @parse.Nat({min_width: 0}), span=width.span())
+            let _ = unify(width_ty, Nat({min_width: 0}), span=width.span())
             let width = eval_const_expr(width)
             let required_width = arg_ty.width(arg.span())
 
@@ -656,8 +662,8 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
             }
 
             match arg_ty {
-                UInt(_) => @parse.Type::uint(width)
-                SInt(_) => @parse.Type::sint(width)
+                UInt(_) => Type::uint(width)
+                SInt(_) => Type::sint(width)
                 _ => raise Unreachable(message="", span~)
             }
         }
@@ -676,20 +682,20 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 }
             }
 
-            @parse.Type::empty()
+            Type::empty()
         }
         FunCall(name="printf", args=[format_str, ..args], span~, ..) => {
             self.check_format_string(format_str~, args~, env~, span~)
-            @parse.Type::empty()
+            Type::empty()
         }
         FunCall(name="assert", args=[pred,..rest], span~, ..) => {
-            let _ = self.check_expr(pred, env, expected_ty=Some(@parse.Type::bool()))
+            let _ = self.check_expr(pred, env, expected_ty=Some(Type::bool()))
 
             if rest is [format_str, ..args] {
                 self.check_format_string(format_str~, args~, env~, span~)
             }
 
-            @parse.Type::empty()
+            Type::empty()
         }
         FunCall(name="stop", args~, span~, ..) => {
             match args {
@@ -709,7 +715,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 }
             }
 
-            @parse.Type::empty()
+            Type::empty()
         }
         FunCall(name="rev", args=[arg], span~, ..) => {
             let arg_ty = self.check_expr(arg, env)
@@ -743,7 +749,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 field_tys[name] = self.check_expr(ty, env)
             }
 
-            @parse.Type::Struct(field_tys)
+            Type::Struct(field_tys)
         }
         Block(body~, last~, span=_, ty=_) => {
             let new_env = env.child()
@@ -756,11 +762,11 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                 Some(last) => {
                     self.check_expr(last, new_env, expected_ty~)
                 }
-                _ => @parse.Type::empty()
+                _ => Type::empty()
             }
         }
         If(cond~, then~, else_~, span~, ..) => {
-            let _ = self.check_expr(cond, env, expected_ty=Some(@parse.Type::uint(1)))
+            let _ = self.check_expr(cond, env, expected_ty=Some(Type::uint(1)))
             let then_ty = self.check_expr(then, env, expected_ty~)
             let if_ty = match else_ {
                 Some(else_) => {
@@ -769,7 +775,7 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
                     then_ty
                 }
                 None => {
-                    let _ = unify(then_ty, @parse.Type::empty(), span~)
+                    let _ = unify(then_ty, Type::empty(), span~)
                     then_ty
                 }
             }
@@ -783,13 +789,13 @@ fn check_expr(self: TypeChecker, expr: @parse.Expr, env: Scope[@parse.Path, @par
     ty
 }
 
-fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @parse.Type]) -> Unit raise {
+fn check_stmt(self: TypeChecker, stmt: Stmt, env: Scope[Path, Type]) -> Unit raise {
     match stmt {
         Expr(expr~, ..) => {
             let _ = self.check_expr(expr, env)
         }
         Let(name~, ty~, expr~, span~) => {
-            let path = @parse.Path::new([], name)
+            let path = Path::new([], name)
 
             ty.val = Some(match (ty.val, expr) {
                 (Some(ty), Some(expr)) => {
@@ -825,7 +831,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
             }
 
             // mark instance port as being written to
-            if lhs is FieldAccess(expr~, field~, ..) && expr.ty().val is Some(@parse.Type::Instance(sig~, accessed_ports~, ..)) {
+            if lhs is FieldAccess(expr~, field~, ..) && expr.ty().val is Some(Type::Instance(sig~, accessed_ports~, ..)) {
                 if sig.get_port(field) is Some({ dir: Output, .. }) {
                     raise type_error("Cannot assign to output port '\{field}' of module '\{sig.path}'", span)
                 }
@@ -853,7 +859,7 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
             }
 
             let body_env = env.child()
-            body_env.declare(@parse.Path::new([], var), end_ty)
+            body_env.declare(Path::new([], var), end_ty)
 
             for stmt in body {
                 self.check_stmt(stmt, body_env)
@@ -867,10 +873,10 @@ fn check_stmt(self: TypeChecker, stmt: @parse.Stmt, env: Scope[@parse.Path, @par
 
 fn check_format_string(
     self: TypeChecker,
-    format_str~: @parse.Expr,
-    args~: ArrayView[@parse.Expr],
-    env~: Scope[@parse.Path, @parse.Type],
-    span~: @parse.Span,
+    format_str~: Expr,
+    args~: ArrayView[Expr],
+    env~: Scope[Path, Type],
+    span~: Span,
 ) -> Unit raise {
     let format_str_ty = self.check_expr(format_str, env)
 
@@ -887,7 +893,7 @@ fn check_format_string(
     }
 }
 
-fn is_valid_assignment_target(expr: @parse.Expr) -> Bool {
+fn is_valid_assignment_target(expr: Expr) -> Bool {
     match expr {
         Identifier(..) | FieldAccess(..) => true
         Indexing(expr~, ..) | Slicing(expr~, ..) => match expr.ty().val {
@@ -915,14 +921,14 @@ let module_attribute_signatures: Map[String, Array[AttributeValueType]] = {
 
 let port_attribute_signatures: Map[String, Array[AttributeValueType]] = {}
 
-fn check_attribute(attr: @parse.Attribute, signatures~: Map[String, Array[AttributeValueType]]) -> Unit raise TypeCheckerError {
+fn check_attribute(attr: Attribute, signatures~: Map[String, Array[AttributeValueType]]) -> Unit raise TypeCheckerError {
     match signatures.get(attr.name) {
         Some(expected) => {
             if expected.length() != attr.args.length() {
                 raise InvalidAttributeArgs(name=attr.name, args=attr.args, expected=expected, span=attr.span)
             }
 
-            for arg, exp in @utils.zip2(attr.args, expected) {
+            for arg, exp in zip2(attr.args, expected) {
                 match (arg, exp) {
                     // (Int(_), Int) => ()
                     (String(_), Str) => ()
@@ -935,13 +941,13 @@ fn check_attribute(attr: @parse.Attribute, signatures~: Map[String, Array[Attrib
     }
 }
 
-fn check_attributes(attrs: Map[String, @parse.Attribute], signatures~: Map[String, Array[AttributeValueType]]) -> Unit raise TypeCheckerError {
+fn check_attributes(attrs: Map[String, Attribute], signatures~: Map[String, Array[AttributeValueType]]) -> Unit raise TypeCheckerError {
     for attr in attrs.values() {
         check_attribute(attr, signatures~)
     }
 }
 
-fn check_const_decl(self: TypeChecker, decl: @parse.ConstDecl, env: Scope[@parse.Path, @parse.Type]) -> Unit raise {
+fn check_const_decl(self: TypeChecker, decl: ConstDecl, env: Scope[Path, Type]) -> Unit raise {
     if !decl.expr.is_constant_expr() {
         raise ExpectedConstantExpr(span=decl.expr.span())
     }
@@ -959,7 +965,7 @@ fn check_const_decl(self: TypeChecker, decl: @parse.ConstDecl, env: Scope[@parse
     declare_name(env~, path=decl.path, ty~, span=decl.span)
 }
 
-pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit raise {
+pub fn check_decl(self: TypeChecker, decl: Decl) -> Unit raise {
     match decl {
         Module({ path, params: _, attributes, ports, body, span: _ } as mod) => {
             let env = self.top_env.child()
@@ -967,7 +973,7 @@ pub fn check_decl(self: TypeChecker, decl: @parse.Decl) -> Unit raise {
 
             for port in ports {
                 check_attributes(port.attributes, signatures=port_attribute_signatures)
-                declare_name(env~, path=@parse.Path::new([], port.name), ty=port.ty, span=port.span)
+                declare_name(env~, path=Path::new([], port.name), ty=port.ty, span=port.span)
             }
 
             for stmt in body {

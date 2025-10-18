@@ -1,3 +1,5 @@
+using @firrtl { type Id }
+using @parse { type Span, type Path, type ModuleDecl, type Param, type AstEmitter } 
 
 typealias @firrtl.UntypedExpr as FExpr
 typealias @firrtl.UntypedStmt as FStmt
@@ -18,12 +20,12 @@ using @firrtl {
 pub struct Elaborator {
   mut autoidx: Int
   circuit_name: String
-  modules: Map[@parse.Path, FModule]
-  extmodules: Map[@parse.Path, @firrtl.ExtModule]
+  modules: Map[Path, FModule]
+  extmodules: Map[Path, @firrtl.ExtModule]
   annotations: Array[Json]
-  declared_modules: Map[@parse.Path, @parse.ModuleSignature]
+  declared_modules: Map[Path, ModuleSignature]
   current_target: Array[String]
-  memories: Map[String, @firrtl.Id]
+  memories: Map[String, Id]
   mut current_clock: FExpr?
 }
 
@@ -48,10 +50,10 @@ fn Elaborator::next_idx(self: Elaborator) -> Int {
 }
 
 priv enum Value {
-  Expr(expr~: FExpr, ty~: @firrtl.Type, span~: @parse.Span)
-  Vector(elems~: Array[Value], ty~: @firrtl.Type, span~: @parse.Span)
-  Struct(fields~: Map[String, Value], ty~: @firrtl.Type, span~: @parse.Span)
-  Empty(span~: @parse.Span)
+  Expr(expr~: FExpr, ty~: @firrtl.Type, span~: Span)
+  Vector(elems~: Array[Value], ty~: @firrtl.Type, span~: Span)
+  Struct(fields~: Map[String, Value], ty~: @firrtl.Type, span~: Span)
+  Empty(span~: Span)
 }
 
 impl Show for Value with output(self, logger) {
@@ -74,22 +76,22 @@ impl Show for Value with output(self, logger) {
   }
 }
 
-impl @parse.Spanned for Value with span(self) {
+impl Spanned for Value with span(self) {
   match self {
     Expr(span~, ..) | Vector(span~, ..) | Struct(span~, ..) | Empty(span~) => span
   }
 }
 
-typealias Scope[@parse.Path, Value] as ElaboratorEnv
+typealias Scope[Path, Value] as ElaboratorEnv
 
 pub suberror ElaborationError {
-  ElaborationError(message~: String, span~: @parse.Span)
-  UnresolvedIdentifier(path~: @parse.Path, span~: @parse.Span)
-  Unreachable(message~: String, span~: @parse.Span)
-  Unsupported(message~: String, span~: @parse.Span)
+  ElaborationError(message~: String, span~: Span)
+  UnresolvedIdentifier(path~: Path, span~: Span)
+  Unreachable(message~: String, span~: Span)
+  Unsupported(message~: String, span~: Span)
 }
 
-impl @parse.Spanned for ElaborationError with span(self) {
+impl Spanned for ElaborationError with span(self) {
   match self {
     ElaborationError(span~, ..) => span
     UnresolvedIdentifier(span~, ..) => span
@@ -137,14 +139,14 @@ impl ScopeLike for StmtContainer with add_stmt(self, stmt) {
   self.inner().push(stmt)
 }
 
-fn id_of_path(path: @parse.Path) -> @firrtl.Id {
+fn id_of_path(path: Path) -> Id {
   match path.packages {
     [] => Ident(path.member)
     _ => Ident(path.packages.join("_") + "_" + path.member)
   }
 }
 
-fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
+fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
   match ty {
     Nat({min_width}) => UInt(min_width)
     UInt(Fixed(width)) => UInt(width)
@@ -156,7 +158,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
     }
     Instance(sig~, params~, accessed_ports~) => {
       let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.ports.length())
-      let resolved_params = @parse.keep_and_check_resolved(params, span~)
+      let resolved_params = keep_and_check_resolved(params, span~)
 
       for port, _ in accessed_ports.ports {
         let port_sig = sig.get_port(port).or_error(ElaborationError::ElaborationError(
@@ -165,7 +167,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
         ))
 
         let field: @firrtl.BundleField = {
-          id: @firrtl.Id::from(port),
+          id: Id::from(port),
           ty: lower_type(port_sig.ty.substitute(resolved_params, span~), span~),
           flip: port_sig.dir == Input,
         }
@@ -184,7 +186,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
       for field in fields {
         let (name, ty) = field
         let field: @firrtl.BundleField = {
-          id: @firrtl.Id::from(name),
+          id: Id::from(name),
           ty: lower_type(ty, span~),
           flip: false,
         }
@@ -198,7 +200,7 @@ fn lower_type(ty: @parse.Type, span~: @parse.Span) -> @firrtl.Type raise {
   }
 }
 
-fn default_value(ty: @firrtl.Type, span~: @parse.Span) -> Value {
+fn default_value(ty: @firrtl.Type, span~: Span) -> Value {
   match ty {
     Const(sub_ty) => default_value(sub_ty, span~)
     Clock | Reset | AsyncReset => Value::Expr(expr=mk_lit(UInt(width=1, radix=Some(2), value=0)), ty=UInt(1), span~)
@@ -231,7 +233,7 @@ fn default_value(ty: @firrtl.Type, span~: @parse.Span) -> Value {
   }
 }
 
-fn _default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
+fn _default_mask(ty: @firrtl.Type, span~: Span) -> Value {
   match ty {
     Const(ty) => _default_mask(ty, span~)
     Clock | Reset | AsyncReset | UInt(_) | SInt(_) => {
@@ -252,7 +254,7 @@ fn _default_mask(ty: @firrtl.Type, span~: @parse.Span) -> Value {
   }
 }
 
-fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit raise {
+fn Elaborator::lower_module(self: Elaborator, mod: ModuleDecl) -> Unit raise {
   let env = ElaboratorEnv::new()
   self.current_target.push([..mod.path.packages, mod.path.member].join("_"))
   self.current_clock = None
@@ -265,7 +267,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit ra
 
       for port in mod.ports {
         let fir_ty = lower_type(port.ty, span=port.span)
-        let port_id = @firrtl.Id::from(port.name)
+        let port_id = Id::from(port.name)
 
         // the first clock port is the module's default clock
         if fir_ty == Clock && self.current_clock.is_empty() {
@@ -279,7 +281,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit ra
         }
         
         ports.push(fir_port)
-        env.declare(@parse.Path::new([], port.name), Expr(expr=mk_ref(mk_id(port_id)), ty=fir_ty, span=port.span))
+        env.declare(Path::new([], port.name), Expr(expr=mk_ref(mk_id(port_id)), ty=fir_ty, span=port.span))
       }
 
       ports
@@ -317,7 +319,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: @parse.ModuleDecl) -> Unit ra
   let _ = self.current_target.pop()
 }
 
-fn Elaborator::lower_external_module(self: Elaborator, sig: @parse.ModuleSignature) -> Unit raise {
+fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> Unit raise {
   guard sig.attributes.get("external") is Some({args: [String(defname), String(verilog_path)], ..})
   let id = id_of_path(sig.path)
   let ports = Array::new(capacity=sig.ports.length())
@@ -325,7 +327,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: @parse.ModuleSignatu
 
   for port in sig.ports {
     let fir_ty = lower_type(port.ty, span=port.span)
-    let port_id = @firrtl.Id::from(port.name)
+    let port_id = Id::from(port.name)
 
     if fir_ty == Clock && self.current_clock.is_empty() {
       self.current_clock = Some(mk_ref(mk_id(port_id)))
@@ -370,7 +372,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: @parse.ModuleSignatu
   self.annotations.push(annotation.to_json())
 }
 
-fn unwrap_type(ty: Ref[@parse.Type?], span~: @parse.Span) -> @parse.Type raise ElaborationError {
+fn unwrap_type(ty: Ref[Type?], span~: Span) -> Type raise ElaborationError {
   ty.val.or_error(ElaborationError::ElaborationError(
     message="Value requires a resolved type before lowering",
     span~,
@@ -383,11 +385,11 @@ fn Elaborator::next_id(self: Elaborator) -> Int {
   idx
 }
 
-fn Elaborator::gen_id(self: Elaborator, prefix: String) -> @firrtl.Id {
+fn Elaborator::gen_id(self: Elaborator, prefix: String) -> Id {
   Ident("\{prefix}_\{self.next_id()}$")
 }
 
-fn Elaborator::binding_name(self: Elaborator, binding: FRef?, default_prefix: String) -> @firrtl.Id {
+fn Elaborator::binding_name(self: Elaborator, binding: FRef?, default_prefix: String) -> Id {
   binding.map(FRef::as_id).flatten().unwrap_or(self.gen_id(default_prefix))
 }
 
@@ -413,7 +415,7 @@ fn Elaborator::connect(self: Elaborator, lhs~: FRef, value~: Value, scope~: &Sco
   }
 }
 
-fn Elaborator::get_clock(self: Elaborator, source~: String, span~: @parse.Span) -> FExpr raise {
+fn Elaborator::get_clock(self: Elaborator, source~: String, span~: Span) -> FExpr raise {
   self.current_clock.or_error(ElaborationError::ElaborationError(
     message="No clock found in current module for \{source}",
     span~,
@@ -450,7 +452,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       }
 
       for field in fields {
-        elaborator.connect(lhs=mk_field_access(lhs=mk_id(id), field=@firrtl.Id::from(field.0)), value=field.1, scope~)
+        elaborator.connect(lhs=mk_field_access(lhs=mk_id(id), field=Id::from(field.0)), value=field.1, scope~)
       }
 
       mk_ref(mk_id(id))
@@ -485,7 +487,7 @@ fn concat_rev(exprs: Array[FExpr]) -> FExpr raise {
     go(list.unsafe_tail(), exprs[0])
 }
 
-fn flatten_int(reference: FRef, ty: @firrtl.Type, span~: @parse.Span) -> FExpr raise {
+fn flatten_int(reference: FRef, ty: @firrtl.Type, span~: Span) -> FExpr raise {
   match ty {
     Const(inner_ty) => flatten_int(reference, inner_ty, span~)
     Vec(elem_ty, len) => {
@@ -514,15 +516,15 @@ fn flatten_int(reference: FRef, ty: @firrtl.Type, span~: @parse.Span) -> FExpr r
   }
 }
 
-fn Elaborator::lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLike, env~: ElaboratorEnv) -> Unit raise {
+fn Elaborator::lower_stmt(self: Elaborator, stmt: Stmt, scope~: &ScopeLike, env~: ElaboratorEnv) -> Unit raise {
   match stmt {
     Expr(expr~, span=_) => {
       let _ = self.lower_expr(expr, scope~, env~, binding=None)
     }
     Let(name~, ty~, expr~, span~) => {
-      let path = @parse.Path::new([], name)
+      let path = Path::new([], name)
       let ty = lower_type(unwrap_type(ty, span~), span~)
-      let id = @firrtl.Id::from(name)
+      let id = Id::from(name)
       scope.add_stmt(Wire(id~, ty~))
       let var = mk_id(id)
       let val = match expr {
@@ -550,7 +552,7 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: @parse.Stmt, scope~: &ScopeLik
   }
 }
 
-fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: FRef? = None) -> Value raise {
+fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: FRef? = None) -> Value raise {
   let expr_span = expr.span()
   let ty = lower_type(unwrap_type(expr.ty(), span=expr_span), span=expr_span)
   
@@ -827,7 +829,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
           Some(sig) => {
             let ports_sig = Map::new(capacity=sig.ports.length())
             let params_map = params.as_map(names=sig.params.map(fn(p) { p.name }))
-            let resolved_params = @parse.keep_and_check_resolved(params_map, span~)
+            let resolved_params = keep_and_check_resolved(params_map, span~)
 
             for port in sig.ports {
               let ty = lower_type(port.ty.substitute(resolved_params, span~), span~)
@@ -900,7 +902,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         match connections.get(port_name) {
           Some(expr) => expr
           None => {
-            mk_ref(mk_field_access(lhs=inst_ref, field=@firrtl.Id::from(port_name)))
+            mk_ref(mk_field_access(lhs=inst_ref, field=Id::from(port_name)))
           }
         }
       }
@@ -909,14 +911,14 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       for port_name, access in accessed_ports.ports {
         if access == Write && inline_connections.get(port_name) is Some(inline_expr) {
           scope.add_stmt(Connect(
-            mk_field_access(lhs=inst_ref, field=@firrtl.Id::from(port_name)),
+            mk_field_access(lhs=inst_ref, field=Id::from(port_name)),
             inline_expr
           ))
         }
       }
 
       if attributes.contains("internal") {
-        fn get_param(name: String) -> @parse.Param raise {
+        fn get_param(name: String) -> Param raise {
           match params_map.get(name) {
             Some(param) => param
             None => raise ElaborationError(message="Unknown module parameter '\{name}'", span~)
@@ -933,7 +935,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
             let sync_reset = internal_module_name == "Reg"
             let uses_rst = uses_port("rst")
             let uses_en = uses_port("en")
-            let reg_id = @firrtl.Id::from("reg_\{self.next_idx()}")
+            let reg_id = Id::from("reg_\{self.next_idx()}")
             let clk = get_port("clk")
 
             let reg_stmt = if uses_rst {
@@ -976,7 +978,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               }
 
               if accessed_ports.contains("q") {
-                scope.add_stmt(Connect(mk_field_access(lhs=inst_ref, field=@firrtl.Id::from("q")), mk_ref(mk_id(reg_id))))
+                scope.add_stmt(Connect(mk_field_access(lhs=inst_ref, field=Id::from("q")), mk_ref(mk_id(reg_id))))
               }
             }
 
@@ -996,8 +998,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               if uses_port("q") {
                 // connect d to q by default
                 scope.add_stmt(Connect(
-                  mk_field_access(lhs=inst_ref, field=@firrtl.Id::from("d")),
-                  mk_ref(mk_field_access(lhs=inst_ref, field=@firrtl.Id::from("q")))
+                  mk_field_access(lhs=inst_ref, field=Id::from("d")),
+                  mk_ref(mk_field_access(lhs=inst_ref, field=Id::from("q")))
                 ))
               }
             }
@@ -1017,7 +1019,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               let readers = Array::new(capacity=read_ports)
 
               for i in 0..<read_ports {
-                readers.push(@firrtl.Id::from(mem_id.inner() + "_reader\{i}"))
+                readers.push(Id::from(mem_id.inner() + "_reader\{i}"))
               }
 
               readers
@@ -1027,7 +1029,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               let writers = Array::new(capacity=write_ports)
 
               for i in 0..<write_ports {
-                writers.push(@firrtl.Id::from(mem_id.inner() + "_writer\{i}"))
+                writers.push(Id::from(mem_id.inner() + "_writer\{i}"))
               }
 
               writers
@@ -1067,10 +1069,10 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               for i in 0..<read_ports {
                 let reader = mk_static_indexing(lhs=ports, index=i)
                 let reader_id = mk_field_access(lhs=mk_id(mem_id), field=readers[i])
-                scope.add_stmt(Connect(mk_field_access(lhs=reader_id, field=@firrtl.Id::from("addr")), mk_ref(mk_field_access(lhs=reader, field=@firrtl.Id::from("addr")))))
-                scope.add_stmt(Connect(mk_field_access(lhs=reader_id, field=@firrtl.Id::from("en")), mk_ref(mk_field_access(lhs=reader, field=@firrtl.Id::from("en")))))
-                scope.add_stmt(Connect(mk_field_access(lhs=reader_id, field=@firrtl.Id::from("clk")), mk_ref(mk_field_access(lhs=reader, field=@firrtl.Id::from("clk")))))
-                data_out.push(mk_field_access(lhs=reader_id, field=@firrtl.Id::from("data")))
+                scope.add_stmt(Connect(mk_field_access(lhs=reader_id, field=Id::from("addr")), mk_ref(mk_field_access(lhs=reader, field=Id::from("addr")))))
+                scope.add_stmt(Connect(mk_field_access(lhs=reader_id, field=Id::from("en")), mk_ref(mk_field_access(lhs=reader, field=Id::from("en")))))
+                scope.add_stmt(Connect(mk_field_access(lhs=reader_id, field=Id::from("clk")), mk_ref(mk_field_access(lhs=reader, field=Id::from("clk")))))
+                data_out.push(mk_field_access(lhs=reader_id, field=Id::from("data")))
               }
             }
 
@@ -1080,11 +1082,11 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
               for i in 0..<write_ports {
                 let writer = mk_static_indexing(lhs=ports, index=i)
                 let writer_id = mk_field_access(lhs=mk_id(mem_id), field=writers[i])
-                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=@firrtl.Id::from("addr")), mk_ref(mk_field_access(lhs=writer, field=@firrtl.Id::from("addr")))))
-                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=@firrtl.Id::from("en")), mk_ref(mk_field_access(lhs=writer, field=@firrtl.Id::from("en")))))
-                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=@firrtl.Id::from("clk")), mk_ref(mk_field_access(lhs=writer, field=@firrtl.Id::from("clk")))))
-                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=@firrtl.Id::from("data")), mk_ref(mk_field_access(lhs=writer, field=@firrtl.Id::from("data")))))
-                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=@firrtl.Id::from("mask")), mk_ref(mk_field_access(lhs=writer, field=@firrtl.Id::from("mask")))))
+                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=Id::from("addr")), mk_ref(mk_field_access(lhs=writer, field=Id::from("addr")))))
+                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=Id::from("en")), mk_ref(mk_field_access(lhs=writer, field=Id::from("en")))))
+                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=Id::from("clk")), mk_ref(mk_field_access(lhs=writer, field=Id::from("clk")))))
+                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=Id::from("data")), mk_ref(mk_field_access(lhs=writer, field=Id::from("data")))))
+                scope.add_stmt(Connect(mk_field_access(lhs=writer_id, field=Id::from("mask")), mk_ref(mk_field_access(lhs=writer, field=Id::from("mask")))))
               }
             }
 
@@ -1097,16 +1099,16 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
           _ => raise ElaborationError(message="Module '\{path.to_string()}' is marked as internal but has no elaboration handler", span~)
         }
       } else {
-        let inst_id = @firrtl.Id::from("inst_\{self.next_idx()}")
+        let inst_id = Id::from("inst_\{self.next_idx()}")
         scope.add_stmt(Inst(id=inst_id, of=id_of_path(path), sig={ ports: ports_sig }))
 
         for port_name, sig in ports_sig {
           if uses_port(port_name) {
-            let lhs = Expr(expr=mk_ref(mk_field_access(lhs=mk_id(inst_id), field=@firrtl.Id::from(port_name))), ty=sig.ty, span~)
+            let lhs = Expr(expr=mk_ref(mk_field_access(lhs=mk_id(inst_id), field=Id::from(port_name))), ty=sig.ty, span~)
             let rhss = Array::new(capacity=2)
 
             if accessed_ports.contains(port_name) {
-              rhss.push(Expr(expr=mk_ref(mk_field_access(lhs=inst_ref, field=@firrtl.Id::from(port_name))), ty=sig.ty, span~))
+              rhss.push(Expr(expr=mk_ref(mk_field_access(lhs=inst_ref, field=Id::from(port_name))), ty=sig.ty, span~))
             }
             
             if inline_connections.contains(port_name) {
@@ -1190,7 +1192,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
     }
     FieldAccess(expr=accessed_expr, field~, span~, ty=_) => {
       let val = self.lower_expr(accessed_expr, scope~, env~)
-      Expr(expr=mk_ref(mk_field_access(lhs=val.as_ref(self, scope~), field=@firrtl.Id::from(field))), ty~, span~)
+      Expr(expr=mk_ref(mk_field_access(lhs=val.as_ref(self, scope~), field=Id::from(field))), ty~, span~)
     }
     Block(body~, last~, span~, ..) => {
       let block_env = env.child()
@@ -1215,7 +1217,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
       }
     }
     String(value=str, span~, ty~) => {
-      let chars: Array[@parse.Expr] = Array::new(capacity=str.length())
+      let chars: Array[Expr] = Array::new(capacity=str.length())
 
       for char in str {
         let char_latin1 = char.to_int()
@@ -1224,7 +1226,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
           raise ElaborationError(message="String literal contains unsupported character '\{char}' (expected Latin-1)", span~)
         }
 
-        chars.push(@parse.Expr::nat(char_latin1, width=Some(8), span~))
+        chars.push(Expr::nat(char_latin1, width=Some(8), span~))
       }
 
       self.lower_expr(Vector(elems=chars, span~, ty~), scope~, env~)
@@ -1313,7 +1315,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
         (fmt, new_args)
       } else {
         let pred_fmt = {
-          let emitter = @parse.AstEmitter::new()
+          let emitter = AstEmitter::new()
           emitter.emit_expr(pred)
           
         }
@@ -1370,7 +1372,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: @parse.Expr, scope~: &ScopeLik
   }
 }
 
-pub fn Elaborator::lower(self: Elaborator, decls: Iter[@parse.Decl]) -> Unit raise {
+pub fn Elaborator::lower(self: Elaborator, decls: Iter[Decl]) -> Unit raise {
   for decl in decls {
     match decl {
       Module(mod) => {

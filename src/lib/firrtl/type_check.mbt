@@ -1,4 +1,6 @@
-pub typealias @utils.Scope[Id, Type] as TypeEnv
+using @utils { type Scope, max, min, pow2 }
+
+typealias Scope[Id, Type] as TypeEnv
 
 pub fn type_check_circuit(circ: UntypedCircuit) -> TypedCircuit raise {
   let circuit_scope = TypeEnv::new()
@@ -156,8 +158,8 @@ fn TypeEnv::check_expr(self: Self, expr: UntypedExpr) -> TypedExpr raise {
       }
 
       let ty: Type = match (tval_ty, fval_ty) {
-        (UInt(w1), UInt(w2)) => UInt(@utils.max(w1, w2))
-        (SInt(w1), SInt(w2)) => SInt(@utils.max(w1, w2))
+        (UInt(w1), UInt(w2)) => UInt(max(w1, w2))
+        (SInt(w1), SInt(w2)) => SInt(max(w1, w2))
         (_, _) if tval_ty == fval_ty => tval_ty
         _ => raise Failure("Mux true and false values are incompatible, got '\{tval_ty}' and '\{fval_ty}'")
       }
@@ -169,17 +171,17 @@ fn TypeEnv::check_expr(self: Self, expr: UntypedExpr) -> TypedExpr raise {
       let arg_tys = args.map(arg => arg.ty())
 
       let ty: Type = match (op, arg_tys, args) {
-        (Add | Sub, [UInt(w1), UInt(w2)], _) => UInt(@utils.max(w1, w2) + 1)
-        (Add | Sub, [SInt(w1), SInt(w2)], _) => SInt(@utils.max(w1, w2) + 1)
+        (Add | Sub, [UInt(w1), UInt(w2)], _) => UInt(max(w1, w2) + 1)
+        (Add | Sub, [SInt(w1), SInt(w2)], _) => SInt(max(w1, w2) + 1)
         (Mul, [UInt(w1), UInt(w2)], _) => UInt(w1 + w2)
         (Mul, [SInt(w1), SInt(w2)], _) => SInt(w1 + w2)
         (Div, [UInt(num), UInt(_)], _) => UInt(num)
         (Div, [SInt(num), SInt(_)], _) => SInt(num + 1)
-        (Rem, [UInt(num), UInt(den)], _) => UInt(@utils.min(num, den))
-        (Rem, [SInt(num), SInt(den)], _) => SInt(@utils.min(num, den))
+        (Rem, [UInt(num), UInt(den)], _) => UInt(min(num, den))
+        (Rem, [SInt(num), SInt(den)], _) => SInt(min(num, den))
         (Eq | Neq | Lt | Leq | Gt | Geq, [UInt(_), UInt(_)] | [SInt(_), SInt(_)], _) => UInt(1)
-        (Pad, [UInt(w), _], [_, Literal(value, ..)]) => UInt(@utils.max(w, value.as_int()))
-        (Pad, [SInt(w), _], [_, Literal(value, ..)]) => SInt(@utils.max(w, value.as_int()))
+        (Pad, [UInt(w), _], [_, Literal(value, ..)]) => UInt(max(w, value.as_int()))
+        (Pad, [SInt(w), _], [_, Literal(value, ..)]) => SInt(max(w, value.as_int()))
         (AsUInt, [UInt(w) | SInt(w)], _) => UInt(w)
         (AsUInt, [Clock | Reset | AsyncReset], _) => UInt(1)
         (AsSInt, [UInt(w) | SInt(w)], _) => SInt(w)
@@ -188,17 +190,17 @@ fn TypeEnv::check_expr(self: Self, expr: UntypedExpr) -> TypedExpr raise {
         (AsAsyncReset, [AsyncReset | UInt(1) | SInt(1) | Clock | Reset], _) => AsyncReset
         (Shl, [UInt(w), _], [_, Literal(value, ..)]) => UInt(w + value.as_int())
         (Shl, [SInt(w), _], [_, Literal(value, ..)]) => SInt(w + value.as_int())
-        (Shr, [UInt(w), _], [_, Literal(value, ..)]) => UInt(@utils.max(w - value.as_int(), 0))
-        (Shr, [SInt(w), _], [_, Literal(value, ..)]) => SInt(@utils.max(w - value.as_int(), 1))
-        (Dshl, [UInt(w1), UInt(w2)], _) => UInt(w1 + @utils.pow2(w2).to_int() - 1)
-        (Dshl, [SInt(w1), UInt(w2)], _) => SInt(w1 + @utils.pow2(w2).to_int() - 1)
+        (Shr, [UInt(w), _], [_, Literal(value, ..)]) => UInt(max(w - value.as_int(), 0))
+        (Shr, [SInt(w), _], [_, Literal(value, ..)]) => SInt(max(w - value.as_int(), 1))
+        (Dshl, [UInt(w1), UInt(w2)], _) => UInt(w1 + pow2(w2).to_int() - 1)
+        (Dshl, [SInt(w1), UInt(w2)], _) => SInt(w1 + pow2(w2).to_int() - 1)
         (Dshr, [UInt(w1), UInt(_)], _) => UInt(w1)
         (Dshr, [SInt(w1), UInt(_)], _) => SInt(w1)
         (Cvt, [UInt(w)], _) => SInt(w + 1)
         (Cvt, [SInt(w)], _) => SInt(w)
         (Neg, [UInt(w) | SInt(w)], _) => SInt(w + 1)
         (Not, [UInt(w) | SInt(w)], _) => UInt(w)
-        (And | Or | Xor, [UInt(w1), UInt(w2)] | [SInt(w1), SInt(w2)], _) => UInt(@utils.max(w1, w2))
+        (And | Or | Xor, [UInt(w1), UInt(w2)] | [SInt(w1), SInt(w2)], _) => UInt(max(w1, w2))
         (Andr | Orr | Xorr, [UInt(_) | SInt(_)], _) => UInt(1)
         (Cat, [UInt(w1), UInt(w2)] | [SInt(w1), SInt(w2)], _) => UInt(w1 + w2)
         (Bits, [UInt(w) | SInt(w), _, _], [_, Literal(hi, ..), Literal(lo, ..)]) => {

@@ -65,7 +65,7 @@ fn ExpandConnectsPass::dynamic_indexing_to_static(
 ) -> TypedRef raise {
   if lhs.ty() is Vec(elem_ty, len) {
     let cases: Array[(TypedExpr, Array[TypedStmt])] = []
-    let index_bits = @utils.clog2(BigInt::from_int(len - 1)).to_int()
+    let index_bits = @utils.significant_bits(BigInt::from_int(len - 1))
 
     for i in 0 ..<len {
       let case_cond = PrimOp(
