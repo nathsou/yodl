@@ -6,4 +6,3 @@ examples/*.lab.yodl
 examples/*.rtlil
 verilator/
 src/sim/
-extensions/firrtl-vscode-syntax/

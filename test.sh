@@ -20,7 +20,7 @@ do
     echo "Compiling $example..."
     fir_path="$OUTPUT_PATH/$(basename $example .yodl).fir"
     sv_path="$OUTPUT_PATH/$(basename $example .yodl).sv"
-    moon run src/main/yodl.mbt $example "write_firrtl $fir_path"
+    moon run src/main/yodl.mbt $example "write_low_firrtl $fir_path"
     firtool --format=fir -O=debug --verilog $fir_path -o $sv_path
 done
 
@@ -50,7 +50,7 @@ find book -type f -name "*.md" | sort | while IFS= read -r file; do
       sv_path="$OUTPUT_PATH/$(basename "$example_file" .yodl).sv"
       
       # Run the compilation commands; any failure causes an exit.
-      moon run src/main/yodl.mbt "$example_file" "write_firrtl $fir_path"
+      moon run src/main/yodl.mbt "$example_file" "write_low_firrtl $fir_path"
       firtool --format=fir -O=debug --verilog "$fir_path" -o "$sv_path"
       continue
     fi

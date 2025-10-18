@@ -1,0 +1,39 @@
+{
+    "name": "firrtl-syntax-highlighting",
+    "displayName": "FIRRTL Syntax Highlighting",
+    "description": "Provides syntax highlighting for the FIRRTL IR.",
+    "version": "0.0.1",
+    "publisher": "nathsou",
+    "engines": {
+        "vscode": "^1.60.0"
+    },
+    "categories": [
+        "Programming Languages"
+    ],
+    "contributes": {
+        "languages": [
+            {
+                "id": "firrtl",
+                "aliases": [
+                    "FIRRTL",
+                    "firrtl"
+                ],
+                "extensions": [
+                    ".fir"
+                ],
+                "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "firrtl",
+                "scopeName": "source.firrtl",
+                "path": "./syntaxes/firrtl.tmLanguage.json"
+            }
+        ]
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/chipsalliance/firrtl-spec"
+    }
+}

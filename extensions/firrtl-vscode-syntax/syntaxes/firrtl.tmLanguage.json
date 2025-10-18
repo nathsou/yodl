@@ -1,0 +1,212 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "FIRRTL",
+  "scopeName": "source.firrtl",
+  "fileTypes": [
+    "fir"
+  ],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#circuit-declaration" },
+    { "include": "#module-declaration" },
+    { "include": "#instance" },
+    { "include": "#memory-params" },
+    { "include": "#keywords" },
+    { "include": "#storage-types" },
+    { "include": "#primitive-ops" },
+    { "include": "#property-ops" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.semicolon.firrtl",
+          "match": ";.*$"
+        },
+        {
+          "name": "comment.line.double-slash.firrtl",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.firrtl",
+          "begin": "/\\*",
+          "end": "\\*/",
+          "patterns": [
+            {
+              "include": "#comments"
+            }
+          ]
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.firrtl",
+          "begin": "\"",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.firrtl" }
+          },
+          "end": "\"",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.firrtl" }
+          },
+          "patterns": [
+            {
+              "name": "constant.character.escape.firrtl",
+              "match": "\\."
+            }
+          ]
+        },
+        {
+          "name": "string.quoted.single.raw.firrtl",
+          "begin": "'",
+          "beginCaptures": {
+            "0": { "name": "punctuation.definition.string.begin.firrtl" }
+          },
+          "end": "'",
+          "endCaptures": {
+            "0": { "name": "punctuation.definition.string.end.firrtl" }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.firrtl",
+          "match": "(?<![\\w.])(-)?0[xX][0-9a-fA-F_]+"
+        },
+        {
+          "name": "constant.numeric.firrtl",
+          "match": "(?<![\\w.])(-)?0[bB][01_]+"
+        },
+        {
+          "name": "constant.numeric.firrtl",
+          "match": "(?<![\\w.])(-)?0[oO][0-7_]+"
+        },
+        {
+          "name": "constant.numeric.firrtl",
+          "match": "(?<![\\w.])(-)?[0-9]+"
+        }
+      ]
+    },
+    "circuit-declaration": {
+      "patterns": [
+        {
+          "name": "meta.declaration.circuit.firrtl",
+          "match": "\\b(circuit)\\s+([A-Za-z_][\\w$]*)",
+          "captures": {
+            "1": { "name": "keyword.control.circuit.firrtl" },
+            "2": { "name": "entity.name.type.circuit.firrtl" }
+          }
+        },
+        {
+          "name": "meta.directive.version.firrtl",
+          "match": "\\b(FIRRTL)\\s+(version)\\s+([0-9]+\\.[0-9]+\\.[0-9]+)",
+          "captures": {
+            "1": { "name": "support.type.builtin.firrtl" },
+            "2": { "name": "keyword.other.version.firrtl" },
+            "3": { "name": "constant.numeric.version.firrtl" }
+          }
+        }
+      ]
+    },
+    "module-declaration": {
+      "patterns": [
+        {
+          "name": "meta.declaration.module.firrtl",
+          "match": "\\b(public\\s+)?(module|extmodule)\\s+([A-Za-z_][\\w$]*)",
+          "captures": {
+            "1": { "name": "storage.modifier.firrtl" },
+            "2": { "name": "keyword.control.module.firrtl" },
+            "3": { "name": "entity.name.type.module.firrtl" }
+          }
+        },
+        {
+          "name": "meta.declaration.formal.firrtl",
+          "match": "\\b(formal)\\s+([A-Za-z_][\\w$]*)\\s+(of)\\s+([A-Za-z_][\\w$]*)",
+          "captures": {
+            "1": { "name": "keyword.control.formal.firrtl" },
+            "2": { "name": "entity.name.function.test.firrtl" },
+            "3": { "name": "keyword.control.formal.firrtl" },
+            "4": { "name": "entity.name.type.module.firrtl" }
+          }
+        }
+      ]
+    },
+    "instance": {
+      "patterns": [
+        {
+          "name": "meta.instantiation.firrtl",
+          "match": "\\b(inst)\\s+([A-Za-z_][\\w$]*)\\s+(of)\\s+([A-Za-z_][\\w$]*)",
+          "captures": {
+            "1": { "name": "keyword.other.inst.firrtl" },
+            "2": { "name": "entity.name.instance.firrtl" },
+            "3": { "name": "keyword.other.inst.firrtl" },
+            "4": { "name": "entity.name.type.module.firrtl" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.other.firrtl",
+          "match": "\\b(?:attach|circuit|const|connect|cover|define|else|enablelayer|enum|flip|formal|invalidate|inst|knownlayer|layer|match|mem|mport|node|of|output|parameter|printf|private|probe|public|read|reg|regreset|release|skip|smem|stop|type|when|wire|with|propassign|assume|assert|force|rwprobe|enable|input)\\b"
+        }
+      ]
+    },
+    "storage-types": {
+      "patterns": [
+        {
+          "name": "storage.type.primitive.firrtl",
+          "match": "\\b(?:UInt|SInt|Clock|Reset|AsyncReset|Analog|Probe|RWProbe|Integer|List)\\b"
+        }
+      ]
+    },
+    "primitive-ops": {
+      "patterns": [
+        {
+          "name": "support.function.primitive.firrtl",
+          "match": "\\b(?:add|sub|mul|div|rem|mod|lt|gt|leq|geq|eq|neq|pad|asUInt|asSInt|asClock|asAsyncReset|asFixedPoint|shl|shr|dshl|dshr|cvt|neg|not|and|or|xor|andr|orr|xorr|cat|bits|head|tail|mux|validif|wrap|squeeze|clog2|reduce|log2ceil)\\b"
+        }
+      ]
+    },
+    "memory-params": {
+      "patterns": [
+        {
+          "name": "support.type.memory.field.firrtl",
+          "match": "(?<![\\w-])(data-type|depth|read-latency|write-latency|read-under-write|reader|writer|readwriter)(?![\\w-])"
+        }
+      ]
+    },
+    "property-ops": {
+      "patterns": [
+        {
+          "name": "support.function.property.firrtl",
+          "match": "\\b(?:integer_add|integer_mul|integer_shr|integer_shl|list_concat)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.firrtl",
+          "match": "(?<![<>=!])=(?!>)"
+        },
+        {
+          "name": "keyword.operator.assignment.firrtl",
+          "match": "=>"
+        },
+        {
+          "name": "punctuation.separator.firrtl",
+          "match": ":"
+        }
+      ]
+    }
+  }
+}

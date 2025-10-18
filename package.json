@@ -6,7 +6,11 @@
     "description": "Modern Hardware Description Language",
     "version": "0.1.0",
     "files": [
-        "/target/js/release/build/main/"
+        "target/js/release/build/main/main.min.js",
+        "target/js/release/build/main/main.d.ts",
+        "target/js/release/build/main/main.mi",
+        "target/js/release/build/main/main.core",
+        "target/js/release/build/main/moonbit.d.ts"
     ],
     "bin": {
         "yodl": "target/js/release/build/main/main.min.js"
