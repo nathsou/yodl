@@ -1,4 +1,4 @@
-using @firrtl { type Id }
+using @firrtl { type Id, type CircuitAnnotation }
 using @parse { type Span, type Path, type ModuleDecl, type Param, type AstEmitter } 
 
 typealias @firrtl.UntypedExpr as FExpr
@@ -22,7 +22,7 @@ pub struct Elaborator {
   circuit_name: String
   modules: Map[Path, FModule]
   extmodules: Map[Path, @firrtl.ExtModule]
-  annotations: Array[Json]
+  annotations: Array[CircuitAnnotation]
   declared_modules: Map[Path, ModuleSignature]
   current_target: Array[String]
   memories: Map[String, Id]
@@ -294,16 +294,10 @@ fn Elaborator::lower_module(self: Elaborator, mod: ModuleDecl) -> Unit raise {
   for attr in mod.attributes.values() {
     match attr {
       { name: "inline", args: [], .. } => {
-        self.annotations.push({
-          "class": "firrtl.passes.InlineAnnotation",
-          "target": self.current_target.join(".").to_json(),
-        })
+        self.annotations.push(InlineAnnotation(target=self.current_target.join(".")))
       }
       { name: "flatten", args: [], .. } => {
-        self.annotations.push({
-          "class": "firrtl.transforms.FlattenAnnotation",
-          "target": self.current_target.join(".").to_json(),
-        })
+        self.annotations.push(FlattenAnnotation(target=self.current_target.join(".")))
       }
       { name: "internal", args: [], .. } => ()
       { span, .. } => {
@@ -363,13 +357,10 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> 
 
   self.extmodules[sig.path] = ext_mod
 
-  let annotation = {
-    "class": "firrtl.transforms.BlackBoxPathAnno",
-    "target": [..self.current_target, sig.path.to_string()].join("."),
-    "path": verilog_path,
-  }
-
-  self.annotations.push(annotation.to_json())
+  self.annotations.push(BlackBoxPathAnnotation(
+    target=[..self.current_target, sig.path.to_string()].join("."),
+    path=verilog_path,
+  ))
 }
 
 fn unwrap_type(ty: Ref[Type?], span~: Span) -> Type raise ElaborationError {
@@ -1274,15 +1265,13 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
         None => raise ElaborationError(message="Unknown memory '\{mem_name}' referenced in \{name}", span~)
       }
 
-      let annotation = {
-        "class": "firrtl.annotations.MemoryFileInlineAnnotation",
-        "target": [..self.current_target, mem_id].join("."),
-        "filename": path,
-        "hexOrBinary": if name == "readmemh" { "h" } else { "b" },
-        "originalMemoryNameOpt": mem_id,
-      }
+      self.annotations.push(MemoryFileInlineAnnotation(
+        target=[..self.current_target, mem_id].join("."),
+        filename=path,
+        is_hex=name == "readmemh",
+        memory_name=mem_id,
+      ))
 
-      self.annotations.push(annotation.to_json())
       Empty(span~)
     }
     FunCall(name="printf", args=[fmt, ..args], span~, ..) => {

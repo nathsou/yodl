@@ -38,12 +38,54 @@ pub fn Id::join(self: Id, str: String) -> Id {
 pub(all) struct Circuit[T] {
   version: (Int, Int, Int)
   id: Id
-  annotations: Array[Json]
+  annotations: Array[CircuitAnnotation]
   decls: Array[Decl[T]]
 }
 
 pub typealias Circuit[Unit] as UntypedCircuit
 pub typealias Circuit[Type] as TypedCircuit
+
+pub(all) enum CircuitAnnotation {
+  MemoryFileInlineAnnotation(target~: String, filename~: String, is_hex~: Bool, memory_name~: String)
+  InlineAnnotation(target~: String)
+  FlattenAnnotation(target~: String)
+  BlackBoxPathAnnotation(target~: String, path~: String)
+}
+
+pub impl ToJson for CircuitAnnotation with to_json(self) -> Json {
+  let map = match self {
+    MemoryFileInlineAnnotation(target~, filename~, is_hex~, memory_name~) => {
+      {
+        "class": "firrtl.annotations.MemoryFileInlineAnnotation",
+        "target": target,
+        "filename": filename,
+        "hexOrBinary": if is_hex { "h" } else { "b" },
+        "originalMemoryNameOpt": memory_name,
+      }
+    }
+    InlineAnnotation(target~) => {
+      {
+        "class": "firrtl.passes.InlineAnnotation",
+        "target": target,
+      }
+    }
+    FlattenAnnotation(target~) => {
+      {
+        "class": "firrtl.transforms.FlattenAnnotation",
+        "target": target,
+      }
+    }
+    BlackBoxPathAnnotation(target~, path~) => {
+      {
+        "class": "firrtl.transforms.BlackBoxPathAnno",
+        "target": target,
+        "path": path,
+      }
+    }
+  }
+
+  map.to_json()
+}
 
 pub(all) enum Decl[T] {
   Module(Module[T])

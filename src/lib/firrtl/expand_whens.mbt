@@ -66,7 +66,12 @@ fn ExpandWhensPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule 
   // Check for incomplete initialisation and add final connections
   for dest, conn_opt in module_scope {
     match conn_opt {
-      Some(conn) => body_stmts.push(Connect(dest, conn))
+      Some(conn) => {
+        // avoid cyclical connections
+        if !(conn is Reference(r, ..) && r == dest) {
+          body_stmts.push(Connect(dest, conn))
+        }
+      }
       None => not_fully_init.push(dest)
     }
   }

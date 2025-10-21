@@ -11,6 +11,7 @@ fn low_firrtl_passes() -> Array[&@firrtl.FIRRTLPass] {
   [
     @firrtl.ExpandConnectsPass::new(),
     @firrtl.ExpandWhensPass::new(),
+    @firrtl.LowerAggregateTypesPass::new(),
   ]
 }
 
@@ -36,7 +37,7 @@ priv enum CommandToken {
 fn is_valid_literal_char(char: Char) -> Bool {
   match char {
     ';' => false
-    _ => not(@utils.is_whitespace(char))
+    _ => !@utils.is_whitespace(char)
   }
 }
 
