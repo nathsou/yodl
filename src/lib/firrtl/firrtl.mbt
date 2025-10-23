@@ -489,6 +489,25 @@ pub fn Type::no_flips(self: Type) -> Type {
   }
 }
 
+pub fn Type::bundle_fields(self: Type) -> Array[BundleField] {
+  match self {
+    Bundle(fields) => fields
+    _ => abort("Expected Bundle type, found \{self}")
+  }
+}
+
+pub fn Type::is_aggregate(self: Type) -> Bool {
+  match self {
+    Bundle(_) | Vec(_, _) => true
+    Const(inner) => inner.is_aggregate()
+    _ => false
+  }
+}
+
+pub fn Type::is_ground(self: Type) -> Bool {
+  !self.is_aggregate()
+}
+
 pub(all) struct BundleField {
   id: Id
   flip: Bool

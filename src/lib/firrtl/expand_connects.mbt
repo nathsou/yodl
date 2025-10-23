@@ -124,6 +124,81 @@ fn ExpandConnectsPass::expr_as_ref(self: Self, expr~: TypedExpr, body~: Array[Ty
   }
 }
 
+impl FIRRTLRewriter for ExpandConnectsPass with rewrite_mux_expr(self, cond~, tval~, fval~, ty~, stmts~) -> TypedExpr {
+  match ty {
+    Bundle(fields) => {
+      let result_id = Id::from("muxbundle\{self.next_ref_id}$")
+      self.next_ref_id += 1
+      let cond_id = Id::from("muxcond\{self.next_ref_id}$")
+      self.next_ref_id += 1
+      stmts.push(Wire(id=result_id, ty~))
+      stmts.push(Node(id=cond_id, expr=self.rewrite_expr(cond, stmts~)))
+      let cond_expr = Reference(Id(cond_id, ty=Type::bool()), ty=Type::bool())
+
+      let tval_ref = self.expr_as_ref(expr=tval, body=stmts)
+      let fval_ref = self.expr_as_ref(expr=fval, body=stmts)
+
+      for field in fields {
+        let tval_field = FieldAccess(lhs=tval_ref, field=field.id, ty=field.ty)
+        let fval_field = FieldAccess(lhs=fval_ref, field=field.id, ty=field.ty)
+        let mux_field = Mux(
+          cond=cond_expr,
+          tval=Reference(tval_field, ty=field.ty),
+          fval=Reference(fval_field, ty=field.ty),
+          ty=field.ty
+        )
+
+        self.connect(
+          lhs=FieldAccess(lhs=Id(result_id, ty=ty), field=field.id, ty=field.ty),
+          rhs=mux_field,
+          body=stmts,
+        )
+      }
+
+      Reference(Id(result_id, ty~), ty~)
+    }
+    Vec(elem_ty, size) => {
+      let result_id = Id::from("muxvec\{self.next_ref_id}$")
+      self.next_ref_id += 1
+      let cond_id = Id::from("muxcond\{self.next_ref_id}$")
+      self.next_ref_id += 1
+      stmts.push(Wire(id=result_id, ty~))
+      stmts.push(Node(id=cond_id, expr=self.rewrite_expr(cond, stmts~)))
+      let cond_expr = Reference(Id(cond_id, ty=Type::bool()), ty=Type::bool())
+
+      let tval_ref = self.expr_as_ref(expr=tval, body=stmts)
+      let fval_ref = self.expr_as_ref(expr=fval, body=stmts)
+
+      for i in 0 ..<size {
+        let tval_elem = StaticIndexing(lhs=tval_ref, index=i, ty=elem_ty)
+        let fval_elem = StaticIndexing(lhs=fval_ref, index=i, ty=elem_ty)
+        let mux_elem = Mux(
+          cond=cond_expr,
+          tval=Reference(tval_elem, ty=elem_ty),
+          fval=Reference(fval_elem, ty=elem_ty),
+          ty=elem_ty
+        )
+
+        self.connect(
+          lhs=StaticIndexing(lhs=Id(result_id, ty=ty), index=i, ty=elem_ty),
+          rhs=mux_elem,
+          body=stmts,
+        )
+      }
+
+      Reference(Id(result_id, ty~), ty~)
+    }
+    _ => {
+      Mux(
+        cond=self.rewrite_expr(cond, stmts~),
+        tval=self.rewrite_expr(tval, stmts~),
+        fval=self.rewrite_expr(fval, stmts~),
+        ty~
+      )
+    }
+  }
+}
+
 // FIRRTL spec 5.0 - Section 8.3.1 - The Connection Algorithm
 fn ExpandConnectsPass::connect(self: Self, lhs~: TypedRef, rhs~: TypedExpr, body~: Array[TypedStmt]) -> Unit raise {
   match lhs.ty().without_const() {

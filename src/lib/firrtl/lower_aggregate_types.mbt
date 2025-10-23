@@ -63,6 +63,7 @@ fn LoweringTable::process_ext_module(self: Self, extmod: ExtModule) -> ExtModule
 }
 
 fn process_module(self: LoweringTable, mod: TypedModule) -> TypedModule raise {
+  // TODO: Handle memory annotations
   let new_ports = self.flatten_ports(mod.ports)
   let new_body = Array::new(capacity=mod.body.length())
 
@@ -113,6 +114,8 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
     Node(id~, expr~) => {
       let new_expr = self.rewrite_expr(expr, body)
       body.push(Node(id~, expr=new_expr))
+      let reference = Id(id, ty=new_expr.ty())
+      self.register(reference, reference)
     }
     Reg(id~, ty~, clock~) => {
       let new_clock = self.rewrite_expr(clock, body)
@@ -154,8 +157,10 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
         self.register(old_ref, new_ref)
       }
     }
-    Mem(_) => {
-      body.push(stmt) // TODO: Handle memories
+    Mem(mem) => {
+      for flat_mem in self.split_mem(mem) {
+        body.push(Mem(flat_mem))
+      }
     }
     Inst(id~, of~, sig~) => {
       let inst_ty = sig.as_bundle()
@@ -165,15 +170,14 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
       if inst_ty is Bundle(fields) {
         for field in fields {
           let old_ref = FieldAccess(lhs=inst_ref, field=field.id, ty=field.ty)
-          for pair in self.flatten(prefix=field.id.value(), old_ref~) {
-            let (destructed_ref, new_id) = pair
+          for flat in subcomponents(field.ty, field.id.value(), old_ref) {
             let new_ref = FieldAccess(
               lhs=inst_ref,
-              field=Id::from(new_id),
-              ty=destructed_ref.ty(),
+              field=Id::from(flat.name),
+              ty=flat.ty,
             )
 
-            self.register(destructed_ref, new_ref)
+            self.register(flat.reference, new_ref)
           }
         }
       }
@@ -310,7 +314,7 @@ fn LoweringTable::uniquify(self: Self, prefix: String, ty: Type) -> String {
   // "If a name is already taken, that name will be made unique by appending a suffix _<i> to the
   // name, where i is the lowest nonnegative integer that gives a unique name."
 
-  while subcomponents(ty, current_prefix).any(name => self.namespace_.contains(name)) {
+  while subcomponents(ty, current_prefix, Id(Id::from(prefix), ty~)).any(field => self.namespace_.contains(field.name)) {
     current_prefix = "\{prefix}\{delim}\{iterations}"
     iterations += 1
   }
@@ -318,28 +322,58 @@ fn LoweringTable::uniquify(self: Self, prefix: String, ty: Type) -> String {
   current_prefix
 }
 
-fn subcomponents(ty: Type, prefix: String) -> Iter[String] {
-  Iter::new((visit: (String) -> IterResult) => {
+priv struct FlattenedField {
+  reference: TypedRef
+  name: String
+  ty: Type
+}
+
+fn subcomponents(ty: Type, prefix: String, reference: TypedRef) -> Iter[FlattenedField] {
+  Iter::new((visit: (FlattenedField) -> IterResult) => {
     match ty {
       Bundle(fields) => {
         for field in fields {
-          guard visit("\{prefix}\{delim}\{field.id}") is IterContinue else { break IterEnd }
+          let field_ref = FieldAccess(lhs=reference, field=field.id, ty=field.ty)
+          for sub_field in subcomponents(field.ty, "\{prefix}\{delim}\{field.id}", field_ref) {
+            guard visit(sub_field) is IterContinue else { break }
+          }
         } else {
           IterContinue
         }
       }
       Vec(elem_ty, size) => {
         for i in 0 ..<size {
-          for sub_id in subcomponents(elem_ty, "\{prefix}\{delim}\{i}") {
+          let index_ref = StaticIndexing(lhs=reference, index=i, ty=elem_ty)
+          for sub_id in subcomponents(elem_ty, "\{prefix}\{delim}\{i}", index_ref) {
             guard visit(sub_id) is IterContinue else { break }
           }
         } else {
           IterContinue
         }
       }
-      _ => visit(prefix)
+      _ => visit({
+        reference,
+        name: prefix,
+        ty,
+      })
     }
   })
+}
+
+test "subcomponents" {
+  let ty = Bundle([
+    BundleField::from(id=Id::from("a"), ty=UInt(8)),
+    BundleField::from(
+      id=Id::from("b"),
+      ty=Bundle([
+        BundleField::from(id=Id::from("c"), ty=SInt(16)),
+        BundleField::from(id=Id::from("d"), ty=Vec(UInt(4), 2)),
+      ])
+    ),
+  ])
+
+  let flat = subcomponents(ty, "x", Id(Id::from("x"), ty~)).collect()
+  inspect(flat.map(field => field.name), content="[\"x_a\", \"x_b_c\", \"x_b_d_0\", \"x_b_d_1\"]")
 }
 
 test "flatten" {
@@ -433,4 +467,88 @@ fn LoweringTable::sub_exprs_dfs(self: Self, expr: TypedExpr, body: Array[TypedSt
       _ => [expr]
     }
   }
+}
+
+fn replace_ref_lhs(reference: TypedRef, new_lhs: TypedRef) -> TypedRef {
+  match reference {
+    FieldAccess(lhs=Id(_), field~, ty~) => {
+      FieldAccess(lhs=new_lhs, field~, ty~)
+    }
+    FieldAccess(lhs~, field~, ty~) => {
+      FieldAccess(lhs=replace_ref_lhs(lhs, new_lhs), field~, ty~)
+    }
+    StaticIndexing(lhs=Id(_), index~, ty~) => {
+      StaticIndexing(lhs=new_lhs, index~, ty~)
+    }
+    StaticIndexing(lhs~, index~, ty~) => {
+      StaticIndexing(lhs=replace_ref_lhs(lhs, new_lhs), index~, ty~)
+    }
+    _ => reference
+  }
+}
+
+fn LoweringTable::split_mem(self: Self, mem: Mem) -> Array[Mem] {
+  let bundle = mem.as_bundle()
+  let is_groud_ty = mem.data_type.is_ground()
+  let port_types = mem.reader_writer_types()
+  let mem_ref = Id(Id::from(mem.id.value()), ty=bundle)
+  let split_mems = subcomponents(mem.data_type, mem.id.value(), mem_ref).collect()
+
+  for ports, port_type in @utils.zip2([mem.readers, mem.writers, mem.readwriters], [port_types.read, port_types.write, port_types.read_write]) {
+    let port_type_fields = port_type.bundle_fields()
+    for port in ports {
+      let old_port_ref = FieldAccess(lhs=mem_ref, field=port, ty=port_type)
+      for flat in split_mems {
+        let sub_mem_ref = Id(Id::from(flat.name), ty=flat.ty)
+        let port_ref = FieldAccess(lhs=sub_mem_ref, field=port, ty=port_type)
+        for field in port_type_fields {
+          let field_ref = FieldAccess(lhs=port_ref, field=field.id, ty=field.ty)
+          let mut old_field_ref = FieldAccess(lhs=old_port_ref, field=field.id, ty=field.ty)
+          let field_name = field.id.value()
+          let is_data_field = field_name == "data" || field_name == "wdata" || field_name == "rdata"
+          let is_mask_field = field_name == "mask" || field_name == "wmask"
+
+          if !is_groud_ty && (is_data_field || is_mask_field) {
+            old_field_ref = replace_ref_lhs(flat.reference, old_field_ref)
+          }
+
+          self.register(old_field_ref, field_ref)
+        }
+      }
+    }
+  }
+
+  split_mems.map(flat => {
+    ..mem,
+    id: Id::from(flat.name),
+    data_type: flat.ty,
+  })
+}
+
+test "flatten_mem" {
+  let table = LoweringTable::new()
+
+  let mem: Mem = {
+    id: Id::from("my_mem"),
+    data_type: Bundle([
+      BundleField::from(id=Id::from("a"), ty=UInt(8)),
+      BundleField::from(
+        id=Id::from("b"),
+        ty=Bundle([
+          BundleField::from(id=Id::from("c"), ty=SInt(16)),
+          BundleField::from(id=Id::from("d"), ty=Vec(UInt(4), 2)),
+        ])
+      ),
+    ]),
+    depth: 256,
+    read_latency: 1,
+    write_latency: 1,
+    readers: [Id::from("r1")],
+    writers: [Id::from("w1")],
+    readwriters: [Id::from("rw1")],
+    read_under_write: Undefined,
+  }
+
+  let flat_mems = table.split_mem(mem)
+  inspect(flat_mems[0].id)
 }
