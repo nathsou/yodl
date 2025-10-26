@@ -1091,7 +1091,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
           _ => raise ElaborationError(message="Module '\{path.to_string()}' is marked as internal but has no elaboration handler", span~)
         }
       } else {
-        let inst_id = Id::from("inst_\{self.next_idx()}")
+        let inst_id = Id::from("inst_\{self.next_idx()}$")
         scope.add_stmt(Inst(id=inst_id, of=id_of_path(path), sig={ ports: ports_sig }))
 
         for port_name, sig in ports_sig {
