@@ -38,16 +38,100 @@ pub fn Id::join(self: Id, str: String) -> Id {
 pub(all) struct Circuit[T] {
   version: (Int, Int, Int)
   id: Id
-  annotations: Array[Json]
+  annotations: Array[Annotation]
   decls: Array[Decl[T]]
 }
 
 pub typealias Circuit[Unit] as UntypedCircuit
 pub typealias Circuit[Type] as TypedCircuit
 
+pub(all) struct AnnotationTarget {
+  circuit: String
+  mod: Id?
+  leaf: Id?
+}
+
+pub impl Show for AnnotationTarget with output(self, logger) -> Unit {
+  logger.write_string("\{self.circuit}")
+
+  if self.mod is Some(mod) {
+    logger.write_string(".\{mod}")
+  }
+
+  if self.leaf is Some(leaf) {
+    logger.write_string(".\{leaf}")
+  }
+}
+
+pub(all) enum Annotation {
+  MemoryFileInlineAnnotation(target~: AnnotationTarget, filename~: String, is_hex~: Bool)
+  InlineAnnotation(target~: AnnotationTarget)
+  FlattenAnnotation(target~: AnnotationTarget)
+  BlackBoxPathAnnotation(target~: AnnotationTarget, path~: String)
+}
+
+pub impl ToJson for Annotation with to_json(self) -> Json {
+  let map = match self {
+    MemoryFileInlineAnnotation(target~, filename~, is_hex~) => {
+      {
+        "class": "firrtl.annotations.MemoryFileInlineAnnotation",
+        "target": target.to_string(),
+        "filename": filename,
+        "hexOrBinary": if is_hex { "h" } else { "b" },
+        "originalMemoryNameOpt": target.leaf.unwrap().value(),
+      }
+    }
+    InlineAnnotation(target~) => {
+      {
+        "class": "firrtl.passes.InlineAnnotation",
+        "target": target.to_string(),
+      }
+    }
+    FlattenAnnotation(target~) => {
+      {
+        "class": "firrtl.transforms.FlattenAnnotation",
+        "target": target.to_string(),
+      }
+    }
+    BlackBoxPathAnnotation(target~, path~) => {
+      {
+        "class": "firrtl.transforms.BlackBoxPathAnno",
+        "target": target.to_string(),
+        "path": path,
+      }
+    }
+  }
+
+  map.to_json()
+}
+
+pub fn Annotation::target(self: Annotation) -> AnnotationTarget {
+  match self {
+    MemoryFileInlineAnnotation(target~, ..) | InlineAnnotation(target~) | FlattenAnnotation(target~) | BlackBoxPathAnnotation(target~, ..) => target
+  }
+}
+
+pub fn Annotation::with_target(self: Annotation, new_target: AnnotationTarget) -> Annotation {
+  match self {
+    MemoryFileInlineAnnotation(target=_, filename~, is_hex~) => {
+      MemoryFileInlineAnnotation(target=new_target, filename~, is_hex~)
+    }
+    InlineAnnotation(target=_) => InlineAnnotation(target=new_target)
+    FlattenAnnotation(target=_) => FlattenAnnotation(target=new_target)
+    BlackBoxPathAnnotation(target=_, path~) => BlackBoxPathAnnotation(target=new_target, path~)
+  }
+}
+
 pub(all) enum Decl[T] {
   Module(Module[T])
   ExtModule(ExtModule)
+}
+
+pub fn[T] Decl::id(self: Decl[T]) -> Id {
+  match self {
+    Module(mod) => mod.id
+    ExtModule(extmod) => extmod.id
+  }
 }
 
 pub typealias Decl[Unit] as UntypedDecl
@@ -68,8 +152,10 @@ pub(all) enum Stmt[T] {
 
 pub(all) struct Mem {
     id: Id
+    is_flat: Bool
     data_type: Type
     depth: Int
+    mask_ty: Type
     read_latency: Int
     write_latency: Int
     read_under_write: ReadUnderWrite
@@ -112,8 +198,8 @@ pub fn Mem::reader_writer_types(self: Mem) -> MemPorts {
       BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
       BundleField::from(id=Id::from("en"), ty=UInt(1)),
       BundleField::from(id=Id::from("clk"), ty=Clock),
-      BundleField::from(id=Id::from("data"), ty=self.data_type, flip=true),
-      BundleField::from(id=Id::from("mask"), ty=self.data_type.mem_mask()),
+      BundleField::from(id=Id::from("data"), ty=self.data_type),
+      BundleField::from(id=Id::from("mask"), ty=self.mask_ty),
     ]),
     read_write: Bundle([
       BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
@@ -122,7 +208,7 @@ pub fn Mem::reader_writer_types(self: Mem) -> MemPorts {
       BundleField::from(id=Id::from("rdata"), ty=self.data_type, flip=true),
       BundleField::from(id=Id::from("wmode"), ty=UInt(1)),
       BundleField::from(id=Id::from("wdata"), ty=self.data_type),
-      BundleField::from(id=Id::from("wmask"), ty=self.data_type.mem_mask()),
+      BundleField::from(id=Id::from("wmask"), ty=self.mask_ty),
     ]),
   }
 }
@@ -144,6 +230,25 @@ pub fn Mem::as_bundle(self: Mem) -> Type {
   }
 
   Bundle(fields)
+}
+
+pub fn Mem::ports(self: Mem) -> Array[(Id, Type)] {
+  let ports: Array[(Id, Type)] = []
+  let port_types = self.reader_writer_types()
+
+  for r in self.readers {
+    ports.push((r, port_types.read))
+  }
+
+  for w in self.writers {
+    ports.push((w, port_types.write))
+  }
+
+  for rw in self.readwriters {
+    ports.push((rw, port_types.read_write))
+  }
+
+  ports
 }
 
 pub typealias Stmt[Unit] as UntypedStmt
@@ -275,6 +380,34 @@ pub(all) enum Reference[T] {
   FieldAccess(lhs~: Reference[T], field~: Id, ty~: T)
 }
 
+// Supporting arbitrary dynamic indexing would make initialisation analysis undecidable
+impl[T] Hash for Reference[T] with hash_combine(self, hasher) {
+  match self {
+    Id(id, ty=_) => id.hash_combine(hasher)
+    StaticIndexing(lhs~, index~, ty=_) => {
+      lhs.hash_combine(hasher)
+      hasher.combine_int(index)
+    }
+    DynamicIndexing(..) => {
+      @utils.fail("Dynamic indexing is not supported in hashing")
+    }
+    FieldAccess(lhs~, field~, ty=_) => {
+      lhs.hash_combine(hasher)
+      field.hash_combine(hasher)
+    }
+  }
+}
+
+impl[T] Eq for Reference[T] with equal(self, other) {
+  match (self, other) {
+    (Id(id1, ty=_), Id(id2, ty=_)) => id1 == id2
+    (StaticIndexing(lhs=lhs1, index=idx1, ty=_), StaticIndexing(lhs=lhs2, index=idx2, ty=_)) => lhs1 == lhs2 && idx1 == idx2
+    (DynamicIndexing(..), DynamicIndexing(..)) => @utils.fail("Dynamic indexing is not supported in equality")
+    (FieldAccess(lhs=lhs1, field=field1, ty=_), FieldAccess(lhs=lhs2, field=field2, ty=_)) => lhs1 == lhs2 && field1 == field2
+    _ => false
+  }
+}
+
 pub fn[T: Default] mk_id(id: Id) -> Reference[T] {
   Id(id, ty=T::default())
 }
@@ -299,6 +432,10 @@ pub fn[T] Reference::ty(self: Reference[T]) -> T {
 
 pub typealias Reference[Unit] as UntypedRef
 pub typealias Reference[Type] as TypedRef
+
+pub fn TypedRef::as_expr(self: TypedRef) -> TypedExpr {
+  Reference(self, ty=self.ty())
+}
 
 pub fn[T] Reference::indexing_from(lhs~: Reference[T], index~: Expr[T], ty~: T) -> Reference[T] {
   match index {
@@ -447,11 +584,72 @@ pub fn Type::no_flips(self: Type) -> Type {
   }
 }
 
+pub fn Type::bundle_fields(self: Type) -> Array[BundleField] {
+  match self {
+    Bundle(fields) => fields
+    _ => abort("Expected Bundle type, found \{self}")
+  }
+}
+
+pub fn Type::is_aggregate(self: Type) -> Bool {
+  match self {
+    Bundle(_) | Vec(_, _) => true
+    Const(inner) => inner.is_aggregate()
+    _ => false
+  }
+}
+
+pub fn Type::is_ground(self: Type) -> Bool {
+  !self.is_aggregate()
+}
+
+pub fn Type::width(self: Type) -> Int {
+  match self {
+    UInt(width) | SInt(width) => width
+    Clock | Reset | AsyncReset => 1
+    Bundle(fields) => @utils.sum(fields.map(field => field.ty.width()).iter())
+    Vec(elem_ty, size) => elem_ty.width() * size
+    Const(inner) => inner.width()
+  }
+}
+
+fn Type::leaf_types(self: Type) -> Array[Type] {
+  let leaf_types = []
+
+  fn aux(ty: Type) -> Unit {
+    match ty {
+      Bundle(fields) => {
+        for field in fields {
+          aux(field.ty)
+        }
+      }
+      Vec(elem_ty, size) => {
+        for _ in 0..<size {
+          aux(elem_ty)
+        }
+      }
+      _ => {
+        leaf_types.push(ty)
+      }
+    }
+  }
+
+  aux(self)
+
+  leaf_types
+}
+
+// Returns the maximum number of bits that can be masked together in a memory of this type
+pub fn Type::mem_mask_granularity(self: Type) -> Int {
+  let leaf_widths = self.leaf_types().map(Type::width)
+  leaf_widths[1:].fold((acc, w) => @utils.gcd(acc, w), init=leaf_widths[0])
+}
+
 pub(all) struct BundleField {
   id: Id
   flip: Bool
   ty: Type
-} derive(Eq)
+} derive(Eq, Show)
 
 pub fn BundleField::from(id~: Id, ty~: Type, flip~: Bool = false) -> BundleField {
   { id, flip, ty }

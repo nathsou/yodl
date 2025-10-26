@@ -1,4 +1,4 @@
-using @firrtl { type Id }
+using @firrtl { type Id, type Annotation, type AnnotationTarget }
 using @parse { type Span, type Path, type ModuleDecl, type Param, type AstEmitter } 
 
 typealias @firrtl.UntypedExpr as FExpr
@@ -22,9 +22,9 @@ pub struct Elaborator {
   circuit_name: String
   modules: Map[Path, FModule]
   extmodules: Map[Path, @firrtl.ExtModule]
-  annotations: Array[Json]
+  annotations: Array[Annotation]
   declared_modules: Map[Path, ModuleSignature]
-  current_target: Array[String]
+  mut current_target: AnnotationTarget
   memories: Map[String, Id]
   mut current_clock: FExpr?
 }
@@ -37,7 +37,7 @@ pub fn Elaborator::new(circuit_name: String) -> Elaborator {
     extmodules: {},
     annotations: [],
     declared_modules: {},
-    current_target: [circuit_name],
+    current_target: { circuit: circuit_name, mod: None, leaf: None },
     memories: {},
     current_clock: None
   }
@@ -256,12 +256,13 @@ fn _default_mask(ty: @firrtl.Type, span~: Span) -> Value {
 
 fn Elaborator::lower_module(self: Elaborator, mod: ModuleDecl) -> Unit raise {
   let env = ElaboratorEnv::new()
-  self.current_target.push([..mod.path.packages, mod.path.member].join("_"))
+  let mod_id = id_of_path(mod.path)
+  self.current_target = { circuit: self.current_target.circuit, mod: Some(mod_id), leaf: None }
   self.current_clock = None
 
   let fir_mod: FModule = {
     public: true,
-    id: id_of_path(mod.path),
+    id: mod_id,
     ports: {
       let ports = Array::new(capacity=mod.ports.length())
 
@@ -294,16 +295,10 @@ fn Elaborator::lower_module(self: Elaborator, mod: ModuleDecl) -> Unit raise {
   for attr in mod.attributes.values() {
     match attr {
       { name: "inline", args: [], .. } => {
-        self.annotations.push({
-          "class": "firrtl.passes.InlineAnnotation",
-          "target": self.current_target.join(".").to_json(),
-        })
+        self.annotations.push(InlineAnnotation(target=self.current_target))
       }
       { name: "flatten", args: [], .. } => {
-        self.annotations.push({
-          "class": "firrtl.transforms.FlattenAnnotation",
-          "target": self.current_target.join(".").to_json(),
-        })
+        self.annotations.push(FlattenAnnotation(target=self.current_target))
       }
       { name: "internal", args: [], .. } => ()
       { span, .. } => {
@@ -315,8 +310,6 @@ fn Elaborator::lower_module(self: Elaborator, mod: ModuleDecl) -> Unit raise {
   for stmt in mod.body {
     self.lower_stmt(stmt, scope=fir_mod, env~)
   }
-
-  let _ = self.current_target.pop()
 }
 
 fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> Unit raise {
@@ -363,13 +356,10 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> 
 
   self.extmodules[sig.path] = ext_mod
 
-  let annotation = {
-    "class": "firrtl.transforms.BlackBoxPathAnno",
-    "target": [..self.current_target, sig.path.to_string()].join("."),
-    "path": verilog_path,
-  }
-
-  self.annotations.push(annotation.to_json())
+  self.annotations.push(BlackBoxPathAnnotation(
+    target={ circuit: self.current_target.circuit, mod: Some(id), leaf: None },
+    path=verilog_path,
+  ))
 }
 
 fn unwrap_type(ty: Ref[Type?], span~: Span) -> Type raise ElaborationError {
@@ -1048,6 +1038,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
             }
 
             let mem_stmt = @firrtl.Mem({
+              is_flat: false,
+              mask_ty: data_type.mem_mask(),
               id: mem_id,
               data_type,
               depth,
@@ -1099,7 +1091,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
           _ => raise ElaborationError(message="Module '\{path.to_string()}' is marked as internal but has no elaboration handler", span~)
         }
       } else {
-        let inst_id = Id::from("inst_\{self.next_idx()}")
+        let inst_id = Id::from("inst_\{self.next_idx()}$")
         scope.add_stmt(Inst(id=inst_id, of=id_of_path(path), sig={ ports: ports_sig }))
 
         for port_name, sig in ports_sig {
@@ -1270,19 +1262,16 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       }
 
       let mem_id = match self.memories.get(mem_name) {
-        Some(id) => id.inner()
+        Some(id) => id
         None => raise ElaborationError(message="Unknown memory '\{mem_name}' referenced in \{name}", span~)
       }
 
-      let annotation = {
-        "class": "firrtl.annotations.MemoryFileInlineAnnotation",
-        "target": [..self.current_target, mem_id].join("."),
-        "filename": path,
-        "hexOrBinary": if name == "readmemh" { "h" } else { "b" },
-        "originalMemoryNameOpt": mem_id,
-      }
+      self.annotations.push(MemoryFileInlineAnnotation(
+        target={ ..self.current_target, leaf: Some(mem_id) },
+        filename=path,
+        is_hex=name == "readmemh",
+      ))
 
-      self.annotations.push(annotation.to_json())
       Empty(span~)
     }
     FunCall(name="printf", args=[fmt, ..args], span~, ..) => {

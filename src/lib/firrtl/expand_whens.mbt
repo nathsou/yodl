@@ -19,34 +19,6 @@ pub impl FIRRTLPass for ExpandWhensPass with run(self, circuit) -> TypedCircuit 
   }
 }
 
-// Supporting arbitrary dynamic indexing would make initialisation analysis undecidable
-impl[T] Hash for Reference[T] with hash_combine(self, hasher) {
-  match self {
-    Id(id, ty=_) => id.hash_combine(hasher)
-    StaticIndexing(lhs~, index~, ty=_) => {
-      lhs.hash_combine(hasher)
-      hasher.combine_int(index)
-    }
-    DynamicIndexing(..) => {
-      @utils.fail("Dynamic indexing is not supported in hashing")
-    }
-    FieldAccess(lhs~, field~, ty=_) => {
-      lhs.hash_combine(hasher)
-      field.hash_combine(hasher)
-    }
-  }
-}
-
-impl[T] Eq for Reference[T] with equal(self, other) {
-  match (self, other) {
-    (Id(id1, ty=_), Id(id2, ty=_)) => id1 == id2
-    (StaticIndexing(lhs=lhs1, index=idx1, ty=_), StaticIndexing(lhs=lhs2, index=idx2, ty=_)) => lhs1 == lhs2 && idx1 == idx2
-    (DynamicIndexing(..), DynamicIndexing(..)) => @utils.fail("Dynamic indexing is not supported in equality")
-    (FieldAccess(lhs=lhs1, field=field1, ty=_), FieldAccess(lhs=lhs2, field=field2, ty=_)) => lhs1 == lhs2 && field1 == field2
-    _ => false
-  }
-}
-
 fn ExpandWhensPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule raise {
   // Track last connection to each destination
   let module_scope: DriverMap = {}
@@ -66,7 +38,12 @@ fn ExpandWhensPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule 
   // Check for incomplete initialisation and add final connections
   for dest, conn_opt in module_scope {
     match conn_opt {
-      Some(conn) => body_stmts.push(Connect(dest, conn))
+      Some(conn) => {
+        // avoid cyclical connections
+        if !(conn is Reference(r, ..) && r == dest) {
+          body_stmts.push(Connect(dest, conn))
+        }
+      }
       None => not_fully_init.push(dest)
     }
   }

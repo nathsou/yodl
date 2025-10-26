@@ -44,11 +44,11 @@ impl FIRRTLRewriter with rewrite_extmodule(_, extmod) -> ExtModule raise {
   extmod
 }
 
-impl FIRRTLRewriter with rewrite_module(self, mod) -> TypedModule raise {
+pub fn rewrite_module_default_impl(rewriter: &FIRRTLRewriter, mod: TypedModule) -> TypedModule raise {
   let new_body = Array::new(capacity=mod.body.length())
 
   for stmt in mod.body {
-    self.rewrite_stmt(stmt, stmts=new_body)
+    rewriter.rewrite_stmt(stmt, stmts=new_body)
   }
 
   {
@@ -57,6 +57,10 @@ impl FIRRTLRewriter with rewrite_module(self, mod) -> TypedModule raise {
     ports: mod.ports,
     body: new_body,
   }
+}
+
+impl FIRRTLRewriter with rewrite_module(self, mod) -> TypedModule raise {
+  rewrite_module_default_impl(self, mod)
 }
 
 impl FIRRTLRewriter with rewrite_ref(_, r, _) -> TypedRef raise {
