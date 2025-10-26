@@ -1038,6 +1038,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
             }
 
             let mem_stmt = @firrtl.Mem({
+              is_flat: false,
+              mask_ty: data_type.mem_mask(),
               id: mem_id,
               data_type,
               depth,

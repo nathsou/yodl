@@ -179,68 +179,6 @@ pub impl[T] Show for Reference[T] with output(self, logger) {
   }
 }
 
-pub fn emit_mem(self: FIRRTLEmitter, mem: Mem, is_flat_mem~: Bool) -> Unit {
-  self.inner().write_indent()
-  self.inner().write(if is_flat_mem { "flatmem " } else { "mem " })
-  self.inner().write(mem.id)
-  self.inner().write(":\n")
-  self.inner().indent += 1
-  self.inner().write_indent()
-
-  if is_flat_mem && mem.data_type is UInt(width) {
-    self.inner().write("width => ")
-    self.inner().write(width)
-  } else {
-    self.inner().write("data-type => ")
-    self.inner().write(mem.data_type)
-  }
-  
-  self.inner().write("\n")
-  self.inner().write_indent()
-  self.inner().write("depth => ")
-  self.inner().write(mem.depth)
-  self.inner().write("\n")
-  self.inner().write_indent()
-  self.inner().write("read-latency => ")
-  self.inner().write(mem.read_latency)
-  self.inner().write("\n")
-  self.inner().write_indent()
-  self.inner().write("write-latency => ")
-  self.inner().write(mem.write_latency)
-  self.inner().write("\n")
-  self.inner().write_indent()
-  self.inner().write("read-under-write => ")
-  self.inner().write(match mem.read_under_write {
-    Undefined => "undefined"
-    Old => "old"
-    New => "new"
-  })
-  self.inner().write("\n")
-
-  for reader in mem.readers {
-    self.inner().write_indent()
-    self.inner().write("reader => ")
-    self.inner().write(reader)
-    self.inner().write("\n")
-  }
-
-  for writer in mem.writers {
-    self.inner().write_indent()
-    self.inner().write("writer => ")
-    self.inner().write(writer)
-    self.inner().write("\n")
-  }
-
-  for readwriter in mem.readwriters {
-    self.inner().write_indent()
-    self.inner().write("readwriter => ")
-    self.inner().write(readwriter)
-    self.inner().write("\n")
-  }
-
-  self.inner().indent -= 1
-}
-
 pub fn[T] emit_stmt(self: FIRRTLEmitter, stmt: Stmt[T], glued~: Bool = false) -> Unit {
   match stmt {
     Node(id~, expr~) => {
@@ -332,10 +270,74 @@ pub fn[T] emit_stmt(self: FIRRTLEmitter, stmt: Stmt[T], glued~: Bool = false) ->
       }
     }
     Mem(mem) => {
-      self.emit_mem(mem, is_flat_mem=false)
-    }
-    FlatMem(flat_mem) => {
-      self.emit_mem(flat_mem.as_mem(), is_flat_mem=true)
+      self.inner().write_indent()
+      self.inner().write(if mem.is_flat { "flatmem " } else { "mem " })
+      self.inner().write(mem.id)
+      self.inner().write(":\n")
+      self.inner().indent += 1
+      self.inner().write_indent()
+
+      if mem.is_flat {
+        let (data_width, mask_width)  = match (mem.data_type, mem.mask_ty)  {
+          (UInt(data_width), UInt(mask_width)) => (data_width, mask_width)
+          _ => @utils.fail("Flat memory data and mask types must be UInt")
+        }
+        
+        self.inner().write("width => ")
+        self.inner().write(data_width)
+        self.inner().write("\n")
+        self.inner().write_indent()
+        self.inner().write("mask_granularity => ")
+        self.inner().write(data_width / mask_width)
+      } else {
+        self.inner().write("data-type => ")
+        self.inner().write(mem.data_type)
+      }
+      
+      self.inner().write("\n")
+      self.inner().write_indent()
+      self.inner().write("depth => ")
+      self.inner().write(mem.depth)
+      self.inner().write("\n")
+      self.inner().write_indent()
+      self.inner().write("read-latency => ")
+      self.inner().write(mem.read_latency)
+      self.inner().write("\n")
+      self.inner().write_indent()
+      self.inner().write("write-latency => ")
+      self.inner().write(mem.write_latency)
+      self.inner().write("\n")
+      self.inner().write_indent()
+      self.inner().write("read-under-write => ")
+      self.inner().write(match mem.read_under_write {
+        Undefined => "undefined"
+        Old => "old"
+        New => "new"
+      })
+      self.inner().write("\n")
+
+      for reader in mem.readers {
+        self.inner().write_indent()
+        self.inner().write("reader => ")
+        self.inner().write(reader)
+        self.inner().write("\n")
+      }
+
+      for writer in mem.writers {
+        self.inner().write_indent()
+        self.inner().write("writer => ")
+        self.inner().write(writer)
+        self.inner().write("\n")
+      }
+
+      for readwriter in mem.readwriters {
+        self.inner().write_indent()
+        self.inner().write("readwriter => ")
+        self.inner().write(readwriter)
+        self.inner().write("\n")
+      }
+
+      self.inner().indent -= 1
     }
     Skip => {
       self.inner().write_indent()

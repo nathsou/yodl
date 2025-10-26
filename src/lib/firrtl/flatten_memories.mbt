@@ -51,7 +51,7 @@ impl FIRRTLRewriter for FlattenMemoriesPass with rewrite_mem_stmt(self, mem, stm
     stmts.push(Mem(mem))
   } else {
     let mem_bundle_type = mem.as_bundle()
-    let leaf_types = flatten_type(mem.data_type)
+    let leaf_types = mem.data_type.leaf_types()
     let mut mem_flat_width = 0
     let leaf_widths = []
 
@@ -65,16 +65,13 @@ impl FIRRTLRewriter for FlattenMemoriesPass with rewrite_mem_stmt(self, mem, stm
       // Create the flattened memory
       // Internally, the CIRCT MLIR compiler supports granular masks but FIRRTL
       // does not, so we introduce a custom flatmem construct which cannot be expressed in FIRRTL directly.
-      stmts.push(FlatMem({
-        id: mem.id,
-        width: mem_flat_width,
-        depth: mem.depth,
-        read_latency: mem.read_latency,
-        write_latency: mem.write_latency,
-        readers: mem.readers,
-        writers: mem.writers,
-        readwriters: mem.readwriters,
-        read_under_write: mem.read_under_write,
+      let mask_granularity = mem.data_type.mem_mask_granularity()
+
+      stmts.push(Mem({
+        ..mem,
+        is_flat: true,
+        data_type: UInt(mem_flat_width),
+        mask_ty: UInt(mem_flat_width / mask_granularity),
       }))
 
       // Now create new ports for the flattened memory and create wires
@@ -111,11 +108,12 @@ impl FIRRTLRewriter for FlattenMemoriesPass with rewrite_mem_stmt(self, mem, stm
             if !field.flip {
               if is_mask {
                 let mask_leafs = flatten_ref(Id(wire_id, ty=field.ty))
+                let leaf_types = mem.data_type.leaf_types()
                 let new_mask = []
 
                 for i in 0..<mask_leafs.length() {
                   let mask_bit = mask_leafs[i]
-                  let repeat_count = leaf_types[i].width()
+                  let repeat_count = leaf_types[i].width() / mask_granularity
 
                   for _ in 0..<repeat_count {
                     new_mask.push(mask_bit)
@@ -141,32 +139,6 @@ impl FIRRTLRewriter for FlattenMemoriesPass with rewrite_mem_stmt(self, mem, stm
       }
     }
   }
-}
-
-fn flatten_type(ty: Type) -> Array[Type] {
-  let leaf_types = []
-
-  fn aux(ty: Type) -> Unit {
-    match ty {
-      Bundle(fields) => {
-        for field in fields {
-          aux(field.ty)
-        }
-      }
-      Vec(elem_ty, size) => {
-        for _ in 0..<size {
-          aux(elem_ty)
-        }
-      }
-      _ => {
-        leaf_types.push(ty)
-      }
-    }
-  }
-
-  aux(ty)
-
-  leaf_types
 }
 
 fn flatten_ref(r: TypedRef) -> Array[TypedRef] {

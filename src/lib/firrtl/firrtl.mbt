@@ -144,7 +144,6 @@ pub(all) enum Stmt[T] {
   Reg(id~: Id, ty~: Type, clock~: Expr[T])
   RegReset(id~: Id, ty~: Type, clock~: Expr[T], reset~: Expr[T], init~: Expr[T])
   Mem(Mem)
-  FlatMem(FlatMem)
   Connect(Reference[T], Expr[T])
   When(When[T])
   Command(Command[T])
@@ -153,20 +152,10 @@ pub(all) enum Stmt[T] {
 
 pub(all) struct Mem {
     id: Id
+    is_flat: Bool
     data_type: Type
     depth: Int
-    read_latency: Int
-    write_latency: Int
-    read_under_write: ReadUnderWrite
-    readers: Array[Id]
-    writers: Array[Id]
-    readwriters: Array[Id]
-}
-
-pub(all) struct FlatMem {
-    id: Id
-    width: Int
-    depth: Int
+    mask_ty: Type
     read_latency: Int
     write_latency: Int
     read_under_write: ReadUnderWrite
@@ -195,7 +184,7 @@ pub struct MemPorts {
   read_write: Type
 }
 
-pub fn Mem::reader_writer_types(self: Mem, mask_ty~: Type = self.data_type.mem_mask()) -> MemPorts {
+pub fn Mem::reader_writer_types(self: Mem) -> MemPorts {
   let depth_clog2 = @utils.clog2(BigInt::from_int(self.depth)).to_int()
   
   {
@@ -210,7 +199,7 @@ pub fn Mem::reader_writer_types(self: Mem, mask_ty~: Type = self.data_type.mem_m
       BundleField::from(id=Id::from("en"), ty=UInt(1)),
       BundleField::from(id=Id::from("clk"), ty=Clock),
       BundleField::from(id=Id::from("data"), ty=self.data_type),
-      BundleField::from(id=Id::from("mask"), ty=mask_ty),
+      BundleField::from(id=Id::from("mask"), ty=self.mask_ty),
     ]),
     read_write: Bundle([
       BundleField::from(id=Id::from("addr"), ty=UInt(depth_clog2)),
@@ -219,27 +208,9 @@ pub fn Mem::reader_writer_types(self: Mem, mask_ty~: Type = self.data_type.mem_m
       BundleField::from(id=Id::from("rdata"), ty=self.data_type, flip=true),
       BundleField::from(id=Id::from("wmode"), ty=UInt(1)),
       BundleField::from(id=Id::from("wdata"), ty=self.data_type),
-      BundleField::from(id=Id::from("wmask"), ty=mask_ty),
+      BundleField::from(id=Id::from("wmask"), ty=self.mask_ty),
     ]),
   }
-}
-
-fn FlatMem::as_mem(self: FlatMem) -> Mem {
-  {
-    id: self.id,
-    data_type: UInt(self.width),
-    depth: self.depth,
-    read_latency: self.read_latency,
-    write_latency: self.write_latency,
-    read_under_write: self.read_under_write,
-    readers: self.readers,
-    writers: self.writers,
-    readwriters: self.readwriters,
-  }
-}
-
-pub fn FlatMem::reader_writer_types(self: FlatMem) -> MemPorts {
-  self.as_mem().reader_writer_types(mask_ty=UInt(self.width))
 }
 
 pub fn Mem::as_bundle(self: Mem) -> Type {
@@ -259,10 +230,6 @@ pub fn Mem::as_bundle(self: Mem) -> Type {
   }
 
   Bundle(fields)
-}
-
-pub fn FlatMem::as_bundle(self: FlatMem) -> Type {
-  self.as_mem().as_bundle()
 }
 
 pub fn Mem::ports(self: Mem) -> Array[(Id, Type)] {
@@ -644,6 +611,38 @@ pub fn Type::width(self: Type) -> Int {
     Vec(elem_ty, size) => elem_ty.width() * size
     Const(inner) => inner.width()
   }
+}
+
+fn Type::leaf_types(self: Type) -> Array[Type] {
+  let leaf_types = []
+
+  fn aux(ty: Type) -> Unit {
+    match ty {
+      Bundle(fields) => {
+        for field in fields {
+          aux(field.ty)
+        }
+      }
+      Vec(elem_ty, size) => {
+        for _ in 0..<size {
+          aux(elem_ty)
+        }
+      }
+      _ => {
+        leaf_types.push(ty)
+      }
+    }
+  }
+
+  aux(self)
+
+  leaf_types
+}
+
+// Returns the maximum number of bits that can be masked together in a memory of this type
+pub fn Type::mem_mask_granularity(self: Type) -> Int {
+  let leaf_widths = self.leaf_types().map(Type::width)
+  leaf_widths[1:].fold((acc, w) => @utils.gcd(acc, w), init=leaf_widths[0])
 }
 
 pub(all) struct BundleField {

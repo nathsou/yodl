@@ -218,3 +218,16 @@ pub fn significant_bits(n: BigInt, is_signed~: Bool = false) -> Int {
 
   bytes.length() * 8 - leading_zeros + is_signed.to_int()
 }
+
+pub fn gcd(a: Int, b: Int) -> Int {
+  let mut a = a
+  let mut b = b
+
+  while b != 0 {
+    let temp = b
+    b = a % b
+    a = temp
+  }
+
+  a
+}

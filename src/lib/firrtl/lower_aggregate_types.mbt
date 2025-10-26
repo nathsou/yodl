@@ -197,7 +197,7 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
       }
     }
     Mem(mem) => {
-      if split_memories {
+      if split_memories && !mem.is_flat {
         let original_mem = Id(mem.id, ty=mem.as_bundle())
 
         for flat_mem in self.split_mem(mem) {
@@ -207,9 +207,6 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
       } else {
         body.push(stmt)
       }
-    }
-    FlatMem(_) => {
-      body.push(stmt)
     }
     Inst(id~, of~, sig~) => {
       let inst_ty = sig.as_bundle()

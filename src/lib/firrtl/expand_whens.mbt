@@ -107,27 +107,6 @@ fn ExpandWhensPass::process_block(self: Self, block~: Array[TypedStmt], conditio
 
         stmts.push(stmt)
       }
-      FlatMem({id, writers, readwriters, ..} as mem) => {
-        // Track memory input ports
-        let reference = Id(id, ty=mem.as_bundle())
-        let ports = mem.reader_writer_types()
-
-        for writer in writers {
-          scope.declare_sinks(
-            reference=FieldAccess(lhs=reference, field=writer, ty=ports.write),
-            flow=Sink,
-          )
-        }
-
-        for rw in readwriters {
-          scope.declare_sinks(
-            reference=FieldAccess(lhs=reference, field=rw, ty=ports.read_write),
-            flow=Sink,
-          )
-        }
-
-        stmts.push(stmt)
-      }
       // Handle unconditional connections with last connect semantics
       Connect(dest, src) => {
         scope[dest] = Some(src)
