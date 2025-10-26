@@ -19,34 +19,6 @@ pub impl FIRRTLPass for ExpandWhensPass with run(self, circuit) -> TypedCircuit 
   }
 }
 
-// Supporting arbitrary dynamic indexing would make initialisation analysis undecidable
-impl[T] Hash for Reference[T] with hash_combine(self, hasher) {
-  match self {
-    Id(id, ty=_) => id.hash_combine(hasher)
-    StaticIndexing(lhs~, index~, ty=_) => {
-      lhs.hash_combine(hasher)
-      hasher.combine_int(index)
-    }
-    DynamicIndexing(..) => {
-      @utils.fail("Dynamic indexing is not supported in hashing")
-    }
-    FieldAccess(lhs~, field~, ty=_) => {
-      lhs.hash_combine(hasher)
-      field.hash_combine(hasher)
-    }
-  }
-}
-
-impl[T] Eq for Reference[T] with equal(self, other) {
-  match (self, other) {
-    (Id(id1, ty=_), Id(id2, ty=_)) => id1 == id2
-    (StaticIndexing(lhs=lhs1, index=idx1, ty=_), StaticIndexing(lhs=lhs2, index=idx2, ty=_)) => lhs1 == lhs2 && idx1 == idx2
-    (DynamicIndexing(..), DynamicIndexing(..)) => @utils.fail("Dynamic indexing is not supported in equality")
-    (FieldAccess(lhs=lhs1, field=field1, ty=_), FieldAccess(lhs=lhs2, field=field2, ty=_)) => lhs1 == lhs2 && field1 == field2
-    _ => false
-  }
-}
-
 fn ExpandWhensPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule raise {
   // Track last connection to each destination
   let module_scope: DriverMap = {}
@@ -115,6 +87,27 @@ fn ExpandWhensPass::process_block(self: Self, block~: Array[TypedStmt], conditio
         stmts.push(stmt)
       }
       Mem({id, writers, readwriters, ..} as mem) => {
+        // Track memory input ports
+        let reference = Id(id, ty=mem.as_bundle())
+        let ports = mem.reader_writer_types()
+
+        for writer in writers {
+          scope.declare_sinks(
+            reference=FieldAccess(lhs=reference, field=writer, ty=ports.write),
+            flow=Sink,
+          )
+        }
+
+        for rw in readwriters {
+          scope.declare_sinks(
+            reference=FieldAccess(lhs=reference, field=rw, ty=ports.read_write),
+            flow=Sink,
+          )
+        }
+
+        stmts.push(stmt)
+      }
+      FlatMem({id, writers, readwriters, ..} as mem) => {
         // Track memory input ports
         let reference = Id(id, ty=mem.as_bundle())
         let ports = mem.reader_writer_types()

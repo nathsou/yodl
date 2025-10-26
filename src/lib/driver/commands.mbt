@@ -11,7 +11,8 @@ fn low_firrtl_passes() -> Array[&@firrtl.FIRRTLPass] {
   [
     @firrtl.ExpandConnectsPass::new(),
     @firrtl.ExpandWhensPass::new(),
-    @firrtl.LowerAggregateTypesPass::new(),
+    // @firrtl.FlattenMemoriesPass::new(),
+    @firrtl.LowerAggregateTypesPass::new(split_memories=false),
   ]
 }
 

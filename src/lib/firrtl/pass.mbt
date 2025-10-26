@@ -19,6 +19,7 @@ pub trait FIRRTLRewriter {
   rewrite_connect_stmt(self: Self, lhs: TypedRef, rhs: TypedExpr, stmts~: Array[TypedStmt]) -> Unit raise = _
   rewrite_when_stmt(self: Self, when: TypedWhen, stmts~: Array[TypedStmt]) -> Unit raise = _
   rewrite_mem_stmt(self: Self, mem: Mem, stmts~: Array[TypedStmt]) -> Unit raise = _
+  rewrite_flat_mem_stmt(self: Self, mem: FlatMem, stmts~: Array[TypedStmt]) -> Unit raise = _
   rewrite_command_stmt(self: Self, cmd: TypedCommand, stmts~: Array[TypedStmt]) -> Unit raise = _
   rewrite_skip_stmt(self: Self, stmts~: Array[TypedStmt]) -> Unit raise = _
 
@@ -44,11 +45,11 @@ impl FIRRTLRewriter with rewrite_extmodule(_, extmod) -> ExtModule raise {
   extmod
 }
 
-impl FIRRTLRewriter with rewrite_module(self, mod) -> TypedModule raise {
+pub fn rewrite_module_default_impl(rewriter: &FIRRTLRewriter, mod: TypedModule) -> TypedModule raise {
   let new_body = Array::new(capacity=mod.body.length())
 
   for stmt in mod.body {
-    self.rewrite_stmt(stmt, stmts=new_body)
+    rewriter.rewrite_stmt(stmt, stmts=new_body)
   }
 
   {
@@ -57,6 +58,10 @@ impl FIRRTLRewriter with rewrite_module(self, mod) -> TypedModule raise {
     ports: mod.ports,
     body: new_body,
   }
+}
+
+impl FIRRTLRewriter with rewrite_module(self, mod) -> TypedModule raise {
+  rewrite_module_default_impl(self, mod)
 }
 
 impl FIRRTLRewriter with rewrite_ref(_, r, _) -> TypedRef raise {
@@ -150,6 +155,10 @@ impl FIRRTLRewriter with rewrite_mem_stmt(_, mem, stmts~) -> Unit raise {
   stmts.push(Mem(mem))
 }
 
+impl FIRRTLRewriter with rewrite_flat_mem_stmt(_, flat_mem, stmts~) -> Unit raise {
+  stmts.push(FlatMem(flat_mem))
+}
+
 impl FIRRTLRewriter with rewrite_command_stmt(_, cmd, stmts~) -> Unit raise {
   stmts.push(Command(cmd))
 }
@@ -168,6 +177,7 @@ impl FIRRTLRewriter with rewrite_stmt(self, stmt, stmts~) -> Unit raise {
     Connect(lhs, rhs) => self.rewrite_connect_stmt(lhs, rhs, stmts~)
     When(when) => self.rewrite_when_stmt(when, stmts~)
     Mem(mem) => self.rewrite_mem_stmt(mem, stmts~)
+    FlatMem(mem) => self.rewrite_flat_mem_stmt(mem, stmts~)
     Command(cmd) => self.rewrite_command_stmt(cmd, stmts~)
     Skip => self.rewrite_skip_stmt(stmts~)
   }

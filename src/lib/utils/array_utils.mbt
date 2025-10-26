@@ -160,3 +160,11 @@ pub fn[T: Eq] all_eq(elems: Array[T]) -> Bool {
     true
   }
 }
+
+pub fn [K: Eq + Hash, V] push_map(map: Map[K, Array[V]], key: K, value: V) -> Unit {
+  if map.get(key) is Some(values) {
+    values.push(value)
+  } else {
+    map[key] = [value]
+  }
+}

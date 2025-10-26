@@ -67,6 +67,10 @@ fn TypeEnv::check_stmt(self: Self, stmt: UntypedStmt) -> TypedStmt raise {
       self.declare(mem.id, mem.as_bundle())
       Mem(mem)
     }
+    FlatMem(flat_mem) => {
+      self.declare(flat_mem.id, flat_mem.as_bundle())
+      FlatMem(flat_mem)
+    }
     Connect(lhs, rhs) => {
       let lhs = self.check_ref(lhs)
       let rhs = self.check_expr(rhs)

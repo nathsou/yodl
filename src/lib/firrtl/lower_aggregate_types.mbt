@@ -1,7 +1,11 @@
 
-pub struct LowerAggregateTypesPass(Unit)
+pub struct LowerAggregateTypesPass {
+  split_memories: Bool
+}
 
-pub fn LowerAggregateTypesPass::new() -> Self { () }
+pub fn LowerAggregateTypesPass::new(split_memories~: Bool = true) -> Self {
+  { split_memories, }
+}
 
 pub impl FIRRTLPass for LowerAggregateTypesPass with run(self, circuit: TypedCircuit) -> TypedCircuit {
   self.lower_types(circuit)
@@ -30,28 +34,63 @@ fn LoweringTable::register(self: Self, old_ref: TypedRef, new_ref: TypedRef) -> 
   }
 }
 
-fn LowerAggregateTypesPass::lower_types(_: Self, circuit: TypedCircuit) -> TypedCircuit raise {
+fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> TypedCircuit raise {
   let new_decls = Array::new(capacity=circuit.decls.length())
+  let module_tables: Map[Id, LoweringTable] = {}
 
   for decl in circuit.decls {
-    let new_decl = process_decl(decl)
+    let module_table = LoweringTable::new()
+    let new_decl = module_table.process_decl(decl, self.split_memories)
     new_decls.push(new_decl)
+    module_tables[decl.id()] = module_table
   }
 
   {
     version: circuit.version,
     id: circuit.id,
-    annotations: circuit.annotations,
+    annotations: rewrite_annotations(module_tables, circuit.annotations),
     decls: new_decls,
   }
 }
 
-fn process_decl(decl: TypedDecl) -> TypedDecl raise {
-  let lowering_table = LoweringTable::new()
+fn rewrite_annotations(module_tables: Map[Id, LoweringTable], annotations: Array[Annotation]) -> Array[Annotation] raise {
+  let new_annotations = Array::new(capacity=annotations.length())
 
+  for ann in annotations {
+    let target = ann.target()
+
+    if target.mod is Some(target_mod_id) {
+      let module_table = module_tables[target_mod_id]
+
+      if target.leaf is Some(leaf_id) {
+        // dummy type for lookup
+        if module_table.ref_mapping.get(Id(leaf_id, ty=Type::UInt(1))) is Some(new_refs) {
+          if ann is MemoryFileInlineAnnotation(..) && new_refs.length() > 1 {
+            // TODO: Implement the flatten memories pass.
+            raise Failure("MemoryFileInlineAnnotation cannot be applied to memories with aggregate data-types: \{target}")
+          }
+
+          for new_ref in new_refs {
+            if new_ref is Id(new_leaf_id, ..) {
+              let new_target = { ..target, leaf: Some(new_leaf_id) }
+              new_annotations.push(ann.with_target(new_target))
+            }
+          }
+        } else {
+          // No mapping found; keep original annotation.
+          new_annotations.push(ann)
+        }
+      }
+    }
+  }
+
+  new_annotations
+}
+
+fn LoweringTable::process_decl(self: Self, decl: TypedDecl, split_memories: Bool) -> TypedDecl raise {
   match decl {
-    Module(mod) => Module(lowering_table.process_module(mod))
-    ExtModule(extmod) => ExtModule(lowering_table.process_ext_module(extmod))
+    Module(mod) => Module(self.process_module(mod, split_memories))
+    ExtModule(extmod) => ExtModule(self.process_ext_module(extmod))
   }
 }
 
@@ -62,13 +101,13 @@ fn LoweringTable::process_ext_module(self: Self, extmod: ExtModule) -> ExtModule
   }
 }
 
-fn process_module(self: LoweringTable, mod: TypedModule) -> TypedModule raise {
+fn process_module(self: LoweringTable, mod: TypedModule, split_memories: Bool) -> TypedModule raise {
   // TODO: Handle memory annotations
   let new_ports = self.flatten_ports(mod.ports)
   let new_body = Array::new(capacity=mod.body.length())
 
   for stmt in mod.body {
-    self.process_stmt(stmt, new_body)
+    self.process_stmt(stmt, new_body, split_memories)
   }
 
   {
@@ -100,7 +139,7 @@ fn flatten_ports(self: LoweringTable, ports: Array[Port]) -> Array[Port] {
   new_ports
 }
 
-fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStmt]) -> Unit raise {
+fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStmt], split_memories: Bool) -> Unit raise {
   match stmt {
     Wire(id~, ty~) => {
       for pair in self.flatten(prefix=id.value(), old_ref=Id(id, ty~)) {
@@ -139,7 +178,7 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
       let new_clock = self.rewrite_expr(clock, body)
       let new_reset = self.rewrite_expr(reset, body)
       let sub_refs = self.flatten(prefix=id.value(), old_ref=Id(id, ty~))
-      let init_exprs = self.sub_exprs_dfs(init, body)
+      let init_exprs = self.sub_exprs_dfs(self.rewrite_expr(init, body), body)
 
       for pair, sub_init in @utils.zip2(sub_refs, init_exprs) {
         let (old_ref, new_id) = pair
@@ -150,7 +189,7 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
           ty=field_ty,
           clock=new_clock,
           reset=new_reset,
-          init=sub_init,
+          init=self.rewrite_expr(sub_init, body),
         ))
 
         let new_ref = Id(Id::from(new_id), ty=field_ty)
@@ -158,9 +197,19 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
       }
     }
     Mem(mem) => {
-      for flat_mem in self.split_mem(mem) {
-        body.push(Mem(flat_mem))
+      if split_memories {
+        let original_mem = Id(mem.id, ty=mem.as_bundle())
+
+        for flat_mem in self.split_mem(mem) {
+          self.register(original_mem, Id(flat_mem.id, ty=flat_mem.as_bundle()))
+          body.push(Mem(flat_mem))
+        }
+      } else {
+        body.push(stmt)
       }
+    }
+    FlatMem(_) => {
+      body.push(stmt)
     }
     Inst(id~, of~, sig~) => {
       let inst_ty = sig.as_bundle()
@@ -170,7 +219,7 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
       if inst_ty is Bundle(fields) {
         for field in fields {
           let old_ref = FieldAccess(lhs=inst_ref, field=field.id, ty=field.ty)
-          for flat in subcomponents(field.ty, field.id.value(), old_ref) {
+          for flat in subcomponents(field.id.value(), old_ref) {
             let new_ref = FieldAccess(
               lhs=inst_ref,
               field=Id::from(flat.name),
@@ -186,14 +235,13 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
     }
     Connect(lhs, rhs) => {
       let new_rhs = self.rewrite_expr(rhs, body)
-      let old_lhs = lhs
-      
-      if self.ref_mapping.get(old_lhs) is Some(new_lhs_list) {
+
+      if self.ref_mapping.get(lhs) is Some(new_lhs_list) {
         for new_lhs in new_lhs_list {
           body.push(Connect(new_lhs, new_rhs))
         }
       } else {
-        raise Failure("No mapping found for LHS in connect: \{old_lhs}")
+        body.push(Connect(lhs, new_rhs))
       }
     }
     When(when) => {
@@ -201,13 +249,13 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
       let new_body = Array::new(capacity=when.body.length())
 
       for stmt in when.body {
-        self.process_stmt(stmt, new_body)
+        self.process_stmt(stmt, new_body, split_memories)
       }
 
       let new_otherwise = when.otherwise.map(else_body => {
         let new_else = Array::new(capacity=else_body.length())
         for stmt in else_body {
-          self.process_stmt(stmt, new_else)
+          self.process_stmt(stmt, new_else, split_memories)
         }
         new_else
       })
@@ -258,7 +306,7 @@ fn LoweringTable::rewrite_expr(self: Self, expr: TypedExpr, body: Array[TypedStm
           raise Failure("Reference maps to multiple new references, cannot rewrite: \{reference}")
         }
       } else {
-        raise Failure("No mapping found for reference: \{reference}")
+        Reference(reference, ty~)
       }
     }
     Mux(cond~, tval~, fval~, ty~) => {
@@ -314,7 +362,7 @@ fn LoweringTable::uniquify(self: Self, prefix: String, ty: Type) -> String {
   // "If a name is already taken, that name will be made unique by appending a suffix _<i> to the
   // name, where i is the lowest nonnegative integer that gives a unique name."
 
-  while subcomponents(ty, current_prefix, Id(Id::from(prefix), ty~)).any(field => self.namespace_.contains(field.name)) {
+  while subcomponents(current_prefix, Id(Id::from(prefix), ty~)).any(field => self.namespace_.contains(field.name)) {
     current_prefix = "\{prefix}\{delim}\{iterations}"
     iterations += 1
   }
@@ -328,13 +376,14 @@ priv struct FlattenedField {
   ty: Type
 }
 
-fn subcomponents(ty: Type, prefix: String, reference: TypedRef) -> Iter[FlattenedField] {
+fn subcomponents(prefix: String, reference: TypedRef) -> Iter[FlattenedField] {
   Iter::new((visit: (FlattenedField) -> IterResult) => {
+    let ty = reference.ty()
     match ty {
       Bundle(fields) => {
         for field in fields {
           let field_ref = FieldAccess(lhs=reference, field=field.id, ty=field.ty)
-          for sub_field in subcomponents(field.ty, "\{prefix}\{delim}\{field.id}", field_ref) {
+          for sub_field in subcomponents("\{prefix}\{delim}\{field.id}", field_ref) {
             guard visit(sub_field) is IterContinue else { break }
           }
         } else {
@@ -344,7 +393,7 @@ fn subcomponents(ty: Type, prefix: String, reference: TypedRef) -> Iter[Flattene
       Vec(elem_ty, size) => {
         for i in 0 ..<size {
           let index_ref = StaticIndexing(lhs=reference, index=i, ty=elem_ty)
-          for sub_id in subcomponents(elem_ty, "\{prefix}\{delim}\{i}", index_ref) {
+          for sub_id in subcomponents("\{prefix}\{delim}\{i}", index_ref) {
             guard visit(sub_id) is IterContinue else { break }
           }
         } else {
@@ -372,7 +421,7 @@ test "subcomponents" {
     ),
   ])
 
-  let flat = subcomponents(ty, "x", Id(Id::from("x"), ty~)).collect()
+  let flat = subcomponents("x", Id(Id::from("x"), ty~)).collect()
   inspect(flat.map(field => field.name), content="[\"x_a\", \"x_b_c\", \"x_b_d_0\", \"x_b_d_1\"]")
 }
 
@@ -488,11 +537,11 @@ fn replace_ref_lhs(reference: TypedRef, new_lhs: TypedRef) -> TypedRef {
 }
 
 fn LoweringTable::split_mem(self: Self, mem: Mem) -> Array[Mem] {
-  let bundle = mem.as_bundle()
+  // TODO: Handle name conflicts
   let is_groud_ty = mem.data_type.is_ground()
   let port_types = mem.reader_writer_types()
-  let mem_ref = Id(Id::from(mem.id.value()), ty=bundle)
-  let split_mems = subcomponents(mem.data_type, mem.id.value(), mem_ref).collect()
+  let mem_ref = Id(Id::from(mem.id.value()), ty=mem.data_type)
+  let split_mems = subcomponents(mem.id.value(), mem_ref).collect()
 
   for ports, port_type in @utils.zip2([mem.readers, mem.writers, mem.readwriters], [port_types.read, port_types.write, port_types.read_write]) {
     let port_type_fields = port_type.bundle_fields()
@@ -523,32 +572,4 @@ fn LoweringTable::split_mem(self: Self, mem: Mem) -> Array[Mem] {
     id: Id::from(flat.name),
     data_type: flat.ty,
   })
-}
-
-test "flatten_mem" {
-  let table = LoweringTable::new()
-
-  let mem: Mem = {
-    id: Id::from("my_mem"),
-    data_type: Bundle([
-      BundleField::from(id=Id::from("a"), ty=UInt(8)),
-      BundleField::from(
-        id=Id::from("b"),
-        ty=Bundle([
-          BundleField::from(id=Id::from("c"), ty=SInt(16)),
-          BundleField::from(id=Id::from("d"), ty=Vec(UInt(4), 2)),
-        ])
-      ),
-    ]),
-    depth: 256,
-    read_latency: 1,
-    write_latency: 1,
-    readers: [Id::from("r1")],
-    writers: [Id::from("w1")],
-    readwriters: [Id::from("rw1")],
-    read_under_write: Undefined,
-  }
-
-  let flat_mems = table.split_mem(mem)
-  inspect(flat_mems[0].id)
 }
