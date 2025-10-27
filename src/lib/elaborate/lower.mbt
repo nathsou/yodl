@@ -37,7 +37,7 @@ pub fn Elaborator::new(circuit_name: String) -> Elaborator {
     extmodules: {},
     annotations: [],
     declared_modules: {},
-    current_target: { circuit: circuit_name, mod: None, leaf: None },
+    current_target: { circuit: circuit_name, mod: Id::from("dummy_mod_id"), leaf: None },
     memories: {},
     current_clock: None
   }
@@ -257,7 +257,7 @@ fn _default_mask(ty: @firrtl.Type, span~: Span) -> Value {
 fn Elaborator::lower_module(self: Elaborator, mod: ModuleDecl) -> Unit raise {
   let env = ElaboratorEnv::new()
   let mod_id = id_of_path(mod.path)
-  self.current_target = { circuit: self.current_target.circuit, mod: Some(mod_id), leaf: None }
+  self.current_target = { circuit: self.current_target.circuit, mod: mod_id, leaf: None }
   self.current_clock = None
 
   let fir_mod: FModule = {
@@ -357,7 +357,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> 
   self.extmodules[sig.path] = ext_mod
 
   self.annotations.push(BlackBoxPathAnnotation(
-    target={ circuit: self.current_target.circuit, mod: Some(id), leaf: None },
+    target={ circuit: self.current_target.circuit, mod: id, leaf: None },
     path=verilog_path,
   ))
 }

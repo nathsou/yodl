@@ -47,16 +47,14 @@ pub typealias Circuit[Type] as TypedCircuit
 
 pub(all) struct AnnotationTarget {
   circuit: String
-  mod: Id?
+  mod: Id
   leaf: Id?
 }
 
 pub impl Show for AnnotationTarget with output(self, logger) -> Unit {
   logger.write_string("\{self.circuit}")
 
-  if self.mod is Some(mod) {
-    logger.write_string(".\{mod}")
-  }
+  logger.write_string(".\{self.mod}")
 
   if self.leaf is Some(leaf) {
     logger.write_string(".\{leaf}")

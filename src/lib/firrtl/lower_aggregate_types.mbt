@@ -34,6 +34,17 @@ fn LoweringTable::register(self: Self, old_ref: TypedRef, new_ref: TypedRef) -> 
   }
 }
 
+fn lookup_target(module_tables: Map[Id, LoweringTable], target: AnnotationTarget) -> Array[TypedRef]? {
+  let module_table = module_tables[target.mod]
+
+  if target.leaf is Some(leaf_id) {
+    let leaf_ref = Id(leaf_id, ty=Type::UInt(1)) // Dummy type for lookup
+    module_table.ref_mapping.get(leaf_ref)
+  } else {
+    None
+  }
+}
+
 fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> TypedCircuit raise {
   let new_decls = Array::new(capacity=circuit.decls.length())
   let module_tables: Map[Id, LoweringTable] = {}
@@ -58,29 +69,26 @@ fn rewrite_annotations(module_tables: Map[Id, LoweringTable], annotations: Array
 
   for ann in annotations {
     let target = ann.target()
+    let new_refs = lookup_target(module_tables, target)
 
-    if target.mod is Some(target_mod_id) {
-      let module_table = module_tables[target_mod_id]
-
-      if target.leaf is Some(leaf_id) {
-        // dummy type for lookup
-        if module_table.ref_mapping.get(Id(leaf_id, ty=Type::UInt(1))) is Some(new_refs) {
-          if ann is MemoryFileInlineAnnotation(..) && new_refs.length() > 1 {
-            // TODO: Implement the flatten memories pass.
-            raise Failure("MemoryFileInlineAnnotation cannot be applied to memories with aggregate data-types: \{target}")
-          }
-
-          for new_ref in new_refs {
-            if new_ref is Id(new_leaf_id, ..) {
-              let new_target = { ..target, leaf: Some(new_leaf_id) }
-              new_annotations.push(ann.with_target(new_target))
-            }
-          }
+    if new_refs is Some(new_refs) {
+      let new_targets = new_refs.map(new_ref => {
+        if new_ref is Id(new_leaf_id, ..) {
+          { ..target, leaf: Some(new_leaf_id) }
         } else {
-          // No mapping found; keep original annotation.
-          new_annotations.push(ann)
+          target
         }
+      })
+
+      if ann is MemoryFileInlineAnnotation(..) && new_targets.length() > 1 {
+        raise Failure("MemoryFileInlineAnnotation cannot be applied to memories with aggregate data-types: \{target}, consider running the FlattenMemoriesPass first.")
       }
+
+      for new_target in new_targets {
+        new_annotations.push(ann.with_target(new_target))
+      }
+    } else {
+      new_annotations.push(ann)
     }
   }
 
