@@ -484,6 +484,10 @@ pub(all) struct PortSignature {
   ty: Type
 }
 
+pub fn PortSignature::from(port: Port) -> PortSignature {
+  { dir: port.dir, ty: port.ty }
+}
+
 pub(all) struct ModuleSignature {
   ports: Map[String, PortSignature]
 }
@@ -530,6 +534,14 @@ pub(all) enum Type {
 
 pub fn Type::bool() -> Type {
   UInt(1)
+}
+
+pub fn Type::is_signed(self: Type) -> Bool {
+  match self {
+    Const(inner) => inner.is_signed()
+    SInt(_) => true
+    _ => false
+  }
 }
 
 // see FIRRTL spec. 5.0 "Type Equivalence"

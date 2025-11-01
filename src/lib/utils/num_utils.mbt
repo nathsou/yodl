@@ -138,23 +138,110 @@ pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
   }
 }
 
-pub fn bin(n: BigInt, width~: Int) -> Iter[Bool] {
-  let mut p = BigInt::from_int(1) << (width - 1)
+// /**
+//  * Convert an array of bytes (big-endian) and a sign flag
+//  * into a two's-complement bitstring of a specified width.
+//  *
+//  * If sign === false:
+//  *   Output is the zero-extended binary representation of the bytes.
+//  *
+//  * If sign === true:
+//  *   Output is the two's-complement binary representation of the NEGATIVE
+//  *   value whose magnitude is given by the bytes.
+//  *
+//  * @param {number[]} bytes   Array of numbers in [0..255], big-endian magnitude
+//  * @param {boolean} sign     True if representing negative value
+//  * @param {number} width     Total bit width of result (must be >= bytes.length * 8)
+//  * @returns {string}         Bitstring of length `width`
+//  */
+// function bytesToTwosComplementString(bytes, sign, width) {
+//   const byteBits = bytes.length * 8;
+//   if (width < byteBits) {
+//     throw new Error(`width must be >= ${byteBits}`);
+//   }
+//   if (width <= 0) {
+//     throw new Error("width must be positive");
+//   }
 
-  Iter::new(fn(visit: (Bool) -> IterResult) -> IterResult {
-    for i in 0..<width {
-      if visit((n & p) != 0) == IterEnd {
-        break IterEnd
+//   // Convert bytes to magnitude BigInt
+//   let magnitude = 0n;
+//   for (const byte of bytes) {
+//     if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
+//       throw new Error("Each byte must be an integer in the range 0..255");
+//     }
+//     magnitude = (magnitude << 8n) | BigInt(byte);
+//   }
+
+//   let valueBigInt;
+//   if (!sign) {
+//     // Positive: zero-extend
+//     valueBigInt = magnitude;
+//   } else {
+//     // Negative: two's-complement of magnitude within width bits
+//     const modulus = 1n << BigInt(width);
+//     valueBigInt = (modulus - magnitude) & (modulus - 1n);
+//   }
+
+//   // Convert to binary string padded to width
+//   let bin = valueBigInt.toString(2);
+//   if (bin.length > width) {
+//     throw new Error("Value does not fit in specified width");
+//   }
+//   bin = bin.padStart(width, "0");
+
+//   return bin;
+// }
+
+pub fn bin(n: BigInt, width~: Int) -> Iter[Bool] raise {
+  let bits = Array::make(width, false)
+  let a = if n < 0N {
+    // two's complement for negative numbers
+    let modulus = 1N << width
+    (modulus + n) & (modulus - 1N)
+  } else {
+    n
+  }
+
+  if a.bit_length() > width {
+    raise Failure("Value does not fit in specified width")
+  }
+
+  let octets = a.to_octets()
+  let mut bit_idx = width - 1
+
+  for i in 0..<octets.length() {
+    let mut p = octets[octets.length() - 1 - i].to_uint()
+
+    for _ in 0..<8 {
+      if bit_idx < 0 {
+        break
       }
 
+      bits[bit_idx] = (p & 1) != 0
       p = p >> 1
-    } else {
-      IterContinue
+      bit_idx -= 1
     }
-  })
+  }
+
+  bits.iter()
 }
 
-pub fn bits(n: BigInt) -> Iter[Bool] {
+test "bin" {
+  fn bin_str(n: BigInt, width: Int) -> String raise {
+    bin(n, width~).map(bit => if bit { "1" } else { "0" }).join("")
+  }
+
+  inspect(bin_str(BigInt::from_int(17), 8), content="00010001")
+  inspect(bin_str(BigInt::from_int64(473483), 24), content="000001110011100110001011")
+  inspect(bin_str(BigInt::from_int64(473483), 20), content="01110011100110001011")
+  inspect(bin_str(BigInt::from_int64(473483), 19), content="1110011100110001011")
+  inspect((try? bin_str(BigInt::from_int64(473483), 18)) is Err(_), content="true")
+  inspect(bin_str(BigInt::from_int64(-1), 8), content="11111111")
+  inspect(bin_str(BigInt::from_int64(-473483), 24), content="111110001100011001110101")
+  inspect(bin_str(BigInt::from_int64(0x3E676F7B73633E), 64), content="0000000000111110011001110110111101111011011100110110001100111110")
+}
+
+pub fn bits(n: BigInt) -> Iter[Bool] raise {
   if n == 0 {
     return [false].iter()
   }
@@ -164,14 +251,12 @@ pub fn bits(n: BigInt) -> Iter[Bool] {
 }
 
 pub fn bitwise_not(n: BigInt) -> BigInt {
-  let bytes = n.to_octets()
-  let flipped_bytes = Bytes::new(bytes.length()).to_fixedarray()
+  n.lxor(-1N)
+}
 
-  for idx, byte in bytes {
-    flipped_bytes[idx] = byte.to_uint().lnot().to_byte()
-  }
-
-  BigInt::from_octets(Bytes::from_fixedarray(flipped_bytes))
+test "bitwise_not" {
+  inspect(bitwise_not(17), content="-18")
+  inspect(bitwise_not(-17), content="16")
 }
 
 pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {

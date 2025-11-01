@@ -3,15 +3,15 @@ pub(all) enum Command {
   WriteSource(path~: String?)
   WriteMono(path~: String?)
   WriteTyped(path~: String?)
-  WriteFIRRTL(path~: String?, passes~: Array[&@firrtl.FIRRTLPass])
   WriteSimplified(path~: String?)
+  WriteFIRRTL(path~: String?, passes~: Array[&@firrtl.FIRRTLPass])
+  WriteRTLIL(path~: String?)
 }
 
 fn low_firrtl_passes() -> Array[&@firrtl.FIRRTLPass] {
   [
     @firrtl.ExpandConnectsPass::new(),
     @firrtl.ExpandWhensPass::new(),
-    // @firrtl.FlattenMemoriesPass::new(),
     @firrtl.LowerAggregateTypesPass::new(split_memories=false),
   ]
 }
@@ -160,6 +160,7 @@ pub fn parse_commands(source: String) -> Array[Command] raise CommandParserError
       "write_simplified" => WriteSimplified(path~)
       "write_firrtl" | "write_fir" => WriteFIRRTL(path~, passes=[])
       "write_low_firrtl" | "write_lofir" => WriteFIRRTL(path~, passes=low_firrtl_passes())
+      "write_rtlil" => WriteRTLIL(path~)
       _ => raise UnknownCommand(name=cmd.name)
     }
 

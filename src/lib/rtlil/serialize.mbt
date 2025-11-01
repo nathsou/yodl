@@ -86,7 +86,7 @@ fn Serializer::emit_cell(self: Self, cell: Cell) -> Unit {
     self.write(show_attribute(attrib.0, attrib.1) + "\n")
   }
 
-  self.write("cell \{cell.ty} \{cell.name}\n")
+  self.write("cell \{cell.cell_name} \{cell.name}\n")
   self.indent += 1
 
   for param in cell.parameters {

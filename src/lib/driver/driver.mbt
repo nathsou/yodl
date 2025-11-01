@@ -157,43 +157,71 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 
   for cmd in commands {
-    if cmd is WriteFIRRTL(path~, passes~) {
-      let circuit: @firrtl.UntypedCircuit = {
-        version: @firrtl.min_version(),
-        id: Ident(firrtl.circuit_name),
-        annotations: firrtl.annotations,
-        decls: (firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod)) + (firrtl.extmodules.values().map(mod => @firrtl.Decl::ExtModule(mod)))).collect(),
-      }
+    match cmd {
+      WriteFIRRTL(path~, passes~) => {
+        let circuit = lower_firrtl(firrtl, passes~)
+        let emitter = @firrtl.FIRRTLEmitter::new()
+        emitter.emit_circuit(circuit)
 
-      let circuit: @firrtl.TypedCircuit = match (try? @firrtl.type_check_circuit(circuit)) {
-        Err(err) => raise Failure(err.to_string())
-        Ok(typed_circuit) => typed_circuit
-      }
-
-      let circuit = {
-        let mut circ = circuit
-
-        for pass in passes {
-          circ = match (try? pass.run(circ)) {
-            Err(err) => raise Failure(err.to_string())
-            Ok(circ) => circ
+        match path {
+          Some(path) => {
+            (fs.write_string_to_file)(path, emitter.0.to_string())
+          }
+          None => {
+            println(emitter.0.to_string())
           }
         }
-
-        circ
       }
+      WriteRTLIL(path~) => {
+        let firrtl_circuit = lower_firrtl(firrtl, passes=[
+          @firrtl.ExpandConnectsPass::new(),
+          @firrtl.ExpandWhensPass::new(),
+          @firrtl.FlattenMemoriesPass::new(),
+          @firrtl.LowerAggregateTypesPass::new(split_memories=false),
+        ])
 
-      let emitter = @firrtl.FIRRTLEmitter::new()
-      emitter.emit_circuit(circuit)
-
-      match path {
-        Some(path) => {
-          (fs.write_string_to_file)(path, emitter.0.to_string())
+        let rtlil_design = match (try? @rtlil.lower_circuit(firrtl_circuit)) {
+          Err(err) => raise Failure(err.to_string())
+          Ok(design) => design
         }
-        None => {
-          println(emitter.0.to_string())
+
+        let emitter = @rtlil.Serializer::new(rtlil_design)
+
+        match path {
+          Some(path) => {
+            (fs.write_string_to_file)(path, emitter.to_string())
+          }
+          None => {
+            println(emitter.to_string())
+          }
         }
       }
+      _ => ()
     }
   }
+}
+
+fn lower_firrtl(firrtl: @elaborate.Elaborator, passes~: Array[&@firrtl.FIRRTLPass]) -> @firrtl.TypedCircuit raise Failure {
+  let circuit: @firrtl.UntypedCircuit = {
+    version: @firrtl.min_version(),
+    id: Ident(firrtl.circuit_name),
+    annotations: firrtl.annotations,
+    decls: (firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod)) + (firrtl.extmodules.values().map(mod => @firrtl.Decl::ExtModule(mod)))).collect(),
+  }
+
+  let circuit: @firrtl.TypedCircuit = match (try? @firrtl.type_check_circuit(circuit)) {
+    Err(err) => raise Failure(err.to_string())
+    Ok(typed_circuit) => typed_circuit
+  }
+
+  let mut circ = circuit
+
+  for pass in passes {
+    circ = match (try? pass.run(circ)) {
+      Err(err) => raise Failure(err.to_string())
+      Ok(circ) => circ
+    } 
+  }
+
+  circ
 }

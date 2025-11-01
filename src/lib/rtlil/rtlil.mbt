@@ -133,7 +133,7 @@ pub fn Signal::size(self: Self) -> Int {
 
 pub(all) struct Cell {
   name: Id
-  mut ty: Id
+  mut cell_name: Id
   attributes: Map[Id, Constant]
   parameters: Map[Id, Constant]
   connections: Map[Id, Signal]
@@ -179,10 +179,10 @@ pub fn Module::add_wire(
 pub fn Module::add_cell(
   self: Self,
   name~: Id,
-  ty~: Id,
+  cell_name~: Id,
+  parameters~: Map[Id, Constant] = {},
   connections~: Map[Id, Signal] = {},
   attributes~: Map[Id, Constant] = {},
-  parameters~: Map[Id, Constant] = {},
 ) -> Cell raise {
   if self.cells.contains(name) {
     raise Failure("Cell '\{name}' is already declared")
@@ -190,7 +190,7 @@ pub fn Module::add_cell(
 
   let cell: Cell = {
     name,
-    ty,
+    cell_name,
     connections,
     attributes,
     parameters,
@@ -217,6 +217,6 @@ pub fn Module::ports(mod: Self) -> Iter[PortSpec] {
 }
 
 pub(all) struct Design {
-  autoidx: Int
+  mut autoidx: Int
   modules: Map[Id, Module]
 }
