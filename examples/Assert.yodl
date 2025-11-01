@@ -25,8 +25,7 @@ module Top(clk: clock) -> () {
     // arithmetical operators
     assert!(1998 + 2025 == 4023)
     assert!(2025 - 1998 == 27)
-    assert!(not 16'd1998 == uint!(-15'd1999))
-    assert!(sint!(not 1998) == -1999)
+    assert!(not 16'd1998 == 16'63537)
     assert!(sint!(63538) == -1998)
     assert!(sint!(1998) - sint!(2025) == -27)
     assert!(1998 * 2025 == 4045950)

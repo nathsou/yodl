@@ -1,5 +1,5 @@
 
-pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> Unit raise Failure {
+pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> Unit raise {
   if !path.has_suffix(".yodl") {
     raise Failure("Input file must have a .yodl extension")
   }
@@ -8,15 +8,8 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
     (fs.create_dir)("output/")
   }
 
-  let resolver = match (try? @simplify.Resolver::new(@utils.dir_name(path), fs~)) {
-    Err(err) => raise Failure(err.to_string())
-    Ok(resolver) => resolver
-  }
-
-  let pkg = match (try? resolver.resolve(path~, is_top_package=true)) {
-    Err(err) => raise Failure(err.to_string())
-    Ok(pkg) => pkg 
-  }
+  let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs~)
+  let pkg = resolver.resolve(path~, is_top_package=true)
 
   for cmd in commands {
     if cmd is WriteSource(path~) {
@@ -41,10 +34,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 
   let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = match (try? monomorphizer.monomorphize(decls=pkg.body, packages=[])) {
-    Err(err) => raise Failure(err.to_string())
-    Ok(mono_decls) => mono_decls
-  }
+  let mono_decls = monomorphizer.monomorphize(decls=pkg.body, packages=[])
 
   for cmd in commands {
     if cmd is WriteMono(path~) {
@@ -96,10 +86,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
     }
   }
 
-  let simplified_decls = match (try? @simplify.simplify_decls(mono_decls)) {
-    Err(err) => raise Failure(err.to_string())
-    Ok(simplified_decls) => simplified_decls
-  }
+  let simplified_decls = @simplify.simplify_decls(mono_decls)
 
   for cmd in commands {
     if cmd is WriteSimplified(path~) {
@@ -180,11 +167,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
           @firrtl.LowerAggregateTypesPass::new(split_memories=false),
         ])
 
-        let rtlil_design = match (try? @rtlil.lower_circuit(firrtl_circuit)) {
-          Err(err) => raise Failure(err.to_string())
-          Ok(design) => design
-        }
-
+        let rtlil_design = @rtlil.lower_circuit(firrtl_circuit)
         let emitter = @rtlil.Serializer::new(rtlil_design)
 
         match path {
@@ -201,26 +184,23 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
   }
 }
 
-fn lower_firrtl(firrtl: @elaborate.Elaborator, passes~: Array[&@firrtl.FIRRTLPass]) -> @firrtl.TypedCircuit raise Failure {
+fn lower_firrtl(firrtl: @elaborate.Elaborator, passes~: Array[&@firrtl.FIRRTLPass]) -> @firrtl.TypedCircuit raise {
   let circuit: @firrtl.UntypedCircuit = {
     version: @firrtl.min_version(),
     id: Ident(firrtl.circuit_name),
     annotations: firrtl.annotations,
-    decls: (firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod)) + (firrtl.extmodules.values().map(mod => @firrtl.Decl::ExtModule(mod)))).collect(),
+    decls: {
+      let extmodules = firrtl.extmodules.values().map(mod => @firrtl.Decl::ExtModule(mod))
+      let modules = firrtl.modules.values().map(mod => @firrtl.Decl::Module(mod))
+      (extmodules + modules).collect()
+    },
   }
 
-  let circuit: @firrtl.TypedCircuit = match (try? @firrtl.type_check_circuit(circuit)) {
-    Err(err) => raise Failure(err.to_string())
-    Ok(typed_circuit) => typed_circuit
-  }
-
+  let circuit: @firrtl.TypedCircuit = @firrtl.type_check_circuit(circuit)
   let mut circ = circuit
 
   for pass in passes {
-    circ = match (try? pass.run(circ)) {
-      Err(err) => raise Failure(err.to_string())
-      Ok(circ) => circ
-    } 
+    circ = pass.run(circ)
   }
 
   circ

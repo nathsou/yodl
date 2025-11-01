@@ -24,20 +24,20 @@ impl Logger for Emitter with write_substring(self, str, start, end) {
   self.write_string(substring(str, start~, end~))
 }
 
-pub fn[T: Show] emit(self: Emitter, s: T) -> Unit {
+pub fn[T: Show] Emitter::emit(self: Self, s: T) -> Unit {
   self.builder.write_string("  ".repeat(self.indent) + s.to_string() + "\n")
 }
 
-pub fn write_indent(self: Emitter) -> Unit {
+pub fn Emitter::write_indent(self: Self) -> Unit {
   self.builder.write_string("  ".repeat(self.indent))
 }
 
-pub fn[T: Show] write(self: Emitter, s: T) -> Unit {
+pub fn[T: Show] Emitter::write(self: Self, s: T) -> Unit {
   self.builder.write_string(s.to_string())
 }
 
-pub fn[T: Show] write_iter(
-  self: Emitter,
+pub fn[T: Show] Emitter::write_iter(
+  self: Self,
   iter: Iter[T],
   prefix~: String,
   suffix~: String,

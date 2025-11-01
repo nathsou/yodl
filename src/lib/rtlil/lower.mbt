@@ -242,7 +242,7 @@ fn lower_literal(literal: @firrtl.Literal) -> Constant raise {
     SInt(width~, radix=_, value~) => (width, value)
   }
 
-  ConstValue(width~, bits=@utils.bin(value, width~).map(bit => if bit { One } else { Zero }).collect())
+  ConstValue(width~, bits=@utils.bin(value, width~).map(bit => if bit { One } else { Zero }))
 }
 
 fn RTLILLowering::mk_cell(self: Self, id~: Id, kind~: Id, parameters~: Map[String, Constant], connections~: Map[String, Signal]) -> Unit raise {
@@ -266,8 +266,8 @@ fn RTLILLowering::lower_mux(self: Self, cond~: @firrtl.TypedExpr, tval~: @firrtl
     kind=GenId("mux"),
     parameters={"WIDTH": ConstInteger(width)},
     connections={
-      "A": self.lower_expr(fval),
-      "B": self.lower_expr(tval),
+      "A": self.pad(fval, width),
+      "B": self.pad(tval, width),
       "S": self.lower_expr(cond),
       "Y": SigWire(y), // Y = S ? B : A
     },

@@ -106,9 +106,12 @@ fn LowerAggregateTypesPass::process_decl(self: Self, decl: TypedDecl, split_memo
 }
 
 fn LowerAggregateTypesPass::process_ext_module(self: Self, extmod: ExtModule) -> ExtModule {
+  let new_ports = self.flatten_ports(extmod.ports)
+  self.module_signatures[extmod.id] = { ports: Map::from_array(new_ports.map(port => (port.id.inner(), PortSignature::from(port)))) }
+
   {
     ..extmod,
-    ports: self.flatten_ports(extmod.ports),
+    ports: new_ports,
   }
 }
 

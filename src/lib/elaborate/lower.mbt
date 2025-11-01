@@ -136,7 +136,7 @@ fn StmtContainer::new() -> StmtContainer {
 }
 
 impl ScopeLike for StmtContainer with add_stmt(self, stmt) {
-  self.inner().push(stmt)
+  self.0.push(stmt)
 }
 
 fn id_of_path(path: Path) -> Id {
@@ -726,7 +726,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
               case_scope.add_stmt(Connect(mk_id(res_id.unwrap()), fir_rhs))
             }
 
-            case_scope.inner()
+            case_scope.0
           }
 
           let when: @firrtl.UntypedWhen = {
@@ -760,7 +760,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
                 case_scope.add_stmt(Connect(mk_id(res_id.unwrap()), fir_rhs))
               }
 
-              last_when.otherwise = Some(case_scope.inner())
+              last_when.otherwise = Some(case_scope.0)
             }
             None => {
               raise ElaborationError::Unreachable(message="Unexpected default case", span~)
@@ -1126,9 +1126,10 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
     Indexing(expr~, index~, span~, ty=_) => {
       let val = self.lower_expr(expr, scope~, env~)
       let index = self.lower_expr(index, scope~, env~)
-      let idx_int = match (try? index.as_int()) {
-        Ok(idx) => Some(idx.to_int())
+      let idx_int = try index.as_int() catch {
         _ => None
+      } noraise {
+        idx => Some(idx.to_int())
       }
 
       match (val, idx_int) {
@@ -1199,7 +1200,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
         None => None
       }
 
-      for stmt in block_scope.inner() {
+      for stmt in block_scope.0 {
         scope.add_stmt(stmt)
       }
 

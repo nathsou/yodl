@@ -16,7 +16,7 @@ pub fn type_check_circuit(circ: UntypedCircuit) -> TypedCircuit raise {
   }
 }
 
-fn TypeEnv::check_module(self: Self, mod: UntypedModule) -> TypedModule raise {
+fn TypeEnv::check_module(self: TypeEnv, mod: UntypedModule) -> TypedModule raise {
   let mod_scope = self.child()
 
   for port in mod.ports {
@@ -31,7 +31,7 @@ fn TypeEnv::check_module(self: Self, mod: UntypedModule) -> TypedModule raise {
   }
 }
 
-fn TypeEnv::check_stmt(self: Self, stmt: UntypedStmt) -> TypedStmt raise {
+fn TypeEnv::check_stmt(self: TypeEnv, stmt: UntypedStmt) -> TypedStmt raise {
   match stmt {
     Node(id~, expr~) => {
       let expr = self.check_expr(expr)
@@ -121,7 +121,7 @@ fn TypeEnv::check_stmt(self: Self, stmt: UntypedStmt) -> TypedStmt raise {
   }
 }
 
-fn TypeEnv::expect(self: Self, expr: UntypedExpr, expected: Type) -> TypedExpr raise {
+fn TypeEnv::expect(self: TypeEnv, expr: UntypedExpr, expected: Type) -> TypedExpr raise {
   let typed = self.check_expr(expr)
 
   if typed.ty() != expected {
@@ -131,7 +131,7 @@ fn TypeEnv::expect(self: Self, expr: UntypedExpr, expected: Type) -> TypedExpr r
   typed
 }
 
-fn TypeEnv::check_expr(self: Self, expr: UntypedExpr) -> TypedExpr raise {
+fn TypeEnv::check_expr(self: TypeEnv, expr: UntypedExpr) -> TypedExpr raise {
   match expr {
     Reference(r, ty=_) => {
       let reference = self.check_ref(r)
@@ -239,7 +239,7 @@ fn TypeEnv::check_expr(self: Self, expr: UntypedExpr) -> TypedExpr raise {
   }
 }
 
-fn TypeEnv::check_ref(self: Self, r: UntypedRef) -> TypedRef raise {
+fn TypeEnv::check_ref(self: TypeEnv, r: UntypedRef) -> TypedRef raise {
   match r {
     Id(id, ty=_) => Id(id, ty=self.resolve(id).or_error(Failure("Undefined identifier '\{id}'")))
     StaticIndexing(lhs~, index~, ty=_) => {

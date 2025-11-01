@@ -156,13 +156,13 @@ pub fn Path::new(packages: Array[String], member: String) -> Path {
   { packages, member }
 }
 
-pub fn prepend(self: Path, packages: Array[String]) -> Path {
+pub fn Path::prepend(self: Path, packages: Array[String]) -> Path {
   let joined = packages + self.packages
   joined.dedup()
   Path::new(joined, self.member)
 }
 
-pub fn[E: Error] map(self: InstanceParams, map_expr~: (Expr) -> Expr raise E, map_type~: (Type) -> Type raise E) -> InstanceParams raise E {
+pub fn[E: Error] InstanceParams::map(self: Self, map_expr~: (Expr) -> Expr raise E, map_type~: (Type) -> Type raise E) -> Self raise E {
   let new_list = Array::new(capacity=self.params.length())
 
   for param in self.params {
@@ -207,7 +207,7 @@ pub(all) enum BinaryOp {
   Ternary // hack for precedence climbing
 } derive(Eq)
 
-fn precedence(self: BinaryOp) -> Int {
+fn BinaryOp::precedence(self: BinaryOp) -> Int {
   match self {
     Mul | Div | Mod => 8
     Add | Sub => 7
@@ -386,7 +386,7 @@ pub impl Spanned for AstError with span(self) -> Span {
   }
 }
 
-pub fn expect_fixed(self: IntParam, span: Span) -> Int raise {
+pub fn IntParam::expect_fixed(self: Self, span: Span) -> Int raise {
   match self {
     Fixed(value) => value
     Dynamic(_) => {
@@ -425,7 +425,7 @@ pub(all) struct ModuleDecl {
     span: Span
 }
 
-pub fn ty(self: Expr) -> Ref[Type?] {
+pub fn Expr::ty(self: Expr) -> Ref[Type?] {
   match self {
     Natural(ty~, ..) => ty
     Identifier(ty~, ..) => ty
@@ -513,7 +513,7 @@ pub impl Spanned for Stmt with span(self: Stmt) -> Span {
   }
 }
 
-pub fn ctor(self: Expr) -> String {
+pub fn Expr::ctor(self: Expr) -> String {
   match self {
     Natural(_) => "Natural"
     Identifier(_) => "Identifier"
@@ -538,7 +538,7 @@ pub fn ctor(self: Expr) -> String {
   }
 }
 
-pub fn set_ty(self: Expr, ty: Type) -> Unit {
+pub fn Expr::set_ty(self: Expr, ty: Type) -> Unit {
   self.ty().val = Some(ty)
 }
 
@@ -735,7 +735,7 @@ pub fn keep_and_check_resolved(params: Map[String, Param], span~: Span) -> Map[S
 }
 
 // perform partial evaluation on the expression
-pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Expr raise {
+pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Expr raise {
   rewrite_expr(self, rewr_stmt=fn(stmt) { Iter::singleton(stmt) }, rewr_expr=fn(expr) {
     match expr {
       Identifier(path={ packages: [], member }, ..) => {
@@ -751,24 +751,31 @@ pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Exp
       }
       Unary(op=Neg, ..) => None
       Unary(op~, expr~, span~, ty~) => {
-        match (try? expr.as_bigint()) {
-          Ok(value) => {
+        try expr.as_bigint() catch {
+          _ => None
+        } noraise {
+          value => {
             let value = match op {
-              Not => @utils.bitwise_not(value)
-              Andr => BigInt::from_int(@utils.bits(value).all(fn(b) { b }).to_int())
-              Orr => BigInt::from_int(@utils.bits(value).any(fn(b) { b }).to_int())
-              Xorr => BigInt::from_int(@utils.bits(value).fold(init=0, fn(acc, b) { acc ^ b.to_int() }))
+              Not => {
+                if expr.ty().val is Some(ty) && ty.width(span) is width {
+                  @utils.bitwise_not(value, width~)
+                } else {
+                  return None
+                }
+              }
+              Andr => BigInt::from_int(@utils.bits(value).iter().all(@utils.identity).to_int())
+              Orr => BigInt::from_int(@utils.bits(value).iter().any(@utils.identity).to_int())
+              Xorr => BigInt::from_int(@utils.bits(value).fold(init=0, (acc, b) => acc ^ b.to_int()))
               Neg => @utils.unreachable()
             }
 
             Some(Natural(value=value, width=None, base=10, span~, ty~))
           }
-          _ => None
         }
       }
       Binary(op~, lhs~, rhs~, output_width=_, span~, ty~) => {
-        let lhs_value = (try? lhs.as_bigint())
-        let rhs_value = (try? rhs.as_bigint())
+        let lhs_value = try? lhs.as_bigint()
+        let rhs_value = try? rhs.as_bigint()
         let is_single_bit = lhs is Natural(width=Some(1), ..) || rhs is Natural(width=Some(1), ..)
         
         match (lhs_value, rhs_value, lhs, rhs, op) {
@@ -790,9 +797,7 @@ pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Exp
               And => lhs & rhs
               Or => lhs | rhs
               Xor => lhs ^ rhs
-              Nand => @utils.bitwise_not(lhs & rhs)
-              Nor => @utils.bitwise_not(lhs | rhs)
-              Xnor => @utils.bitwise_not(lhs ^ rhs)
+              Nand | Nor | Xnor => return None
               _ => raise Failure("Invalid arithmetical binary operator")
             }
 
@@ -820,35 +825,35 @@ pub fn partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Exp
         }
       }
       Ternary(cond~, then~, else_~, ..) | If(cond~, then~, else_=Some(else_), ..) => {
-        match (try? cond.partial_eval().as_int()) {
-          Ok(cond) => {
-            Some(if cond != 0 { then } else { else_ })
-          }
+         try cond.partial_eval().as_int() catch {
           _ => None
-        }
+         } noraise {
+          cond => Some(if cond != 0 { then } else { else_ })
+         }
       }
       If(cond~, then~, else_=None, span~, ty~) => {
-        match (try? cond.as_int()) {
-          Ok(cond) => {
-            if cond != 0 { Some(then) } else { Some(Block(body=[], last=None, span~, ty~)) }
-          }
+        try cond.partial_eval().as_int() catch {
           _ => None
+        } noraise {
+          cond => Some(if cond != 0 { then } else { Expr::Block(body=[], last=None, span~, ty~) })
         }
       }
       Match(subject~, cases~, ..) => {
-        match (try? subject.as_int()) {
-          Ok(subject) => {
+        try subject.partial_eval().as_int() catch {
+          _ => None
+        } noraise {
+          subject => {
             for case in cases {
               let (value, rhs) = case
-              match (try? value.as_int()) {
-                Ok(case) => if subject == case { return Some(rhs) }
+              try value.partial_eval().as_int() catch {
                 _ => ()
+              } noraise {
+                case => if subject == case { return Some(rhs) }
               }
             }
 
             None
           }
-          _ => None
         }
       }
       FunCall(name~, args~, span~, ty=_) => {
@@ -875,7 +880,7 @@ enum Arity {
   Range(min~: Int, max~: Int)
 }
 
-fn as_range(self: Arity) -> (Int, Int) {
+fn Arity::as_range(self: Self) -> (Int, Int) {
   match self {
     Fixed(value) => (value, value)
     Range(min~, max~) => (min, max)
@@ -1002,14 +1007,14 @@ pub fn Expr::as_bigint(self: Expr) -> BigInt raise {
   }
 }
 
-pub fn expect_string(self: Expr) -> String raise {
+pub fn Expr::expect_string(self: Expr) -> String raise {
   match self {
     String(value=str, ..) => str
     _ => raise ExpectedStringExpression(expr=self, span=self.span())
   }
 }
 
-pub fn get_port(self: ModuleSignature, name: String) -> Port? {
+pub fn ModuleSignature::get_port(self: Self, name: String) -> Port? {
   for port in self.ports {
     if port.name == name {
       return Some(port)
@@ -1019,7 +1024,7 @@ pub fn get_port(self: ModuleSignature, name: String) -> Port? {
   None
 }
 
-pub fn width(self: Type, span: Span) -> Int raise AstError {
+pub fn Type::width(self: Type, span: Span) -> Int raise AstError {
   match self {
     Nat({min_width}) => min_width
     UInt(Fixed(width)) => width
@@ -1055,21 +1060,23 @@ pub fn width(self: Type, span: Span) -> Int raise AstError {
   }
 }
 
-pub fn substitute(self: Type, params_env: Map[String, ResolvedParam], span~: Span) -> Type raise AstError {
+pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span~: Span) -> Type raise AstError {
   match self {
     Nat(_) | String(_) => self
     UInt(Fixed(width)) => UInt(Fixed(width))
     SInt(Fixed(width)) => SInt(Fixed(width))
     UInt(Dynamic(expr)) | SInt(Dynamic(expr)) => {
       let is_unsigned = match self { UInt(_) => true; _ => false }
-      match (try? expr.partial_eval(params=params_env)) {
+      let as_int = try? expr.partial_eval(params=params_env)
+      match as_int {
         Ok(Expr::Natural(value~, ..)) => if is_unsigned { UInt(Fixed(value.to_int())) } else { SInt(Fixed(value.to_int())) }
         _ => if is_unsigned { UInt(Dynamic(expr)) } else { SInt(Dynamic(expr)) }
       }
     }
     Clock => Clock
     Vector(ty~, len=Dynamic(expr)) => {
-      Vector(ty=ty.substitute(params_env, span~), len=match (try? expr.partial_eval(params=params_env)) {
+      let as_int = try? expr.partial_eval(params=params_env)
+      Vector(ty=ty.substitute(params_env, span~), len=match as_int {
         Ok(Natural(value~, ..)) => Fixed(value.to_int())
         _ => Dynamic(expr)
       })
@@ -1129,7 +1136,7 @@ pub fn substitute(self: Type, params_env: Map[String, ResolvedParam], span~: Spa
   }
 }
 
-pub fn signature(self: ModuleDecl) -> ModuleSignature {
+pub fn ModuleDecl::signature(self: Self) -> ModuleSignature {
   {
     path: self.path,
     params: self.params,

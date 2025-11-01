@@ -152,9 +152,8 @@ fn unify(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, UnificationParam
 }
 
 fn declare_name(env~: Scope[Path, Type], path~: Path, ty~: Type, span~: Span) -> Unit raise TypeCheckerError {
-    match (try? env.declare(path, ty)) {
-        Ok(_) => ()
-        Err(MemberAlreadyDeclared(_)) => {
+    try env.declare(path, ty) catch {
+        MemberAlreadyDeclared(_) => {
             raise type_error("Variable '\{path}' redeclared", span)
         }
     }
@@ -169,7 +168,7 @@ fn eval_const_expr(expr: Expr) -> Int raise {
     }
 }
 
-fn resolve_ty(self: TypeChecker, ty: Type, span~: Span) -> Type raise {
+fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
     match ty {
         UInt(width) => UInt(width)
         SInt(width) => SInt(width)
@@ -202,7 +201,7 @@ fn resolve_ty(self: TypeChecker, ty: Type, span~: Span) -> Type raise {
     }
 }
 
-fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty~: Type? = None) -> Type raise {
+fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expected_ty~: Type? = None) -> Type raise {
     let ty = match expr {
         Identifier(path~, span~, ..) => {
             match env.resolve(path) {
@@ -789,7 +788,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
     ty
 }
 
-fn check_stmt(self: TypeChecker, stmt: Stmt, env: Scope[Path, Type]) -> Unit raise {
+fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Unit raise {
     match stmt {
         Expr(expr~, ..) => {
             let _ = self.check_expr(expr, env)
@@ -871,8 +870,8 @@ fn check_stmt(self: TypeChecker, stmt: Stmt, env: Scope[Path, Type]) -> Unit rai
     }
 }
 
-fn check_format_string(
-    self: TypeChecker,
+fn TypeChecker::check_format_string(
+    self: Self,
     format_str~: Expr,
     args~: ArrayView[Expr],
     env~: Scope[Path, Type],
@@ -947,7 +946,7 @@ fn check_attributes(attrs: Map[String, Attribute], signatures~: Map[String, Arra
     }
 }
 
-fn check_const_decl(self: TypeChecker, decl: ConstDecl, env: Scope[Path, Type]) -> Unit raise {
+fn TypeChecker::check_const_decl(self: Self, decl: ConstDecl, env: Scope[Path, Type]) -> Unit raise {
     if !decl.expr.is_constant_expr() {
         raise ExpectedConstantExpr(span=decl.expr.span())
     }
@@ -965,7 +964,7 @@ fn check_const_decl(self: TypeChecker, decl: ConstDecl, env: Scope[Path, Type]) 
     declare_name(env~, path=decl.path, ty~, span=decl.span)
 }
 
-pub fn check_decl(self: TypeChecker, decl: Decl) -> Unit raise {
+pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Unit raise {
     match decl {
         Module({ path, params: _, attributes, ports, body, span: _ } as mod) => {
             let env = self.top_env.child()

@@ -28,7 +28,7 @@ typealias Scope[@parse.Path, SimplifierEnvEntry] as SimplifierEnv
 pub fn Simplifier::new() -> Simplifier {
   { name_counts: {} }
 }
-pub fn declare_unique(self: Simplifier, name: String) -> UniqueName {
+pub fn Simplifier::declare_unique(self: Self, name: String) -> UniqueName {
   let count = match self.name_counts.get(name) {
     Some(count) => count
     None => 0
@@ -69,7 +69,7 @@ pub impl @parse.Spanned for SimplifierError with span(self) -> @parse.Span {
 // - Rewrite if expressions into match expressions
 // - Check static assertions
 // - Rewrite dynamic indexing into static indexing
-pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr raise {
+pub fn Simplifier::simplify_expr(self: Self, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr raise {
   let rewr_stmt = fn(stmt) raise { self.simplify_stmt(stmt, env~, scope~) }
 
   @parse.rewrite_expr(expr, rewr_stmt~, rewr_expr=fn(expr) {
@@ -208,9 +208,11 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
         Some(self.simplify_expr(match_expr, env~, scope~))
       }
       FunCall(name="assert", args=[pred, ..], span~, ty~) => {
-        match (try? pred.as_int()) {
-          Ok(0) => raise AssertionAlwaysFails(span~)
-          Ok(1) => Some(@parse.Expr::Tuple(elems=[], span~, ty~))
+        try pred.as_int() catch {
+          _ => None
+        } noraise {
+          0 => raise AssertionAlwaysFails(span~)
+          1 => Some(@parse.Expr::Tuple(elems=[], span~, ty~))
           _ => None
         }
       }
@@ -219,7 +221,7 @@ pub fn simplify_expr(self: Simplifier, expr: @parse.Expr, env~: SimplifierEnv, s
   })
 }
 
-pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> Iter[@parse.Stmt] raise {
+pub fn Simplifier::simplify_stmt(self: Self, stmt: @parse.Stmt, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> Iter[@parse.Stmt] raise {
   match stmt {
     Expr(expr~, span~) => {
       let simplified_expr = self.simplify_expr(expr, env~, scope~)
@@ -262,7 +264,7 @@ pub fn simplify_stmt(self: Simplifier, stmt: @parse.Stmt, env~: SimplifierEnv, s
   }
 }
 
-fn simplify_decl(self: Simplifier, decl: @parse.Decl, env~: SimplifierEnv) -> @parse.Decl? raise {
+fn Simplifier::simplify_decl(self: Self, decl: @parse.Decl, env~: SimplifierEnv) -> @parse.Decl? raise {
   match decl {
     Module({ path, params, attributes, ports, body, span }) => {
       let simplified_body = []

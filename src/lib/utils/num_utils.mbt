@@ -138,61 +138,7 @@ pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
   }
 }
 
-// /**
-//  * Convert an array of bytes (big-endian) and a sign flag
-//  * into a two's-complement bitstring of a specified width.
-//  *
-//  * If sign === false:
-//  *   Output is the zero-extended binary representation of the bytes.
-//  *
-//  * If sign === true:
-//  *   Output is the two's-complement binary representation of the NEGATIVE
-//  *   value whose magnitude is given by the bytes.
-//  *
-//  * @param {number[]} bytes   Array of numbers in [0..255], big-endian magnitude
-//  * @param {boolean} sign     True if representing negative value
-//  * @param {number} width     Total bit width of result (must be >= bytes.length * 8)
-//  * @returns {string}         Bitstring of length `width`
-//  */
-// function bytesToTwosComplementString(bytes, sign, width) {
-//   const byteBits = bytes.length * 8;
-//   if (width < byteBits) {
-//     throw new Error(`width must be >= ${byteBits}`);
-//   }
-//   if (width <= 0) {
-//     throw new Error("width must be positive");
-//   }
-
-//   // Convert bytes to magnitude BigInt
-//   let magnitude = 0n;
-//   for (const byte of bytes) {
-//     if (!Number.isInteger(byte) || byte < 0 || byte > 255) {
-//       throw new Error("Each byte must be an integer in the range 0..255");
-//     }
-//     magnitude = (magnitude << 8n) | BigInt(byte);
-//   }
-
-//   let valueBigInt;
-//   if (!sign) {
-//     // Positive: zero-extend
-//     valueBigInt = magnitude;
-//   } else {
-//     // Negative: two's-complement of magnitude within width bits
-//     const modulus = 1n << BigInt(width);
-//     valueBigInt = (modulus - magnitude) & (modulus - 1n);
-//   }
-
-//   // Convert to binary string padded to width
-//   let bin = valueBigInt.toString(2);
-//   if (bin.length > width) {
-//     throw new Error("Value does not fit in specified width");
-//   }
-//   bin = bin.padStart(width, "0");
-
-//   return bin;
-// }
-
-pub fn bin(n: BigInt, width~: Int) -> Iter[Bool] raise {
+pub fn bin(n: BigInt, width~: Int) -> Array[Bool] raise {
   let bits = Array::make(width, false)
   let a = if n < 0N {
     // two's complement for negative numbers
@@ -223,7 +169,7 @@ pub fn bin(n: BigInt, width~: Int) -> Iter[Bool] raise {
     }
   }
 
-  bits.iter()
+  bits
 }
 
 test "bin" {
@@ -241,22 +187,35 @@ test "bin" {
   inspect(bin_str(BigInt::from_int64(0x3E676F7B73633E), 64), content="0000000000111110011001110110111101111011011100110110001100111110")
 }
 
-pub fn bits(n: BigInt) -> Iter[Bool] raise {
+pub fn bits(n: BigInt) -> Array[Bool] raise {
   if n == 0 {
-    return [false].iter()
+    return [false]
   }
 
-  let width = clog2(n + 1).to_int()
+  let width = clog2(abs(n) + 1).to_int()
   bin(n, width~)
 }
 
-pub fn bitwise_not(n: BigInt) -> BigInt {
-  n.lxor(-1N)
+pub fn bitwise_not(n: BigInt, width~: Int) -> BigInt raise {
+  let mut res = 0N
+  let mut p = 1N
+
+  for bit in bin(n, width~).rev_iter() {
+    if !bit {
+      res += p
+    }
+
+    p = p << 1
+  }
+
+  res
 }
 
 test "bitwise_not" {
-  inspect(bitwise_not(17), content="-18")
-  inspect(bitwise_not(-17), content="16")
+  inspect(bitwise_not(17, width=8), content="238")
+  inspect(bitwise_not(1998, width=16), content="63537")
+  inspect(bitwise_not(49, width=12), content="4046")
+  inspect(bitwise_not(-17, width=8), content="16")
 }
 
 pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {
