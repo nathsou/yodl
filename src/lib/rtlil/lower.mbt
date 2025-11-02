@@ -1,15 +1,8 @@
 
 priv struct RTLILLowering {
   design: Design
-  mut current_module: Module?
+  mod: Module
   reg_ids: Set[@firrtl.Id]
-}
-
-fn RTLILLowering::mod(self: Self) -> Module raise {
-  match self.current_module {
-    Some(mod) => mod
-    None => raise Failure("No current module")
-  }
 }
 
 fn RTLILLowering::next_idx(self: Self) -> Int {
@@ -28,17 +21,24 @@ pub fn lower_circuit(circuit: @firrtl.TypedCircuit) -> Design raise {
     modules: {},
   }
 
-  let lowering: RTLILLowering = {
-    design,
-    current_module: None,
-    reg_ids: @set.new(),
-  }
-
   for decl in circuit.decls {
     match decl {
       Module(mod) => {
-        let rtlil_mod = lowering.lower_module(mod)
-        design.modules[rtlil_mod.name] = rtlil_mod
+        let lowering: RTLILLowering = {
+          design,
+          mod: {
+            name: PubId(mod.id.inner()),
+            parameters: {},
+            wires: {},
+            cells: {},
+            connections: [],
+            attributes: {},
+          },
+          reg_ids: @set.new(),
+        }
+
+        lowering.lower_module(mod)
+        design.modules[lowering.mod.name] = lowering.mod
       }
       ExtModule(_) => {
         raise Failure("External modules are not yet supported in RTLIL lowering")
@@ -57,22 +57,13 @@ fn lower_id(id: String) -> Id {
   }
 }
 
-fn RTLILLowering::lower_module(self: Self, mod: @firrtl.TypedModule) -> Module raise {
-  let rtlil_mod = {
-    name: PubId(mod.id.inner()),
-    parameters: {},
-    wires: {},
-    cells: {},
-    connections: [],
-    attributes: {},
-  }
-
+fn RTLILLowering::lower_module(self: Self, mod: @firrtl.TypedModule) -> Unit raise {
   for idx, port in mod.ports.iter2() {
     let wire: Wire = {
       name: lower_id(port.id.inner()),
       width: port.ty.width(),
       attributes: {},
-      mod: rtlil_mod,
+      mod: self.mod,
       port: Some({
         id: idx,
         optional: false,
@@ -80,31 +71,23 @@ fn RTLILLowering::lower_module(self: Self, mod: @firrtl.TypedModule) -> Module r
       }),
     }
 
-    rtlil_mod.wires[lower_id(port.id.inner())] = wire
+    self.mod.wires[lower_id(port.id.inner())] = wire
   }
-
-  self.current_module = Some(rtlil_mod)
 
   for stmt in mod.body.iter() {
     self.lower_stmt(stmt)
   }
-
-  self.current_module = None
-
-  rtlil_mod
 }
 
 fn RTLILLowering::lower_stmt(self: Self, stmt: @firrtl.TypedStmt) -> Unit raise {
-  let mod = self.mod()
-
   match stmt {
     Node(id~, expr~) => {
-      let wire = mod.add_wire(name=lower_id(id.inner()), width=expr.ty().width())
+      let wire = self.mod.add_wire(name=lower_id(id.inner()), width=expr.ty().width())
       let signal = self.lower_expr(expr)
-      mod.connect(SigWire(wire), signal)
+      self.mod.connect(SigWire(wire), signal)
     }
     Wire(id~, ty~) => {
-      let _ = mod.add_wire(name=lower_id(id.inner()), width=ty.width())
+      let _ = self.mod.add_wire(name=lower_id(id.inner()), width=ty.width())
     }
     Inst(id~, of~, sig~) => {
       let inst_id = lower_id(id.inner())
@@ -117,7 +100,7 @@ fn RTLILLowering::lower_stmt(self: Self, stmt: @firrtl.TypedStmt) -> Unit raise 
 
           for port_name, port_sig in sig.ports.iter2() {
             let wire_name = lower_id("\{inst_id.inner()}.\{port_name}")
-            let wire = mod.add_wire(name=wire_name, width=port_sig.ty.width())
+            let wire = self.mod.add_wire(name=wire_name, width=port_sig.ty.width())
             conns[port_name] = SigWire(wire)
           }
 
@@ -135,7 +118,7 @@ fn RTLILLowering::lower_stmt(self: Self, stmt: @firrtl.TypedStmt) -> Unit raise 
       raise Failure("Memories are not yet supported in RTLIL lowering")
     }
     Connect(lhs, rhs) => {
-      mod.connect(self.lower_reference(lhs, is_lvalue=true), self.lower_expr(rhs))
+      self.mod.connect(self.lower_reference(lhs, is_lvalue=true), self.lower_expr(rhs))
     }
     When(_) => {
       raise Failure("When statements are not supported in RTLIL lowering")
@@ -154,8 +137,11 @@ fn RTLILLowering::lower_register(
   clock~: @firrtl.TypedExpr,
   reset_init~: (@firrtl.TypedExpr, @firrtl.TypedExpr)?,
 ) -> Unit raise {
+  guard ty.is_ground() else {
+    raise Failure("Register '\{id}' must have a ground type")
+  }
+
   self.reg_ids.add(id)
-  let mod = self.mod()
   let width = ty.width()
   let (uses_rst, async_rst) = match reset_init {
     None => (false, false)
@@ -175,8 +161,8 @@ fn RTLILLowering::lower_register(
 
   let connections: Map[String, Signal] = {
     "CLK": self.lower_expr(clock),
-    "D": SigWire(mod.add_wire(name=lower_id("\{id.inner()}.d"), width~)),
-    "Q": SigWire(mod.add_wire(name=lower_id("\{id.inner()}.q"), width~)),
+    "D": SigWire(self.mod.add_wire(name=lower_id("\{id.inner()}.d"), width~)),
+    "Q": SigWire(self.mod.add_wire(name=lower_id("\{id.inner()}.q"), width~)),
   }
 
   if reset_init is Some((reset, init)) {
@@ -227,11 +213,11 @@ fn RTLILLowering::lower_reference(self: Self, reference: @firrtl.TypedRef, is_lv
 
   let id = lower_id(wire_name)
 
-  match self.mod().wires.get(id) {
+  match self.mod.wires.get(id) {
     Some(wire) => SigWire(wire)
     None => {
-      println(self.mod().wires.keys())
-      raise Failure("Wire '\{id}' not found in module '\{self.mod().name}'")
+      println(self.mod.wires.keys())
+      raise Failure("Wire '\{id}' not found in module '\{self.mod.name}'")
     }
   }
 }
@@ -246,7 +232,7 @@ fn lower_literal(literal: @firrtl.Literal) -> Constant raise {
 }
 
 fn RTLILLowering::mk_cell(self: Self, id~: Id, kind~: Id, parameters~: Map[String, Constant], connections~: Map[String, Signal]) -> Unit raise {
-  let _ = self.mod().add_cell(
+  let _ = self.mod.add_cell(
     name=id,
     cell_name=kind,
     parameters=@utils.map_keys(parameters, (id, _) => PubId(id)),
@@ -256,10 +242,9 @@ fn RTLILLowering::mk_cell(self: Self, id~: Id, kind~: Id, parameters~: Map[Strin
 }
 
 fn RTLILLowering::lower_mux(self: Self, cond~: @firrtl.TypedExpr, tval~: @firrtl.TypedExpr, fval~: @firrtl.TypedExpr, ty~: @firrtl.Type) -> Signal raise {
-  let mod = self.mod()
   let id = self.next_gen_id("mux")
   let width = ty.width()
-  let y = mod.add_wire(name=id.join("_y"), width~)
+  let y = self.mod.add_wire(name=id.join("_y"), width~)
 
   self.mk_cell(
     id~,
@@ -304,13 +289,12 @@ fn RTLILLowering::lower_primop_1expr(self: Self, op~: @firrtl.PrimOp, arg~: @fir
     return self.lower_expr(arg)
   }
 
-  let mod = self.mod()
-
   if op is Cvt {
     if arg.ty().is_signed() {
       return self.lower_expr(arg)
     } else {
-      return SigConcat([SigConst(ConstInteger(0)), self.lower_expr(arg)])
+      // zero-extend
+      return SigConcat([SigConst(ConstValue(width=1, bits=[Zero])), self.lower_expr(arg)])
     }
   }
 
@@ -326,7 +310,7 @@ fn RTLILLowering::lower_primop_1expr(self: Self, op~: @firrtl.PrimOp, arg~: @fir
   let id = self.next_gen_id(cell_kind)
   let arg_ty = arg.ty()
   let y_width = ty.width()
-  let y = mod.add_wire(name=id.join("_y"), width=y_width)
+  let y = self.mod.add_wire(name=id.join("_y"), width=y_width)
 
   self.mk_cell(
     id~,
@@ -356,7 +340,9 @@ fn RTLILLowering::lower_primop_2expr(
     return SigConcat([self.lower_expr(lhs), self.lower_expr(rhs)])
   }
 
-  let mod = self.mod()
+  let lhs_ty = lhs.ty()
+  let rhs_ty = rhs.ty()
+  let is_lhs_signed = lhs_ty.is_signed()
   let cell_kind = match op {
     Add => "add"
     Sub => "sub"
@@ -370,7 +356,7 @@ fn RTLILLowering::lower_primop_2expr(
     Eq => "eq"
     Neq => "ne"
     Shl | Dshl => "shl"
-    Shr | Dshr => "shr"
+    Shr | Dshr => if is_lhs_signed { "sshr" } else { "shr" }
     And => "and"
     Or => "or"
     Xor => "xor"
@@ -378,16 +364,14 @@ fn RTLILLowering::lower_primop_2expr(
   }
 
   let id = self.next_gen_id(cell_kind)
-  let lhs_ty = lhs.ty()
-  let rhs_ty = rhs.ty()
   let y_width = ty.width()
-  let y = mod.add_wire(name=id.join("_y"), width=y_width)
+  let y = self.mod.add_wire(name=id.join(".y"), width=y_width)
 
   self.mk_cell(
     id~,
     kind=GenId(cell_kind),
     parameters={
-      "A_SIGNED": ConstInteger(if lhs_ty.is_signed() { 1 } else { 0 }),
+      "A_SIGNED": ConstInteger(if is_lhs_signed { 1 } else { 0 }),
       "B_SIGNED": ConstInteger(if rhs_ty.is_signed() { 1 } else { 0 }),
       "A_WIDTH": ConstInteger(lhs_ty.width()),
       "B_WIDTH": ConstInteger(rhs_ty.width()),
@@ -413,7 +397,7 @@ fn RTLILLowering::lower_primop_1expr1int(self: Self, op~: @firrtl.PrimOp, arg~: 
     Tail => {
       let signal = self.lower_expr(arg)
       let arg_width = arg.ty().width()
-      SigChunk(signal~, width=arg_width - n, offset=arg_width - 1)
+      SigChunk(signal~, width=arg_width - n, offset=arg_width - 1 - n)
     }
     _ => @utils.unreachable()
   }
@@ -428,13 +412,19 @@ fn RTLILLowering::pad(self: Self, expr: @firrtl.TypedExpr, width: Int) -> Signal
   if old_width < width {
     let padding = width - old_width
     let pad_bits = Array::new(capacity=padding)
-    let sign_ext_bit: BinaryDigit = if is_signed { One } else { Zero }
+    let sign_ext_bit: Signal = if is_signed {
+      SigChunk(signal=sig, offset=old_width - 1, width=1)
+    } else {
+      SigConst(ConstValue(width=1, bits=[Zero]))
+    }
 
     for _ in 0..<padding {
       pad_bits.push(sign_ext_bit)
     }
 
-    SigConcat([SigConst(ConstValue(width=padding, bits=pad_bits)), sig])
+    pad_bits.push(sig)
+
+    SigConcat(pad_bits)
   } else {
     sig
   }
