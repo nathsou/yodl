@@ -3,6 +3,8 @@ priv struct RTLILLowering {
   design: Design
   mod: Module
   reg_ids: Set[@firrtl.Id]
+  ann_target: @firrtl.AnnotationTarget
+  annotations: Array[@firrtl.Annotation]
 }
 
 fn RTLILLowering::next_idx(self: Self) -> Int {
@@ -33,8 +35,11 @@ pub fn lower_circuit(circuit: @firrtl.TypedCircuit) -> Design raise {
             cells: {},
             connections: [],
             attributes: {},
+            memories: {},
           },
           reg_ids: @set.new(),
+          ann_target: { circuit: circuit.id.inner(), mod: mod.id, leaf: None },
+          annotations: circuit.annotations,
         }
 
         lowering.lower_module(mod)
@@ -114,8 +119,8 @@ fn RTLILLowering::lower_stmt(self: Self, stmt: @firrtl.TypedStmt) -> Unit raise 
     RegReset(id~, ty~, clock~, reset~, init~) => {
       self.lower_register(id~, ty~, clock~, reset_init=Some((reset, init)))
     }
-    Mem(_) => {
-      raise Failure("Memories are not yet supported in RTLIL lowering")
+    Mem(mem) => {
+      self.lower_mem(mem)
     }
     Connect(lhs, rhs) => {
       self.mod.connect(self.lower_reference(lhs, is_lvalue=true), self.lower_expr(rhs))
@@ -191,6 +196,116 @@ fn RTLILLowering::lower_register(
   )
 }
 
+fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
+  guard mem.data_type.is_ground() else {
+    raise Failure("Memory '\{mem.id}' must have a ground data type")
+  }
+
+  guard !mem.is_flat else {
+    raise Failure("Flat memories are not yet supported in RTLIL lowering")
+  }
+
+  guard mem.read_latency <= 1 else {
+    raise Failure("Memories with read latency > 1 are not yet supported in RTLIL lowering")
+  }
+
+  guard mem.write_latency <= 1 else {
+    raise Failure("Memories with write latency > 1 are not yet supported in RTLIL lowering")
+  }
+
+  guard mem.read_under_write is Undefined else {
+    raise Failure("Memories with defined read-under-write behavior are not yet supported in RTLIL lowering")
+  }
+
+  guard mem.readwriters.is_empty() else {
+    raise Failure("Memories with read-write ports are not yet supported in RTLIL lowering")
+  }
+
+  let addr_width = @utils.clog2_int(mem.depth)
+  let data_width = mem.data_type.width()
+  // let mask_granularity = mem.data_type.mem_mask_granularity()
+  let mask_type = mem.data_type.mem_mask()
+  let mask_width = mask_type.width()
+  let mem_target = { ..self.ann_target, leaf: Some(mem.id) }
+  let init: Constant? = None
+
+  for ann in self.annotations {
+    if ann is MemoryFileInlineAnnotation(target~, ..) && target == mem_target {
+      raise Failure("Memory file inline annotations are not yet supported in RTLIL lowering")
+    }
+  }
+
+  let rtlil_mem = self.mod.add_memory(
+    id=lower_id(mem.id.inner()),
+    width=data_width,
+    size=mem.depth,
+  )
+
+  let mem_id = ConstString(rtlil_mem.id.to_string())
+
+  if init is Some(_) {
+    self.mk_cell(
+      id=GenId("\{mem.id.inner()}_init"),
+      kind=GenId("meminit_v2"),
+      parameters={
+        "MEMID": mem_id,
+        "ABITS": ConstInteger(addr_width),
+        "WIDTH": ConstInteger(data_width),
+        "WORDS": ConstInteger(mem.depth),
+        "PRIORITY": ConstInteger(0),
+      },
+      connections={},
+    )
+  }
+
+  for read_port in mem.readers {
+    self.mk_cell(
+      id=GenId("\{mem.id.inner()}.\{read_port}"),
+      kind=GenId("memrd"),
+      parameters={
+        "MEMID": mem_id,
+        "ABITS": ConstInteger(addr_width),
+        "WIDTH": ConstInteger(data_width),
+        "CLK_ENABLE": ConstInteger(1),
+        "CLK_POLARITY": ConstInteger(1),
+        "TRANSPARENT": ConstInteger(0),
+      },
+      connections={
+        "CLK": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.clk"), width=1)),
+        "ADDR": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.addr"), width=addr_width)),
+        "DATA": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.data"), width=data_width)),
+        "EN": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.en"), width=1)),
+      },
+    )
+  }
+
+  for port_id, write_port in mem.writers.iter2() {
+    self.mk_cell(
+      id=GenId("\{mem.id.inner()}.\{write_port}"),
+      kind=GenId("memwr_v2"),
+      parameters={
+        "MEMID": mem_id,
+        "ABITS": ConstInteger(addr_width),
+        "WIDTH": ConstInteger(data_width),
+        "CLK_ENABLE": ConstInteger(1),
+        "CLK_POLARITY": ConstInteger(1),
+        "PORTID": ConstInteger(port_id),
+        "PRIORITY_MASK": ConstValue(width=0, bits=[X]),
+      },
+      connections={
+        "CLK": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.clk"), width=1)),
+        "ADDR": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.addr"), width=addr_width)),
+        "DATA": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.data"), width=data_width)),
+        "EN": {
+          let en = SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.en"), width=1))
+          let _ = self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.mask"), width=mask_width)
+          SigConcat(Array::make(data_width, en))
+        },
+      },
+    )
+  }
+}
+
 fn RTLILLowering::lower_expr(self: Self, expr: @firrtl.TypedExpr) -> Signal raise {
   match expr {
     Reference(r, ty=_) => self.lower_reference(r, is_lvalue=false)
@@ -216,7 +331,6 @@ fn RTLILLowering::lower_reference(self: Self, reference: @firrtl.TypedRef, is_lv
   match self.mod.wires.get(id) {
     Some(wire) => SigWire(wire)
     None => {
-      println(self.mod.wires.keys())
       raise Failure("Wire '\{id}' not found in module '\{self.mod.name}'")
     }
   }

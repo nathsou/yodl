@@ -15,11 +15,11 @@ pub fn sum(iter: Iter[Int]) -> Int {
   iter.fold(Int::add, init=0)
 }
 
-pub fn clog2(n: BigInt) -> BigInt {
-  let mut p: BigInt = 1
-  let mut i: BigInt = 0
+pub fn clog2_int(n: Int) -> Int {
+  let mut p = 1
+  let mut i = 0
 
-  while i < 1024 {
+  while i < 32 {
     if p >= n {
       return i
     }
@@ -28,7 +28,42 @@ pub fn clog2(n: BigInt) -> BigInt {
     i += 1
   }
 
-  1024
+  32
+}
+
+pub fn clog2(n: BigInt) -> BigInt {
+  let mut p = 1N
+  let mut i = 0N
+
+  while i < 1024N {
+    if p >= n {
+      return i
+    }
+
+    p = p << 1
+    i += 1N
+  }
+
+  1024N
+}
+
+test "clog2_int" {
+  inspect(clog2_int(1), content="0")
+  inspect(clog2_int(2), content="1")
+  inspect(clog2_int(3), content="2")
+  inspect(clog2_int(4), content="2")
+  inspect(clog2_int(5), content="3")
+  inspect(clog2_int(15), content="4")
+  inspect(clog2_int(16), content="4")
+  inspect(clog2_int(17), content="5")
+  inspect(clog2_int(123823), content="17")
+  inspect(clog2_int(65535), content="16")
+  inspect(clog2_int(65536), content="16")
+  inspect(clog2_int(65537), content="17")
+  inspect(clog2_int(@int.max_value), content="32")
+  inspect(clog2_int(@int.min_value), content="0")
+  inspect(clog2_int(-1), content="0")
+  inspect(clog2_int(0), content="0")
 }
 
 pub fn cdiv(dividend: BigInt, divisor: BigInt) -> BigInt {

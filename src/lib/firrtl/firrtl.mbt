@@ -49,7 +49,7 @@ pub(all) struct AnnotationTarget {
   circuit: String
   mod: Id
   leaf: Id?
-}
+} derive (Eq)
 
 pub impl Show for AnnotationTarget with output(self, logger) -> Unit {
   logger.write_string("\{self.circuit}")
@@ -183,7 +183,7 @@ pub struct MemPorts {
 }
 
 pub fn Mem::reader_writer_types(self: Mem) -> MemPorts {
-  let depth_clog2 = @utils.clog2(BigInt::from_int(self.depth)).to_int()
+  let depth_clog2 = @utils.clog2_int(self.depth)
   
   {
     read: Bundle([

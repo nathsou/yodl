@@ -102,6 +102,10 @@ fn Serializer::emit_cell(self: Self, cell: Cell) -> Unit {
   self.write("end\n")
 }
 
+fn Serializer::emit_memory(self: Self, mem: Memory) -> Unit {
+  self.write("memory width \{mem.width} size \{mem.size} \{mem.id}\n")
+}
+
 fn Serializer::emit_module(self: Self, mod: Module) -> Unit {
   for attrib in mod.attributes {
     self.write(show_attribute(attrib.0, attrib.1) + "\n")
@@ -117,6 +121,10 @@ fn Serializer::emit_module(self: Self, mod: Module) -> Unit {
 
   for wire in mod.wires.values() {
     self.write_wire(wire)
+  }
+
+  for mem in mod.memories.values() {
+    self.emit_memory(mem)
   }
 
   for cell in mod.cells.values() {

@@ -142,6 +142,7 @@ pub(all) struct Cell {
 pub(all) struct Module {
   name: Id
   wires: Map[Id, Wire]
+  memories: Map[Id, Memory]
   cells: Map[Id, Cell]
   attributes: Map[Id, Constant]
   parameters: Map[Id, Constant]
@@ -149,7 +150,13 @@ pub(all) struct Module {
 }
 
 pub fn Module::new(name: Id) -> Module {
-  { name, wires: {}, cells: {}, attributes: {}, parameters: {}, connections: [] }
+  { name, wires: {}, cells: {}, attributes: {}, parameters: {}, connections: [], memories: {} }
+}
+
+pub(all) struct Memory {
+  id: Id
+  width: Int
+  size: Int
 }
 
 pub fn Module::add_wire(
@@ -201,6 +208,27 @@ pub fn Module::add_cell(
   cell
 }
 
+pub fn Module::add_memory(
+  self: Self,
+  id~: Id,
+  width~: Int,
+  size~: Int,
+) -> Memory raise {
+  if self.memories.contains(id) {
+    raise Failure("Memory '\{id}' is already declared")
+  }
+
+  let mem: Memory = {
+    id,
+    width,
+    size,
+  }
+
+  self.memories[id] = mem
+
+  mem
+}
+
 pub fn Module::connect(self: Self, sig1: Signal, sig2: Signal) -> Unit raise {
   if sig1.size() != sig2.size() {
     raise Failure("Cannot connect signals of different widths: \{sig1.size()} and \{sig2.size()}")
@@ -212,8 +240,7 @@ pub fn Module::connect(self: Self, sig1: Signal, sig2: Signal) -> Unit raise {
 pub fn Module::ports(mod: Self) -> Iter[PortSpec] {
   mod.wires
     .values()
-    .filter(wire => !wire.port.is_empty())
-    .map(wire => wire.port.unwrap())
+    .filter_map(wire => wire.port)
 }
 
 pub(all) struct Design {
