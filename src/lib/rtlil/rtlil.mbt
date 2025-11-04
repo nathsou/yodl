@@ -252,7 +252,7 @@ fn Module::check_signal_exists(self: Self, sig: Signal) -> Unit raise {
 
 pub fn Module::connect(self: Self, sig1: Signal, sig2: Signal) -> Unit raise {
   if sig1.size() != sig2.size() {
-    raise Failure("Cannot connect signals of different widths: \{sig1.size()} and \{sig2.size()}")
+    raise Failure("Cannot connect signals of different widths: \{sig1} (width: \{sig1.size()}) and \{sig2} (width: \{sig2.size()})")
   }
 
   self.check_signal_exists(sig1)

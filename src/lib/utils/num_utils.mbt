@@ -228,13 +228,12 @@ pub(open) trait BinaryLike {
 
 pub impl BinaryLike for Bool with from_bool(b: Bool) { b }
 
-pub fn[T: BinaryLike] bin_int(n: Int, width~: Int) -> Iter[T] raise {
-  let mut p = 1 << width
-  if n >= p {
+pub fn[T: BinaryLike] bin_uint(n: UInt, width~: Int) -> Iter[T] raise {
+  if width < 32 && n >= (1U << width) {
     raise Failure("Value \{n} does not fit in specified width \{width}")
   }
 
-  p = p >> 1
+  let mut p = 1U << (width - 1)
 
   Iter::new((visit: (T) -> IterResult) => {
     while p > 0 {
@@ -250,14 +249,13 @@ pub fn[T: BinaryLike] bin_int(n: Int, width~: Int) -> Iter[T] raise {
 }
 
 test "bits_int" {
-  fn bin_str(n: Int, width: Int) -> String raise {
-    bin_int(n, width~).map(bit => if bit { "1" } else { "0" }).join("")
+  fn bin_str(n: UInt, width: Int) -> String raise {
+    bin_uint(n, width~).map(bit => if bit { "1" } else { "0" }).join("")
   }
 
   inspect(bin_str(17, 8), content="00010001")
   inspect(bin_str(255, 8), content="11111111")
   inspect(bin_str(0, 8), content="00000000")
-  inspect(bin_str(-1, 8), content="11111111")
 }
 
 pub fn bits(n: BigInt) -> Array[Bool] raise {

@@ -130,8 +130,33 @@ fn RTLILLowering::lower_stmt(self: Self, stmt: @firrtl.TypedStmt) -> Unit raise 
     When(_) => {
       raise Failure("When statements are not supported in RTLIL lowering")
     }
-    Command(_) => {
-      raise Failure("Commands are not yet supported in RTLIL lowering")
+    Command(cmd) => {
+      match cmd {
+        Printf(clk~, en~, fmt~, args~) => {
+          self.mk_cell(
+            id=self.next_gen_id("print"),
+            kind=GenId("print"),
+            parameters={
+              // TODO: parse FIRRTL format and convert to RTLIL format
+              "FORMAT": ConstString("\{fmt}"),
+              "ARGS_WIDTH": ConstInteger(@utils.sum(args.map(arg => arg.ty().width()).iter())),
+              "PRIORITY": ConstInteger(1),
+              "TRG_ENABLE": ConstInteger(1),
+              "TRG_POLARITY": ConstInteger(1),
+              "TRG_WIDTH": ConstInteger(1),
+            },
+            connections={
+              "TRG": self.lower_expr(clk),
+              "EN": self.lower_expr(en),
+              "ARGS": SigConcat(args.map(arg => self.lower_expr(arg))),
+            },
+          )
+        }
+        Stop(_) => ()
+        _ => {
+          raise Failure("Unsupported command '\{cmd.name()}' in RTLIL lowering")
+        }
+      }
     }
     Skip => ()
   }
@@ -203,10 +228,6 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
     raise Failure("Memory '\{mem.id}' must have a ground data type")
   }
 
-  guard !mem.is_flat else {
-    raise Failure("Flat memories are not yet supported in RTLIL lowering")
-  }
-
   guard mem.read_latency <= 1 else {
     raise Failure("Memories with read latency > 1 are not yet supported in RTLIL lowering")
   }
@@ -225,8 +246,8 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
 
   let addr_width = @utils.clog2_int(mem.depth)
   let data_width = mem.data_type.width()
-  // let mask_granularity = mem.data_type.mem_mask_granularity()
-  let mask_type = mem.data_type.mem_mask()
+  let mask_type = mem.mask_ty
+  let mask_granularity = mask_type.mem_mask_granularity()
   let mask_width = mask_type.width()
   let mem_target = { ..self.ann_target, leaf: Some(mem.id) }
   let mut init: Constant? = None
@@ -276,6 +297,8 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
   }
 
   for read_port in mem.readers {
+    let is_combinational = mem.read_latency == 0
+
     self.mk_cell(
       id=GenId("\{mem.id.inner()}.\{read_port}"),
       kind=GenId("memrd"),
@@ -283,20 +306,38 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
         "MEMID": mem_id,
         "ABITS": ConstInteger(addr_width),
         "WIDTH": ConstInteger(data_width),
-        "CLK_ENABLE": ConstInteger(if mem.read_latency == 0 { 0 } else { 1 }),
+        "CLK_ENABLE": ConstInteger(if is_combinational { 0 } else { 1 }),
         "CLK_POLARITY": ConstInteger(1),
         "TRANSPARENT": ConstInteger(0),
       },
       connections={
-        "CLK": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.clk"), width=1)),
+        "CLK": {
+          let clk = self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.clk"), width=1)
+          
+          if is_combinational {
+            SigConst(ConstValue(width=1, bits=[Zero]))
+          } else {
+            SigWire(clk)
+          }
+        },
         "ADDR": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.addr"), width=addr_width)),
         "DATA": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.data"), width=data_width)),
-        "EN": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.en"), width=1)),
+        "EN": {
+          let en = self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{read_port}.en"), width=1)
+          // yosys requires EN to be 1 if read latency is 0
+          if is_combinational {
+            SigConst(ConstValue(width=1, bits=[One]))
+          } else {
+            SigWire(en)
+          }
+        },
       },
     )
   }
 
   for port_id, write_port in mem.writers.iter2() {
+    let is_combinational = mem.write_latency == 0
+
     self.mk_cell(
       id=GenId("\{mem.id.inner()}.\{write_port}"),
       kind=GenId("memwr_v2"),
@@ -304,19 +345,56 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
         "MEMID": mem_id,
         "ABITS": ConstInteger(addr_width),
         "WIDTH": ConstInteger(data_width),
-        "CLK_ENABLE": ConstInteger(if mem.write_latency == 0 { 0 } else { 1 }),
+        "CLK_ENABLE": ConstInteger(if is_combinational { 0 } else { 1 }),
         "CLK_POLARITY": ConstInteger(1),
         "PORTID": ConstInteger(port_id),
         "PRIORITY_MASK": ConstValue(width=0, bits=[X]),
       },
       connections={
-        "CLK": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.clk"), width=1)),
+        "CLK": {
+          let clk = self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.clk"), width=1)
+
+          if is_combinational {
+            SigConst(ConstValue(width=1, bits=[Zero]))
+          } else {
+            SigWire(clk)
+          }
+        },
         "ADDR": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.addr"), width=addr_width)),
         "DATA": SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.data"), width=data_width)),
         "EN": {
           let en = SigWire(self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.en"), width=1))
-          let _ = self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.mask"), width=mask_width)
-          SigConcat(Array::make(data_width, en))
+          let mask = self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.mask"), width=mask_width)
+          let mask_bits = Array::new(capacity=data_width)
+          let data_bits_per_mask_bit = data_width / mask_granularity
+          let mask_chunks = data_width / data_bits_per_mask_bit
+
+          for chunk_idx in 0..<mask_chunks {
+            let chunk_sig = SigChunk(signal=SigWire(mask), offset=chunk_idx, width=1)
+            for _ in 0..<data_bits_per_mask_bit {
+              mask_bits.push(chunk_sig)
+            }
+          }
+
+          let mask_and_en = self.mod.add_wire(name=GenId("\{mem.id.inner()}.\{write_port}.mask_and_en.y"), width=data_width)
+          self.mk_cell(
+            id=GenId("\{mem.id.inner()}.\{write_port}.mask_and_en"),
+            kind=GenId("and"),
+            parameters={
+              "A_SIGNED": ConstInteger(0),
+              "B_SIGNED": ConstInteger(0),
+              "A_WIDTH": ConstInteger(data_width),
+              "B_WIDTH": ConstInteger(data_width),
+              "Y_WIDTH": ConstInteger(data_width),
+            },
+            connections={
+              "A": SigConcat(mask_bits.rev()),
+              "B": SigConcat(Array::make(data_width, en)),
+              "Y": SigWire(mask_and_en),
+            },
+          )
+
+          SigWire(mask_and_en)
         },
       },
     )

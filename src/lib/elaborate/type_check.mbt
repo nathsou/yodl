@@ -526,7 +526,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 let (ty, span) = stack.unsafe_pop()
 
                 match ty {
-                    UInt(_) | SInt(_) => {
+                    UInt(_) | SInt(_) | Nat(_) => {
                         let is_elem_signed = ty is SInt(_)
 
                         match is_signed {

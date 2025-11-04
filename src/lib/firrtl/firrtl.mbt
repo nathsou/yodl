@@ -692,3 +692,11 @@ pub fn[T] Command::replace_en(self: Command[T], update_en: (Expr[T]) -> Expr[T])
     Stop(clk~, en~, code~) => Stop(clk~, en=update_en(en), code~)
   }
 }
+
+pub fn[T] Command::name(self: Command[T]) -> String {
+  match self {
+    Printf(..) => "printf"
+    Assert(..) => "assert"
+    Stop(..) => "stop"
+  }
+}
