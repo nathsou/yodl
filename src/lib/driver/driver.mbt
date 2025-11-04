@@ -167,7 +167,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
           @firrtl.LowerAggregateTypesPass::new(split_memories=false),
         ])
 
-        let rtlil_design = @rtlil.lower_circuit(firrtl_circuit)
+        let rtlil_design = @rtlil.lower_circuit(firrtl_circuit, fs~)
         let emitter = @rtlil.Serializer::new(rtlil_design)
 
         match path {

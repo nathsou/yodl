@@ -222,6 +222,44 @@ test "bin" {
   inspect(bin_str(BigInt::from_int64(0x3E676F7B73633E), 64), content="0000000000111110011001110110111101111011011100110110001100111110")
 }
 
+pub(open) trait BinaryLike {
+  from_bool(b: Bool) -> Self
+}
+
+pub impl BinaryLike for Bool with from_bool(b: Bool) { b }
+
+pub fn[T: BinaryLike] bin_int(n: Int, width~: Int) -> Iter[T] raise {
+  let mut p = 1 << width
+  if n >= p {
+    raise Failure("Value \{n} does not fit in specified width \{width}")
+  }
+
+  p = p >> 1
+
+  Iter::new((visit: (T) -> IterResult) => {
+    while p > 0 {
+      let bit = (n & p) != 0
+      p = p >> 1
+      if visit(T::from_bool(bit)) == IterEnd {
+        break IterEnd
+      }
+    } else {
+      IterContinue
+    }
+  })
+}
+
+test "bits_int" {
+  fn bin_str(n: Int, width: Int) -> String raise {
+    bin_int(n, width~).map(bit => if bit { "1" } else { "0" }).join("")
+  }
+
+  inspect(bin_str(17, 8), content="00010001")
+  inspect(bin_str(255, 8), content="11111111")
+  inspect(bin_str(0, 8), content="00000000")
+  inspect(bin_str(-1, 8), content="11111111")
+}
+
 pub fn bits(n: BigInt) -> Array[Bool] raise {
   if n == 0 {
     return [false]

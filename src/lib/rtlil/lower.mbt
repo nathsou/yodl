@@ -5,6 +5,7 @@ priv struct RTLILLowering {
   reg_ids: Set[@firrtl.Id]
   ann_target: @firrtl.AnnotationTarget
   annotations: Array[@firrtl.Annotation]
+  fs: @utils.FileSystem
 }
 
 fn RTLILLowering::next_idx(self: Self) -> Int {
@@ -17,7 +18,7 @@ fn RTLILLowering::next_gen_id(self: Self, prefix: String) -> Id {
   GenId("\{prefix}_\{self.next_idx()}")
 }
 
-pub fn lower_circuit(circuit: @firrtl.TypedCircuit) -> Design raise {
+pub fn lower_circuit(circuit: @firrtl.TypedCircuit, fs~: @utils.FileSystem) -> Design raise {
   let design = {
     autoidx: 0,
     modules: {},
@@ -40,6 +41,7 @@ pub fn lower_circuit(circuit: @firrtl.TypedCircuit) -> Design raise {
           reg_ids: @set.new(),
           ann_target: { circuit: circuit.id.inner(), mod: mod.id, leaf: None },
           annotations: circuit.annotations,
+          fs,
         }
 
         lowering.lower_module(mod)
@@ -214,7 +216,7 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
   }
 
   guard mem.read_under_write is Undefined else {
-    raise Failure("Memories with defined read-under-write behavior are not yet supported in RTLIL lowering")
+    raise Failure("Memories with defined read-under-write behaviour are not yet supported in RTLIL lowering")
   }
 
   guard mem.readwriters.is_empty() else {
@@ -227,11 +229,22 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
   let mask_type = mem.data_type.mem_mask()
   let mask_width = mask_type.width()
   let mem_target = { ..self.ann_target, leaf: Some(mem.id) }
-  let init: Constant? = None
+  let mut init: Constant? = None
 
   for ann in self.annotations {
-    if ann is MemoryFileInlineAnnotation(target~, ..) && target == mem_target {
-      raise Failure("Memory file inline annotations are not yet supported in RTLIL lowering")
+    if ann is MemoryFileInlineAnnotation(target~, filename~, is_hex~) && target == mem_target {
+      let content = (self.fs.read_file_to_string)(filename)
+      try @parse.parse_mem_file(content, base=if is_hex { 16 } else { 2 }, start=0, end=None) catch {
+        err => raise err
+      } noraise {
+        bits => {
+          if bits.length() != mem.depth * data_width {
+            raise Failure("Inconsistent memory initialization width: expected \{mem.depth * data_width} bits, got \{bits.length()} bits")
+          }
+
+          init = Some(ConstValue(width=bits.length(), bits~))
+        }
+      }
     }
   }
 
@@ -243,7 +256,7 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
 
   let mem_id = ConstString(rtlil_mem.id.to_string())
 
-  if init is Some(_) {
+  if init is Some(init_const) {
     self.mk_cell(
       id=GenId("\{mem.id.inner()}_init"),
       kind=GenId("meminit_v2"),
@@ -254,7 +267,11 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
         "WORDS": ConstInteger(mem.depth),
         "PRIORITY": ConstInteger(0),
       },
-      connections={},
+      connections={
+        "ADDR": SigConst(ConstValue(width=addr_width, bits=Array::make(addr_width, Zero))),
+        "DATA": SigConst(init_const),
+        "EN": SigConst(ConstValue(width=data_width, bits=Array::make(data_width, One))),
+      },
     )
   }
 
@@ -266,7 +283,7 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
         "MEMID": mem_id,
         "ABITS": ConstInteger(addr_width),
         "WIDTH": ConstInteger(data_width),
-        "CLK_ENABLE": ConstInteger(1),
+        "CLK_ENABLE": ConstInteger(if mem.read_latency == 0 { 0 } else { 1 }),
         "CLK_POLARITY": ConstInteger(1),
         "TRANSPARENT": ConstInteger(0),
       },
@@ -287,7 +304,7 @@ fn RTLILLowering::lower_mem(self: Self, mem: @firrtl.Mem) -> Unit raise {
         "MEMID": mem_id,
         "ABITS": ConstInteger(addr_width),
         "WIDTH": ConstInteger(data_width),
-        "CLK_ENABLE": ConstInteger(1),
+        "CLK_ENABLE": ConstInteger(if mem.write_latency == 0 { 0 } else { 1 }),
         "CLK_POLARITY": ConstInteger(1),
         "PORTID": ConstInteger(port_id),
         "PRIORITY_MASK": ConstValue(width=0, bits=[X]),

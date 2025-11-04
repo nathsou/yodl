@@ -43,6 +43,10 @@ pub fn BinaryDigit::is_determined(self: Self) -> Bool {
   }
 }
 
+pub impl @utils.BinaryLike for BinaryDigit with from_bool(b: Bool) {
+  if b { One } else { Zero }
+}
+
 pub impl Show for BinaryDigit with output(self, logger) {
   logger.write_char(match self {
     Zero => '0'
@@ -229,10 +233,30 @@ pub fn Module::add_memory(
   mem
 }
 
+fn Module::check_signal_exists(self: Self, sig: Signal) -> Unit raise {
+  match sig {
+    SigConst(_) => ()
+    SigWire(wire) => {
+      if !self.wires.contains(wire.name) {
+        raise Failure("Wire '\{wire.name}' is not declared in module '\{self.name}'")
+      }
+    }
+    SigChunk(signal~, ..) => self.check_signal_exists(signal)
+    SigConcat(signals) => {
+      for signal in signals {
+        self.check_signal_exists(signal)
+      }
+    }
+  }
+}
+
 pub fn Module::connect(self: Self, sig1: Signal, sig2: Signal) -> Unit raise {
   if sig1.size() != sig2.size() {
     raise Failure("Cannot connect signals of different widths: \{sig1.size()} and \{sig2.size()}")
   }
+
+  self.check_signal_exists(sig1)
+  self.check_signal_exists(sig2)
 
   self.connections.push((sig1, sig2))
 }
