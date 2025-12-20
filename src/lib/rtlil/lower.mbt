@@ -138,13 +138,13 @@ fn RTLILLowering::lower_stmt(
       raise Failure("When statements are not supported in RTLIL lowering")
     Command(cmd) =>
       match cmd {
-        Printf(clk~, en~, fmt~, args~) =>
+        Printf(clk~, en~, fmt~, args~) => {
           self.mk_cell(
             id=self.next_gen_id("print"),
             kind=GenId("print"),
             parameters={
               // TODO: parse FIRRTL format and convert to RTLIL format
-              "FORMAT": ConstString("\{fmt}"),
+              "FORMAT": ConstString(RTLILLowering::lower_format_string(fmt, args)),
               "ARGS_WIDTH": ConstInteger(
                 @utils.sum(args.map(arg => arg.ty().width()).iter()),
               ),
@@ -159,12 +159,61 @@ fn RTLILLowering::lower_stmt(
               "ARGS": SigConcat(args.map(arg => self.lower_expr(arg))),
             },
           )
+        }
         Stop(_) => ()
         _ =>
           raise Failure("Unsupported command '\{cmd.name()}' in RTLIL lowering")
       }
     Skip => ()
   }
+}
+
+fn RTLILLowering::lower_format_string(fmt: String, args: Array[@firrtl.TypedExpr]) -> String raise {
+  let parsed = @firrtl.FormatString::parse(fmt)
+  let rtlil_fmt = StringBuilder::new()
+  let mut arg_index = 0
+
+  for part in parsed.parts {
+    match part {
+      StringPart(s) => rtlil_fmt.write_string(s)
+      EscapedChar(c) => {
+        match c {
+          '\n' => rtlil_fmt.write_string("\\n")
+          '\r' => rtlil_fmt.write_string("\\r")
+          '\t' => rtlil_fmt.write_string("\\t")
+          '\'' => rtlil_fmt.write_string("\\'")
+          '\"' => rtlil_fmt.write_string("\\\"")
+          '%' => rtlil_fmt.write_string("%%")
+          _ => rtlil_fmt.write_char(c)
+        }
+      }
+      BinaryPlaceholder => {
+        let arg_width = args[arg_index].ty().width()
+        rtlil_fmt.write_string("{\{arg_width}:> bu}")
+        arg_index += 1
+      }
+      AsciiPlaceholder => {
+        let arg_width = args[arg_index].ty().width()
+        rtlil_fmt.write_string("{\{arg_width}:> c}")
+        arg_index += 1
+      }
+      DecimalPlaceholder => {
+        let arg_ty = args[arg_index].ty()
+        let arg_width = arg_ty.width()
+        rtlil_fmt.write_string("{\{arg_width}:> d")
+        rtlil_fmt.write_char(if arg_ty.is_signed() { 's' } else { 'u' })
+        rtlil_fmt.write_char('}')
+        arg_index += 1
+      }
+      HexadecimalPlaceholder => {
+        let arg_width = args[arg_index].ty().width()
+        rtlil_fmt.write_string("{\{arg_width}:> hu}")
+        arg_index += 1
+      }
+    }
+  }
+  
+  rtlil_fmt.to_string()
 }
 
 ///|
