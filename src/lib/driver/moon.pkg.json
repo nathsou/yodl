@@ -5,7 +5,8 @@
     "nathsou/yodl/lib/elaborate",
     "nathsou/yodl/lib/simplify",
     "nathsou/yodl/lib/utils",
-    "nathsou/yodl/lib/firrtl"
+    "nathsou/yodl/lib/firrtl",
+    "nathsou/yodl/lib/rtlil"
   ],
   "link": {
     "js": {

@@ -1,6 +1,6 @@
+using @utils { type Scope }
 
-typealias UInt as ParamsHash
-typealias @utils.Scope as Scope
+type ParamsHash = UInt
 
 pub struct Monomorphizer {
   modules: Map[@parse.Path, @parse.ModuleDecl]
@@ -84,9 +84,9 @@ pub enum MonoEnvEntry {
   GenVar(Int)
 }
 
-typealias Scope[@parse.Path, MonoEnvEntry] as MonoEnv
+type MonoEnv = Scope[@parse.Path, MonoEnvEntry]
 
-fn monomorphize_int_param(self: Monomorphizer, param: @parse.IntParam, env~: MonoEnv, packages~: Array[String]) -> @parse.IntParam raise {
+fn Monomorphizer::monomorphize_int_param(self: Self, param: @parse.IntParam, env~: MonoEnv, packages~: Array[String]) -> @parse.IntParam raise {
   match param {
     Fixed(value) => Fixed(value)
     Dynamic(expr) => match self.monomorphize_expr(expr, env~, packages~) {
@@ -101,7 +101,7 @@ priv struct TypeInfo {
   is_type_alias: Bool 
 }
 
-fn resolve_param(self: Monomorphizer, param~: @parse.Param, env~: MonoEnv, packages~: Array[String]) -> @parse.ResolvedParam raise {
+fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, env~: MonoEnv, packages~: Array[String]) -> @parse.ResolvedParam raise {
   match param {
     Unresolved(unresolved) => match unresolved {
       PathParam(path~, span~) => {
@@ -136,7 +136,7 @@ fn resolve_param(self: Monomorphizer, param~: @parse.Param, env~: MonoEnv, packa
   }
 }
 
-fn monomorphize_type(self: Monomorphizer, ty: @parse.Type, env~: MonoEnv, packages~: Array[String], span~: @parse.Span) -> TypeInfo raise {
+fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, packages~: Array[String], span~: @parse.Span) -> TypeInfo raise {
   let mono_ty: @parse.Type = match ty {
     UInt(width) => UInt(self.monomorphize_int_param(width, env~, packages~))
     SInt(width) => SInt(self.monomorphize_int_param(width, env~, packages~))
@@ -200,8 +200,8 @@ fn hash_params(params: Iter[@parse.ResolvedParam]) -> UInt {
   hasher.finalize().reinterpret_as_uint()
 }
 
-fn register_monomorphized_module(
-  self: Monomorphizer,
+fn Monomorphizer::register_monomorphized_module(
+  self: Self,
   path~: @parse.Path,
   params~: @parse.InstanceParams,
   env~: MonoEnv,
@@ -256,7 +256,7 @@ fn register_monomorphized_module(
     return mono_mod
   }
 
-  let mono_path = @parse.Path::new(path.packages, "\{path.member}$\{monomorphized.length()}")
+  let mono_path = @parse.Path::new(path.packages, "\{path.elem}$\{monomorphized.length()}")
   let mono_mod = self.monomorphize_module(mod=mod_decl, params=params_map, path=mono_path, packages~)
   monomorphized[hash] = mono_mod
   self.modules[mono_path] = mono_mod
@@ -290,7 +290,7 @@ fn[T] resolve_member(env: Scope[@parse.Path, T], path~: @parse.Path, packages~: 
   }
 }
 
-fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, packages~: Array[String]) -> @parse.Expr raise {
+fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv, packages~: Array[String]) -> @parse.Expr raise {
   let rewr_stmt = fn(stmt) raise { Iter::singleton(self.monomorphize_stmt(stmt, env~, packages~)) }
 
   let res = @parse.rewrite_expr(expr, rewr_stmt~, rewr_expr=fn(expr) {
@@ -371,7 +371,7 @@ fn monomorphize_expr(self: Monomorphizer, expr: @parse.Expr, env~: MonoEnv, pack
   res.partial_eval()
 }
 
-fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, packages~: Array[String]) -> @parse.Stmt raise {
+fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv, packages~: Array[String]) -> @parse.Stmt raise {
   match stmt {
     Expr(expr~, span~) => {
       let mono_expr = self.monomorphize_expr(expr, env~, packages~)
@@ -419,7 +419,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
       let mono_rhs = self.monomorphize_expr(rhs, env~, packages~)
       @parse.Stmt::Assign(lhs=mono_lhs, rhs=mono_rhs, span~)
     }
-    For(var~, range~, body~, span~) => {
+    For(variable~, range~, body~, span~) => {
       let start = self.monomorphize_expr(range.start, env~, packages~).as_int()
       let mut end = self.monomorphize_expr(range.end, env~, packages~).as_int()
       let unrolled_stmts = []
@@ -428,7 +428,7 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
         end += 1
       }
 
-      let var_path = @parse.Path::new([], var)
+      let var_path = @parse.Path::new([], variable)
 
       for i in start..<end {
         env.declare(var_path, GenVar(i))
@@ -470,8 +470,8 @@ fn monomorphize_stmt(self: Monomorphizer, stmt: @parse.Stmt, env~: MonoEnv, pack
   }
 }
 
-fn monomorphize_module(
-  self: Monomorphizer,
+fn Monomorphizer::monomorphize_module(
+  self: Self,
   mod~: @parse.ModuleDecl,
   params~: Map[String, @parse.ResolvedParam],
   path~: @parse.Path,
@@ -513,7 +513,7 @@ fn monomorphize_module(
   }
 }
 
-pub fn monomorphize(self: Monomorphizer, decls~: Array[@parse.Decl], packages~: Array[String]) -> Array[@parse.Decl] raise {
+pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packages~: Array[String]) -> Array[@parse.Decl] raise {
   let monomorphized = Array::new(capacity=decls.length())
 
   for decl in decls {

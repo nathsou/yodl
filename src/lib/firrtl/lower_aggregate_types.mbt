@@ -1,10 +1,12 @@
 
 pub struct LowerAggregateTypesPass {
   split_memories: Bool
+  mut table: LoweringTable
+  module_signatures: Map[Id, ModuleSignature]
 }
 
 pub fn LowerAggregateTypesPass::new(split_memories~: Bool = true) -> Self {
-  { split_memories, }
+  { split_memories, table: LoweringTable::new(), module_signatures: {} }
 }
 
 pub impl FIRRTLPass for LowerAggregateTypesPass with run(self, circuit: TypedCircuit) -> TypedCircuit {
@@ -14,7 +16,7 @@ pub impl FIRRTLPass for LowerAggregateTypesPass with run(self, circuit: TypedCir
 let delim = "_"
 
 
-priv struct LoweringTable {
+pub struct LoweringTable {
   namespace_: Set[String]
   ref_mapping: Map[TypedRef, Array[TypedRef]]
 }
@@ -51,7 +53,8 @@ fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> Ty
 
   for decl in circuit.decls {
     let module_table = LoweringTable::new()
-    let new_decl = module_table.process_decl(decl, self.split_memories)
+    self.table = module_table
+    let new_decl = self.process_decl(decl, self.split_memories)
     new_decls.push(new_decl)
     module_tables[decl.id()] = module_table
   }
@@ -95,23 +98,26 @@ fn rewrite_annotations(module_tables: Map[Id, LoweringTable], annotations: Array
   new_annotations
 }
 
-fn LoweringTable::process_decl(self: Self, decl: TypedDecl, split_memories: Bool) -> TypedDecl raise {
+fn LowerAggregateTypesPass::process_decl(self: Self, decl: TypedDecl, split_memories: Bool) -> TypedDecl raise {
   match decl {
     Module(mod) => Module(self.process_module(mod, split_memories))
     ExtModule(extmod) => ExtModule(self.process_ext_module(extmod))
   }
 }
 
-fn LoweringTable::process_ext_module(self: Self, extmod: ExtModule) -> ExtModule {
+fn LowerAggregateTypesPass::process_ext_module(self: Self, extmod: ExtModule) -> ExtModule {
+  let new_ports = self.flatten_ports(extmod.ports)
+  self.module_signatures[extmod.id] = { ports: Map::from_array(new_ports.map(port => (port.id.inner(), PortSignature::from(port)))) }
+
   {
     ..extmod,
-    ports: self.flatten_ports(extmod.ports),
+    ports: new_ports,
   }
 }
 
-fn process_module(self: LoweringTable, mod: TypedModule, split_memories: Bool) -> TypedModule raise {
-  // TODO: Handle memory annotations
+fn LowerAggregateTypesPass::process_module(self: Self, mod: TypedModule, split_memories: Bool) -> TypedModule raise {
   let new_ports = self.flatten_ports(mod.ports)
+  self.module_signatures[mod.id] = { ports: Map::from_array(new_ports.map(port => (port.id.inner(), PortSignature::from(port)))) }
   let new_body = Array::new(capacity=mod.body.length())
 
   for stmt in mod.body {
@@ -125,7 +131,7 @@ fn process_module(self: LoweringTable, mod: TypedModule, split_memories: Bool) -
   }
 }
 
-fn flatten_ports(self: LoweringTable, ports: Array[Port]) -> Array[Port] {
+fn LowerAggregateTypesPass::flatten_ports(self: Self, ports: Array[Port]) -> Array[Port] {
   let new_ports = Array::new(capacity=ports.length())
 
   for port in ports {
@@ -140,14 +146,14 @@ fn flatten_ports(self: LoweringTable, ports: Array[Port]) -> Array[Port] {
       })
 
       let new_ref = Id(Id::from(new_id), ty=old_ref.ty())
-      self.register(old_ref, new_ref)
+      self.table.register(old_ref, new_ref)
     }
   }
 
   new_ports
 }
 
-fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStmt], split_memories: Bool) -> Unit raise {
+fn LowerAggregateTypesPass::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStmt], split_memories: Bool) -> Unit raise {
   match stmt {
     Wire(id~, ty~) => {
       for pair in self.flatten(prefix=id.value(), old_ref=Id(id, ty~)) {
@@ -155,14 +161,14 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
         let field_ty = old_ref.ty()
         body.push(Wire(id=Id::from(new_id), ty=field_ty))
         let new_ref = Id(Id::from(new_id), ty=field_ty)
-        self.register(old_ref, new_ref)
+        self.table.register(old_ref, new_ref)
       }
     }
     Node(id~, expr~) => {
       let new_expr = self.rewrite_expr(expr, body)
       body.push(Node(id~, expr=new_expr))
       let reference = Id(id, ty=new_expr.ty())
-      self.register(reference, reference)
+      self.table.register(reference, reference)
     }
     Reg(id~, ty~, clock~) => {
       let new_clock = self.rewrite_expr(clock, body)
@@ -179,7 +185,7 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
         ))
 
         let new_ref = Id(Id::from(new_id), ty=field_ty)
-        self.register(old_ref, new_ref)
+        self.table.register(old_ref, new_ref)
       }
     }
     RegReset(id~, ty~, clock~, reset~, init~) => {
@@ -201,7 +207,7 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
         ))
 
         let new_ref = Id(Id::from(new_id), ty=field_ty)
-        self.register(old_ref, new_ref)
+        self.table.register(old_ref, new_ref)
       }
     }
     Mem(mem) => {
@@ -209,7 +215,7 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
         let original_mem = Id(mem.id, ty=mem.as_bundle())
 
         for flat_mem in self.split_mem(mem) {
-          self.register(original_mem, Id(flat_mem.id, ty=flat_mem.as_bundle()))
+          self.table.register(original_mem, Id(flat_mem.id, ty=flat_mem.as_bundle()))
           body.push(Mem(flat_mem))
         }
       } else {
@@ -220,6 +226,7 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
       let inst_ty = sig.as_bundle()
       let new_name = self.uniquify(id.value(), inst_ty)
       let inst_ref = Id(Id::from(new_name), ty=inst_ty)
+      let new_sig = self.module_signatures[of]
 
       if inst_ty is Bundle(fields) {
         for field in fields {
@@ -231,17 +238,17 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
               ty=flat.ty,
             )
 
-            self.register(flat.reference, new_ref)
+            self.table.register(flat.reference, new_ref)
           }
         }
       }
 
-      body.push(Inst(id=Id::from(new_name), of~, sig~))
+      body.push(Inst(id=Id::from(new_name), of~, sig=new_sig))
     }
     Connect(lhs, rhs) => {
       let new_rhs = self.rewrite_expr(rhs, body)
 
-      if self.ref_mapping.get(lhs) is Some(new_lhs_list) {
+      if self.table.ref_mapping.get(lhs) is Some(new_lhs_list) {
         for new_lhs in new_lhs_list {
           body.push(Connect(new_lhs, new_rhs))
         }
@@ -299,10 +306,10 @@ fn LoweringTable::process_stmt(self: Self, stmt: TypedStmt, body: Array[TypedStm
   }
 }
 
-fn LoweringTable::rewrite_expr(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> TypedExpr raise {
+fn LowerAggregateTypesPass::rewrite_expr(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> TypedExpr raise {
   match expr {
     Reference(reference, ty~) => {
-      if self.ref_mapping.get(reference) is Some(new_refs) {
+      if self.table.ref_mapping.get(reference) is Some(new_refs) {
         // If multiple new references exist (e.g., memory clocks), we cannot choose one arbitrarily.
         // This indicates an error in the lowering logic.
         if new_refs.length() == 1 {
@@ -331,7 +338,7 @@ fn LoweringTable::rewrite_expr(self: Self, expr: TypedExpr, body: Array[TypedStm
   }
 }
 
-fn LoweringTable::flatten(self: Self, prefix~: String, old_ref~: TypedRef) -> Array[(TypedRef, String)] {
+fn LowerAggregateTypesPass::flatten(self: Self, prefix~: String, old_ref~: TypedRef) -> Array[(TypedRef, String)] {
   let ty = old_ref.ty()
   let safe_prefix = self.uniquify(prefix, ty)
   let results: Array[(TypedRef, String)] = []
@@ -352,7 +359,7 @@ fn LoweringTable::flatten(self: Self, prefix~: String, old_ref~: TypedRef) -> Ar
       }
     }
     _ => {
-      self.namespace_.add(safe_prefix)
+      self.table.namespace_.add(safe_prefix)
       results.push((old_ref, safe_prefix))
     } 
   }
@@ -360,14 +367,14 @@ fn LoweringTable::flatten(self: Self, prefix~: String, old_ref~: TypedRef) -> Ar
   results
 }
 
-fn LoweringTable::uniquify(self: Self, prefix: String, ty: Type) -> String {
+fn LowerAggregateTypesPass::uniquify(self: Self, prefix: String, ty: Type) -> String {
   let mut current_prefix = prefix
   let mut iterations = 0
 
   // "If a name is already taken, that name will be made unique by appending a suffix _<i> to the
   // name, where i is the lowest nonnegative integer that gives a unique name."
 
-  while subcomponents(current_prefix, Id(Id::from(prefix), ty~)).any(field => self.namespace_.contains(field.name)) {
+  while subcomponents(current_prefix, Id(Id::from(prefix), ty~)).any(field => self.table.namespace_.contains(field.name)) {
     current_prefix = "\{prefix}\{delim}\{iterations}"
     iterations += 1
   }
@@ -431,7 +438,7 @@ test "subcomponents" {
 }
 
 test "flatten" {
-  let table = LoweringTable::new()
+  let table = LowerAggregateTypesPass::new()
 
   let ty = Bundle([
     BundleField::from(id=Id::from("a"), ty=UInt(8)),
@@ -451,8 +458,8 @@ test "flatten" {
 }
 
 test "flatten with name conflict" {
-  let table = LoweringTable::new()
-  table.namespace_.add("x_b_d_0") // Simulate existing name to force uniquification.
+  let table = LowerAggregateTypesPass::new()
+  table.table.namespace_.add("x_b_d_0") // Simulate existing name to force uniquification.
 
   let ty = Bundle([
     BundleField::from(id=Id::from("a"), ty=UInt(8)),
@@ -470,7 +477,7 @@ test "flatten with name conflict" {
   inspect(results, content="[(x.a, \"x_a\"), (x.b.c, \"x_b_c\"), (x.b.d[0], \"x_b_d_0_0\"), (x.b.d[1], \"x_b_d_1\")]")
 }
 
-fn LoweringTable::expr_as_ref(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> TypedRef {
+fn LowerAggregateTypesPass::expr_as_ref(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> TypedRef {
   match expr {
     Reference(reference, ..) => reference
     _ => {
@@ -482,7 +489,7 @@ fn LoweringTable::expr_as_ref(self: Self, expr: TypedExpr, body: Array[TypedStmt
   }
 }
 
-fn LoweringTable::sub_exprs_dfs(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> Array[TypedExpr] {
+fn LowerAggregateTypesPass::sub_exprs_dfs(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> Array[TypedExpr] {
   match expr {
     Mux(cond~, tval~, fval~, ty~) => {
       let texprs = self.sub_exprs_dfs(tval, body)
@@ -541,7 +548,7 @@ fn replace_ref_lhs(reference: TypedRef, new_lhs: TypedRef) -> TypedRef {
   }
 }
 
-fn LoweringTable::split_mem(self: Self, mem: Mem) -> Array[Mem] {
+fn LowerAggregateTypesPass::split_mem(self: Self, mem: Mem) -> Array[Mem] {
   // TODO: Handle name conflicts
   let is_groud_ty = mem.data_type.is_ground()
   let port_types = mem.reader_writer_types()
@@ -566,7 +573,7 @@ fn LoweringTable::split_mem(self: Self, mem: Mem) -> Array[Mem] {
             old_field_ref = replace_ref_lhs(flat.reference, old_field_ref)
           }
 
-          self.register(old_field_ref, field_ref)
+          self.table.register(old_field_ref, field_ref)
         }
       }
     }

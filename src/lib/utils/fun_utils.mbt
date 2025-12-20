@@ -1,5 +1,5 @@
 
-pub fn[T] unreachable() -> T {
+pub fn[T] unreachable_code() -> T {
   fail("unreachable")
 }
 

@@ -39,7 +39,7 @@ pub impl Show for Span with output(self, logger) {
   logger.write_string("\{self.start.0}.\{self.start.1}-\{self.end.0}.\{self.end.1}")
 }
 
-pub fn context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool = false) -> String {
+pub fn Span::context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool = false) -> String {
   let window = StringBuilder::new(size_hint=window_size * 2)
   let max_line_number_digits = (self.end.0 + 1).to_string().length()
 
@@ -118,7 +118,7 @@ struct Token {
   span: Span
 } derive(Show)
 
-fn to_binop(self: TokenType) -> BinaryOp? {
+fn TokenType::to_binop(self: Self) -> BinaryOp? {
   match self {
     Plus => Some(Add)
     Minus => Some(Sub)

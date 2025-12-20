@@ -36,19 +36,22 @@ fn extract_package_name_from_path(path: String) -> String raise ResolutionError 
 }
 
 fn collect_packages(dir: String, fs~: @utils.FileSystem, acc~: Map[String, String] = {}) -> Map[String, String] raise ResolutionError {
-  let entries = match (try? (fs.read_dir)(dir)) {
-    Ok(entries) => entries
-    Err(error) => raise IOError(error)
+  let entries = try (fs.read_dir)(dir) catch {
+    error => raise IOError(error)
+  } noraise {
+    entries => entries
   }
 
   for entry in entries {
     let path = @utils.join_paths(dir, entry)
 
-    match (try? (fs.is_dir)(path)) {
-      Ok(true) => {
+    try (fs.is_dir)(path) catch {
+      error => raise IOError(error)
+    } noraise {
+      true => {
         let _ = collect_packages(path, fs~, acc~)
       }
-      Ok(false) => {
+      false => {
         if entry.has_suffix(".yodl") {
           let name = extract_package_name_from_path(entry)
           if acc.contains(name) {
@@ -58,7 +61,6 @@ fn collect_packages(dir: String, fs~: @utils.FileSystem, acc~: Map[String, Strin
           acc[name] = path
         }
       }
-      Err(error) => raise IOError(error)
     }
   }
 
@@ -106,45 +108,45 @@ let builtin_decls: Array[@parse.Decl] = {
     #|)
   
   let lexer = @parse.Lexer::new(source, file="builtin.yodl", file_content=source)
-  let tokens = match (try? lexer.lex()) {
-    Ok(tokens) => tokens
-    Err(error) => {
-      println("Error lexing builtin declarations: \{error}")
-      panic()
-    }
+  let tokens = try lexer.lex() catch {
+    error => @utils.fail("Error lexing builtin declarations: \{error}")
+  } noraise {
+    tokens => tokens
   }
   
   let parser = @parse.Parser::new(tokens, file="builtin.yodl", file_content=source)
 
-  match (try? parser.parse()) {
-    Ok(decls) => decls
-    Err(error) => {
-      println("Error parsing builtin declarations: \{error}")
-      panic()
-    }
+  try parser.parse() catch {
+    error => @utils.fail("Error parsing builtin declarations: \{error}")
+  } noraise {
+    decls => decls
   }
 }
 
-pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.PackageDecl raise ResolutionError {
+pub fn Resolver::resolve(self: Self, path~: String, is_top_package~: Bool) -> @parse.PackageDecl raise ResolutionError {
   match self.resolved_packages.get(path) {
     Some(pkg) => return pkg
     None => ()
   }
 
-  let source = match (try? (self.fs.read_file_to_string)(path)) {
-    Ok(source) => source
-    Err(error) => raise IOError(error)
+  let source = try (self.fs.read_file_to_string)(path) catch {
+    error => raise IOError(error)
+  } noraise {
+    source => source
   }
 
-  let tokens = match (try? @parse.Lexer::new(source, file=path, file_content=source).lex()) {
-    Ok(tokens) => tokens
-    Err(error) => raise LexerError(error)
+  let tokens = try @parse.Lexer::new(source, file=path, file_content=source).lex() catch {
+    error => raise LexerError(error)
+  } noraise {
+    tokens => tokens
   }
 
   let parser = @parse.Parser::new(tokens, file=path, file_content=source)
 
-  let decls = match (try? parser.parse()) {
-    Ok(decls) => {
+  let decls = try parser.parse() catch {
+    error => raise ParseError(error)
+  } noraise {
+    decls => {
       let resolved_decl = Array::new(capacity=decls.length())
 
       for decl in decls {
@@ -156,7 +158,6 @@ pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.P
 
       resolved_decl 
     }
-    Err(error) => raise ParseError(error)
   }
 
   let pkg_name = if is_top_package {
@@ -186,7 +187,7 @@ pub fn resolve(self: Resolver, path~: String, is_top_package~: Bool) -> @parse.P
   pkg
 }
 
-pub fn resolve_decl(self: Resolver, decl: @parse.Decl) -> @parse.Decl? raise ResolutionError {
+pub fn Resolver::resolve_decl(self: Self, decl: @parse.Decl) -> @parse.Decl? raise ResolutionError {
   match decl {
     Import({ packages, span: _ }) => {
       let pkg = match packages {

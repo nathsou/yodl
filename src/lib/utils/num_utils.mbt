@@ -15,11 +15,11 @@ pub fn sum(iter: Iter[Int]) -> Int {
   iter.fold(Int::add, init=0)
 }
 
-pub fn clog2(n: BigInt) -> BigInt {
-  let mut p: BigInt = 1
-  let mut i: BigInt = 0
+pub fn clog2_int(n: Int) -> Int {
+  let mut p = 1
+  let mut i = 0
 
-  while i < 1024 {
+  while i < 32 {
     if p >= n {
       return i
     }
@@ -28,7 +28,42 @@ pub fn clog2(n: BigInt) -> BigInt {
     i += 1
   }
 
-  1024
+  32
+}
+
+pub fn clog2(n: BigInt) -> BigInt {
+  let mut p = 1N
+  let mut i = 0N
+
+  while i < 1024N {
+    if p >= n {
+      return i
+    }
+
+    p = p << 1
+    i += 1N
+  }
+
+  1024N
+}
+
+test "clog2_int" {
+  inspect(clog2_int(1), content="0")
+  inspect(clog2_int(2), content="1")
+  inspect(clog2_int(3), content="2")
+  inspect(clog2_int(4), content="2")
+  inspect(clog2_int(5), content="3")
+  inspect(clog2_int(15), content="4")
+  inspect(clog2_int(16), content="4")
+  inspect(clog2_int(17), content="5")
+  inspect(clog2_int(123823), content="17")
+  inspect(clog2_int(65535), content="16")
+  inspect(clog2_int(65536), content="16")
+  inspect(clog2_int(65537), content="17")
+  inspect(clog2_int(@int.max_value), content="32")
+  inspect(clog2_int(@int.min_value), content="0")
+  inspect(clog2_int(-1), content="0")
+  inspect(clog2_int(0), content="0")
 }
 
 pub fn cdiv(dividend: BigInt, divisor: BigInt) -> BigInt {
@@ -138,40 +173,120 @@ pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
   }
 }
 
-pub fn bin(n: BigInt, width~: Int) -> Iter[Bool] {
-  let mut p = BigInt::from_int(1) << (width - 1)
+pub fn bin(n: BigInt, width~: Int) -> Array[Bool] raise {
+  let bits = Array::make(width, false)
+  let a = if n < 0N {
+    // two's complement for negative numbers
+    let modulus = 1N << width
+    (modulus + n) & (modulus - 1N)
+  } else {
+    n
+  }
 
-  Iter::new(fn(visit: (Bool) -> IterResult) -> IterResult {
-    for i in 0..<width {
-      if visit((n & p) != 0) == IterEnd {
-        break IterEnd
+  if a.bit_length() > width {
+    raise Failure("Value does not fit in specified width")
+  }
+
+  let octets = a.to_octets()
+  let mut bit_idx = width - 1
+
+  for i in 0..<octets.length() {
+    let mut p = octets[octets.length() - 1 - i].to_uint()
+
+    for _ in 0..<8 {
+      if bit_idx < 0 {
+        break
       }
 
+      bits[bit_idx] = (p & 1) != 0
       p = p >> 1
+      bit_idx -= 1
+    }
+  }
+
+  bits
+}
+
+test "bin" {
+  fn bin_str(n: BigInt, width: Int) -> String raise {
+    bin(n, width~).map(bit => if bit { "1" } else { "0" }).join("")
+  }
+
+  inspect(bin_str(BigInt::from_int(17), 8), content="00010001")
+  inspect(bin_str(BigInt::from_int64(473483), 24), content="000001110011100110001011")
+  inspect(bin_str(BigInt::from_int64(473483), 20), content="01110011100110001011")
+  inspect(bin_str(BigInt::from_int64(473483), 19), content="1110011100110001011")
+  inspect((try? bin_str(BigInt::from_int64(473483), 18)) is Err(_), content="true")
+  inspect(bin_str(BigInt::from_int64(-1), 8), content="11111111")
+  inspect(bin_str(BigInt::from_int64(-473483), 24), content="111110001100011001110101")
+  inspect(bin_str(BigInt::from_int64(0x3E676F7B73633E), 64), content="0000000000111110011001110110111101111011011100110110001100111110")
+}
+
+pub(open) trait BinaryLike {
+  from_bool(b: Bool) -> Self
+}
+
+pub impl BinaryLike for Bool with from_bool(b: Bool) { b }
+
+pub fn[T: BinaryLike] bin_uint(n: UInt, width~: Int) -> Iter[T] raise {
+  if width < 32 && n >= (1U << width) {
+    raise Failure("Value \{n} does not fit in specified width \{width}")
+  }
+
+  let mut p = 1U << (width - 1)
+
+  Iter::new((visit: (T) -> IterResult) => {
+    while p > 0 {
+      let bit = (n & p) != 0
+      p = p >> 1
+      if visit(T::from_bool(bit)) == IterEnd {
+        break IterEnd
+      }
     } else {
       IterContinue
     }
   })
 }
 
-pub fn bits(n: BigInt) -> Iter[Bool] {
-  if n == 0 {
-    return [false].iter()
+test "bits_int" {
+  fn bin_str(n: UInt, width: Int) -> String raise {
+    bin_uint(n, width~).map(bit => if bit { "1" } else { "0" }).join("")
   }
 
-  let width = clog2(n + 1).to_int()
+  inspect(bin_str(17, 8), content="00010001")
+  inspect(bin_str(255, 8), content="11111111")
+  inspect(bin_str(0, 8), content="00000000")
+}
+
+pub fn bits(n: BigInt) -> Array[Bool] raise {
+  if n == 0 {
+    return [false]
+  }
+
+  let width = clog2(abs(n) + 1).to_int()
   bin(n, width~)
 }
 
-pub fn bitwise_not(n: BigInt) -> BigInt {
-  let bytes = n.to_octets()
-  let flipped_bytes = Bytes::new(bytes.length()).to_fixedarray()
+pub fn bitwise_not(n: BigInt, width~: Int) -> BigInt raise {
+  let mut res = 0N
+  let mut p = 1N
 
-  for idx, byte in bytes {
-    flipped_bytes[idx] = byte.to_uint().lnot().to_byte()
+  for bit in bin(n, width~).rev_iter() {
+    if !bit {
+      res += p
+    }
+
+    p = p << 1
   }
 
-  BigInt::from_octets(Bytes::from_fixedarray(flipped_bytes))
+  res
+}
+
+test "bitwise_not" {
+  inspect(bitwise_not(17, width=8), content="238")
+  inspect(bitwise_not(1998, width=16), content="63537")
+  inspect(bitwise_not(49, width=12), content="4046")
+  inspect(bitwise_not(-17, width=8), content="16")
 }
 
 pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {
@@ -187,7 +302,7 @@ pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {
     byte.to_byte()
   }))
 
-  Bytes::from_fixedarray(bytes, len=bytes.length())
+  Bytes::from_array(bytes)
 }
 
 pub fn bools_to_bigint(bools: Iter[Bool]) -> BigInt {

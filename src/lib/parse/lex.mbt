@@ -33,15 +33,15 @@ pub fn Lexer::new(input: String, file~: String, file_content~: String) -> Lexer 
   { input, index: 0, line: 1, column: 1, tokens: Array::new(capacity=file_content.length() / 4), file, file_content }
 }
 
-fn peek(self: Lexer) -> Char {
+fn Lexer::peek(self: Lexer) -> Char {
   @utils.char_at(self.input, self.index)
 }
 
-fn lookahead(self: Lexer, n: Int) -> Char {
+fn Lexer::lookahead(self: Lexer, n: Int) -> Char {
   @utils.char_at(self.input, self.index + n)
 }
 
-fn next_non_whitespace(self: Lexer) -> Char? {
+fn Lexer::next_non_whitespace(self: Lexer) -> Char? {
   let mut i = self.index
 
   while i < self.input.length() {
@@ -67,11 +67,11 @@ fn should_insert_semicolon(last_token: Token) -> Bool {
   }
 }
 
-fn matches(self: Lexer, char: Char) -> Bool {
+fn Lexer::matches(self: Lexer, char: Char) -> Bool {
   self.peek() == char
 }
 
-fn consumes(self: Lexer, char: Char) -> Bool {
+fn Lexer::consumes(self: Lexer, char: Char) -> Bool {
   if self.matches(char) {
     self.index += 1
     true
@@ -80,13 +80,13 @@ fn consumes(self: Lexer, char: Char) -> Bool {
   }
 }
 
-fn skip_whitespaces(self: Lexer) -> Unit {
+fn Lexer::skip_whitespaces(self: Lexer) -> Unit {
   while self.index < self.input.length() && @utils.is_whitespace(self.peek()) {
     self.advance()
   }
 }
 
-fn parse_identifier(self: Lexer) -> String {
+fn Lexer::parse_identifier(self: Lexer) -> String {
   let builder = StringBuilder::new()
   
   for i in self.index..<self.input.length() {
@@ -130,11 +130,11 @@ priv struct ParsedInteger {
   base: Int
 }
 
-fn span(self: Lexer, start: (Int, Int)) -> Span {
+fn Lexer::span(self: Lexer, start: (Int, Int)) -> Span {
   { start, end: (self.line, self.column), file: self.file, file_content: self.file_content }
 } 
 
-fn parse_integer(self: Lexer) -> ParsedInteger {
+fn Lexer::parse_integer(self: Lexer) -> ParsedInteger {
   let builder = StringBuilder::new()
   let mut base = 10
   let mut width = None
@@ -172,7 +172,7 @@ fn parse_integer(self: Lexer) -> ParsedInteger {
   { value, width, base }
 }
 
-fn advance(self: Lexer) -> Unit {
+fn Lexer::advance(self: Lexer) -> Unit {
   if self.peek() == '\n' {
     self.line += 1
     self.column = 1
@@ -190,7 +190,7 @@ fn advance(self: Lexer) -> Unit {
   self.index += 1
 }
 
-fn next(self: Lexer) -> Bool raise LexerError {
+fn Lexer::next(self: Lexer) -> Bool raise LexerError {
   self.skip_whitespaces()
 
   if self.index >= self.input.length() {
@@ -470,7 +470,7 @@ fn next(self: Lexer) -> Bool raise LexerError {
   }
 }
 
-pub fn lex(self: Lexer) -> Array[Token] raise {
+pub fn Lexer::lex(self: Lexer) -> Array[Token] raise {
   while self.next() {}
   self.tokens
 }

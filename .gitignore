@@ -6,3 +6,5 @@ examples/*.lab.yodl
 examples/*.rtlil
 verilator/
 src/sim/
+.specs/
+.vscode/

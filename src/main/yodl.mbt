@@ -1,60 +1,40 @@
 fn main {
   let fs: @utils.FileSystem = {
     path_exists: @fs.path_exists,
-    create_dir: fn (path) {
-      if (try? @fs.create_dir(path)) is Err(err) {
-        raise Failure(err.to_string())
-      }
-    },
-    write_string_to_file: fn (path, content) {
-      if (try? @fs.write_string_to_file(path, content)) is Err(err) {
-        raise Failure(err.to_string())
-      }
-    },
-    read_dir: fn(path) {
-      match (try? @fs.read_dir(path)) {
-        Err(err) => raise Failure(err.to_string())
-        Ok(files) => files
-      }
-    },
-    is_dir: fn (path) {
-      match (try? @fs.is_dir(path)) {
-        Err(err) => raise Failure(err.to_string())
-        Ok(is_dir) => is_dir
-      }
-    },
-    read_file_to_string: fn(path) {
-      match (try? @fs.read_file_to_string(path)) {
-        Err(err) => raise Failure(err.to_string())
-        Ok(content) => content
-      }
-    },
+    create_dir: path => @fs.create_dir(path),
+    write_string_to_file: (path, content) => @fs.write_string_to_file(path, content),
+    read_dir: path => @fs.read_dir(path),
+    is_dir: path => @fs.is_dir(path),
+    read_file_to_string: path => @fs.read_file_to_string(path),
   }
   
   match @sys.get_cli_args() {
     [_, path] => {
-      match (try? @driver.run(path~, commands=[@driver.WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")), passes=[])], fs~)) {
-        Ok(_) => ()
-        Err(Failure(error)) => {
+      try @driver.run(path~, commands=[@driver.WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")), passes=[])], fs~) catch {
+        Failure(error) => {
+          println(error)
+          @sys.exit(1)
+        }
+        error => {
           println(error)
           @sys.exit(1)
         }
       }
     }
     [_, path, cmds] => {
-      match (try? @driver.parse_commands(cmds)) {
-        Ok(commands) => {
-          match (try? @driver.run(path~, commands~, fs~)) {
-            Ok(_) => ()
-            Err(Failure(error)) => {
+      try @driver.parse_commands(cmds) catch {
+        error => {
+          println(error)
+          @sys.exit(1)
+        }
+      } noraise {
+        commands => {
+          try @driver.run(path~, commands~, fs~) catch {
+            error => {
               println(error)
               @sys.exit(1)
             }
           }
-        }
-        Err(error) => {
-          println(error)
-          @sys.exit(1)
         }
       }
     }

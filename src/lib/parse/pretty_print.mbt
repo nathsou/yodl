@@ -15,15 +15,15 @@ pub impl Show for AstEmitter with output(self, logger) {
   logger.write_string(self.builder.to_string())
 }
 
-pub fn emit(self: AstEmitter, s: String) -> Unit {
+pub fn AstEmitter::emit(self: AstEmitter, s: String) -> Unit {
   self.builder.write_string("  ".repeat(self.indent) + s)
 }
 
-pub fn write_indent(self: AstEmitter) -> Unit {
+pub fn AstEmitter::write_indent(self: AstEmitter) -> Unit {
   self.builder.write_string("  ".repeat(self.indent))
 }
 
-pub fn write(self: AstEmitter, s: String) -> Unit {
+pub fn AstEmitter::write(self: AstEmitter, s: String) -> Unit {
   self.builder.write_string(s)
 }
 
@@ -136,12 +136,12 @@ pub fn show_natural(value~: BigInt, base~: Int, width~: Int?) -> String {
   }
 }
 
-pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
+pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
   if indent {
     self.write_indent()
   }
 
-  if self.show_expr_types && not(expr.ty().val.is_empty()) {
+  if self.show_expr_types && not(expr.ty().val is None) {
     self.write("(")
   }
 
@@ -440,7 +440,7 @@ pub fn emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false) -> Unit {
   }
 }
 
-fn emit_const_decl(self: AstEmitter, decl: ConstDecl) -> Unit {
+fn AstEmitter::emit_const_decl(self: AstEmitter, decl: ConstDecl) -> Unit {
   self.write("const ")
   self.write(decl.path.to_string())
 
@@ -457,7 +457,7 @@ fn emit_const_decl(self: AstEmitter, decl: ConstDecl) -> Unit {
   self.write(";")
 }
 
-fn emit_package_decl(self: AstEmitter, decl: PackageDecl) -> Unit {
+fn AstEmitter::emit_package_decl(self: AstEmitter, decl: PackageDecl) -> Unit {
   self.emit("package ")
   self.write(decl.name)
   self.write(" {\n")
@@ -472,7 +472,7 @@ fn emit_package_decl(self: AstEmitter, decl: PackageDecl) -> Unit {
   self.write("}")
 }
 
-pub fn emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
+pub fn AstEmitter::emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
   self.write_indent()
 
   match stmt {
@@ -507,11 +507,11 @@ pub fn emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
       self.emit_expr(rhs)
       self.write(";")
     }
-    For(var~, range~, body~, ..) => {
+    For(variable~, range~, body~, ..) => {
       self.write("\n")
       self.write_indent()
       self.write("for ")
-      self.write(var)
+      self.write(variable)
       self.write(" in ")
       self.emit_expr(range.start)
       self.write(if range.inclusive { "..=" } else { "..<" })
@@ -670,7 +670,7 @@ pub impl Show for Port with output(port, logger) {
   logger.write_string(port.ty.to_string())
 }
 
-fn emit_port_list(self: AstEmitter, ports: Iter[Port]) -> Unit {
+fn AstEmitter::emit_port_list(self: AstEmitter, ports: Iter[Port]) -> Unit {
   self.write("(\n")
   self.indent += 1
 
@@ -734,7 +734,7 @@ pub impl Show for ModuleParameter with output(param, logger) {
   logger.write_object(param.ty)
 }
 
-fn emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
+fn AstEmitter::emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
   if sig.attributes.length() > 0 {
     for attr in sig.attributes.values() {
       self.emit(attr.to_string())
@@ -756,7 +756,7 @@ fn emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
   self.emit_port_list(sig.outputs())
 }
 
-pub fn emit_decl(self: AstEmitter, decl: Decl) -> Unit {
+pub fn AstEmitter::emit_decl(self: AstEmitter, decl: Decl) -> Unit {
   match decl {
     Module({ body, .. } as mod) => {
       self.emit_module_sig(mod.signature())

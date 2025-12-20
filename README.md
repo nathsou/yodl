@@ -29,7 +29,7 @@ $ firtool --format=fir --verilog Hello.fir -o Hello.sv
 Install [Moonbit](https://www.moonbitlang.com/):
 
 ```bash
-$ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.6.29+9037370fc'
+$ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.6.35+dd17327ed'
 ```
 
 ## Checklist
@@ -45,6 +45,7 @@ $ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.6.29+90373
 - [x] External modules
 - [ ] Source Maps
 - [ ] Test Benches
-- [ ] FIRRTL to RTLIL backend to bypass SystemVerilog generation
+- [X] FIRRTL to RTLIL backend to bypass SystemVerilog generation
+- [ ] Language Server Protocol (LSP) support
 - [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export
 - [x] Web tour/playground

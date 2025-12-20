@@ -1,9 +1,8 @@
-using @utils { type Scope, min, max, pow2, zip, zip2, is_ascii, significant_bits, unreachable }
+using @utils { type Scope, min, max, pow2, zip, zip2, is_ascii, significant_bits, unreachable_code }
 using @parse {
     type Type, type ModuleSignature, trait Spanned,
     type Expr, type Decl, type Stmt, type Attribute, type AttributeValue,
-    type AccessedPorts, type ConstDecl, type ResolvedParam,
-    BITS_PER_CHAR, keep_and_check_resolved,
+    type AccessedPorts, type ConstDecl, type ResolvedParam, keep_and_check_resolved,
 }
 
 struct TypeChecker {
@@ -106,8 +105,8 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
         }
 
         match (ty1, ty2) {
-            (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(path={ packages: [], member }, ..)))) => {
-                match subst.get(member) {
+            (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(path={ packages: [], elem }, ..)))) => {
+                match subst.get(elem) {
                     Some(Int(len2)) => {
                         if len != len2 {
                             raise IncompatibleTypes(ty1~, ty2~, span~)
@@ -117,7 +116,7 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
                         raise type_error("Expected length '\{len}', got type '\{ty}'", span)
                     }
                     None => {
-                        subst[member] = Int(len)
+                        subst[elem] = Int(len)
                     }
                 }
 
@@ -136,7 +135,7 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
             }
             (Instance(..), Instance(..)) if identical_instances => ()
             (String(len~), ty2) | (ty2, String(len~)) => {
-                eqs.push((Vector(ty=Type::uint(BITS_PER_CHAR), len=Fixed(len)), ty2))
+                eqs.push((Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Fixed(len)), ty2))
             }
             _ => {
                 raise IncompatibleTypes(ty1~, ty2~, span~)
@@ -152,9 +151,8 @@ fn unify(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, UnificationParam
 }
 
 fn declare_name(env~: Scope[Path, Type], path~: Path, ty~: Type, span~: Span) -> Unit raise TypeCheckerError {
-    match (try? env.declare(path, ty)) {
-        Ok(_) => ()
-        Err(MemberAlreadyDeclared(_)) => {
+    try env.declare(path, ty) catch {
+        MemberAlreadyDeclared(_) => {
             raise type_error("Variable '\{path}' redeclared", span)
         }
     }
@@ -169,7 +167,7 @@ fn eval_const_expr(expr: Expr) -> Int raise {
     }
 }
 
-fn resolve_ty(self: TypeChecker, ty: Type, span~: Span) -> Type raise {
+fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
     match ty {
         UInt(width) => UInt(width)
         SInt(width) => SInt(width)
@@ -202,7 +200,7 @@ fn resolve_ty(self: TypeChecker, ty: Type, span~: Span) -> Type raise {
     }
 }
 
-fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty~: Type? = None) -> Type raise {
+fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expected_ty~: Type? = None) -> Type raise {
     let ty = match expr {
         Identifier(path~, span~, ..) => {
             match env.resolve(path) {
@@ -319,7 +317,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
             match ty {
                 Vector(ty=inner_ty, ..) => inner_ty
                 UInt(_) | SInt(_) => Type::uint(1)
-                String(_) => Type::uint(BITS_PER_CHAR)
+                String(_) => Type::uint(@parse.BITS_PER_CHAR)
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
@@ -343,7 +341,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
 
             match ty {
                 UInt(_) | SInt(_) => Type::uint(width)
-                String(_) => Type::Vector(ty=Type::uint(BITS_PER_CHAR), len=Fixed(width))
+                String(_) => Type::Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Fixed(width))
                 Vector(ty=inner_ty, len~) => {
                     let len = len.expect_fixed(expr.span())
                     if hi >= len {
@@ -422,7 +420,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
                             (Unresolved(_), _) => raise type_error("Unresolved parameter '\{name}'", span)
                             _ => {
                                 let ty = match param {
-                                    Unresolved(_) => unreachable()
+                                    Unresolved(_) => unreachable_code()
                                     Resolved(ConstParam(value~, ..)) => self.check_expr(value.as_expr(), env)
                                     Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
                                 }
@@ -446,7 +444,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
                         }
                     }
 
-                    if (path.member == "Reg" || path.member == "RegAsyncReset") && path.packages.is_empty() {
+                    if (path.elem == "Reg" || path.elem == "RegAsyncReset") && path.packages.is_empty() {
                         accessed_ports.register_access("d")
                         accessed_ports.register_access("q")
                     }
@@ -490,7 +488,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
                                 len += int_len
                             }
                             String(len=str_len) => {
-                                check_elem_ty(UInt(Fixed(BITS_PER_CHAR)))
+                                check_elem_ty(UInt(Fixed(@parse.BITS_PER_CHAR)))
                                 len += str_len
                             }
                             _ => {
@@ -527,7 +525,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
                 let (ty, span) = stack.unsafe_pop()
 
                 match ty {
-                    UInt(_) | SInt(_) => {
+                    UInt(_) | SInt(_) | Nat(_) => {
                         let is_elem_signed = ty is SInt(_)
 
                         match is_signed {
@@ -568,7 +566,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
         Match(subject~, cases~, default~, span~, ..) => {
             let subject_ty = self.check_expr(subject, env)
             
-            if cases.is_empty() && default.is_empty() {
+            if cases.is_empty() && default is None {
                 raise type_error("Empty match expression", span)
             }
 
@@ -673,7 +671,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
 
             match mem_ty {
                 Instance(sig={
-                    path: { packages: [], member: "Memory" },
+                    path: { packages: [], elem: "Memory" },
                     span: { file: "builtin.yodl", .. },
                     ..
                 }, ..) => ()
@@ -789,7 +787,7 @@ fn check_expr(self: TypeChecker, expr: Expr, env: Scope[Path, Type], expected_ty
     ty
 }
 
-fn check_stmt(self: TypeChecker, stmt: Stmt, env: Scope[Path, Type]) -> Unit raise {
+fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Unit raise {
     match stmt {
         Expr(expr~, ..) => {
             let _ = self.check_expr(expr, env)
@@ -849,7 +847,7 @@ fn check_stmt(self: TypeChecker, stmt: Stmt, env: Scope[Path, Type]) -> Unit rai
                 self.check_stmt(stmt, new_env)
             }
         }
-        For(var~, range~, body~, span~) => {
+        For(variable~, range~, body~, span~) => {
             let start_ty = self.check_expr(range.start, env)
             let end_ty = self.check_expr(range.end, env)
 
@@ -859,7 +857,7 @@ fn check_stmt(self: TypeChecker, stmt: Stmt, env: Scope[Path, Type]) -> Unit rai
             }
 
             let body_env = env.child()
-            body_env.declare(Path::new([], var), end_ty)
+            body_env.declare(Path::new([], variable), end_ty)
 
             for stmt in body {
                 self.check_stmt(stmt, body_env)
@@ -871,8 +869,8 @@ fn check_stmt(self: TypeChecker, stmt: Stmt, env: Scope[Path, Type]) -> Unit rai
     }
 }
 
-fn check_format_string(
-    self: TypeChecker,
+fn TypeChecker::check_format_string(
+    self: Self,
     format_str~: Expr,
     args~: ArrayView[Expr],
     env~: Scope[Path, Type],
@@ -947,7 +945,7 @@ fn check_attributes(attrs: Map[String, Attribute], signatures~: Map[String, Arra
     }
 }
 
-fn check_const_decl(self: TypeChecker, decl: ConstDecl, env: Scope[Path, Type]) -> Unit raise {
+fn TypeChecker::check_const_decl(self: Self, decl: ConstDecl, env: Scope[Path, Type]) -> Unit raise {
     if !decl.expr.is_constant_expr() {
         raise ExpectedConstantExpr(span=decl.expr.span())
     }
@@ -965,7 +963,7 @@ fn check_const_decl(self: TypeChecker, decl: ConstDecl, env: Scope[Path, Type]) 
     declare_name(env~, path=decl.path, ty~, span=decl.span)
 }
 
-pub fn check_decl(self: TypeChecker, decl: Decl) -> Unit raise {
+pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Unit raise {
     match decl {
         Module({ path, params: _, attributes, ports, body, span: _ } as mod) => {
             let env = self.top_env.child()

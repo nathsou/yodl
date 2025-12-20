@@ -50,110 +50,110 @@ pub impl Show for Type with output(self, logger) {
   }
 }
 
-pub fn[T] emit_circuit(self: FIRRTLEmitter, circuit: Circuit[T]) -> Unit {
+pub fn[T] FIRRTLEmitter::emit_circuit(self: Self, circuit: Circuit[T]) -> Unit {
   let (major, minor, patch) = circuit.version
-  self.inner().write("FIRRTL version \{major}.\{minor}.\{patch}\n")
-  self.inner().write("circuit ")
-  self.inner().write(circuit.id)
-  self.inner().write(":\n")
-  self.inner().indent += 1
+  self.0.write("FIRRTL version \{major}.\{minor}.\{patch}\n")
+  self.0.write("circuit ")
+  self.0.write(circuit.id)
+  self.0.write(":\n")
+  self.0.indent += 1
 
   if circuit.annotations.length() > 0 {
-    self.inner().emit("%[[")
-    self.inner().indent += 1
-    self.inner().write(circuit.annotations.map(ann => ann.to_json().stringify(indent=4)).join(",\n"))
-    self.inner().write("\n")
-    self.inner().emit("]]")
+    self.0.emit("%[[")
+    self.0.indent += 1
+    self.0.write(circuit.annotations.map(ann => ann.to_json().stringify(indent=4)).join(",\n"))
+    self.0.write("\n")
+    self.0.emit("]]")
   }
 
   for decl in circuit.decls {
     self.emit_decl(decl)
   }
 
-  self.inner().indent -= 1
+  self.0.indent -= 1
 }
 
-pub fn[T] emit_decl(self: FIRRTLEmitter, decl: Decl[T]) -> Unit {
+pub fn[T] FIRRTLEmitter::emit_decl(self: Self, decl: Decl[T]) -> Unit {
   match decl {
     Module(mod) => self.emit_module(mod)
     ExtModule(ext_mod) => self.emit_ext_module(ext_mod)
   }
 
-  self.inner().write("\n")
+  self.0.write("\n")
 }
 
-pub fn[T] emit_module(self: FIRRTLEmitter, mod: Module[T]) -> Unit {
-  self.inner().write_indent()
+pub fn[T] FIRRTLEmitter::emit_module(self: Self, mod: Module[T]) -> Unit {
+  self.0.write_indent()
 
   if mod.public {
-    self.inner().write("public ")
+    self.0.write("public ")
   }
 
-  self.inner().write("module ")
-  self.inner().write(mod.id)
-  self.inner().write(":\n")
-  self.inner().indent += 1
+  self.0.write("module ")
+  self.0.write(mod.id)
+  self.0.write(":\n")
+  self.0.indent += 1
 
   for port in mod.ports {
     self.emit_port(port)
-    self.inner().write("\n")
+    self.0.write("\n")
   }
 
   if mod.ports.length() > 0 {
-    self.inner().write("\n")
+    self.0.write("\n")
   }
 
   for stmt in mod.body {
     self.emit_stmt(stmt)
-    self.inner().write("\n")
+    self.0.write("\n")
   }
 
-  self.inner().indent -= 1
+  self.0.indent -= 1
 }
 
-pub fn emit_ext_module(self: FIRRTLEmitter, ext_mod: ExtModule) -> Unit {
-  self.inner().write_indent()
-  self.inner().write("extmodule ")
-  self.inner().write(ext_mod.id)
-  self.inner().write(":\n")
-  self.inner().indent += 1
+pub fn FIRRTLEmitter::emit_ext_module(self: Self, ext_mod: ExtModule) -> Unit {
+  self.0.write_indent()
+  self.0.write("extmodule ")
+  self.0.write(ext_mod.id)
+  self.0.write(":\n")
+  self.0.indent += 1
 
   for port in ext_mod.ports {
     self.emit_port(port)
-    self.inner().write("\n")
+    self.0.write("\n")
   }
 
   if ext_mod.defname is Some(defname) {
-    self.inner().write_indent()
-    self.inner().write("defname = ")
-    self.inner().write(defname)
-    self.inner().write("\n")
+    self.0.write_indent()
+    self.0.write("defname = ")
+    self.0.write(defname)
+    self.0.write("\n")
   }
 
   for param in ext_mod.parameters {
     let (name, value) = param
-    self.inner().write_indent()
-    self.inner().write("parameter \{name} = ")
+    self.0.write_indent()
+    self.0.write("parameter \{name} = ")
     let value_str = match value {
       IntLiteral(value) => value.to_string()
       StringLiteral(value) => "\"" + value + "\""
       RawStringLiteral(value) => "r\"" + value + "\""
     }
 
-    self.inner().write(value_str)
-    self.inner().write("\n")
+    self.0.write(value_str)
+    self.0.write("\n")
   }
 
-  self.inner().indent -= 1
+  self.0.indent -= 1
 }
 
-pub fn emit_port(self: FIRRTLEmitter, port: Port) -> Unit {
-  self.inner().write_indent()
-  self.inner().write(port.dir)
-  self.inner().write(" ")
-  self.inner().write(port.id)
-  self.inner().write(": ")
-  self.inner().write(port.ty)
+pub fn FIRRTLEmitter::emit_port(self: Self, port: Port) -> Unit {
+  self.0.write_indent()
+  self.0.write(port.dir)
+  self.0.write(" ")
+  self.0.write(port.id)
+  self.0.write(": ")
+  self.0.write(port.ty)
 }
 
 pub impl[T] Show for Reference[T] with output(self, logger) {
@@ -179,103 +179,103 @@ pub impl[T] Show for Reference[T] with output(self, logger) {
   }
 }
 
-pub fn[T] emit_stmt(self: FIRRTLEmitter, stmt: Stmt[T], glued~: Bool = false) -> Unit {
+pub fn[T] FIRRTLEmitter::emit_stmt(self: Self, stmt: Stmt[T], glued~: Bool = false) -> Unit {
   match stmt {
     Node(id~, expr~) => {
-      self.inner().write_indent()
-      self.inner().write("node ")
-      self.inner().write(id)
-      self.inner().write(" = ")
-      self.inner().write(expr)
+      self.0.write_indent()
+      self.0.write("node ")
+      self.0.write(id)
+      self.0.write(" = ")
+      self.0.write(expr)
     }
     Wire(id~, ty~) => {
-      self.inner().write_indent()
-      self.inner().write("wire ")
-      self.inner().write(id)
-      self.inner().write(": ")
-      self.inner().write(ty)
+      self.0.write_indent()
+      self.0.write("wire ")
+      self.0.write(id)
+      self.0.write(": ")
+      self.0.write(ty)
     }
     Connect(lhs, rhs) => {
-      self.inner().write_indent()
-      self.inner().write("connect ")
-      self.inner().write(lhs)
-      self.inner().write(", ")
-      self.inner().write(rhs)
+      self.0.write_indent()
+      self.0.write("connect ")
+      self.0.write(lhs)
+      self.0.write(", ")
+      self.0.write(rhs)
     }
     Inst(id~, of~, sig=_) => {
-      self.inner().write_indent()
-      self.inner().write("inst ")
-      self.inner().write(id)
-      self.inner().write(" of ")
-      self.inner().write(of)
+      self.0.write_indent()
+      self.0.write("inst ")
+      self.0.write(id)
+      self.0.write(" of ")
+      self.0.write(of)
     }
     Reg(id~, ty~, clock~) => {
-      self.inner().write_indent()
-      self.inner().write("reg ")
-      self.inner().write(id)
-      self.inner().write(": ")
-      self.inner().write(ty)
-      self.inner().write(", ")
-      self.inner().write(clock)
+      self.0.write_indent()
+      self.0.write("reg ")
+      self.0.write(id)
+      self.0.write(": ")
+      self.0.write(ty)
+      self.0.write(", ")
+      self.0.write(clock)
     }
     RegReset(id~, ty~, clock~, reset~, init~) => {
-      self.inner().write_indent()
-      self.inner().write("regreset ")
-      self.inner().write(id)
-      self.inner().write(": ")
-      self.inner().write(ty)
-      self.inner().write(", ")
-      self.inner().write(clock)
-      self.inner().write(", ")
-      self.inner().write(reset)
-      self.inner().write(", ")
-      self.inner().write(init)
+      self.0.write_indent()
+      self.0.write("regreset ")
+      self.0.write(id)
+      self.0.write(": ")
+      self.0.write(ty)
+      self.0.write(", ")
+      self.0.write(clock)
+      self.0.write(", ")
+      self.0.write(reset)
+      self.0.write(", ")
+      self.0.write(init)
     }
     When({ cond, body, otherwise }) => {
       if !glued {
-        self.inner().write_indent()
+        self.0.write_indent()
       }
 
-      self.inner().write("when ")
-      self.inner().write(cond)
-      self.inner().write(":\n")
-      self.inner().indent += 1
+      self.0.write("when ")
+      self.0.write(cond)
+      self.0.write(":\n")
+      self.0.indent += 1
 
       for stmt in body {
         self.emit_stmt(stmt)
-        self.inner().write("\n")
+        self.0.write("\n")
       }
 
-      self.inner().indent -= 1
+      self.0.indent -= 1
 
       match otherwise {
         Some([When(otherwise)]) => {
-          self.inner().write_indent()
-          self.inner().write("else ")
+          self.0.write_indent()
+          self.0.write("else ")
           self.emit_stmt(When(otherwise), glued=true)
         }
         Some(otherwise) => {
-          self.inner().write_indent()
-          self.inner().write("else:\n")
-          self.inner().indent += 1
+          self.0.write_indent()
+          self.0.write("else:\n")
+          self.0.indent += 1
 
           for stmt in otherwise {
             self.emit_stmt(stmt)
-            self.inner().write("\n")
+            self.0.write("\n")
           }
 
-          self.inner().indent -= 1
+          self.0.indent -= 1
         }
         None => ()
       }
     }
     Mem(mem) => {
-      self.inner().write_indent()
-      self.inner().write(if mem.is_flat { "flatmem " } else { "mem " })
-      self.inner().write(mem.id)
-      self.inner().write(":\n")
-      self.inner().indent += 1
-      self.inner().write_indent()
+      self.0.write_indent()
+      self.0.write(if mem.is_flat { "flatmem " } else { "mem " })
+      self.0.write(mem.id)
+      self.0.write(":\n")
+      self.0.indent += 1
+      self.0.write_indent()
 
       if mem.is_flat {
         let (data_width, mask_width)  = match (mem.data_type, mem.mask_ty)  {
@@ -283,127 +283,127 @@ pub fn[T] emit_stmt(self: FIRRTLEmitter, stmt: Stmt[T], glued~: Bool = false) ->
           _ => @utils.fail("Flat memory data and mask types must be UInt")
         }
         
-        self.inner().write("width => ")
-        self.inner().write(data_width)
-        self.inner().write("\n")
-        self.inner().write_indent()
-        self.inner().write("mask_granularity => ")
-        self.inner().write(data_width / mask_width)
+        self.0.write("width => ")
+        self.0.write(data_width)
+        self.0.write("\n")
+        self.0.write_indent()
+        self.0.write("mask_granularity => ")
+        self.0.write(data_width / mask_width)
       } else {
-        self.inner().write("data-type => ")
-        self.inner().write(mem.data_type)
+        self.0.write("data-type => ")
+        self.0.write(mem.data_type)
       }
       
-      self.inner().write("\n")
-      self.inner().write_indent()
-      self.inner().write("depth => ")
-      self.inner().write(mem.depth)
-      self.inner().write("\n")
-      self.inner().write_indent()
-      self.inner().write("read-latency => ")
-      self.inner().write(mem.read_latency)
-      self.inner().write("\n")
-      self.inner().write_indent()
-      self.inner().write("write-latency => ")
-      self.inner().write(mem.write_latency)
-      self.inner().write("\n")
-      self.inner().write_indent()
-      self.inner().write("read-under-write => ")
-      self.inner().write(match mem.read_under_write {
+      self.0.write("\n")
+      self.0.write_indent()
+      self.0.write("depth => ")
+      self.0.write(mem.depth)
+      self.0.write("\n")
+      self.0.write_indent()
+      self.0.write("read-latency => ")
+      self.0.write(mem.read_latency)
+      self.0.write("\n")
+      self.0.write_indent()
+      self.0.write("write-latency => ")
+      self.0.write(mem.write_latency)
+      self.0.write("\n")
+      self.0.write_indent()
+      self.0.write("read-under-write => ")
+      self.0.write(match mem.read_under_write {
         Undefined => "undefined"
         Old => "old"
         New => "new"
       })
-      self.inner().write("\n")
+      self.0.write("\n")
 
       for reader in mem.readers {
-        self.inner().write_indent()
-        self.inner().write("reader => ")
-        self.inner().write(reader)
-        self.inner().write("\n")
+        self.0.write_indent()
+        self.0.write("reader => ")
+        self.0.write(reader)
+        self.0.write("\n")
       }
 
       for writer in mem.writers {
-        self.inner().write_indent()
-        self.inner().write("writer => ")
-        self.inner().write(writer)
-        self.inner().write("\n")
+        self.0.write_indent()
+        self.0.write("writer => ")
+        self.0.write(writer)
+        self.0.write("\n")
       }
 
       for readwriter in mem.readwriters {
-        self.inner().write_indent()
-        self.inner().write("readwriter => ")
-        self.inner().write(readwriter)
-        self.inner().write("\n")
+        self.0.write_indent()
+        self.0.write("readwriter => ")
+        self.0.write(readwriter)
+        self.0.write("\n")
       }
 
-      self.inner().indent -= 1
+      self.0.indent -= 1
     }
     Skip => {
-      self.inner().write_indent()
-      self.inner().write("skip")
+      self.0.write_indent()
+      self.0.write("skip")
     }
     Command(command) => {
       match command {
         Printf(clk~, en~, fmt~, args~) => {
-          self.inner().write_indent()
-          self.inner().write("printf(")
-          self.inner().write(clk)
-          self.inner().write(", ")
-          self.inner().write(en)
-          self.inner().write(", \"")
-          self.inner().write(show_format_string(fmt))
-          self.inner().write("\"")
+          self.0.write_indent()
+          self.0.write("printf(")
+          self.0.write(clk)
+          self.0.write(", ")
+          self.0.write(en)
+          self.0.write(", \"")
+          self.0.write(show_format_string(fmt))
+          self.0.write("\"")
 
           if args.length() > 0 {
-            self.inner().write(", ")
+            self.0.write(", ")
             
             for idx, arg in args {
-              self.inner().write(arg)
+              self.0.write(arg)
 
               if idx < args.length() - 1 {
-                self.inner().write(", ")
+                self.0.write(", ")
               }
             }
           }
 
-          self.inner().write(")\n")
+          self.0.write(")\n")
         }
         Assert(clk~, pred~, en~, fmt~, args~) => {
-          self.inner().write_indent()
-          self.inner().write("assert(")
-          self.inner().write(clk)
-          self.inner().write(", ")
-          self.inner().write(pred)
-          self.inner().write(", ")
-          self.inner().write(en)
-          self.inner().write(", \"")
-          self.inner().write(show_format_string(fmt))
-          self.inner().write("\"")
+          self.0.write_indent()
+          self.0.write("assert(")
+          self.0.write(clk)
+          self.0.write(", ")
+          self.0.write(pred)
+          self.0.write(", ")
+          self.0.write(en)
+          self.0.write(", \"")
+          self.0.write(show_format_string(fmt))
+          self.0.write("\"")
           
           if args.length() > 0 {
-            self.inner().write(", ")
+            self.0.write(", ")
             
             for idx, arg in args {
-              self.inner().write(arg)
+              self.0.write(arg)
 
               if idx < args.length() - 1 {
-                self.inner().write(", ")
+                self.0.write(", ")
               }
             }
           }
 
-          self.inner().write(")\n")
+          self.0.write(")\n")
         }
         Stop(clk~, en~, code~) => {
-          self.inner().write_indent()
-          self.inner().write("stop(")
-          self.inner().write(clk)
-          self.inner().write(", ")
-          self.inner().write(en)
-          self.inner().write(", ")
-          self.inner().write(code)
-          self.inner().write(")\n")
+          self.0.write_indent()
+          self.0.write("stop(")
+          self.0.write(clk)
+          self.0.write(", ")
+          self.0.write(en)
+          self.0.write(", ")
+          self.0.write(code)
+          self.0.write(")\n")
         }
       }
     }

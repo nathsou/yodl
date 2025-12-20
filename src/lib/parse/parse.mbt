@@ -40,7 +40,7 @@ fn Parser::advance(self: Parser) -> Unit {
   self.index += 1
 }
 
-fn expect(self: Parser, expected: TokenType, span_start_idx: Int) -> Unit raise ParserError {
+fn Parser::expect(self: Parser, expected: TokenType, span_start_idx: Int) -> Unit raise ParserError {
   let token = self.peek()
 
   if token == expected {
@@ -88,7 +88,7 @@ pub fn Parser::span(self: Parser, start_idx: Int) -> Span {
   { file: self.file, file_content: self.file_content, start, end }
 }
 
-fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr raise {
+fn Parser::precedence_climbing(self: Parser, min_precedence: Int) -> Expr raise {
   let mut lhs = self.parse_indexing_expr()
 
   while self.index < self.tokens.length() {
@@ -125,7 +125,7 @@ fn precedence_climbing(self: Parser, min_precedence: Int) -> Expr raise {
   lhs
 }
 
-fn parse_indexing_expr(self: Parser) -> Expr raise {
+fn Parser::parse_indexing_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   let mut lhs = self.parse_replication_expr()
 
@@ -172,7 +172,7 @@ fn parse_indexing_expr(self: Parser) -> Expr raise {
   lhs
 }
 
-fn parse_match_expr(self: Parser) -> Expr raise {
+fn Parser::parse_match_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   self.expect(Match, start_idx)
   let subject = self.parse_expr()
@@ -208,7 +208,7 @@ fn parse_match_expr(self: Parser) -> Expr raise {
   Match(subject~, cases~, default~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_if_expr(self: Parser) -> Expr raise {
+fn Parser::parse_if_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   self.expect(If, self.index)
   let cond = self.parse_expr()
@@ -227,7 +227,7 @@ fn parse_if_expr(self: Parser) -> Expr raise {
   If(cond~, then~, else_~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_primary_expr(self: Parser) -> Expr raise {
+fn Parser::parse_primary_expr(self: Parser) -> Expr raise {
   let token = self.peek()
   let start_idx = self.index
 
@@ -265,7 +265,7 @@ fn parse_primary_expr(self: Parser) -> Expr raise {
         Andr => Andr
         Orr => Orr
         Xorr => Xorr
-        _ => @utils.unreachable()
+        _ => @utils.unreachable_code()
       }
 
       Unary(op=unop, expr~, span=self.span(start_idx), ty={ val: None })
@@ -283,14 +283,14 @@ fn parse_primary_expr(self: Parser) -> Expr raise {
   }
 }
 
-fn parse_spread_expr(self: Parser) -> Expr raise {
+fn Parser::parse_spread_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   self.expect(DotDot, start_idx)
   let expr = self.parse_expr()
   Spread(expr~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_function_call_expr(self: Parser, name: String) -> Expr raise {
+fn Parser::parse_function_call_expr(self: Parser, name: String) -> Expr raise {
   let start_idx = self.index
   let args: Array[Expr] = []
   self.expect(Lparen, start_idx)
@@ -309,7 +309,7 @@ fn parse_function_call_expr(self: Parser, name: String) -> Expr raise {
   FunCall(name~, args~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_replication_expr(self: Parser) -> Expr raise {
+fn Parser::parse_replication_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   let lhs = self.parse_primary_expr()
 
@@ -330,7 +330,7 @@ fn parse_replication_expr(self: Parser) -> Expr raise {
   }
 } 
 
-fn parse_tuple_or_paren_expr(self: Parser) -> Expr raise {
+fn Parser::parse_tuple_or_paren_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   self.expect(Lparen, start_idx)
   let elems = []
@@ -353,7 +353,7 @@ fn parse_tuple_or_paren_expr(self: Parser) -> Expr raise {
   }
 }
 
-fn parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) -> Expr raise {
+fn Parser::parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) -> Expr raise {
   let elems = [first_expr]
 
   if self.consumes(Comma) {
@@ -384,7 +384,7 @@ fn stmt_list_to_block(body: Array[Stmt], span~: Span) -> Expr {
   Block(body~, last~, span~, ty={ val: None })
 }
 
-fn parse_struct_or_concat_or_block_expr(self: Parser) -> Expr raise {
+fn Parser::parse_struct_or_concat_or_block_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   self.expect(Lbrace, start_idx)
 
@@ -396,27 +396,16 @@ fn parse_struct_or_concat_or_block_expr(self: Parser) -> Expr raise {
   // singleton concat expressions are equivalent to blocks containing a single expr
   let backtracking_index = self.index
 
-  match (try? self.parse_stmt()) {
-    Ok(stmt) => {
-      let body = [stmt]
-
-      while not(self.matches(Rbrace)) {
-        let stmt = self.parse_stmt()
-        body.push(stmt)
-      }
-
-      self.expect(Rbrace, start_idx)
-      stmt_list_to_block(body, span=self.span(start_idx))
-    }
-    Err(_) => {
+  try self.parse_stmt() catch {
+    _ => {
       // if we failed to parse a block, backtrack and try to parse a struct or concat expression
       self.index = backtracking_index
 
       match self.parse_expr() {
-        Identifier(path={ packages: [], member }, ..) as first_expr => {
+        Identifier(path={ packages: [], elem }, ..) as first_expr => {
           if self.consumes(Colon) {
             let fields = {}
-            fields[member] = self.parse_expr()
+            fields[elem] = self.parse_expr()
             
             if self.consumes(Comma) {
               while not(self.matches(Rbrace)) {
@@ -446,10 +435,22 @@ fn parse_struct_or_concat_or_block_expr(self: Parser) -> Expr raise {
         first_expr => self.parse_concat_expr(first_expr, start_idx~)
       }
     }
+  } noraise {
+    stmt => {
+      let body = [stmt]
+
+      while not(self.matches(Rbrace)) {
+        let stmt = self.parse_stmt()
+        body.push(stmt)
+      }
+
+      self.expect(Rbrace, start_idx)
+      stmt_list_to_block(body, span=self.span(start_idx))
+    }
   }
 }
 
-fn parse_vector_expr(self: Parser) -> Expr raise {
+fn Parser::parse_vector_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   self.expect(Lbracket, start_idx)
   let elems = []
@@ -468,24 +469,24 @@ fn parse_vector_expr(self: Parser) -> Expr raise {
   Vector(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn parse_instance_parameter(self: Parser) -> Param raise {
+fn Parser::parse_instance_parameter(self: Parser) -> Param raise {
   let start_idx = self.index
-  match (try? self.parse_expr()) {
-    Ok(Identifier(path~, span~, ..)) => Unresolved(PathParam(path~, span~))
-    Ok(expr) => Unresolved(ExprParam(expr))
-    Err(_) => {
+  try self.parse_expr() catch {
+    _ => {
       self.index = start_idx
-      match (try? self.parse_type()) {
-        Ok(ty) => {
-          Unresolved(TypeParam(ty~, span=self.span(start_idx)))
-        }
-        Err(_) => raise ExpectedExprOrType(received=self.peek(), span=self.span(start_idx))
+      try self.parse_type() catch {
+        _ => raise ExpectedExprOrType(received=self.peek(), span=self.span(start_idx))
+      } noraise {
+        ty => Unresolved(TypeParam(ty~, span=self.span(start_idx)))
       }
     }
+  } noraise {
+    Identifier(path~, span~, ..) => Unresolved(PathParam(path~, span~))
+    expr => Unresolved(ExprParam(expr))
   }
 }
 
-fn parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
+fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
   let start_idx = self.index
   let params: Array[(String?, Param)] = self.parse_module_parameters(fn() {
     match self.lookahead(0).kind {
@@ -505,7 +506,7 @@ fn parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
   self.expect(Lparen, start_idx)
   let ports = {}
 
-  while not(self.matches(Rparen)) {
+  while !self.matches(Rparen) {
     let start_idx = self.index
     let name = self.parse_identifier()
     
@@ -515,7 +516,7 @@ fn parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
       ports[name] = Identifier(path=Path::new([], name), span=self.span(start_idx), ty={ val: None })
     }
 
-    if not(self.consumes(Comma)) {
+    if !self.consumes(Comma) {
       break
     }
   }
@@ -531,11 +532,11 @@ fn parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
   )
 }
 
-fn parse_expr(self: Parser) -> Expr raise {
+fn Parser::parse_expr(self: Parser) -> Expr raise {
   self.precedence_climbing(0)
 }
 
-fn parse_assignment_stmt(self: Parser) -> Stmt raise {
+fn Parser::parse_assignment_stmt(self: Parser) -> Stmt raise {
   let start_idx = self.index
   let lhs = self.parse_indexing_expr()
 
@@ -558,7 +559,7 @@ fn parse_assignment_stmt(self: Parser) -> Stmt raise {
   }
 }
 
-fn parse_block(self: Parser) -> Array[Stmt] raise {
+fn Parser::parse_block(self: Parser) -> Array[Stmt] raise {
   self.expect(Lbrace, self.index)
   let stmts = []
 
@@ -571,7 +572,7 @@ fn parse_block(self: Parser) -> Array[Stmt] raise {
   stmts
 }
 
-fn parse_stmt(self: Parser) -> Stmt raise {
+fn Parser::parse_stmt(self: Parser) -> Stmt raise {
   let token = self.peek()
   let start_idx = self.index
 
@@ -598,7 +599,7 @@ fn parse_stmt(self: Parser) -> Stmt raise {
     }
     For => {
       self.advance()
-      let var = self.parse_identifier()
+      let variable = self.parse_identifier()
       self.expect(In, start_idx)
 
       let start = self.parse_expr()
@@ -615,7 +616,7 @@ fn parse_stmt(self: Parser) -> Stmt raise {
       let body = self.parse_block()
       self.ignore(Semicolon)
 
-      For(var~, range={ start, end, inclusive }, body~, span=self.span(start_idx))
+      For(variable~, range={ start, end, inclusive }, body~, span=self.span(start_idx))
     }
     Const => Stmt::Const(decl=self.parse_const_decl(), span=self.span(start_idx))
     _ => {
@@ -624,7 +625,7 @@ fn parse_stmt(self: Parser) -> Stmt raise {
   }
 }
 
-fn parse_const_decl(self: Parser) -> ConstDecl raise {
+fn Parser::parse_const_decl(self: Parser) -> ConstDecl raise {
   let start_idx = self.index
   self.expect(Const, start_idx)
   let name = self.parse_identifier()
@@ -643,7 +644,7 @@ fn parse_const_decl(self: Parser) -> ConstDecl raise {
   { path: Path::new([], name), ty, expr, span: self.span(start_idx) }
 }
 
-fn parse_package_decl(self: Parser) -> PackageDecl raise {
+fn Parser::parse_package_decl(self: Parser) -> PackageDecl raise {
   let start_idx = self.index
   self.expect(Package, start_idx)
   let name = self.parse_identifier()
@@ -661,7 +662,7 @@ fn parse_package_decl(self: Parser) -> PackageDecl raise {
   { name, body, span: self.span(start_idx) }
 }
 
-fn parse_import_decl(self: Parser) -> ImportDecl raise {
+fn Parser::parse_import_decl(self: Parser) -> ImportDecl raise {
   let start_idx = self.index
   self.expect(Import, start_idx)
   let packages = [self.parse_identifier()]
@@ -675,7 +676,7 @@ fn parse_import_decl(self: Parser) -> ImportDecl raise {
   { packages, span: self.span(start_idx) }
 }
 
-fn parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
+fn Parser::parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
   let start_idx = self.index
   self.expect(Type, start_idx)
   let name = self.parse_identifier()
@@ -701,7 +702,7 @@ fn parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
   { name, parameters, ty, span: self.span(start_idx) }
 }
 
-fn parse_path(self: Parser, first: String) -> Path raise {
+fn Parser::parse_path(self: Parser, first: String) -> Path raise {
   let packages = [first]
 
   while self.consumes(ColonColon) {
@@ -709,12 +710,12 @@ fn parse_path(self: Parser, first: String) -> Path raise {
     packages.push(name)
   }
 
-  let member = packages.unsafe_pop()
+  let elem = packages.unsafe_pop()
 
-  Path::new(packages, member)
+  Path::new(packages, elem)
 }
 
-fn parse_type(self: Parser) -> Type raise {
+fn Parser::parse_type(self: Parser) -> Type raise {
   let start_idx = self.index
   let params: Array[Param] = []
 
@@ -857,7 +858,7 @@ fn parse_type(self: Parser) -> Type raise {
   base_ty
 }
 
-fn parse_port(self: Parser, dir~: PortDir) -> Port raise {
+fn Parser::parse_port(self: Parser, dir~: PortDir) -> Port raise {
   let start_idx = self.index
   let name = self.parse_identifier()
   let optional = self.consumes(QuestionMark)
@@ -874,7 +875,7 @@ fn parse_port(self: Parser, dir~: PortDir) -> Port raise {
   { name, ty, dir, optional, attributes, span: self.span(start_idx) }
 }
 
-fn parse_port_list(self: Parser, dir~: PortDir) -> Array[Port] raise {
+fn Parser::parse_port_list(self: Parser, dir~: PortDir) -> Array[Port] raise {
   let start_idx = self.index
   let ports = []
 
@@ -894,7 +895,7 @@ fn parse_port_list(self: Parser, dir~: PortDir) -> Array[Port] raise {
   ports
 }
 
-fn[T] parse_module_parameters(self: Parser, parse_elem: () -> T raise) -> Array[T] raise {
+fn[T] Parser::parse_module_parameters(self: Parser, parse_elem: () -> T raise) -> Array[T] raise {
   if self.consumes(Lchevron) {
     let start_idx = self.index
     let params = []
@@ -916,7 +917,7 @@ fn[T] parse_module_parameters(self: Parser, parse_elem: () -> T raise) -> Array[
   }
 }
 
-fn parse_attribute_value(self: Parser) -> AttributeValue raise {
+fn Parser::parse_attribute_value(self: Parser) -> AttributeValue raise {
   let token = self.peek()
   let start_idx = self.index
 
@@ -962,7 +963,7 @@ fn parse_attribute_value(self: Parser) -> AttributeValue raise {
   }
 }
 
-fn parse_attribute(self: Parser) -> Attribute raise {
+fn Parser::parse_attribute(self: Parser) -> Attribute raise {
   let start_idx = self.index
   self.expect(At, start_idx)
   let name = self.parse_identifier()
@@ -991,7 +992,7 @@ fn parse_attribute(self: Parser) -> Attribute raise {
   { name, args, span: self.span(start_idx) }
 }
 
-fn parse_attributes(self: Parser) -> Map[String, Attribute] raise {
+fn Parser::parse_attributes(self: Parser) -> Map[String, Attribute] raise {
   let attrs = {}
 
   while self.matches(At) {
@@ -1002,7 +1003,7 @@ fn parse_attributes(self: Parser) -> Map[String, Attribute] raise {
   attrs
 }
 
-fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> ModuleSignature raise {
+fn Parser::parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> ModuleSignature raise {
   let start_idx = self.index
   self.expect(Module, start_idx)
   let name = self.parse_identifier()
@@ -1026,7 +1027,7 @@ fn parse_module_signature(self: Parser, attributes~: Map[String, Attribute]) -> 
   { path: Path::new([], name), params, attributes, ports, span: self.span(start_idx) }
 }
 
-fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl raise {
+fn Parser::parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl raise {
   let start_idx = self.index
   let { path, params, attributes, ports, .. } = sig
   self.expect(Lbrace, start_idx)
@@ -1040,7 +1041,7 @@ fn parse_module_definition(self: Parser, sig~: ModuleSignature) -> ModuleDecl ra
   { path, params, attributes, ports, body, span: self.span(start_idx) }
 }
 
-fn parse_module_def_or_decl(self: Parser) -> Decl raise {
+fn Parser::parse_module_def_or_decl(self: Parser) -> Decl raise {
   let attributes = self.parse_attributes()
   let is_declaration = self.consumes(Declare)
   let sig = self.parse_module_signature(attributes~)
@@ -1055,7 +1056,7 @@ fn parse_module_def_or_decl(self: Parser) -> Decl raise {
   }
 }
 
-fn parse_decl(self: Parser) -> Decl raise {
+fn Parser::parse_decl(self: Parser) -> Decl raise {
   match self.peek() {
     At | Declare | Module => self.parse_module_def_or_decl()
     Const => Decl::Const(self.parse_const_decl())
@@ -1066,7 +1067,7 @@ fn parse_decl(self: Parser) -> Decl raise {
   }
 }
 
-pub fn parse(self: Parser) -> Array[Decl] raise {
+pub fn Parser::parse(self: Parser) -> Array[Decl] raise {
   let decls = []
 
   while self.index < self.tokens.length() {
