@@ -160,7 +160,6 @@ fn RTLILLowering::lower_stmt(
             },
           )
         }
-        Stop(_) => ()
         _ =>
           raise Failure("Unsupported command '\{cmd.name()}' in RTLIL lowering")
       }
