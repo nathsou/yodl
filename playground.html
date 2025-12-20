@@ -309,6 +309,7 @@
                     <option value="write_simplified">write_simplified</option>
                     <option value="write_firrtl">write_firrtl</option>
                     <option value="write_low_firrtl" selected>write_low_firrtl</option>
+                    <option value="write_rtlil" selected>write_rtlil</option>
                 </select>
             </div>
             
@@ -368,12 +369,12 @@
             let effectiveTheme = theme;
             
             if (theme === 'system') {
-                const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+                const prefersDark = globalThis.matchMedia && globalThis.matchMedia('(prefers-color-scheme: dark)').matches;
                 effectiveTheme = prefersDark ? 'dark' : 'light';
             }
             
             const isDark = effectiveTheme === 'dark';
-            document.documentElement.setAttribute('data-theme', effectiveTheme);
+            document.documentElement.dataset.theme = effectiveTheme;
             
             localStorage.setItem(THEME_KEY, theme);
             themeSelect.value = theme;
@@ -383,6 +384,16 @@
                 const editorTheme = isDark ? 'vs-dark' : 'vs';
                 if (inputEditor) inputEditor.updateOptions({ theme: editorTheme });
                 if (outputEditor) outputEditor.updateOptions({ theme: editorTheme });
+            }
+        }
+
+        // Helper function to determine output file extension based on pass
+        function getOutputExtension(pass) {
+            switch (pass) {
+                case 'write_firrtl':
+                case 'write_low_firrtl':    
+                    return 'fir';
+                default: return 'yodl';
             }
         }
 
@@ -402,8 +413,8 @@
 
         initializeTheme();
 
-        if (window.matchMedia) {
-            window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+        if (globalThis.matchMedia) {
+            globalThis.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
                 if (themeSelect.value === 'system') {
                     setTheme('system');
                 }
@@ -429,11 +440,11 @@
                     '==', '!=', '<=', '>=', '<:', '>:', '+', '-', '*', '/', '%', '...', '=>', '?', ':', '.',
                     'and', 'or', 'not', 'xor', 'nand', 'nor', 'xnor', 'shl', 'shr', 'andr', 'orr', 'xorr'
                 ],
-                symbols: /[=><!~?:&|+\-*\/\^%\.]+/,
+                symbols: /[=><!~?:&|+\-*/^%.]+/,
                 tokenizer: {
                     root: [
                         // Function names: end with !
-                        [/[A-Za-z_0-9]+!/, 'function'],
+                        [/\w+!/, 'function'],
 
                         // Identifiers and keywords
                         [/[a-zA-Z_]\w*/, { 
@@ -456,7 +467,7 @@
                         [/\/\/.*$/, 'comment'],
                         
                         // Numbers
-                        [/\b\d+\'[bhod]?[A-Za-z0-9_]+\b/, 'number'], // Base-specific literals
+                        [/\b\d+'[bhod]?\w+\b/, 'number'], // Base-specific literals
                         [/\b\d+(_\d+)*\b/, 'number'], // Numbers with optional underscore separators
                         
                         // Operators
@@ -483,7 +494,7 @@
             });
 
             // Determine current theme
-            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const isDark = document.documentElement.dataset.theme === 'dark';
             const editorTheme = isDark ? 'vs-dark' : 'vs';
 
             // Create the editors
@@ -635,16 +646,6 @@
                     console.error("Compilation error:", error);
                 }
             });
-
-            // Helper function to determine output file extension based on pass
-            function getOutputExtension(pass) {
-                switch (pass) {
-                    case 'write_firrtl':
-                    case 'write_low_firrtl':    
-                        return 'fir';
-                    default: return 'yodl';
-                }
-            }
 
             // Resizable panels implementation
             const leftPanel = document.getElementById('panel-left');
