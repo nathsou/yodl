@@ -302,7 +302,7 @@ pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {
     byte.to_byte()
   }))
 
-  Bytes::from_fixedarray(bytes, len=bytes.length())
+  Bytes::from_array(bytes)
 }
 
 pub fn bools_to_bigint(bools: Iter[Bool]) -> BigInt {

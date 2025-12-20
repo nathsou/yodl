@@ -265,7 +265,7 @@ fn Parser::parse_primary_expr(self: Parser) -> Expr raise {
         Andr => Andr
         Orr => Orr
         Xorr => Xorr
-        _ => @utils.unreachable()
+        _ => @utils.unreachable_code()
       }
 
       Unary(op=unop, expr~, span=self.span(start_idx), ty={ val: None })
@@ -402,10 +402,10 @@ fn Parser::parse_struct_or_concat_or_block_expr(self: Parser) -> Expr raise {
       self.index = backtracking_index
 
       match self.parse_expr() {
-        Identifier(path={ packages: [], member }, ..) as first_expr => {
+        Identifier(path={ packages: [], elem }, ..) as first_expr => {
           if self.consumes(Colon) {
             let fields = {}
-            fields[member] = self.parse_expr()
+            fields[elem] = self.parse_expr()
             
             if self.consumes(Comma) {
               while not(self.matches(Rbrace)) {
@@ -599,7 +599,7 @@ fn Parser::parse_stmt(self: Parser) -> Stmt raise {
     }
     For => {
       self.advance()
-      let var = self.parse_identifier()
+      let variable = self.parse_identifier()
       self.expect(In, start_idx)
 
       let start = self.parse_expr()
@@ -616,7 +616,7 @@ fn Parser::parse_stmt(self: Parser) -> Stmt raise {
       let body = self.parse_block()
       self.ignore(Semicolon)
 
-      For(var~, range={ start, end, inclusive }, body~, span=self.span(start_idx))
+      For(variable~, range={ start, end, inclusive }, body~, span=self.span(start_idx))
     }
     Const => Stmt::Const(decl=self.parse_const_decl(), span=self.span(start_idx))
     _ => {
@@ -710,9 +710,9 @@ fn Parser::parse_path(self: Parser, first: String) -> Path raise {
     packages.push(name)
   }
 
-  let member = packages.unsafe_pop()
+  let elem = packages.unsafe_pop()
 
-  Path::new(packages, member)
+  Path::new(packages, elem)
 }
 
 fn Parser::parse_type(self: Parser) -> Type raise {

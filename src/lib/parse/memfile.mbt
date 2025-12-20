@@ -77,12 +77,12 @@ pub fn[T: @utils.BinaryLike] parse_mem_file(content: String, base~: Int, start~:
             break
           }
 
-          if content[char_idx] != '/' {
+          if content.code_unit_at(char_idx) != '/' {
             raise UnexpectedChar('/')
           }
 
           while char_idx < content.length() {
-            let char = content[char_idx]
+            let char = content.code_unit_at(char_idx)
 
             if char == '\n' {
               break

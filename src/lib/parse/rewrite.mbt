@@ -186,7 +186,7 @@ pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
       let rhs = rewrite_expr(rhs, rewr_expr~, rewr_stmt~)
       Assign(lhs~, rhs~, span~)
     }
-    For(var~, range~, body~, span~) => {
+    For(variable~, range~, body~, span~) => {
       let range: ForRange = {
         start: rewrite_expr(range.start, rewr_expr~, rewr_stmt~),
         end: rewrite_expr(range.end, rewr_expr~, rewr_stmt~),
@@ -199,7 +199,7 @@ pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
         body.push_iter(rewr_stmt(stmt))
       }
 
-      For(var~, range~, body~, span~)
+      For(variable~, range~, body~, span~)
     }
     Scope(body~, span~) => {
       let body = Array::new(capacity=body.length())
@@ -336,7 +336,7 @@ pub fn visit_stmt(stmt: Stmt, on_expr~: (Expr) -> Bool raise, on_stmt~: (Stmt) -
         visit_expr(lhs, on_expr~, on_stmt~)
         visit_expr(rhs, on_expr~, on_stmt~)
       }
-      For(var=_, range~, body~, span=_) => {
+      For(variable=_, range~, body~, span=_) => {
         visit_expr(range.start, on_expr~, on_stmt~)
         visit_expr(range.end, on_expr~, on_stmt~)
 

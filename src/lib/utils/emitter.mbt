@@ -12,18 +12,6 @@ pub impl Show for Emitter with output(self, logger) {
   logger.write_string(self.builder.to_string())
 }
 
-impl Logger for Emitter with write_string(self, s) {
-  self.builder.write_string(s)
-}
-
-impl Logger for Emitter with write_char(self, c) {
-  self.builder.write_char(c)
-}
-
-impl Logger for Emitter with write_substring(self, str, start, end) {
-  self.write_string(substring(str, start~, end~))
-}
-
 pub fn[T: Show] Emitter::emit(self: Self, s: T) -> Unit {
   self.builder.write_string("  ".repeat(self.indent) + s.to_string() + "\n")
 }

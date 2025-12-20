@@ -1,19 +1,17 @@
 using @firrtl { type Id, type Annotation, type AnnotationTarget }
 using @parse { type Span, type Path, type ModuleDecl, type Param, type AstEmitter } 
 
-typealias @firrtl.UntypedExpr as FExpr
-typealias @firrtl.UntypedStmt as FStmt
-typealias @firrtl.UntypedModule as FModule
-typealias @firrtl.UntypedRef as FRef
+type FExpr = @firrtl.UntypedExpr
+type FStmt = @firrtl.UntypedStmt
+type FModule = @firrtl.UntypedModule
+type FRef = @firrtl.UntypedRef
 
 using @firrtl {
   mk_ref,
   mk_lit,
-  mk_mux,
   mk_prim,
   mk_id,
   mk_static_indexing,
-  mk_dynamic_indexing,
   mk_field_access,
 }
 
@@ -82,7 +80,7 @@ impl Spanned for Value with span(self) {
   }
 }
 
-typealias Scope[Path, Value] as ElaboratorEnv
+type ElaboratorEnv = Scope[Path, Value]
 
 pub suberror ElaborationError {
   ElaborationError(message~: String, span~: Span)
@@ -141,8 +139,8 @@ impl ScopeLike for StmtContainer with add_stmt(self, stmt) {
 
 fn id_of_path(path: Path) -> Id {
   match path.packages {
-    [] => Ident(path.member)
-    _ => Ident(path.packages.join("_") + "_" + path.member)
+    [] => Ident(path.elem)
+    _ => Ident(path.packages.join("_") + "_" + path.elem)
   }
 }
 
@@ -161,7 +159,7 @@ fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
       let resolved_params = keep_and_check_resolved(params, span~)
 
       for port, _ in accessed_ports.ports {
-        let port_sig = sig.get_port(port).or_error(ElaborationError::ElaborationError(
+        let port_sig = sig.get_port(port).unwrap_or_error(ElaborationError::ElaborationError(
           message="Module '\{sig.path.to_string()}' does not declare a port named '\{port}'",
           span~,
         ))
@@ -271,7 +269,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: ModuleDecl) -> Unit raise {
         let port_id = Id::from(port.name)
 
         // the first clock port is the module's default clock
-        if fir_ty == Clock && self.current_clock.is_empty() {
+        if fir_ty == Clock && self.current_clock is None {
           self.current_clock = Some(mk_ref(mk_id(port_id)))
         }
 
@@ -322,7 +320,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> 
     let fir_ty = lower_type(port.ty, span=port.span)
     let port_id = Id::from(port.name)
 
-    if fir_ty == Clock && self.current_clock.is_empty() {
+    if fir_ty == Clock && self.current_clock is None {
       self.current_clock = Some(mk_ref(mk_id(port_id)))
     }
 
@@ -363,7 +361,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> 
 }
 
 fn unwrap_type(ty: Ref[Type?], span~: Span) -> Type raise ElaborationError {
-  ty.val.or_error(ElaborationError::ElaborationError(
+  ty.val.unwrap_or_error(ElaborationError::ElaborationError(
     message="Value requires a resolved type before lowering",
     span~,
   ))
@@ -380,7 +378,7 @@ fn Elaborator::gen_id(self: Elaborator, prefix: String) -> Id {
 }
 
 fn Elaborator::binding_name(self: Elaborator, binding: FRef?, default_prefix: String) -> Id {
-  binding.map(FRef::as_id).flatten().unwrap_or(self.gen_id(default_prefix))
+  binding.map(FRef::as_id).bind(x => x).unwrap_or(self.gen_id(default_prefix))
 }
 
 fn Elaborator::expr_as_ref(self: Elaborator, expr: FExpr, scope~: &ScopeLike, binding~: FRef? = None) -> FRef {
@@ -406,7 +404,7 @@ fn Elaborator::connect(self: Elaborator, lhs~: FRef, value~: Value, scope~: &Sco
 }
 
 fn Elaborator::get_clock(self: Elaborator, source~: String, span~: Span) -> FExpr raise {
-  self.current_clock.or_error(ElaborationError::ElaborationError(
+  self.current_clock.unwrap_or_error(ElaborationError::ElaborationError(
     message="No clock found in current module for \{source}",
     span~,
   ))
@@ -437,7 +435,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
     Struct(fields~, ty~, span=_) => {
       let id = elaborator.binding_name(binding, "struct")
 
-      if binding.is_empty() {
+      if binding is None {
         scope.add_stmt(Wire(id~, ty~))
       }
 
@@ -516,20 +514,20 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: Stmt, scope~: &ScopeLike, env~
       let ty = lower_type(unwrap_type(ty, span~), span~)
       let id = Id::from(name)
       scope.add_stmt(Wire(id~, ty~))
-      let var = mk_id(id)
+      let variable = mk_id(id)
       let val = match expr {
-        Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(var)))
+        Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(variable)))
         None => None
       }
 
       match val {
         Some(val) => {
-          self.connect(lhs=var, value=val, scope~)
+          self.connect(lhs=variable, value=val, scope~)
         }
         None => ()
       }
 
-      env.declare(path, Expr(expr=mk_ref(var), ty~, span~))
+      env.declare(path, Expr(expr=mk_ref(variable), ty~, span~))
     }
     Assign(lhs~, rhs~, span=_) => {
       let fir_lhs = self.lower_expr(lhs, scope~, env~, binding=None).as_ref(self, scope~, binding=None)
@@ -693,8 +691,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
           cases_map[int_val] = self.lower_expr(case.1, scope~, env~).as_expr(self, scope~)
         }
 
-        let tval = cases_map.get(1).or_error(ElaborationError::Unreachable(message="Missing true case in 1-bit match", span~))
-        let fval = cases_map.get(0).or_error(ElaborationError::Unreachable(message="Missing false case in 1-bit match", span~))
+        let tval = cases_map.get(1).unwrap_or_error(ElaborationError::Unreachable(message="Missing true case in 1-bit match", span~))
+        let fval = cases_map.get(0).unwrap_or_error(ElaborationError::Unreachable(message="Missing false case in 1-bit match", span~))
         let cond = self.lower_expr(subject, scope~, env~).as_expr(self, scope~)
 
         Expr(expr=Mux(cond~, tval~, fval~, ty=()), ty~, span~)
@@ -702,7 +700,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
         let res_id = if has_value {
           let res_id = self.binding_name(binding, "match")
 
-          if binding.is_empty() {
+          if binding is None {
             scope.add_stmt(Wire(id=res_id, ty~))
           }
 
@@ -713,7 +711,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
         
         let subject_binding = self.binding_name(binding, "subject")
         let fir_subject = mk_ref(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(mk_id(subject_binding))))
-        let is_complete = default.is_empty() && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width(span)).to_int()
+        let is_complete = default is None && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width(span)).to_int()
         let mut last_when: @firrtl.UntypedWhen? = None
 
         for idx, case in cases {
@@ -791,7 +789,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
 
       for field in sorted_keys {
         let field_expr = fields[field]
-        let field_name = binding.map(FRef::as_id).flatten().map(id => mk_id(id.join("$\{field}")))
+        let field_name = binding.map(FRef::as_id).bind(x => x).map(id => mk_id(id.join("$\{field}")))
         val[field] = self.lower_expr(field_expr, scope~, env~, binding=field_name)
       }
 
@@ -851,7 +849,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       }
 
       let inst_ref = match binding {
-        Some(ref) => ref
+        Some(reference) => reference
         _ => {
           let inst_ty = lower_type(unwrap_type(inst_ty, span~), span~)
           let inst_id = id_of_path(path).join("_\{self.next_id()}")
@@ -916,7 +914,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
         }
 
         match path {
-          { packages: [], member: "Reg" | "RegAsyncReset" as internal_module_name } => {
+          { packages: [], elem: "Reg" | "RegAsyncReset" as internal_module_name } => {
             let reg_ty = match get_param("T") {
               Resolved(TypeParam(ty~, ..)) => lower_type(ty, span~)
               _ => raise ElaborationError::Unreachable(message="non-type parameter in Reg instance", span~)
@@ -994,7 +992,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
               }
             }
           }
-          { packages: [], member: "Memory" } => {
+          { packages: [], elem: "Memory" } => {
             let data_type = lower_type(get_param("T").as_type(), span~)
             let depth = get_param("Depth").as_int()
             let read_ports = get_param("ReadPorts").as_int()

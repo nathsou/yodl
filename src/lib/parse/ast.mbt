@@ -27,7 +27,7 @@ pub(all) enum Stmt {
   Const(decl~: ConstDecl, span~: Span)
   Let(name~: String, ty~: Ref[Type?], expr~: Expr?, span~: Span)
   Assign(lhs~: Expr, rhs~: Expr, span~: Span)
-  For(var~: String, range~: ForRange, body~: Array[Stmt], span~: Span)
+  For(variable~: String, range~: ForRange, body~: Array[Stmt], span~: Span)
   Scope(body~: Array[Stmt], span~: Span)
 }
 
@@ -132,7 +132,7 @@ pub fn InstanceParams::new(params: Array[(String?, Param)]) -> InstanceParams {
 
 pub(all) struct Path {
   packages: Array[String]
-  member: String
+  elem: String
 } derive(Eq)
 
 pub impl Hash for Path with hash_combine(self, hasher) {
@@ -140,7 +140,7 @@ pub impl Hash for Path with hash_combine(self, hasher) {
     hasher.combine(pkg)
   }
 
-  hasher.combine(self.member)
+  hasher.combine(self.elem)
 }
 
 pub impl Show for Path with output(self, logger) {
@@ -149,17 +149,17 @@ pub impl Show for Path with output(self, logger) {
     logger.write_string("::")
   }
 
-  logger.write_string(self.member)
+  logger.write_string(self.elem)
 }
 
-pub fn Path::new(packages: Array[String], member: String) -> Path {
-  { packages, member }
+pub fn Path::new(packages: Array[String], elem: String) -> Path {
+  { packages, elem }
 }
 
 pub fn Path::prepend(self: Path, packages: Array[String]) -> Path {
   let joined = packages + self.packages
   joined.dedup()
-  Path::new(joined, self.member)
+  Path::new(joined, self.elem)
 }
 
 pub fn[E: Error] InstanceParams::map(self: Self, map_expr~: (Expr) -> Expr raise E, map_type~: (Type) -> Type raise E) -> Self raise E {
@@ -738,8 +738,8 @@ pub fn keep_and_check_resolved(params: Map[String, Param], span~: Span) -> Map[S
 pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Expr raise {
   rewrite_expr(self, rewr_stmt=fn(stmt) { Iter::singleton(stmt) }, rewr_expr=fn(expr) {
     match expr {
-      Identifier(path={ packages: [], member }, ..) => {
-        match params.get(member) {
+      Identifier(path={ packages: [], elem }, ..) => {
+        match params.get(elem) {
           Some(ConstParam(value~, span=_)) => {
             Some(value.as_expr())
           }
@@ -766,7 +766,7 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
               Andr => BigInt::from_int(@utils.bits(value).iter().all(@utils.identity).to_int())
               Orr => BigInt::from_int(@utils.bits(value).iter().any(@utils.identity).to_int())
               Xorr => BigInt::from_int(@utils.bits(value).fold(init=0, (acc, b) => acc ^ b.to_int()))
-              Neg => @utils.unreachable()
+              Neg => @utils.unreachable_code()
             }
 
             Some(Natural(value=value, width=None, base=10, span~, ty~))
@@ -1110,14 +1110,14 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
         }
       }
 
-      if path is { packages: [], member: "MemoryMask" } && new_params is [Resolved(TypeParam(ty~, ..))] {
+      if path is { packages: [], elem: "MemoryMask" } && new_params is [Resolved(TypeParam(ty~, ..))] {
         if (try? ty.mask(span~)) is Ok(mask) {
           return mask
         }
       }
 
       match path.packages {
-        [] => match params_env.get(path.member) {
+        [] => match params_env.get(path.elem) {
           Some(TypeParam(ty~, ..)) => ty.substitute(params_env, span~)
           None | Some(ConstParam(_)) => Name(path~, params=new_params)
         }

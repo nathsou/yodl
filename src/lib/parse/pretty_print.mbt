@@ -141,7 +141,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
     self.write_indent()
   }
 
-  if self.show_expr_types && not(expr.ty().val.is_empty()) {
+  if self.show_expr_types && not(expr.ty().val is None) {
     self.write("(")
   }
 
@@ -507,11 +507,11 @@ pub fn AstEmitter::emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
       self.emit_expr(rhs)
       self.write(";")
     }
-    For(var~, range~, body~, ..) => {
+    For(variable~, range~, body~, ..) => {
       self.write("\n")
       self.write_indent()
       self.write("for ")
-      self.write(var)
+      self.write(variable)
       self.write(" in ")
       self.emit_expr(range.start)
       self.write(if range.inclusive { "..=" } else { "..<" })

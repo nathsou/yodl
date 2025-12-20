@@ -27,7 +27,7 @@ pub fn is_alphanumeric(c: Char) -> Bool {
 }
 
 pub fn char_at(s: String, index: Int) -> Char {
-  s[index].to_char().unwrap()
+  s.code_unit_at(index).unsafe_to_char()
 }
 
 pub fn substring(s: String, start~: Int, end~: Int = s.length()) -> String {

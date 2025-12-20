@@ -174,7 +174,7 @@ fn as_uint(expr: TypedExpr) -> TypedExpr {
       PrimOp(op=AsUInt, args=[expr], ty=Type::UInt(expr.ty().width()))
     }
     Bundle(_) | Vec(_) => @utils.fail("Cannot convert aggregate type to UInt")
-    Const(_) => @utils.unreachable()
+    Const(_) => @utils.unreachable_code()
   }
 }
 
@@ -217,7 +217,7 @@ fn build_aggregate_connections(target: TypedRef, source: TypedRef, ty: Type) -> 
           SInt(_,) => PrimOp(op=AsSInt, args=[bits], ty~)
           Clock => PrimOp(op=AsClock, args=[bits], ty~)
           AsyncReset => PrimOp(op=AsAsyncReset, args=[bits], ty~)
-          Bundle(_) | Vec(_) | Const(_) => @utils.unreachable()
+          Bundle(_) | Vec(_) | Const(_) => @utils.unreachable_code()
         }
 
         connections.push((target, bits))

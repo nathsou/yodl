@@ -1,9 +1,8 @@
-using @utils { type Scope, min, max, pow2, zip, zip2, is_ascii, significant_bits, unreachable }
+using @utils { type Scope, min, max, pow2, zip, zip2, is_ascii, significant_bits, unreachable_code }
 using @parse {
     type Type, type ModuleSignature, trait Spanned,
     type Expr, type Decl, type Stmt, type Attribute, type AttributeValue,
-    type AccessedPorts, type ConstDecl, type ResolvedParam,
-    BITS_PER_CHAR, keep_and_check_resolved,
+    type AccessedPorts, type ConstDecl, type ResolvedParam, keep_and_check_resolved,
 }
 
 struct TypeChecker {
@@ -106,8 +105,8 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
         }
 
         match (ty1, ty2) {
-            (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(path={ packages: [], member }, ..)))) => {
-                match subst.get(member) {
+            (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(path={ packages: [], elem }, ..)))) => {
+                match subst.get(elem) {
                     Some(Int(len2)) => {
                         if len != len2 {
                             raise IncompatibleTypes(ty1~, ty2~, span~)
@@ -117,7 +116,7 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
                         raise type_error("Expected length '\{len}', got type '\{ty}'", span)
                     }
                     None => {
-                        subst[member] = Int(len)
+                        subst[elem] = Int(len)
                     }
                 }
 
@@ -136,7 +135,7 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
             }
             (Instance(..), Instance(..)) if identical_instances => ()
             (String(len~), ty2) | (ty2, String(len~)) => {
-                eqs.push((Vector(ty=Type::uint(BITS_PER_CHAR), len=Fixed(len)), ty2))
+                eqs.push((Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Fixed(len)), ty2))
             }
             _ => {
                 raise IncompatibleTypes(ty1~, ty2~, span~)
@@ -318,7 +317,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             match ty {
                 Vector(ty=inner_ty, ..) => inner_ty
                 UInt(_) | SInt(_) => Type::uint(1)
-                String(_) => Type::uint(BITS_PER_CHAR)
+                String(_) => Type::uint(@parse.BITS_PER_CHAR)
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
         }
@@ -342,7 +341,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
             match ty {
                 UInt(_) | SInt(_) => Type::uint(width)
-                String(_) => Type::Vector(ty=Type::uint(BITS_PER_CHAR), len=Fixed(width))
+                String(_) => Type::Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Fixed(width))
                 Vector(ty=inner_ty, len~) => {
                     let len = len.expect_fixed(expr.span())
                     if hi >= len {
@@ -421,7 +420,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                             (Unresolved(_), _) => raise type_error("Unresolved parameter '\{name}'", span)
                             _ => {
                                 let ty = match param {
-                                    Unresolved(_) => unreachable()
+                                    Unresolved(_) => unreachable_code()
                                     Resolved(ConstParam(value~, ..)) => self.check_expr(value.as_expr(), env)
                                     Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
                                 }
@@ -445,7 +444,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                         }
                     }
 
-                    if (path.member == "Reg" || path.member == "RegAsyncReset") && path.packages.is_empty() {
+                    if (path.elem == "Reg" || path.elem == "RegAsyncReset") && path.packages.is_empty() {
                         accessed_ports.register_access("d")
                         accessed_ports.register_access("q")
                     }
@@ -489,7 +488,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                                 len += int_len
                             }
                             String(len=str_len) => {
-                                check_elem_ty(UInt(Fixed(BITS_PER_CHAR)))
+                                check_elem_ty(UInt(Fixed(@parse.BITS_PER_CHAR)))
                                 len += str_len
                             }
                             _ => {
@@ -567,7 +566,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
         Match(subject~, cases~, default~, span~, ..) => {
             let subject_ty = self.check_expr(subject, env)
             
-            if cases.is_empty() && default.is_empty() {
+            if cases.is_empty() && default is None {
                 raise type_error("Empty match expression", span)
             }
 
@@ -672,7 +671,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
             match mem_ty {
                 Instance(sig={
-                    path: { packages: [], member: "Memory" },
+                    path: { packages: [], elem: "Memory" },
                     span: { file: "builtin.yodl", .. },
                     ..
                 }, ..) => ()
@@ -848,7 +847,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Un
                 self.check_stmt(stmt, new_env)
             }
         }
-        For(var~, range~, body~, span~) => {
+        For(variable~, range~, body~, span~) => {
             let start_ty = self.check_expr(range.start, env)
             let end_ty = self.check_expr(range.end, env)
 
@@ -858,7 +857,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Un
             }
 
             let body_env = env.child()
-            body_env.declare(Path::new([], var), end_ty)
+            body_env.declare(Path::new([], variable), end_ty)
 
             for stmt in body {
                 self.check_stmt(stmt, body_env)

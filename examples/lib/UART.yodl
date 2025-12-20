@@ -23,7 +23,7 @@ module Transmitter<ClockFreq: uint, BaudRate: uint>(
 
     // if counter underflows
     if ready_reg.q or counter.q[WIDTH] {
-        counter.d = START_VALUE
+        counter.d = uint!({1'0, START_VALUE})
     } else {
         counter.d = counter.q - 1'd1
     }

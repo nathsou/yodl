@@ -213,8 +213,8 @@ fn ExpandWhensPass::merge_scopes(
   let outer_scope = self.scopes.unsafe_top()
 
   for reference in all_refs {
-    let then_conn = then_scope.get(reference).flatten()
-    let else_conn = else_scope.get(reference).flatten()
+    let then_conn = then_scope.get(reference).bind(x => x)
+    let else_conn = else_scope.get(reference).bind(x => x)
     let outer_conn = self.scopes.lookup(reference)
 
     match (then_conn, else_conn, outer_conn) {
@@ -243,7 +243,7 @@ fn ExpandWhensPass::merge_scopes(
 
 // internal data structures
 
-typealias Map[TypedRef, TypedExpr?] as DriverMap
+type DriverMap = Map[TypedRef, TypedExpr?]
 
 priv struct ScopeStack {
   scopes: Array[DriverMap]

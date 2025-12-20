@@ -45,6 +45,7 @@ $ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.6.30+07d9d
 - [x] External modules
 - [ ] Source Maps
 - [ ] Test Benches
-- [ ] FIRRTL to RTLIL backend to bypass SystemVerilog generation
+- [X] FIRRTL to RTLIL backend to bypass SystemVerilog generation
+- [ ] Language Server Protocol (LSP) support
 - [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export
 - [x] Web tour/playground

@@ -1,6 +1,6 @@
 using @utils { type Scope, max, min, pow2 }
 
-typealias Scope[Id, Type] as TypeEnv
+type TypeEnv = Scope[Id, Type]
 
 pub fn type_check_circuit(circ: UntypedCircuit) -> TypedCircuit raise {
   let circuit_scope = TypeEnv::new()
@@ -241,7 +241,7 @@ fn TypeEnv::check_expr(self: TypeEnv, expr: UntypedExpr) -> TypedExpr raise {
 
 fn TypeEnv::check_ref(self: TypeEnv, r: UntypedRef) -> TypedRef raise {
   match r {
-    Id(id, ty=_) => Id(id, ty=self.resolve(id).or_error(Failure("Undefined identifier '\{id}'")))
+    Id(id, ty=_) => Id(id, ty=self.resolve(id).unwrap_or_error(Failure("Undefined identifier '\{id}'")))
     StaticIndexing(lhs~, index~, ty=_) => {
       let lhs = self.check_ref(lhs)
 

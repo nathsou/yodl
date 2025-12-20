@@ -23,7 +23,7 @@ pub enum SimplifierEnvEntry {
   Const(@parse.Expr)
 }
 
-typealias Scope[@parse.Path, SimplifierEnvEntry] as SimplifierEnv
+type SimplifierEnv = Scope[@parse.Path, SimplifierEnvEntry]
 
 pub fn Simplifier::new() -> Simplifier {
   { name_counts: {} }
@@ -93,7 +93,7 @@ pub fn Simplifier::simplify_expr(self: Self, expr: @parse.Expr, env~: Simplifier
         for idx, elem in elems {
           let key = idx.to_string()
           fields[key] = elem
-          types[key] = elem.ty().val.or_error(Failure("Untyped tuple element"))
+          types[key] = elem.ty().val.unwrap_or_error(Failure("Untyped tuple element"))
         }
 
         @parse.Expr::Struct(fields=fields, span~, ty={ val: Some(Struct(types)) })

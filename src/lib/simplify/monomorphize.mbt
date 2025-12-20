@@ -1,6 +1,6 @@
+using @utils { type Scope }
 
-typealias UInt as ParamsHash
-typealias @utils.Scope as Scope
+type ParamsHash = UInt
 
 pub struct Monomorphizer {
   modules: Map[@parse.Path, @parse.ModuleDecl]
@@ -84,7 +84,7 @@ pub enum MonoEnvEntry {
   GenVar(Int)
 }
 
-typealias Scope[@parse.Path, MonoEnvEntry] as MonoEnv
+type MonoEnv = Scope[@parse.Path, MonoEnvEntry]
 
 fn Monomorphizer::monomorphize_int_param(self: Self, param: @parse.IntParam, env~: MonoEnv, packages~: Array[String]) -> @parse.IntParam raise {
   match param {
@@ -256,7 +256,7 @@ fn Monomorphizer::register_monomorphized_module(
     return mono_mod
   }
 
-  let mono_path = @parse.Path::new(path.packages, "\{path.member}$\{monomorphized.length()}")
+  let mono_path = @parse.Path::new(path.packages, "\{path.elem}$\{monomorphized.length()}")
   let mono_mod = self.monomorphize_module(mod=mod_decl, params=params_map, path=mono_path, packages~)
   monomorphized[hash] = mono_mod
   self.modules[mono_path] = mono_mod
@@ -419,7 +419,7 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
       let mono_rhs = self.monomorphize_expr(rhs, env~, packages~)
       @parse.Stmt::Assign(lhs=mono_lhs, rhs=mono_rhs, span~)
     }
-    For(var~, range~, body~, span~) => {
+    For(variable~, range~, body~, span~) => {
       let start = self.monomorphize_expr(range.start, env~, packages~).as_int()
       let mut end = self.monomorphize_expr(range.end, env~, packages~).as_int()
       let unrolled_stmts = []
@@ -428,7 +428,7 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
         end += 1
       }
 
-      let var_path = @parse.Path::new([], var)
+      let var_path = @parse.Path::new([], variable)
 
       for i in start..<end {
         env.declare(var_path, GenVar(i))

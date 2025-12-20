@@ -122,7 +122,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
 
     match top_candidates {
       [] => raise Failure("No top-level module found")
-      [top] => top.member
+      [top] => top.elem
       _ => {
         if top_candidates.contains(@parse.Path::new([], "Top")) {
           "Top"

@@ -42,8 +42,8 @@ pub(all) struct Circuit[T] {
   decls: Array[Decl[T]]
 }
 
-pub typealias Circuit[Unit] as UntypedCircuit
-pub typealias Circuit[Type] as TypedCircuit
+pub type UntypedCircuit = Circuit[Unit]
+pub type TypedCircuit = Circuit[Type]
 
 pub(all) struct AnnotationTarget {
   circuit: String
@@ -132,8 +132,8 @@ pub fn[T] Decl::id(self: Decl[T]) -> Id {
   }
 }
 
-pub typealias Decl[Unit] as UntypedDecl
-pub typealias Decl[Type] as TypedDecl
+pub type UntypedDecl = Decl[Unit]
+pub type TypedDecl = Decl[Type]
 
 pub(all) enum Stmt[T] {
   Node(id~: Id, expr~: Expr[T])
@@ -249,8 +249,8 @@ pub fn Mem::ports(self: Mem) -> Array[(Id, Type)] {
   ports
 }
 
-pub typealias Stmt[Unit] as UntypedStmt
-pub typealias Stmt[Type] as TypedStmt
+pub type UntypedStmt = Stmt[Unit]
+pub type TypedStmt = Stmt[Type]
 
 pub(all) struct When[T] {
   cond: Expr[T]
@@ -258,8 +258,8 @@ pub(all) struct When[T] {
   mut otherwise: Array[Stmt[T]]?
 }
 
-pub typealias When[Unit] as UntypedWhen
-pub typealias When[Type] as TypedWhen
+pub type UntypedWhen = When[Unit]
+pub type TypedWhen = When[Type]
 
 pub fn[T] Expr::build_mux_tree(cases: Array[(Expr[T], Expr[T])], default: Expr[T]) -> Expr[T] {
   fn aux(cases: @list.List[(Expr[T], Expr[T])], acc: Expr[T]) -> Expr[T] {
@@ -269,7 +269,7 @@ pub fn[T] Expr::build_mux_tree(cases: Array[(Expr[T], Expr[T])], default: Expr[T
     }
   }
 
-  aux(@list.List::from_array({ cases.rev_inplace(); cases }), default)
+  aux(@list.List::from_array({ cases.rev_in_place(); cases }), default)
 }
 
 pub fn[T] Expr::build_when_tree(cases: Array[(Expr[T], Array[Stmt[T]])], default~: Array[Stmt[T]]? = None) -> Array[Stmt[T]] {
@@ -291,7 +291,7 @@ pub fn[T] Expr::build_when_tree(cases: Array[(Expr[T], Array[Stmt[T]])], default
     }
   }
 
-  aux(@list.List::from_array({ cases.rev_inplace(); cases }), default)
+  aux(@list.List::from_array({ cases.rev_in_place(); cases }), default)
 }
 
 pub(all) enum ReadUnderWrite { Undefined; Old; New }
@@ -325,8 +325,8 @@ pub fn[T: Default] mk_prim(op: PrimOp, args: Array[Expr[T]]) -> Expr[T] {
   PrimOp(op~, args~, ty=T::default())
 }
 
-pub typealias Expr[Unit] as UntypedExpr
-pub typealias Expr[Type] as TypedExpr
+pub type UntypedExpr = Expr[Unit]
+pub type TypedExpr = Expr[Type]
 
 pub fn Expr::uint(n: Int) -> UntypedExpr {
   Literal(Literal::uint(n), ty=())
@@ -428,8 +428,8 @@ pub fn[T] Reference::ty(self: Reference[T]) -> T {
   }
 }
 
-pub typealias Reference[Unit] as UntypedRef
-pub typealias Reference[Type] as TypedRef
+pub type UntypedRef = Reference[Unit]
+pub type TypedRef = Reference[Type]
 
 pub fn TypedRef::as_expr(self: TypedRef) -> TypedExpr {
   Reference(self, ty=self.ty())
@@ -456,8 +456,8 @@ pub(all) struct Module[T] {
   body: Array[Stmt[T]]
 }
 
-pub typealias Module[Unit] as UntypedModule
-pub typealias Module[Type] as TypedModule
+pub type UntypedModule = Module[Unit]
+pub type TypedModule = Module[Type]
 
 pub(all) enum Flow {
   Sink; Source; Duplex
@@ -682,8 +682,8 @@ pub(all) enum Command[T] {
   Stop(clk~: Expr[T], en~: Expr[T], code~: Int)
 }
 
-pub typealias Command[Unit] as UntypedCommand
-pub typealias Command[Type] as TypedCommand
+pub type UntypedCommand = Command[Unit]
+pub type TypedCommand = Command[Type]
     
 pub fn[T] Command::replace_en(self: Command[T], update_en: (Expr[T]) -> Expr[T]) -> Command[T] {
   match self {
