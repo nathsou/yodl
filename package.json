@@ -4,7 +4,7 @@
     "main": "target/js/release/build/main.min.js",
     "types": "target/js/release/build/main.d.ts",
     "description": "Modern Hardware Description Language",
-    "version": "0.1.1",
+    "version": "0.2.1",
     "files": [
         "target/js/release/build/main/main.min.js",
         "target/js/release/build/main/main.d.ts",
@@ -16,7 +16,7 @@
         "yodl": "target/js/release/build/main/main.min.js"
     },
     "scripts": {
-        "prepublishOnly": "moon build --target js && bunx esbuild@0.25.10 target/js/release/build/main/main.js --minify --outfile=target/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' target/js/release/build/main/main.min.js"
+        "prepublishOnly": "moon build --target js && bunx esbuild@0.27.2 target/js/release/build/main/main.js --minify --outfile=target/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' target/js/release/build/main/main.min.js"
     },
     "repository": {
         "type": "git",

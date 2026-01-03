@@ -1,3 +1,5 @@
+const VERSION: String = "0.2.1"
+
 fn main {
   let fs: @utils.FileSystem = {
     path_exists: @fs.path_exists,
@@ -39,6 +41,7 @@ fn main {
       }
     }
     _ => {
+      println("Yodl - Yet another hardware description language v\{VERSION}")
       println("Usage: yodl <file> [commands]")
       println("\nCommands are separated by semicolons ';'. Each command can optionally take a file path argument.")
       println("Available commands:")
@@ -48,6 +51,7 @@ fn main {
       println("  write_simplified [path] - Write the simplified code.")
       println("  write_firrtl [path]     - Write the FIRRTL output (alias: write_fir).")
       println("  write_low_firrtl [path] - Write the low FIRRTL output (alias: write_lofir).")
+      println("  write_rtlil [path]      - Write the RTLIL output.")
       println("\nExample: yodl my_design.yodl \"write_firrtl my_design.fir; write_typed my_design.typed.txt\"")
     }
   }

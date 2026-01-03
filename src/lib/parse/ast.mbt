@@ -947,7 +947,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Fixed(2),
     apply: (args, _) => {
       match args {
-        [path, _mem] => { let _ = path.expect_string() }
+        [path, _mem] => { let _ = path.as_string() }
         _ => ()
       }
 
@@ -958,7 +958,7 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Fixed(2),
     apply: (args, _) => {
       match args {
-        [path, _mem] => { let _ = path.expect_string() }
+        [path, _mem] => { let _ = path.as_string() }
         _ => ()
       }
 
@@ -1007,7 +1007,7 @@ pub fn Expr::as_bigint(self: Expr) -> BigInt raise {
   }
 }
 
-pub fn Expr::expect_string(self: Expr) -> String raise {
+pub fn Expr::as_string(self: Expr) -> String raise {
   match self {
     String(value=str, ..) => str
     _ => raise ExpectedStringExpression(expr=self, span=self.span())

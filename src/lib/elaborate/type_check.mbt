@@ -182,7 +182,7 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
                         raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span)
                     }
 
-                    Instance(sig~, params=Map::from_iter(zip(sig.params.map(p => p.name), params)), accessed_ports=AccessedPorts::new())
+                    Instance(sig~, params=Map::from_iterator(zip(sig.params.map(p => p.name), params)), accessed_ports=AccessedPorts::new())
                 }
                 None => raise UnknownModule(path~, span~)
             }
@@ -396,12 +396,12 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                     }
 
                     for name, param in params_map {
-                        let param_sig = sig.get_param(name).unwrap()
+                        let param_sig = sig.get_param(name)
 
-                        match (param, param_sig.ty) {
-                            (Resolved(ConstParam(value~, ..) as cnst_param), Type(param_ty)) => {
+                        match (param, param_sig) {
+                            (Resolved(ConstParam(value~, ..) as cnst_param), Some({ ty: Type(param_ty), span: param_span, .. })) => {
                                 let value_ty = self.check_expr(value.as_expr(), env)
-                                let _ = unify(param_ty, value_ty, span=param_sig.span, subst~)
+                                let _ = unify(param_ty, value_ty, span=param_span, subst~)
 
                                 match value {
                                     Natural(value=n, ..) => {
@@ -412,7 +412,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
                                 params_env[name] = cnst_param
                             }
-                            (Resolved(TypeParam(ty~, span~)) | Unresolved(TypeParam(ty~, span~)), AnyType) => {
+                            (Resolved(TypeParam(ty~, span~)) | Unresolved(TypeParam(ty~, span~)), Some({ ty: AnyType, .. })) => {
                                 let ty = self.resolve_ty(ty, span~)
                                 subst[name] = Type(ty)
                                 params_env[name] = TypeParam(ty~, span~)
@@ -425,7 +425,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                                     Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
                                 }
 
-                                raise type_error("Invalid instantiation of parameter '\{name}' with type '\{ty}', expected '\{param_sig.ty}'", param.span())
+                                raise type_error("Invalid instantiation of parameter '\{name}' with type '\{ty}', expected '\{param_sig.map(p => p.ty)}'", param.span())
                             }
                         }
                     }

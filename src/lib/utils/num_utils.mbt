@@ -235,17 +235,15 @@ pub fn[T: BinaryLike] bin_uint(n: UInt, width~: Int) -> Iter[T] raise {
 
   let mut p = 1U << (width - 1)
 
-  Iter::new((visit: (T) -> IterResult) => {
-    while p > 0 {
+  Iterator::iter(Iterator::new(() => {
+    if p > 0 {
       let bit = (n & p) != 0
       p = p >> 1
-      if visit(T::from_bool(bit)) == IterEnd {
-        break IterEnd
-      }
+      Some(T::from_bool(bit))
     } else {
-      IterContinue
+      None
     }
-  })
+  }))
 }
 
 test "bits_int" {
@@ -289,8 +287,8 @@ test "bitwise_not" {
   inspect(bitwise_not(-17, width=8), content="16")
 }
 
-pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {
-  let bytes = FixedArray::from_iter(chunk(bools, 8).map(fn(chunk) {
+pub fn bools_to_bytes(bools: Iterator[Bool]) -> Bytes {
+  let bytes = FixedArray::from_iterator(chunk(bools, 8).map(chunk => {
     let mut byte = 0U
 
       for i in 0..<8 {
@@ -305,7 +303,7 @@ pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {
   Bytes::from_array(bytes)
 }
 
-pub fn bools_to_bigint(bools: Iter[Bool]) -> BigInt {
+pub fn bools_to_bigint(bools: Iterator[Bool]) -> BigInt {
   BigInt::from_octets(bools_to_bytes(bools))
 }
 

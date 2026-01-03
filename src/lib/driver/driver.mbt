@@ -4,10 +4,6 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
     raise Failure("Input file must have a .yodl extension")
   }
 
-  if !(fs.path_exists)("output/") {
-    (fs.create_dir)("output/")
-  }
-
   let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs~)
   let pkg = resolver.resolve(path~, is_top_package=true)
 

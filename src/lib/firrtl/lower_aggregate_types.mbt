@@ -374,7 +374,7 @@ fn LowerAggregateTypesPass::uniquify(self: Self, prefix: String, ty: Type) -> St
   // "If a name is already taken, that name will be made unique by appending a suffix _<i> to the
   // name, where i is the lowest nonnegative integer that gives a unique name."
 
-  while subcomponents(current_prefix, Id(Id::from(prefix), ty~)).any(field => self.table.namespace_.contains(field.name)) {
+  while subcomponents(current_prefix, Id(Id::from(prefix), ty~)).iterator().any(field => self.table.namespace_.contains(field.name)) {
     current_prefix = "\{prefix}\{delim}\{iterations}"
     iterations += 1
   }
@@ -388,37 +388,32 @@ priv struct FlattenedField {
   ty: Type
 }
 
-fn subcomponents(prefix: String, reference: TypedRef) -> Iter[FlattenedField] {
-  Iter::new((visit: (FlattenedField) -> IterResult) => {
-    let ty = reference.ty()
-    match ty {
-      Bundle(fields) => {
-        for field in fields {
-          let field_ref = FieldAccess(lhs=reference, field=field.id, ty=field.ty)
-          for sub_field in subcomponents("\{prefix}\{delim}\{field.id}", field_ref) {
-            guard visit(sub_field) is IterContinue else { break }
-          }
-        } else {
-          IterContinue
-        }
+fn subcomponents(prefix: String, reference: TypedRef) -> Array[FlattenedField] {
+  let acc: Array[FlattenedField] = []
+
+  match reference.ty() {
+    Bundle(fields) => {
+      for field in fields {
+        let field_ref = FieldAccess(lhs=reference, field=field.id, ty=field.ty)
+        acc.push_iter(subcomponents("\{prefix}\{delim}\{field.id}", field_ref).iter())
       }
-      Vec(elem_ty, size) => {
-        for i in 0 ..<size {
-          let index_ref = StaticIndexing(lhs=reference, index=i, ty=elem_ty)
-          for sub_id in subcomponents("\{prefix}\{delim}\{i}", index_ref) {
-            guard visit(sub_id) is IterContinue else { break }
-          }
-        } else {
-          IterContinue
-        }
+    }
+    Vec(elem_ty, size) => {
+      for i in 0 ..<size {
+        let index_ref = StaticIndexing(lhs=reference, index=i, ty=elem_ty)
+        acc.push_iter(subcomponents("\{prefix}\{delim}\{i}", index_ref).iter())
       }
-      _ => visit({
+    }
+    _ => {
+      acc.push({
         reference,
         name: prefix,
-        ty,
+        ty: reference.ty(),
       })
     }
-  })
+  }
+
+  acc
 }
 
 test "subcomponents" {
@@ -433,7 +428,7 @@ test "subcomponents" {
     ),
   ])
 
-  let flat = subcomponents("x", Id(Id::from("x"), ty~)).collect()
+  let flat = subcomponents("x", Id(Id::from("x"), ty~))
   inspect(flat.map(field => field.name), content="[\"x_a\", \"x_b_c\", \"x_b_d_0\", \"x_b_d_1\"]")
 }
 
@@ -553,7 +548,7 @@ fn LowerAggregateTypesPass::split_mem(self: Self, mem: Mem) -> Array[Mem] {
   let is_groud_ty = mem.data_type.is_ground()
   let port_types = mem.reader_writer_types()
   let mem_ref = Id(Id::from(mem.id.value()), ty=mem.data_type)
-  let split_mems = subcomponents(mem.id.value(), mem_ref).collect()
+  let split_mems = subcomponents(mem.id.value(), mem_ref)
 
   for ports, port_type in @utils.zip2([mem.readers, mem.writers, mem.readwriters], [port_types.read, port_types.write, port_types.read_write]) {
     let port_type_fields = port_type.bundle_fields()

@@ -709,7 +709,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
           None
         }
         
-        let subject_binding = self.binding_name(binding, "subject")
+        let subject_binding = self.gen_id("subject")
         let fir_subject = mk_ref(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(mk_id(subject_binding))))
         let is_complete = default is None && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width(span)).to_int()
         let mut last_when: @firrtl.UntypedWhen? = None
@@ -1148,6 +1148,10 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
 
           match expr.ty().val {
             Some(UInt(_)) => {
+              if idx_int is None {
+                raise ElaborationError::Unsupported(message="Indexing UInt with a dynamic index is unsupported, consider using the decomposition operator: [...value][index]", span~)
+              }
+
               Expr(expr=mk_prim(Bits, [val.as_expr(self, scope~), index_expr, index_expr]), ty=UInt(1), span~)
             }
             _ => {
@@ -1253,7 +1257,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       Expr(expr=mk_prim(Pad, [arg.as_expr(self, scope~), FExpr::uint(width)]), ty~, span~)
     }
     FunCall(name="readmemb" | "readmemh" as name, args=[path, mem], span~, ..) => {
-      let path = path.expect_string()
+      let path = path.as_string()
       let mem_ref = self.lower_expr(mem, scope~, env~).as_ref(self, scope~)
       let mem_name = match mem_ref {
         Id(id, ..) => id.inner()
@@ -1274,7 +1278,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       Empty(span~)
     }
     FunCall(name="printf", args=[fmt, ..args], span~, ..) => {
-      let fmt = fmt.expect_string()
+      let fmt = fmt.as_string()
       let new_args = Array::new(capacity=args.length())
 
       for arg in args {
@@ -1293,7 +1297,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       let en = mk_lit(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
 
       let (fmt, args) = if rest is [format_str, ..args] {
-        let fmt = format_str.expect_string()
+        let fmt = format_str.as_string()
         let new_args = Array::new(capacity=args.length())
 
         for arg in args {

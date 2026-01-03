@@ -1,30 +1,32 @@
 
-pub fn[X, Y] zip(xs: Array[X], ys: Array[Y]) -> Iter[(X, Y)] {
-  let len = min(xs.length(), ys.length())
-
-  Iter::new(fn(visit: (((X, Y)) -> IterResult)) -> IterResult {
-    for i in 0..<len {
-      if visit((xs[i], ys[i])) == IterEnd {
-        break IterEnd
+pub fn[X, Y] zip_iter(xs: Iterator[X], ys: Iterator[Y]) -> Iterator[(X, Y)] {
+  Iterator::new(() => {
+    match (xs.next(), ys.next()) {
+      (Some(x), Some(y)) => {
+        Some((x, y))
       }
-    } else {
-      IterContinue
+      _ => None
     }
   })
 }
 
-pub fn[X, Y] zip2(xs: Array[X], ys: Array[Y]) -> Iter2[X, Y] {
-  let len = min(xs.length(), ys.length())
+pub fn[X, Y] zip(xs: Array[X], ys: Array[Y]) -> Iterator[(X, Y)] {
+  zip_iter(xs.iterator(), ys.iterator())
+}
 
-  Iter2::new(fn(visit: ((X, Y) -> IterResult)) -> IterResult {
-    for i in 0..<len {
-      if visit(xs[i], ys[i]) == IterEnd {
-        break IterEnd
-      }
-    } else {
-      IterContinue
+pub fn[X, Y] zip2_iter(xs: Iterator[X], ys: Iterator[Y]) -> Iterator2[X, Y] {
+  let iter = zip_iter(xs, ys)
+
+  Iterator::new(() => {
+    match iter.next() {
+      Some((x, y)) => Some((x, y))
+      None => None
     }
   })
+}
+
+pub fn[X, Y] zip2(xs: Array[X], ys: Array[Y]) -> Iterator2[X, Y] {
+  zip2_iter(xs.iterator(), ys.iterator())
 }
 
 pub fn[T] concat(xs: Array[T], ys: Array[T]) -> Array[T] {
@@ -104,42 +106,45 @@ pub fn is_ascii(c: Char) -> Bool {
   n >= 0 && n <= 255
 }
 
-pub fn[A, B] filter_map(elems: Iter[A], f: (A) -> B?) -> Iter[B] {
-  Iter::new(fn(visit: ((B) -> IterResult)) -> IterResult {
-    for elem in elems {
-      match f(elem) {
-        Some(mapped) => {
-          if visit(mapped) == IterEnd {
-            break IterEnd
+pub fn[A, B] filter_map(elems: Iterator[A], f: (A) -> B?) -> Iterator[B] {
+  Iterator::new(() => {
+    while true {
+      match elems.next() {
+        Some(elem) => {
+          if f(elem) is Some(mapped) {
+            return Some(mapped)
           }
         }
-        None => ()
+        None => return None
       }
     } else {
-      IterContinue
+      None
     }
   })
 }
 
-pub fn[T] chunk(elems: Iter[T], size: Int) -> Iter[Array[T]] {
-  Iter::new(fn(visit: ((Array[T]) -> IterResult)) -> IterResult {
-    let mut chunk = Array::new(capacity=size)
+pub fn[T] chunk(elems: Iterator[T], size: Int) -> Iterator[Array[T]] {
+  let mut chunks = Array::new(capacity=size)
 
-    for elem in elems {
-      chunk.push(elem)
+  Iterator::new(() => {
+    match elems.next() {
+      Some(elem) => {
+        chunks.push(elem)
 
-      if chunk.length() == size {
-        if visit(chunk) == IterEnd {
-          break IterEnd
+        if chunks.length() == size {
+          let result = chunks
+          chunks = Array::new(capacity=size)
+          Some(result)
+        } else {
+          None
         }
-
-        chunk = Array::new(capacity=size)
       }
-    } else {
-      if chunk.length() > 0 {
-        visit(chunk)
-      } else {
-        IterContinue
+      None => {
+        if chunks.length() > 0 {
+          Some(chunks)
+        } else {
+          None
+        }
       }
     }
   })
