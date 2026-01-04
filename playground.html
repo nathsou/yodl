@@ -616,7 +616,7 @@
             compileButton.addEventListener('click', () => {
                 try {
                     const selectedPass = passSelector.value;
-                    const outputFile = `output/Playground.${getOutputExtension(selectedPass)}`;
+                    const outputFile = `Playground.${getOutputExtension(selectedPass)}`;
                     
                     // Parse compilation commands
                     const commands = unwrap(yodl.parse_commands(`${selectedPass} ${outputFile}`));
