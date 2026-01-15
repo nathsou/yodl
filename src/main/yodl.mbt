@@ -13,7 +13,7 @@ fn main {
   match @sys.get_cli_args() {
     [_, path] => {
       try @driver.run(path~, commands=[@driver.WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")), passes=[])], fs~) catch {
-        Failure(error) => {
+        Failure::Failure(error) => {
           println(error)
           @sys.exit(1)
         }

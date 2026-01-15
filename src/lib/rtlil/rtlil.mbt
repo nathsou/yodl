@@ -171,7 +171,7 @@ pub fn Module::add_wire(
   attributes~: Map[Id, Constant] = {},
 ) -> Wire raise {
   if self.wires.contains(name) {
-    raise Failure("Wire '\{name}' is already declared")
+    raise Failure::Failure("Wire '\{name}' is already declared")
   }
 
   let wire: Wire = {
@@ -196,7 +196,7 @@ pub fn Module::add_cell(
   attributes~: Map[Id, Constant] = {},
 ) -> Cell raise {
   if self.cells.contains(name) {
-    raise Failure("Cell '\{name}' is already declared")
+    raise Failure::Failure("Cell '\{name}' is already declared")
   }
 
   let cell: Cell = {
@@ -219,7 +219,7 @@ pub fn Module::add_memory(
   size~: Int,
 ) -> Memory raise {
   if self.memories.contains(id) {
-    raise Failure("Memory '\{id}' is already declared")
+    raise Failure::Failure("Memory '\{id}' is already declared")
   }
 
   let mem: Memory = {
@@ -238,7 +238,7 @@ fn Module::check_signal_exists(self: Self, sig: Signal) -> Unit raise {
     SigConst(_) => ()
     SigWire(wire) => {
       if !self.wires.contains(wire.name) {
-        raise Failure("Wire '\{wire.name}' is not declared in module '\{self.name}'")
+        raise Failure::Failure("Wire '\{wire.name}' is not declared in module '\{self.name}'")
       }
     }
     SigChunk(signal~, ..) => self.check_signal_exists(signal)
@@ -252,7 +252,7 @@ fn Module::check_signal_exists(self: Self, sig: Signal) -> Unit raise {
 
 pub fn Module::connect(self: Self, sig1: Signal, sig2: Signal) -> Unit raise {
   if sig1.size() != sig2.size() {
-    raise Failure("Cannot connect signals of different widths: \{sig1} (width: \{sig1.size()}) and \{sig2} (width: \{sig2.size()})")
+    raise Failure::Failure("Cannot connect signals of different widths: \{sig1} (width: \{sig1.size()}) and \{sig2} (width: \{sig2.size()})")
   }
 
   self.check_signal_exists(sig1)

@@ -798,7 +798,7 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
               Or => lhs | rhs
               Xor => lhs ^ rhs
               Nand | Nor | Xnor => return None
-              _ => raise Failure("Invalid arithmetical binary operator")
+              _ => raise Failure::Failure("Invalid arithmetical binary operator")
             }
 
             Some(Natural(value~, width=None, base=10, span~, ty~))

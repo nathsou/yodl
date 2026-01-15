@@ -1,7 +1,7 @@
 
 pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> Unit raise {
   if !path.has_suffix(".yodl") {
-    raise Failure("Input file must have a .yodl extension")
+    raise Failure::Failure("Input file must have a .yodl extension")
   }
 
   let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs~)
@@ -58,7 +58,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
 
   for decl in mono_decls {
     if (try? checker.check_decl(decl)) is Err(err) {
-      raise Failure(err.to_string())
+      raise Failure::Failure(err.to_string())
     }
   }
 
@@ -117,13 +117,13 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
     let top_candidates = top_level_pkg_modules.filter(fn(path) { !monomorphizer.instanciated_modules.contains(path) })
 
     match top_candidates {
-      [] => raise Failure("No top-level module found")
+      [] => raise Failure::Failure("No top-level module found")
       [top] => top.elem
       _ => {
         if top_candidates.contains(@parse.Path::new([], "Top")) {
           "Top"
         } else {
-          raise Failure("Multiple top-level modules found: \{top_candidates}, remove extraneous uninstanciated modules or call the top module `Top`")
+          raise Failure::Failure("Multiple top-level modules found: \{top_candidates}, remove extraneous uninstanciated modules or call the top module `Top`")
         }
       }
     }
@@ -133,7 +133,7 @@ pub fn run(path~: String, commands~: Array[Command], fs~: @utils.FileSystem) -> 
     let low = @elaborate.Elaborator::new(top)
 
     if (try? low.lower(simplified_decls.iter())) is Err(err) {
-      raise Failure(err.to_string())
+      raise Failure::Failure(err.to_string())
     }
 
     low

@@ -1,9 +1,0 @@
-{
-  "is-main": true,
-  "import": [
-    "nathsou/yodl/lib/utils",
-    "nathsou/yodl/lib/driver",
-    "moonbitlang/x/fs",
-    "moonbitlang/x/sys"
-  ]
-}

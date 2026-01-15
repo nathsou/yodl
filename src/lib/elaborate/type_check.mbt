@@ -151,7 +151,7 @@ fn unify(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, UnificationParam
 }
 
 fn declare_name(env~: Scope[Path, Type], path~: Path, ty~: Type, span~: Span) -> Unit raise TypeCheckerError {
-    try env.declare(path, ty) catch {
+    try env.declare_(path, ty) catch {
         MemberAlreadyDeclared(_) => {
             raise type_error("Variable '\{path}' redeclared", span)
         }
@@ -182,7 +182,7 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
                         raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span)
                     }
 
-                    Instance(sig~, params=Map::from_iterator(zip(sig.params.map(p => p.name), params)), accessed_ports=AccessedPorts::new())
+                    Instance(sig~, params=Map::from_iter(zip(sig.params.map(p => p.name), params)), accessed_ports=AccessedPorts::new())
                 }
                 None => raise UnknownModule(path~, span~)
             }
@@ -709,7 +709,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                     }
                 }
                 _ => {
-                    raise Failure("Invalid number of arguments for $stop")
+                    raise Failure::Failure("Invalid number of arguments for $stop")
                 }
             }
 
@@ -857,7 +857,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Un
             }
 
             let body_env = env.child()
-            body_env.declare(Path::new([], variable), end_ty)
+            body_env.declare_(Path::new([], variable), end_ty)
 
             for stmt in body {
                 self.check_stmt(stmt, body_env)

@@ -110,12 +110,12 @@ fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, env~: MonoEnv,
           Some((Const(decl), _)) => {
             match @parse.ConstValue::from(decl.expr.partial_eval()) {
               Some(value) => ConstParam(value~, span~)
-              None => raise Failure("Non-constant expression in parameter")
+              None => raise Failure::Failure("Non-constant expression in parameter")
             }
           }
           Some((Type(decl), _)) => TypeParam(ty=decl.ty, span~)
-          Some((Name(_), _)) => raise Failure("Name parameters are not supported")
-          Some((GenVar(_), _)) => raise Failure("GenVar parameters are not supported")
+          Some((Name(_), _)) => raise Failure::Failure("Name parameters are not supported")
+          Some((GenVar(_), _)) => raise Failure::Failure("GenVar parameters are not supported")
           None => {
             raise UnresolvedNamedType(path~, span~)
           }
@@ -127,7 +127,7 @@ fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, env~: MonoEnv,
         if cnst is Some(value) {
           ConstParam(value~, span=expr.span())
         } else {
-          raise Failure("Non-constant expression in parameter")
+          raise Failure::Failure("Non-constant expression in parameter")
         }
       }
       TypeParam(ty~, span~) => @parse.ResolvedParam::TypeParam(ty=self.monomorphize_type(ty, env~, packages~, span~).ty, span~)
@@ -431,7 +431,7 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
       let var_path = @parse.Path::new([], variable)
 
       for i in start..<end {
-        env.declare(var_path, GenVar(i))
+        env.declare_(var_path, GenVar(i))
         let scope = []
         let scope_env = env.child()
 
@@ -464,7 +464,7 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
       }
 
       let mono_decl: @parse.ConstDecl = { path: decl.path, expr: mono_expr, ty: mono_ty, span: decl.span }
-      env.declare(decl.path, Const(mono_decl))
+      env.declare_(decl.path, Const(mono_decl))
       @parse.Stmt::Const(decl=mono_decl, span~)
     }
   }
@@ -481,7 +481,7 @@ fn Monomorphizer::monomorphize_module(
   let full_path = path.prepend(packages)
 
   for name, param in params {
-    child_env.declare(@parse.Path::new([], name), Param(param))
+    child_env.declare_(@parse.Path::new([], name), Param(param))
   }
 
   let mono_ports: Array[@parse.Port] = []
@@ -522,17 +522,17 @@ pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packa
         if mod.params.is_empty() {
           let mono_mod = self.monomorphize_module(mod~, params={}, path=mod.path, packages~)
           self.modules[mono_mod.path] = mono_mod
-          self.top_env.declare(mono_mod.path, Name(packages~))
+          self.top_env.declare_(mono_mod.path, Name(packages~))
         } else {
           let mod_path = mod.path.prepend(packages)
           self.parameterized[mod_path] = mod
-          self.top_env.declare(mod_path, Name(packages~))
+          self.top_env.declare_(mod_path, Name(packages~))
         }
       }
       ModuleDeclaration(sig) => {
         let mod_path = sig.path.prepend(packages)
         self.declared_modules[mod_path] = sig
-        self.top_env.declare(mod_path, Name(packages~))
+        self.top_env.declare_(mod_path, Name(packages~))
       }
       Const(decl) => {
         let mono_expr = self.monomorphize_expr(decl.expr, env=self.top_env, packages~)
@@ -543,7 +543,7 @@ pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packa
 
         let mono_path = decl.path.prepend(packages)
         let mono_decl: @parse.ConstDecl = { path: mono_path, expr: mono_expr, ty: mono_ty, span: decl.span }
-        self.top_env.declare(mono_path, Const(mono_decl))
+        self.top_env.declare_(mono_path, Const(mono_decl))
         self.constants[mono_path] = mono_decl
       }
       Package({ name, body, span: _ }) => {
@@ -553,7 +553,7 @@ pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packa
       TypeAlias({ name, parameters, ty, span } as decl) => {
         let path = @parse.Path::new(packages, name)
         let mono_ty = self.monomorphize_type(ty, env=self.top_env, packages~, span~).ty
-        self.top_env.declare(path, Type(decl))
+        self.top_env.declare_(path, Type(decl))
         self.type_aliases[path] = {
           name,
           parameters,

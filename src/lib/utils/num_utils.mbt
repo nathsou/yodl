@@ -184,7 +184,7 @@ pub fn bin(n: BigInt, width~: Int) -> Array[Bool] raise {
   }
 
   if a.bit_length() > width {
-    raise Failure("Value does not fit in specified width")
+    raise Failure::Failure("Value does not fit in specified width")
   }
 
   let octets = a.to_octets()
@@ -230,12 +230,12 @@ pub impl BinaryLike for Bool with from_bool(b: Bool) { b }
 
 pub fn[T: BinaryLike] bin_uint(n: UInt, width~: Int) -> Iter[T] raise {
   if width < 32 && n >= (1U << width) {
-    raise Failure("Value \{n} does not fit in specified width \{width}")
+    raise Failure::Failure("Value \{n} does not fit in specified width \{width}")
   }
 
   let mut p = 1U << (width - 1)
 
-  Iterator::iter(Iterator::new(() => {
+  Iter::iter(Iter::new(() => {
     if p > 0 {
       let bit = (n & p) != 0
       p = p >> 1
@@ -287,8 +287,8 @@ test "bitwise_not" {
   inspect(bitwise_not(-17, width=8), content="16")
 }
 
-pub fn bools_to_bytes(bools: Iterator[Bool]) -> Bytes {
-  let bytes = FixedArray::from_iterator(chunk(bools, 8).map(chunk => {
+pub fn bools_to_bytes(bools: Iter[Bool]) -> Bytes {
+  let bytes = FixedArray::from_iter(chunk(bools, 8).map(chunk => {
     let mut byte = 0U
 
       for i in 0..<8 {
@@ -303,7 +303,7 @@ pub fn bools_to_bytes(bools: Iterator[Bool]) -> Bytes {
   Bytes::from_array(bytes)
 }
 
-pub fn bools_to_bigint(bools: Iterator[Bool]) -> BigInt {
+pub fn bools_to_bigint(bools: Iter[Bool]) -> BigInt {
   BigInt::from_octets(bools_to_bytes(bools))
 }
 

@@ -49,7 +49,7 @@ fn ExpandWhensPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule 
   }
 
   if not_fully_init.length() > 0 {
-    raise Failure("The following wires are not fully initialised: \{not_fully_init}")
+    raise Failure::Failure("The following wires are not fully initialised: \{not_fully_init}")
   }
 
   self.scopes.pop()

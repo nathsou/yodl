@@ -93,7 +93,7 @@ pub fn Simplifier::simplify_expr(self: Self, expr: @parse.Expr, env~: Simplifier
         for idx, elem in elems {
           let key = idx.to_string()
           fields[key] = elem
-          types[key] = elem.ty().val.unwrap_or_error(Failure("Untyped tuple element"))
+          types[key] = elem.ty().val.unwrap_or_error(Failure::Failure("Untyped tuple element"))
         }
 
         @parse.Expr::Struct(fields=fields, span~, ty={ val: Some(Struct(types)) })
@@ -245,7 +245,7 @@ pub fn Simplifier::simplify_stmt(self: Self, stmt: @parse.Stmt, env~: Simplifier
       Iter::singleton(@parse.Stmt::Assign(lhs=simplified_lhs, rhs=simplified_rhs, span~))
     }
     For(_) => {
-      raise Failure("For stmt after monomorphization")
+      raise Failure::Failure("For stmt after monomorphization")
     }
     Scope(body~, ..) => {
       let simplified_body = []
@@ -258,7 +258,7 @@ pub fn Simplifier::simplify_stmt(self: Self, stmt: @parse.Stmt, env~: Simplifier
       simplified_body.iter()
     }
     Const(decl~, span=_) => {
-      env.declare(decl.path, Const(decl.expr))
+      env.declare_(decl.path, Const(decl.expr))
       Iter::empty()
     }
   }
@@ -294,7 +294,7 @@ fn Simplifier::simplify_decl(self: Self, decl: @parse.Decl, env~: SimplifierEnv)
       Some(@parse.Decl::ModuleDeclaration(sig))
     }
     Const(decl) => {
-      env.declare(decl.path, Const(decl.expr))
+      env.declare_(decl.path, Const(decl.expr))
       None
     }
     Package(_) => None

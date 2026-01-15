@@ -15,7 +15,7 @@ pub fn[K: Eq + Hash, T] Scope::child(self: Scope[K, T]) -> Scope[K, T] {
   { members: {}, parent: Some(self) }
 }
 
-pub fn[K: Eq + Hash + Show, T] Scope::declare(self: Scope[K, T], key: K, value: T) -> Unit raise ScopeError {
+pub fn[K: Eq + Hash + Show, T] Scope::declare_(self: Scope[K, T], key: K, value: T) -> Unit raise ScopeError {
   if self.members.contains(key) {
     raise MemberAlreadyDeclared(name=key.to_string())
   }

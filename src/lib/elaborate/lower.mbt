@@ -280,7 +280,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: ModuleDecl) -> Unit raise {
         }
         
         ports.push(fir_port)
-        env.declare(Path::new([], port.name), Expr(expr=mk_ref(mk_id(port_id)), ty=fir_ty, span=port.span))
+        env.declare_(Path::new([], port.name), Expr(expr=mk_ref(mk_id(port_id)), ty=fir_ty, span=port.span))
       }
 
       ports
@@ -527,7 +527,7 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: Stmt, scope~: &ScopeLike, env~
         None => ()
       }
 
-      env.declare(path, Expr(expr=mk_ref(variable), ty~, span~))
+      env.declare_(path, Expr(expr=mk_ref(variable), ty~, span~))
     }
     Assign(lhs~, rhs~, span=_) => {
       let fir_lhs = self.lower_expr(lhs, scope~, env~, binding=None).as_ref(self, scope~, binding=None)
@@ -1325,7 +1325,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       let code = match args {
         [] => 0
         [code] => self.lower_expr(code, scope~, env~).as_int().to_int()
-        _ => raise Failure("Unexpected number of arguments to stop!")
+        _ => raise Failure::Failure("Unexpected number of arguments to stop!")
       }
 
       scope.add_stmt(Command(Stop(clk~, en~, code~)))

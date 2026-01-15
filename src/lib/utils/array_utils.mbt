@@ -1,6 +1,6 @@
 
-pub fn[X, Y] zip_iter(xs: Iterator[X], ys: Iterator[Y]) -> Iterator[(X, Y)] {
-  Iterator::new(() => {
+pub fn[X, Y] zip_iter(xs: Iter[X], ys: Iter[Y]) -> Iter[(X, Y)] {
+  Iter::new(() => {
     match (xs.next(), ys.next()) {
       (Some(x), Some(y)) => {
         Some((x, y))
@@ -10,14 +10,14 @@ pub fn[X, Y] zip_iter(xs: Iterator[X], ys: Iterator[Y]) -> Iterator[(X, Y)] {
   })
 }
 
-pub fn[X, Y] zip(xs: Array[X], ys: Array[Y]) -> Iterator[(X, Y)] {
-  zip_iter(xs.iterator(), ys.iterator())
+pub fn[X, Y] zip(xs: Array[X], ys: Array[Y]) -> Iter[(X, Y)] {
+  zip_iter(xs.iter(), ys.iter())
 }
 
-pub fn[X, Y] zip2_iter(xs: Iterator[X], ys: Iterator[Y]) -> Iterator2[X, Y] {
+pub fn[X, Y] zip2_iter(xs: Iter[X], ys: Iter[Y]) -> Iter2[X, Y] {
   let iter = zip_iter(xs, ys)
 
-  Iterator::new(() => {
+  Iter::new(() => {
     match iter.next() {
       Some((x, y)) => Some((x, y))
       None => None
@@ -25,8 +25,8 @@ pub fn[X, Y] zip2_iter(xs: Iterator[X], ys: Iterator[Y]) -> Iterator2[X, Y] {
   })
 }
 
-pub fn[X, Y] zip2(xs: Array[X], ys: Array[Y]) -> Iterator2[X, Y] {
-  zip2_iter(xs.iterator(), ys.iterator())
+pub fn[X, Y] zip2(xs: Array[X], ys: Array[Y]) -> Iter2[X, Y] {
+  zip2_iter(xs.iter(), ys.iter())
 }
 
 pub fn[T] concat(xs: Array[T], ys: Array[T]) -> Array[T] {
@@ -106,8 +106,8 @@ pub fn is_ascii(c: Char) -> Bool {
   n >= 0 && n <= 255
 }
 
-pub fn[A, B] filter_map(elems: Iterator[A], f: (A) -> B?) -> Iterator[B] {
-  Iterator::new(() => {
+pub fn[A, B] filter_map(elems: Iter[A], f: (A) -> B?) -> Iter[B] {
+  Iter::new(() => {
     while true {
       match elems.next() {
         Some(elem) => {
@@ -123,10 +123,10 @@ pub fn[A, B] filter_map(elems: Iterator[A], f: (A) -> B?) -> Iterator[B] {
   })
 }
 
-pub fn[T] chunk(elems: Iterator[T], size: Int) -> Iterator[Array[T]] {
+pub fn[T] chunk(elems: Iter[T], size: Int) -> Iter[Array[T]] {
   let mut chunks = Array::new(capacity=size)
 
-  Iterator::new(() => {
+  Iter::new(() => {
     match elems.next() {
       Some(elem) => {
         chunks.push(elem)

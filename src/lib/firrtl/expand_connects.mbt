@@ -108,7 +108,7 @@ fn ExpandConnectsPass::dynamic_indexing_to_static(
 
     target
   } else {
-    raise Failure("Dynamic indexing is only supported on Vec types, got: \{lhs.ty()}")
+    raise Failure::Failure("Dynamic indexing is only supported on Vec types, got: \{lhs.ty()}")
   }
 }
 

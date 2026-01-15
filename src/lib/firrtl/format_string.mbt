@@ -45,7 +45,7 @@ pub fn FormatString::parse(fmt: String) -> FormatString raise {
               index += 1
             }
             c => {
-              raise Failure("Invalid format string: unexpected character after '%': \{c}")
+              raise Failure::Failure("Invalid format string: unexpected character after '%': \{c}")
             }
           }
         }

@@ -84,7 +84,7 @@ fn rewrite_annotations(module_tables: Map[Id, LoweringTable], annotations: Array
       })
 
       if ann is MemoryFileInlineAnnotation(..) && new_targets.length() > 1 {
-        raise Failure("MemoryFileInlineAnnotation cannot be applied to memories with aggregate data-types: \{target}, consider running the FlattenMemoriesPass first.")
+        raise Failure::Failure("MemoryFileInlineAnnotation cannot be applied to memories with aggregate data-types: \{target}, consider running the FlattenMemoriesPass first.")
       }
 
       for new_target in new_targets {
@@ -315,7 +315,7 @@ fn LowerAggregateTypesPass::rewrite_expr(self: Self, expr: TypedExpr, body: Arra
         if new_refs.length() == 1 {
           Reference(new_refs[0], ty~)
         } else {
-          raise Failure("Reference maps to multiple new references, cannot rewrite: \{reference}")
+          raise Failure::Failure("Reference maps to multiple new references, cannot rewrite: \{reference}")
         }
       } else {
         Reference(reference, ty~)
@@ -374,7 +374,7 @@ fn LowerAggregateTypesPass::uniquify(self: Self, prefix: String, ty: Type) -> St
   // "If a name is already taken, that name will be made unique by appending a suffix _<i> to the
   // name, where i is the lowest nonnegative integer that gives a unique name."
 
-  while subcomponents(current_prefix, Id(Id::from(prefix), ty~)).iterator().any(field => self.table.namespace_.contains(field.name)) {
+  while subcomponents(current_prefix, Id(Id::from(prefix), ty~)).iter().any(field => self.table.namespace_.contains(field.name)) {
     current_prefix = "\{prefix}\{delim}\{iterations}"
     iterations += 1
   }

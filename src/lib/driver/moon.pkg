@@ -1,0 +1,17 @@
+import {
+  "nathsou/yodl/lib/parse",
+  "nathsou/yodl/lib/elaborate",
+  "nathsou/yodl/lib/simplify",
+  "nathsou/yodl/lib/utils",
+  "nathsou/yodl/lib/firrtl",
+  "nathsou/yodl/lib/rtlil",
+}
+
+options(
+  "is-main": false,
+  link: {
+    "js": { "exports": [ "run", "parse_commands" ], "format": "esm" },
+    "native": { "exports": [ "run", "parse_commands" ] },
+    "wasm": { "exports": [ "run", "parse_commands" ] },
+  },
+)

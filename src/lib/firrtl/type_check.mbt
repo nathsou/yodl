@@ -20,7 +20,7 @@ fn TypeEnv::check_module(self: TypeEnv, mod: UntypedModule) -> TypedModule raise
   let mod_scope = self.child()
 
   for port in mod.ports {
-    mod_scope.declare(port.id, port.ty)
+    mod_scope.declare_(port.id, port.ty)
   }
 
   {
@@ -35,20 +35,20 @@ fn TypeEnv::check_stmt(self: TypeEnv, stmt: UntypedStmt) -> TypedStmt raise {
   match stmt {
     Node(id~, expr~) => {
       let expr = self.check_expr(expr)
-      self.declare(id, expr.ty())
+      self.declare_(id, expr.ty())
       Node(id~, expr~)
     }
     Wire(id~, ty~) => {
-      self.declare(id, ty)
+      self.declare_(id, ty)
       Wire(id~, ty~)
     }
     Inst(id~, of~, sig~) => {
-      self.declare(id, sig.as_bundle())
+      self.declare_(id, sig.as_bundle())
       Inst(id~, of~, sig~)
     }
     Reg(id~, ty~, clock~) => {
       let clock = self.expect(clock, Clock)
-      self.declare(id, ty)
+      self.declare_(id, ty)
       Reg(id~, ty~, clock~)
     }
     RegReset(id~, ty~, clock~, reset~, init~) => {
@@ -56,15 +56,15 @@ fn TypeEnv::check_stmt(self: TypeEnv, stmt: UntypedStmt) -> TypedStmt raise {
       let reset = self.check_expr(reset)
 
       if !(reset.ty() is (UInt(1) | Reset | AsyncReset)) {
-        raise Failure("Register reset must be of type UInt<1>, Reset, or AsyncReset, got '\{reset.ty()}'")
+        raise Failure::Failure("Register reset must be of type UInt<1>, Reset, or AsyncReset, got '\{reset.ty()}'")
       }
 
       let init = self.expect(init, ty)
-      self.declare(id, ty)
+      self.declare_(id, ty)
       RegReset(id~, ty~, clock~, reset~, init~)
     }
     Mem(mem) => {
-      self.declare(mem.id, mem.as_bundle())
+      self.declare_(mem.id, mem.as_bundle())
       Mem(mem)
     }
     Connect(lhs, rhs) => {
@@ -73,7 +73,7 @@ fn TypeEnv::check_stmt(self: TypeEnv, stmt: UntypedStmt) -> TypedStmt raise {
       let rhs_ty = rhs.ty()
 
       if !lhs.ty().is_equivalent_to(rhs_ty) {
-        raise Failure("Cannot connect '\{rhs_ty}' to '\{lhs.ty()}'")
+        raise Failure::Failure("Cannot connect '\{rhs_ty}' to '\{lhs.ty()}'")
       }
 
       Connect(lhs, rhs)
@@ -125,7 +125,7 @@ fn TypeEnv::expect(self: TypeEnv, expr: UntypedExpr, expected: Type) -> TypedExp
   let typed = self.check_expr(expr)
 
   if typed.ty() != expected {
-    raise Failure("Expected type '\{expected}', got '\{typed.ty()}'")
+    raise Failure::Failure("Expected type '\{expected}', got '\{typed.ty()}'")
   }
 
   typed
@@ -154,14 +154,14 @@ fn TypeEnv::check_expr(self: TypeEnv, expr: UntypedExpr) -> TypedExpr raise {
       let fval_ty = fval.ty()
 
       if !(cond.ty() is Type::UInt(1)) {
-        raise Failure("Mux condition must be of type UInt<1>, got '\{cond.ty()}'")
+        raise Failure::Failure("Mux condition must be of type UInt<1>, got '\{cond.ty()}'")
       }
 
       let ty: Type = match (tval_ty, fval_ty) {
         (UInt(w1), UInt(w2)) => UInt(max(w1, w2))
         (SInt(w1), SInt(w2)) => SInt(max(w1, w2))
         (_, _) if tval_ty == fval_ty => tval_ty
-        _ => raise Failure("Mux true and false values are incompatible, got '\{tval_ty}' and '\{fval_ty}'")
+        _ => raise Failure::Failure("Mux true and false values are incompatible, got '\{tval_ty}' and '\{fval_ty}'")
       }
 
       TypedExpr::Mux(cond~, tval~, fval~, ty~)
@@ -208,7 +208,7 @@ fn TypeEnv::check_expr(self: TypeEnv, expr: UntypedExpr) -> TypedExpr raise {
           let lo = lo.as_int()
 
           if hi < lo || hi >= w || lo < 0 {
-            raise Failure("Invalid bit range '\{hi}:\{lo}' for type of width '\{w}'")
+            raise Failure::Failure("Invalid bit range '\{hi}:\{lo}' for type of width '\{w}'")
           }
 
           UInt(hi - lo + 1)
@@ -217,7 +217,7 @@ fn TypeEnv::check_expr(self: TypeEnv, expr: UntypedExpr) -> TypedExpr raise {
           let n = value.as_int()
 
           if n < 0 || n > w {
-            raise Failure("Invalid head width '\{n}' for type of width '\{w}'")
+            raise Failure::Failure("Invalid head width '\{n}' for type of width '\{w}'")
           }
 
           UInt(n)
@@ -226,12 +226,12 @@ fn TypeEnv::check_expr(self: TypeEnv, expr: UntypedExpr) -> TypedExpr raise {
           let n = value.as_int()
 
           if n < 0 || n > w {
-            raise Failure("Invalid tail width '\{n}' for type of width '\{w}'")
+            raise Failure::Failure("Invalid tail width '\{n}' for type of width '\{w}'")
           }
 
           UInt(w - n)
         }
-        _ => raise Failure("Unsupported primitive operation '\{op}' with argument types '\{arg_tys}'")
+        _ => raise Failure::Failure("Unsupported primitive operation '\{op}' with argument types '\{arg_tys}'")
       }
 
       PrimOp(op~, args~, ty~)
@@ -241,18 +241,18 @@ fn TypeEnv::check_expr(self: TypeEnv, expr: UntypedExpr) -> TypedExpr raise {
 
 fn TypeEnv::check_ref(self: TypeEnv, r: UntypedRef) -> TypedRef raise {
   match r {
-    Id(id, ty=_) => Id(id, ty=self.resolve(id).unwrap_or_error(Failure("Undefined identifier '\{id}'")))
+    Id(id, ty=_) => Id(id, ty=self.resolve(id).unwrap_or_error(Failure::Failure("Undefined identifier '\{id}'")))
     StaticIndexing(lhs~, index~, ty=_) => {
       let lhs = self.check_ref(lhs)
 
       if lhs.ty() is Vec(elem_ty, size) {
         if index < 0 || index >= size {
-          raise Failure("Index '\{index}' out of bounds for vector of size '\{size}'")
+          raise Failure::Failure("Index '\{index}' out of bounds for vector of size '\{size}'")
         }
 
         StaticIndexing(lhs~, index~, ty=elem_ty)
       } else {
-        raise Failure("Cannot index non-vector type '\{lhs.ty()}'")
+        raise Failure::Failure("Cannot index non-vector type '\{lhs.ty()}'")
       }
     }
     DynamicIndexing(lhs~, index~, ty=_) => {
@@ -261,12 +261,12 @@ fn TypeEnv::check_ref(self: TypeEnv, r: UntypedRef) -> TypedRef raise {
 
       if lhs.ty() is Vec(elem_ty, _) {
         if !(index.ty() is UInt(_)) {
-          raise Failure("Dynamic index must be of type UInt, got '\{index.ty()}'")
+          raise Failure::Failure("Dynamic index must be of type UInt, got '\{index.ty()}'")
         }
 
         DynamicIndexing(lhs~, index~, ty=elem_ty)
       } else {
-        raise Failure("Cannot index non-vector type '\{lhs.ty()}'")
+        raise Failure::Failure("Cannot index non-vector type '\{lhs.ty()}'")
       }
     }
     FieldAccess(lhs~, field~, ty=_) => {
@@ -275,10 +275,10 @@ fn TypeEnv::check_ref(self: TypeEnv, r: UntypedRef) -> TypedRef raise {
       if lhs.ty() is Bundle(fields) {
         match fields.search_by(f => f.id == field) {
           Some(idx) => FieldAccess(lhs~, field~, ty=fields[idx].ty)
-          None => raise Failure("Field '\{field}' not found in bundle type '\{lhs.ty()}'")
+          None => raise Failure::Failure("Field '\{field}' not found in bundle type '\{lhs.ty()}'")
         }
       } else {
-        raise Failure("Cannot access field '\{field}' of non-bundle type '\{lhs.ty()}'")
+        raise Failure::Failure("Cannot access field '\{field}' of non-bundle type '\{lhs.ty()}'")
       }
     }
   }

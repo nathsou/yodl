@@ -49,7 +49,7 @@ pub fn lower_circuit(
         design.modules[lowering.mod.name] = lowering.mod
       }
       ExtModule(_) =>
-        raise Failure(
+        raise Failure::Failure(
           "External modules are not yet supported in RTLIL lowering",
         )
     }
@@ -135,7 +135,7 @@ fn RTLILLowering::lower_stmt(
         self.lower_expr(rhs),
       )
     When(_) =>
-      raise Failure("When statements are not supported in RTLIL lowering")
+      raise Failure::Failure("When statements are not supported in RTLIL lowering")
     Command(cmd) =>
       match cmd {
         Printf(clk~, en~, fmt~, args~) => {
@@ -161,7 +161,7 @@ fn RTLILLowering::lower_stmt(
           )
         }
         _ =>
-          raise Failure("Unsupported command '\{cmd.name()}' in RTLIL lowering")
+          raise Failure::Failure("Unsupported command '\{cmd.name()}' in RTLIL lowering")
       }
     Skip => ()
   }
@@ -224,7 +224,7 @@ fn RTLILLowering::lower_register(
   reset_init~ : (@firrtl.TypedExpr, @firrtl.TypedExpr)?,
 ) -> Unit raise {
   guard ty.is_ground() else {
-    raise Failure("Register '\{id}' must have a ground type")
+    raise Failure::Failure("Register '\{id}' must have a ground type")
   }
   self.reg_ids.add(id)
   let width = ty.width()
@@ -250,7 +250,7 @@ fn RTLILLowering::lower_register(
     let rst = self.lower_expr(reset)
     let init = match init {
       Literal(lit, ..) => lower_literal(lit)
-      _ => raise Failure("Register init expression must be a literal value")
+      _ => raise Failure::Failure("Register init expression must be a literal value")
     }
     if async_rst {
       parameters["ARST_POLARITY"] = ConstInteger(1)
@@ -273,25 +273,25 @@ fn RTLILLowering::lower_register(
 ///|
 fn RTLILLowering::lower_mem(self : Self, mem : @firrtl.Mem) -> Unit raise {
   guard mem.data_type.is_ground() else {
-    raise Failure("Memory '\{mem.id}' must have a ground data type")
+    raise Failure::Failure("Memory '\{mem.id}' must have a ground data type")
   }
   guard mem.read_latency <= 1 else {
-    raise Failure(
+    raise Failure::Failure(
       "Memories with read latency > 1 are not yet supported in RTLIL lowering",
     )
   }
   guard mem.write_latency <= 1 else {
-    raise Failure(
+    raise Failure::Failure(
       "Memories with write latency > 1 are not yet supported in RTLIL lowering",
     )
   }
   guard mem.read_under_write is Undefined else {
-    raise Failure(
+    raise Failure::Failure(
       "Memories with defined read-under-write behaviour are not yet supported in RTLIL lowering",
     )
   }
   guard mem.readwriters.is_empty() else {
-    raise Failure(
+    raise Failure::Failure(
       "Memories with read-write ports are not yet supported in RTLIL lowering",
     )
   }
@@ -318,7 +318,7 @@ fn RTLILLowering::lower_mem(self : Self, mem : @firrtl.Mem) -> Unit raise {
       } noraise {
         bits => {
           if bits.length() != mem.depth * data_width {
-            raise Failure(
+            raise Failure::Failure(
               "Inconsistent memory initialization width: expected \{mem.depth * data_width} bits, got \{bits.length()} bits",
             )
           }
@@ -527,7 +527,7 @@ fn RTLILLowering::lower_reference(
   let id = lower_id(wire_name)
   match self.mod.wires.get(id) {
     Some(wire) => SigWire(wire)
-    None => raise Failure("Wire '\{id}' not found in module '\{self.mod.name}'")
+    None => raise Failure::Failure("Wire '\{id}' not found in module '\{self.mod.name}'")
   }
 }
 
@@ -637,7 +637,7 @@ fn RTLILLowering::lower_primop(
       let lo = lit_lo.as_int()
       SigChunk(signal~, width=hi - lo + 1, offset=hi)
     }
-    _ => raise Failure("Invalid primop '\{op}' with \{args.length()} arguments")
+    _ => raise Failure::Failure("Invalid primop '\{op}' with \{args.length()} arguments")
   }
 }
 
