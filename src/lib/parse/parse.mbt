@@ -488,7 +488,7 @@ fn Parser::parse_instance_parameter(self: Parser) -> Param raise {
 
 fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
   let start_idx = self.index
-  let params: Array[(String?, Param)] = self.parse_module_parameters(fn() {
+  let params: Array[(String?, Param)] = self.parse_module_parameters(() => {
     match self.lookahead(0).kind {
       Identifier(name) => {
         if self.lookahead(1).kind == Colon {
@@ -1007,7 +1007,7 @@ fn Parser::parse_module_signature(self: Parser, attributes~: Map[String, Attribu
   let start_idx = self.index
   self.expect(Module, start_idx)
   let name = self.parse_identifier()
-  let params = self.parse_module_parameters(fn() {
+  let params = self.parse_module_parameters(() => {
     let param_start_idx = self.index
     let name = self.parse_identifier()
     self.expect(Colon, start_idx)

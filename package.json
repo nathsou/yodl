@@ -1,22 +1,22 @@
 {
     "type": "commonjs",
     "name": "yodl",
-    "main": "target/js/release/build/main.min.js",
-    "types": "target/js/release/build/main.d.ts",
+    "main": "_build/js/release/build/main/main.min.js",
+    "types": "_build/js/release/build/main/main.d.ts",
     "description": "Modern Hardware Description Language",
     "version": "0.2.1",
     "files": [
-        "target/js/release/build/main/main.min.js",
-        "target/js/release/build/main/main.d.ts",
-        "target/js/release/build/main/main.mi",
-        "target/js/release/build/main/main.core",
-        "target/js/release/build/main/moonbit.d.ts"
+        "_build/js/release/build/main/main.min.js",
+        "_build/js/release/build/main/main.d.ts",
+        "_build/js/release/build/main/main.mi",
+        "_build/js/release/build/main/main.core",
+        "_build/js/release/build/main/moonbit.d.ts"
     ],
     "bin": {
-        "yodl": "target/js/release/build/main/main.min.js"
+        "yodl": "_build/js/release/build/main/main.min.js"
     },
     "scripts": {
-        "prepublishOnly": "moon build --target js && bunx esbuild@0.27.2 target/js/release/build/main/main.js --minify --outfile=target/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' target/js/release/build/main/main.min.js"
+        "prepublishOnly": "moon build --target js && bunx esbuild@0.27.2 _build/js/release/build/main/main.js --minify --outfile=_build/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' _build/js/release/build/main/main.min.js"
     },
     "repository": {
         "type": "git",

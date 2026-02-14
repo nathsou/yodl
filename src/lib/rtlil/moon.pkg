@@ -2,4 +2,5 @@ import {
   "nathsou/yodl/lib/parse",
   "nathsou/yodl/lib/utils",
   "nathsou/yodl/lib/firrtl",
+  "moonbitlang/core/set",
 }

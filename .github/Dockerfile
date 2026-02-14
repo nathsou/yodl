@@ -13,7 +13,7 @@ RUN apt update
 RUN apt install -y curl git wget tar unzip
 
 # Install Moonbit
-RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.7.1+adb125543'
+RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.8.2+3382e0600'
 ENV PATH="/root/.moon/bin:${PATH}"
 RUN moon update
 RUN moon install
@@ -38,7 +38,7 @@ RUN mv mdbook /usr/local/bin/mdbook
 RUN rm mdbook-v0.4.45-x86_64-unknown-linux-gnu.tar.gz
 
 # Build
-RUN moon build --target js
+RUN moon build --target js --release
 RUN bun build src/main/yodl.ts --outdir bundle --minify
 RUN cd book && mdbook build
 RUN mkdir artifacts

@@ -3,6 +3,7 @@ import {
   "nathsou/yodl/lib/firrtl",
   "nathsou/yodl/lib/utils",
   "moonbitlang/x/stack",
+  "moonbitlang/core/list",
 }
 
 options(

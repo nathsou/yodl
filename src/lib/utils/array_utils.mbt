@@ -117,7 +117,7 @@ pub fn[A, B] filter_map(elems: Iter[A], f: (A) -> B?) -> Iter[B] {
         }
         None => return None
       }
-    } else {
+    } nobreak {
       None
     }
   })

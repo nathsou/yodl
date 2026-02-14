@@ -283,7 +283,7 @@ fn[T] resolve_member(env: Scope[@parse.Path, T], path~: @parse.Path, packages~: 
         } else {
           let _ = subpackages.pop()
         }
-      } else {
+      } nobreak {
         None
       }
     }
@@ -293,7 +293,7 @@ fn[T] resolve_member(env: Scope[@parse.Path, T], path~: @parse.Path, packages~: 
 fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv, packages~: Array[String]) -> @parse.Expr raise {
   let rewr_stmt = fn(stmt) raise { Iter::singleton(self.monomorphize_stmt(stmt, env~, packages~)) }
 
-  let res = @parse.rewrite_expr(expr, rewr_stmt~, rewr_expr=fn(expr) {
+  let res = @parse.rewrite_expr(expr, rewr_stmt~, rewr_expr=expr => {
     (match expr {
       Identifier(path~, span~, ty=_) => Some({
         match resolve_member(env, path~, packages~) {
@@ -342,8 +342,8 @@ fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv
           (mod.path, inst_params)
         } else {
           let mono_params = params.map(
-            map_expr=fn(expr) { self.monomorphize_expr(expr, env~, packages~) },
-            map_type=fn(ty) { self.monomorphize_type(ty, env~, packages~, span~).ty },
+            map_expr=expr => { self.monomorphize_expr(expr, env~, packages~) },
+            map_type=ty => { self.monomorphize_type(ty, env~, packages~, span~).ty },
           )
 
           let resolved_params = []

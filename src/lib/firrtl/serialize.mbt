@@ -429,7 +429,7 @@ fn show_format_string(fmt: String) -> String {
 
 fn show_int(radix~: Int?, value: BigInt) -> String {
   match radix {
-    Some(16) => "0h\{value.to_hex()}"
+    Some(16) => "0h\{value.to_string(radix=16)}"
     _ => "\{value}"
   }
 }

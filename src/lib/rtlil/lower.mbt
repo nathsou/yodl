@@ -102,7 +102,6 @@ fn RTLILLowering::lower_stmt(
     }
     Wire(id~, ty~) => {
       let _ = self.mod.add_wire(name=lower_id(id.inner()), width=ty.width())
-
     }
     Inst(id~, of~, sig~) => {
       let inst_id = lower_id(id.inner())

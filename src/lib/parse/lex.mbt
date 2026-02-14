@@ -119,7 +119,7 @@ fn parse_uint(s: String, base~: Int) -> BigInt {
 
       n
     }
-    16 => BigInt::from_hex(s)
+    16 => BigInt::from_string(s, radix=16)
     _ => BigInt::from_string(s)
   }
 }

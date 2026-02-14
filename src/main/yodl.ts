@@ -1,5 +1,5 @@
-import type * as MoonBit from "../../target/js/release/build/lib/driver/moonbit.js";
-export * as yodl from "../../target/js/release/build/lib/driver/driver.js";
+import type * as MoonBit from "../../_build/js/release/build/lib/driver/moonbit.d.ts";
+export * as yodl from "../../_build/js/release/build/lib/driver/driver.js";
 import { getExampleFiles } from "./examples.ts" with { type: "macro" };
 
 type Result<T> = MoonBit.Result<T, string>;

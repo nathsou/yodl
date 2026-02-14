@@ -72,7 +72,7 @@ pub impl @parse.Spanned for SimplifierError with span(self) -> @parse.Span {
 pub fn Simplifier::simplify_expr(self: Self, expr: @parse.Expr, env~: SimplifierEnv, scope~: Array[@parse.Stmt]) -> @parse.Expr raise {
   let rewr_stmt = fn(stmt) raise { self.simplify_stmt(stmt, env~, scope~) }
 
-  @parse.rewrite_expr(expr, rewr_stmt~, rewr_expr=fn(expr) {
+  @parse.rewrite_expr(expr, rewr_stmt~, rewr_expr=expr => {
     match expr {
       Identifier(path~, span~, ty~) => {
         match env.resolve(path) {
