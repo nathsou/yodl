@@ -1,8 +1,9 @@
 {
   "name": "nathsou/yodl",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "deps": {
-    "moonbitlang/x": "0.4.38"
+    "moonbitlang/x": "0.4.38",
+    "peter-jerry-ye/wasi": "0.24.3"
   },
   "readme": "README.md",
   "repository": "",
