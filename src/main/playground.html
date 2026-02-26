@@ -307,9 +307,9 @@
                     <option value="write_mono">write_mono</option>
                     <option value="write_typed">write_typed</option>
                     <option value="write_simplified">write_simplified</option>
-                    <option value="write_firrtl">write_firrtl</option>
-                    <option value="write_low_firrtl" selected>write_low_firrtl</option>
-                    <option value="write_rtlil" selected>write_rtlil</option>
+                    <option value="write_firrtl" selected>write_firrtl</option>
+                    <option value="write_low_firrtl">write_low_firrtl</option>
+                    <option value="write_rtlil">write_rtlil</option>
                 </select>
             </div>
             
@@ -343,8 +343,9 @@
     </div>
 
     <script type="module">
-        import { unwrap, yodl, fs } from './bundle/yodl.js';
-
+        import { unwrap, yodl, ext } from './bundle/yodl.js';
+        
+        const fs = ext.fs;
         const THEME_KEY = 'yodl-playground-theme';
         const themeSelect = document.getElementById('theme-select');
         const themeIcon = document.getElementById('theme-icon');
@@ -548,12 +549,6 @@
             const passSelector = document.getElementById('pass-selector');
             
             populateExamples();
-            
-            // Set default example if available
-            if (exampleSelector.options.length > 1) {
-                exampleSelector.selectedIndex = 1; // First non-blank option
-                loadExample(exampleSelector.value);
-            }
 
             // Example selector event listener
             exampleSelector.addEventListener('change', () => {
@@ -570,14 +565,26 @@
             function populateExamples() {
                 try {
                     const examples = fs.root.children.get('examples').children;
+                    let defaultIndex = 0;
+                    let index = 0;
+
                     for (const { name } of examples.values()) {
                         if (name.endsWith('.yodl')) {
                             const option = document.createElement('option');
                             option.value = name;
                             option.textContent = name;
                             exampleSelector.appendChild(option);
+
+                            if (name === 'Euler1.yodl') {
+                                defaultIndex = index + 1;
+                            }
+
+                            index += 1;
                         }
                     }
+
+                    exampleSelector.selectedIndex = defaultIndex;
+                    loadExample(exampleSelector.value);
                 } catch (error) {
                     console.error("Failed to enumerate examples:", error);
                 }
@@ -625,7 +632,7 @@
                     fs.write_string_to_file('examples/Playground.yodl', inputEditor.getValue());
                     
                     // Run compiler
-                    const res = yodl.run('examples/Playground.yodl', commands, fs);
+                    const res = yodl.run('examples/Playground.yodl', commands, ext);
 
                     if (res._0 !== undefined) {
                         outputEditor.setValue(res._0._0);
