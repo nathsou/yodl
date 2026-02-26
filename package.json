@@ -16,7 +16,7 @@
         "yodl": "_build/js/release/build/main/main.min.js"
     },
     "scripts": {
-        "prepublishOnly": "moon build --target js --release && bunx esbuild@0.27.2 _build/js/release/build/main/main.js --minify --outfile=_build/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' _build/js/release/build/main/main.min.js",
+        "prepublishOnly": "moon build src/main --target=js --release && bunx esbuild@0.27.2 _build/js/release/build/main/main.js --minify --outfile=_build/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' _build/js/release/build/main/main.min.js",
         "build-wasi": "moon build src/main-wasi/ --target=wasm --release && cp _build/wasm/release/build/main-wasi/main-wasi.wasm ./res/yodl-wasi.wasm"
     },
     "repository": {

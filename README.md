@@ -11,10 +11,18 @@ Yet anOther (hardware) Description Language
 
 # Installation
 
+## npm
 The JS build of Yodl can be installed from npm:
 
 ```bash
 $ npm install --global yodl
+```
+
+## wasm
+A `WASI Preview 1` build of yodl is included in this repository:
+
+```bash
+wasmtime --dir examples res/yodl-wasi.wasm examples/RISCV.yodl "write_firrtl"
 ```
 
 To compile FIRRTL outputs to SystemVerilog, install [firtool](https://github.com/llvm/circt/releases/tag/firtool-1.129.0)

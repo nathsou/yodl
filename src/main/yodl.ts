@@ -21,6 +21,13 @@ type FileSystem = {
     read_file_to_string: (path: string) => Result<string>;
 };
 
+type Externals = {
+    fs: FileSystem;
+    println: (str: string) => void;
+    get_args: () => string[];
+    exit: (code: number) => void;
+};
+
 type FileNode = {
     type: 'file';
     name: string;
@@ -205,4 +212,11 @@ export function unwrap<T>(result: MoonBit.Result<T, any>): T {
     return result._0;
 }
 
-export const fs = createInMemoryFileSystem(getExampleFiles());
+export const ext: Externals = {
+    fs: createInMemoryFileSystem(getExampleFiles()),
+    println: str => console.log(str),
+    get_args: () => [],
+    exit: code => {
+        throw new Error(`Exit with code ${code}`);
+    },
+};

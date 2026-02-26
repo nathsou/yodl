@@ -38,7 +38,7 @@ RUN mv mdbook /usr/local/bin/mdbook
 RUN rm mdbook-v0.4.45-x86_64-unknown-linux-gnu.tar.gz
 
 # Build
-RUN moon build --target js --release
+RUN moon build src/lib/driver --target=js --release
 RUN bun build src/main/yodl.ts --outdir bundle --minify
 RUN cd book && mdbook build
 RUN mkdir artifacts
