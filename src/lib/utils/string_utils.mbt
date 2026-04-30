@@ -31,5 +31,5 @@ pub fn char_at(s: String, index: Int) -> Char {
 }
 
 pub fn substring(s: String, start~: Int, end~: Int = s.length()) -> String {
-  try s[start:end].to_string() catch { _ => "" }
+  s[start:end].to_owned()
 }

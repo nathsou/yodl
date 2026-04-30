@@ -47,7 +47,7 @@ fn Lexer::next_non_whitespace(self: Lexer) -> Char? {
   while i < self.input.length() {
     let char = @utils.char_at(self.input, i)
 
-    if not(@utils.is_whitespace(char)) {
+    if !@utils.is_whitespace(char) {
       return Some(char)
     }
 

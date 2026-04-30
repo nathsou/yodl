@@ -60,8 +60,8 @@ test "clog2_int" {
   inspect(clog2_int(65535), content="16")
   inspect(clog2_int(65536), content="16")
   inspect(clog2_int(65537), content="17")
-  inspect(clog2_int(@int.max_value), content="32")
-  inspect(clog2_int(@int.min_value), content="0")
+  inspect(clog2_int(@int.MAX_VALUE), content="32")
+  inspect(clog2_int(@int.MIN_VALUE), content="0")
   inspect(clog2_int(-1), content="0")
   inspect(clog2_int(0), content="0")
 }

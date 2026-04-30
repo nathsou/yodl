@@ -5,7 +5,7 @@ pub struct Scope[K, T] {
 
 pub suberror ScopeError {
   MemberAlreadyDeclared(name~: String)
-} derive(Show)
+} derive(Debug)
 
 pub fn[K: Eq + Hash, T] Scope::new() -> Scope[K, T] {
   { members: {}, parent: None }

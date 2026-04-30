@@ -141,7 +141,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
     self.write_indent()
   }
 
-  if self.show_expr_types && not(expr.ty().val is None) {
+  if self.show_expr_types && !(expr.ty().val is None) {
     self.write("(")
   }
 
@@ -700,7 +700,7 @@ pub impl Show for AttributeValue with output(val, logger) {
       let mut first = true
 
       for key, value in dict {
-        if not(first) {
+        if !first {
           logger.write_string(", ")
         }
         first = false

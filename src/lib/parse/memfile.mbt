@@ -1,17 +1,16 @@
 
 pub suberror MemFileError {
-  StrConvError(@strconv.StrConvError)
   UnexpectedChar(Char)
   InvalidBase(Int)
   InvalidDigitForBase(digit~: Char, base~: Int)
   InconsistentWidth(expected~: Int, actual~: Int)
   Error(Error)
-} derive(Show)
+} derive(Debug)
 
 pub fn[T: @utils.BinaryLike] parse_mem_file(content: String, base~: Int, start~: Int, end~: Int?) -> Array[T] raise MemFileError {
   let end = match end {
     Some(end) => end
-    None => @int.max_value
+    None => @int.MAX_VALUE
   }
 
   let width_factor = match base {
@@ -117,11 +116,7 @@ pub fn[T: @utils.BinaryLike] parse_mem_file(content: String, base~: Int, start~:
       }
     }
 
-    let value = try @strconv.parse_uint(lexeme, base~) catch {
-      err => raise StrConvError(err)
-    } noraise {
-      value => value
-    }
+    let value = parse_uint(lexeme, base~).to_uint()
 
     bits.push_iter(try @utils.bin_uint(value, width~) catch { err => raise Error(err) } noraise { bits => bits })
   }

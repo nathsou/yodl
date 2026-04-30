@@ -8,6 +8,8 @@ import {
   "peter-jerry-ye/wasi/sync_io"
 }
 
+supported_targets = "+wasm"
+
 options(
   link: {
     "wasm": { "export-memory-name": "memory", "exports": ["start:_start"] }, 

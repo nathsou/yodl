@@ -6,7 +6,26 @@ pub enum FormatStringPart {
   DecimalPlaceholder
   HexadecimalPlaceholder
   EscapedChar(Char)
-} derive (Show, Eq)
+} derive(Eq)
+
+pub impl Show for FormatStringPart with output(self, logger) {
+  match self {
+    StringPart(value) => {
+      logger.write_string("StringPart(")
+      logger.write_object(value)
+      logger.write_char(')')
+    }
+    BinaryPlaceholder => logger.write_string("BinaryPlaceholder")
+    AsciiPlaceholder => logger.write_string("AsciiPlaceholder")
+    DecimalPlaceholder => logger.write_string("DecimalPlaceholder")
+    HexadecimalPlaceholder => logger.write_string("HexadecimalPlaceholder")
+    EscapedChar(value) => {
+      logger.write_string("EscapedChar(")
+      logger.write_object(value)
+      logger.write_char(')')
+    }
+  }
+}
 
 pub struct FormatString {
   parts: Array[FormatStringPart]
@@ -45,7 +64,7 @@ pub fn FormatString::parse(fmt: String) -> FormatString raise {
               index += 1
             }
             c => {
-              raise Failure::Failure("Invalid format string: unexpected character after '%': \{c}")
+              raise Failure::Failure("Invalid format string: unexpected character after '%': \{@debug.to_string(c)}")
             }
           }
         }

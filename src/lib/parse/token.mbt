@@ -20,14 +20,14 @@ enum TokenType {
   BuiltinFunction(String)
   Natural(value~: BigInt, width~: Int?, base~: Int)
   StringLiteral(String); CharacterLiteral(Char)
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 pub(all) struct Span {
   file: String
   file_content: String
   start: (Int, Int)
   end: (Int, Int)
-}
+} derive(Debug)
 
 pub impl Eq for Span with equal(self, other) {
   self.file == other.file && self.start == other.start && self.end == other.end
@@ -50,14 +50,14 @@ pub fn Span::context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool =
 
       window.write_string(line_nb)
       window.write_char(' ')
-      window.write_string(line.to_string())
+      window.write_string(line.to_owned())
 
       if is_inside_span {
         let line_start = if index == self.start.0 - 1 { self.start.1 } else { 0 }
         let line_end = if index == self.end.0 - 1 { self.end.1 } else { line.length() }
         let is_blank = line.iter().all(@utils.is_whitespace)
 
-        if not(is_blank) {
+        if !is_blank {
           window.write_char('\n')
 
           for _ in 0..<line_nb.length() {
@@ -68,7 +68,7 @@ pub fn Span::context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool =
             let mut col = 0
 
             for idx, char in line {
-              if not(@utils.is_whitespace(char)) {
+              if !@utils.is_whitespace(char) {
                 col = idx
                 break
               }
@@ -84,7 +84,7 @@ pub fn Span::context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool =
           let last_non_whitespace_col = {
             let mut col = 0
             for idx, char in line {
-              if not(@utils.is_whitespace(char)) {
+              if !@utils.is_whitespace(char) {
                 col = idx
               }
             }
@@ -116,7 +116,7 @@ pub fn Span::context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool =
 struct Token {
   kind: TokenType
   span: Span
-} derive(Show)
+} derive(Debug)
 
 fn TokenType::to_binop(self: Self) -> BinaryOp? {
   match self {

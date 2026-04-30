@@ -209,7 +209,7 @@ pub fn cli(ext: @utils.Externals) -> Unit {
     [_, path, cmds] => {
       try parse_commands(cmds) catch {
         error => {
-          (ext.println)("\{error}")
+          (ext.println)(@debug.to_string(error))
           (ext.exit)(1)
         }
       } noraise {

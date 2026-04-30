@@ -14,7 +14,7 @@ pub suberror ResolutionError {
   CouldNotExtractPackageName(String)
   PackageNameConflict(name~: String, path1~: String, path2~: String)
   MultiLevelImportNotSupportedYet(packages~: Array[String])
-} derive(Show)
+} derive(Debug)
 
 pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem) -> Resolver raise ResolutionError {
   {
@@ -180,7 +180,7 @@ pub fn Resolver::resolve(self: Self, path~: String, is_top_package~: Bool) -> @p
     span: parser.span(0),
   }
 
-  if not(is_top_package) {
+  if !is_top_package {
     self.resolved_packages[path] = pkg
   }
 

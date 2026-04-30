@@ -659,7 +659,7 @@ pub(all) struct BundleField {
   id: Id
   flip: Bool
   ty: Type
-} derive(Eq, Show)
+} derive(Eq)
 
 pub fn BundleField::from(id~: Id, ty~: Type, flip~: Bool = false) -> BundleField {
   { id, flip, ty }

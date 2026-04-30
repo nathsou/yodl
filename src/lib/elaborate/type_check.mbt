@@ -70,7 +70,13 @@ impl Show for TypeCheckerError with output(self, logger) {
             logger.write_string("Expected constant expression")
         }
         InvalidAttributeArgs(name~, args~, expected~, ..) => {
-            logger.write_string("Invalid arguments '\{args}' for attribute '\{name}', expected \{expected}")
+            let expected_str = "[" + expected.iter().map(value => {
+                match value {
+                    Str => "str"
+                    Dict => "dict"
+                }
+            }).join(", ") + "]"
+            logger.write_string("Invalid arguments '\{args}' for attribute '\{name}', expected \{expected_str}")
         }
     }
 
@@ -226,7 +232,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
         Unary(op~, expr~, span~, ..) => {
             let ty = self.check_expr(expr, env, expected_ty~)
  
-            if not(ty.is_numerical()) {
+            if !ty.is_numerical() {
                 raise type_error("Invalid operand type '\{ty}' for unary operator '\{op}, expected uint or sint", span)
             }
 
@@ -310,7 +316,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             let ty = self.check_expr(expr, env)
             let index_ty = self.check_expr(index, env)
 
-            if not(index_ty.is_numerical()) {
+            if !index_ty.is_numerical() {
                 raise type_error("Index must be an integer", index.span())
             }
 
@@ -425,7 +431,11 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                                     Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
                                 }
 
-                                raise type_error("Invalid instantiation of parameter '\{name}' with type '\{ty}', expected '\{param_sig.map(p => p.ty)}'", param.span())
+                                let expected_ty = "[" + param_sig.iter().map(p => p.ty.to_string()).join(", ") + "]"
+                                raise type_error(
+                                    "Invalid instantiation of parameter '\{name}' with type '\{ty}', expected '\{expected_ty}'",
+                                    param.span(),
+                                )
                             }
                         }
                     }
@@ -521,7 +531,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 stack.push((ty, span))
             }
 
-            while not(stack.is_empty()) {
+            while !stack.is_empty() {
                 let (ty, span) = stack.unsafe_pop()
 
                 match ty {
@@ -701,7 +711,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 [exit_code] => {
                     let exit_code_ty = self.check_expr(exit_code, env)
 
-                    if not(exit_code_ty.is_numerical()) {
+                    if !exit_code_ty.is_numerical() {
                         raise type_error(
                             "Invalid exit code type '\{exit_code_ty}' in stop statement, expected an integer",
                             span,
@@ -906,7 +916,7 @@ priv enum AttributeValueType {
     Str
     Dict
     // Int
-} derive(Show)
+}
 
 let module_attribute_signatures: Map[String, Array[AttributeValueType]] = {
     "internal": [],

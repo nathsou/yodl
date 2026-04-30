@@ -5,6 +5,7 @@ import {
   "nathsou/yodl/lib/utils",
   "nathsou/yodl/lib/firrtl",
   "nathsou/yodl/lib/rtlil",
+  "moonbitlang/core/debug",
 }
 
 options(

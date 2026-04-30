@@ -796,7 +796,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       Value::Struct(fields=val, ty~, span~)
     }
     Instance(path~, params~, ports~, span~, ty=inst_ty) => {
-      if params.params.length() > 0 && not(self.declared_modules.contains(path)) {
+      if params.params.length() > 0 && !self.declared_modules.contains(path) {
         raise ElaborationError(message="Cannot elaborate parametric instance of module '\{path.to_string()}'", span~)
       }
 
@@ -1325,16 +1325,17 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       let code = match args {
         [] => 0
         [code] => self.lower_expr(code, scope~, env~).as_int().to_int()
-        _ => raise Failure::Failure("Unexpected number of arguments to stop!")
+        _ => raise fail("Unexpected number of arguments to stop!")
       }
 
       scope.add_stmt(Command(Stop(clk~, en~, code~)))
       Empty(span~)
     }
-    FunCall(name="rev", args=[arg], span~, ty={val: Some(Vector(ty=elem_ty, len=Fixed(len)))}) => {
+    FunCall(name="rev", args=[arg], span~, ty={val: Some(Vector(len=Fixed(len), ..) | String(len~) as ty)}) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let arg_ref = arg.as_ref(self, scope~)
       let elems = Array::new(capacity=len)
+      let elem_ty = if ty is Vector(ty~, ..) { ty } else { UInt(Fixed(@parse.BITS_PER_CHAR)) }
       let fir_elem_ty = lower_type(elem_ty, span~)
 
       for i in 0..<len {

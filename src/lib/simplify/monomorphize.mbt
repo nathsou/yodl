@@ -325,7 +325,7 @@ fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv
 
         self.instanciated_modules.add(resolved_path)
 
-        let (mono_path, mono_params) = if params.params.length() > 0 && not(self.declared_modules.contains(path)) {
+        let (mono_path, mono_params) = if params.params.length() > 0 && !self.declared_modules.contains(path) {
           let mod = self.register_monomorphized_module(
             path=resolved_path,
             params~,
@@ -396,7 +396,7 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
 
       match mono_ty {
         Some(Name(path~, params~)) => {
-          if not(is_type_alias) && params.length() > 0 {
+          if !is_type_alias && params.length() > 0 {
             let _ = self.register_monomorphized_module(
               path~,
               params=@parse.InstanceParams::new(@utils.map(params, fn(param) { (None, param) })),

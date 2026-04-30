@@ -18,7 +18,7 @@ pub suberror ParserError {
   DuplicateStructField(name~: String, span~: Span)
   DidYouMean(received~: TokenType, suggestion~: String, span~: Span)
   ExpectedExprOrType(received~: TokenType, span~: Span)
-} derive(Show)
+} derive(Debug)
 
 pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: String) -> Parser {
   { tokens, index: 0, file, file_content }
@@ -180,7 +180,7 @@ fn Parser::parse_match_expr(self: Parser) -> Expr raise {
   let cases = []
   let mut default = None
 
-  while not(self.matches(Rbrace)) {
+  while !self.matches(Rbrace) {
     if self.consumes(Underscore) {
       self.expect(RightThickArrow, start_idx)
       let expr = self.parse_expr()
@@ -198,7 +198,7 @@ fn Parser::parse_match_expr(self: Parser) -> Expr raise {
       cases.push((value, expr))
     }
 
-    if not(self.consumes(Semicolon)) {
+    if !self.consumes(Semicolon) {
       break
     }
   }
@@ -295,11 +295,11 @@ fn Parser::parse_function_call_expr(self: Parser, name: String) -> Expr raise {
   let args: Array[Expr] = []
   self.expect(Lparen, start_idx)
 
-  while not(self.matches(Rparen)) {
+  while !self.matches(Rparen) {
     let arg = self.parse_expr()
     args.push(arg)
 
-    if not(self.consumes(Comma)) {
+    if !self.consumes(Comma) {
       break
     }
   }
@@ -316,7 +316,7 @@ fn Parser::parse_replication_expr(self: Parser) -> Expr raise {
   if self.consumes(X) {
     let mut concat = true
 
-    if not(self.consumes(Lbrace)) {
+    if !self.consumes(Lbrace) {
       concat = false
       self.expect(Lbracket, start_idx) 
     }
@@ -335,11 +335,11 @@ fn Parser::parse_tuple_or_paren_expr(self: Parser) -> Expr raise {
   self.expect(Lparen, start_idx)
   let elems = []
 
-  while not(self.matches(Rparen)) {
+  while !self.matches(Rparen) {
     let elem = self.parse_expr()
     elems.push(elem)
 
-    if not(self.consumes(Comma)) {
+    if !self.consumes(Comma) {
       break
     }
   }
@@ -357,11 +357,11 @@ fn Parser::parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) ->
   let elems = [first_expr]
 
   if self.consumes(Comma) {
-    while not(self.matches(Rbrace)) {
+    while !self.matches(Rbrace) {
       let expr = self.parse_expr()
       elems.push(expr)
 
-      if not(self.consumes(Comma)) {
+      if !self.consumes(Comma) {
         break
       }
     }
@@ -408,7 +408,7 @@ fn Parser::parse_struct_or_concat_or_block_expr(self: Parser) -> Expr raise {
             fields[elem] = self.parse_expr()
             
             if self.consumes(Comma) {
-              while not(self.matches(Rbrace)) {
+              while !self.matches(Rbrace) {
                 let name = self.parse_identifier()
                 self.expect(Colon, start_idx)
                 let expr = self.parse_expr()
@@ -419,7 +419,7 @@ fn Parser::parse_struct_or_concat_or_block_expr(self: Parser) -> Expr raise {
 
                 fields[name] = expr
 
-                if not(self.consumes(Comma)) {
+                if !self.consumes(Comma) {
                   break
                 }
               }
@@ -439,7 +439,7 @@ fn Parser::parse_struct_or_concat_or_block_expr(self: Parser) -> Expr raise {
     stmt => {
       let body = [stmt]
 
-      while not(self.matches(Rbrace)) {
+      while !self.matches(Rbrace) {
         let stmt = self.parse_stmt()
         body.push(stmt)
       }
@@ -455,11 +455,11 @@ fn Parser::parse_vector_expr(self: Parser) -> Expr raise {
   self.expect(Lbracket, start_idx)
   let elems = []
 
-  while not(self.matches(Rbracket)) {
+  while !self.matches(Rbracket) {
     let elem = self.parse_expr()
     elems.push(elem)
 
-    if not(self.consumes(Comma)) {
+    if !self.consumes(Comma) {
       break
     }
   }
@@ -652,7 +652,7 @@ fn Parser::parse_package_decl(self: Parser) -> PackageDecl raise {
 
   self.expect(Lbrace, start_idx)
 
-  while not(self.consumes(Rbrace)) {
+  while !self.consumes(Rbrace) {
     let decl = self.parse_decl()
     body.push(decl)
   }
@@ -683,11 +683,11 @@ fn Parser::parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
   let parameters: Array[String] = []
   
   if self.consumes(Lchevron) {
-    while not(self.matches(Rchevron)) {
+    while !self.matches(Rchevron) {
       let param = self.parse_identifier()
       parameters.push(param)
 
-      if not(self.consumes(Comma)) {
+      if !self.consumes(Comma) {
         break
       }
     }
@@ -757,11 +757,11 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       let params: Array[Param] = []
 
       if self.consumes(Lchevron) {
-        while not(self.matches(Rchevron)) {
+        while !self.matches(Rchevron) {
           let param = self.parse_type()
           params.push(Unresolved(TypeParam(ty=param, span=self.span(start_idx))))
 
-          if not(self.consumes(Comma)) {
+          if !self.consumes(Comma) {
             break
           }
         }
@@ -775,11 +775,11 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       self.advance()
       let elems = []
 
-      while not(self.matches(Rparen)) {
+      while !self.matches(Rparen) {
         let elem = self.parse_type()
         elems.push(elem)
 
-        if not(self.consumes(Comma)) {
+        if !self.consumes(Comma) {
           break
         }
       }
@@ -803,7 +803,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       self.advance()
       let fields = {}
 
-      while not(self.matches(Rbrace)) {
+      while !self.matches(Rbrace) {
         let name = self.parse_identifier()
         self.expect(Colon, start_idx)
         let ty = self.parse_type()
@@ -814,7 +814,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
 
         fields[name] = ty
 
-        if not(self.consumes(Comma)) {
+        if !self.consumes(Comma) {
           break
         }
       }
@@ -827,10 +827,10 @@ fn Parser::parse_type(self: Parser) -> Type raise {
   }
 
   if self.consumes(Lchevron) {
-    while not(self.matches(Rchevron)) {
+    while !self.matches(Rchevron) {
       params.push(Unresolved(ExprParam(self.parse_expr())))
 
-      if not(self.consumes(Comma)) {
+      if !self.consumes(Comma) {
         break
       }
     }
@@ -900,11 +900,11 @@ fn[T] Parser::parse_module_parameters(self: Parser, parse_elem: () -> T raise) -
     let start_idx = self.index
     let params = []
 
-    while not(self.matches(Rchevron)) {
+    while !self.matches(Rchevron) {
       let param = parse_elem()
       params.push(param)
 
-      if not(self.consumes(Comma)) {
+      if !self.consumes(Comma) {
         break
       }
     }
@@ -934,7 +934,7 @@ fn Parser::parse_attribute_value(self: Parser) -> AttributeValue raise {
       self.advance()
       let dict: Map[String, AttributeValue] = {}
 
-      while not(self.matches(Rbracket)) {
+      while !self.matches(Rbracket) {
         let key = match self.peek() {
           StringLiteral(str) => {
             self.advance()
@@ -951,7 +951,7 @@ fn Parser::parse_attribute_value(self: Parser) -> AttributeValue raise {
         let value = self.parse_attribute_value()
         dict[key] = value
 
-        if not(self.consumes(Comma)) {
+        if !self.consumes(Comma) {
           break
         }
       }
@@ -971,11 +971,11 @@ fn Parser::parse_attribute(self: Parser) -> Attribute raise {
   let args = if self.consumes(Lparen) {
     let args = []
 
-    while not(self.matches(Rparen)) {
+    while !self.matches(Rparen) {
       let val = self.parse_attribute_value()
       args.push(val)
 
-      if not(self.consumes(Comma)) {
+      if !self.consumes(Comma) {
         break
       }
     }
@@ -1033,7 +1033,7 @@ fn Parser::parse_module_definition(self: Parser, sig~: ModuleSignature) -> Modul
   self.expect(Lbrace, start_idx)
   let body = []
 
-  while not(self.consumes(Rbrace)) {
+  while !self.consumes(Rbrace) {
     let stmt = self.parse_stmt()
     body.push(stmt)
   }

@@ -11,7 +11,7 @@ pub(all) struct FileSystem {
 // TODO: Support Windows paths
 
 pub fn file_name(path: String) -> String {
-    path.split("/").last().unwrap_or(path).to_string()
+  path.split("/").last().unwrap_or(path).to_owned()
 }
 
 pub fn file_extension(path: String) -> String? {

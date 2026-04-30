@@ -966,11 +966,11 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     }
   },
   "printf": {
-    arity: Range(min=1, max=@int.max_value),
+    arity: Range(min=1, max=@int.MAX_VALUE),
     apply: (_, _) => None
   },
   "assert": {
-    arity: Range(min=1, max=@int.max_value),
+    arity: Range(min=1, max=@int.MAX_VALUE),
     apply: (_, _) => None
   },
   "stop": {
@@ -1199,7 +1199,7 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
   let map = Map::new(capacity=names.length())
 
   fn checked_set(name: String, param: Param) -> Unit raise AstError {
-    if not(names.contains(name)) {
+    if !names.contains(name) {
       raise UnknownModuleParameter(name~, span=param.span())
     }
 

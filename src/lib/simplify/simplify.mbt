@@ -280,7 +280,7 @@ fn Simplifier::simplify_decl(self: Self, decl: @parse.Decl, env~: SimplifierEnv)
 
         for stmt in stmts {
           // ignore empty tuples, whcih are used to represent empty expressions
-          if not(stmt is @parse.Stmt::Expr(expr=Tuple(elems=[], ..), ..)) {
+          if !(stmt is @parse.Stmt::Expr(expr=Tuple(elems=[], ..), ..)) {
             scope.push(stmt)
           }
         }

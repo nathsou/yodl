@@ -27,13 +27,13 @@ suberror CommandParserError {
   InvalidCommandArgs(name~: String, args~: Array[String])
   UnknownCommand(name~: String)
   UnexepectedChar(char~: Char)
-} derive(Show)
+} derive(Debug)
 
 priv enum CommandToken {
   Literal(String)
   Semicolon
   EOF
-} derive(Eq, Show)
+} derive(Eq, Debug)
 
 fn is_valid_literal_char(char: Char) -> Bool {
   match char {
@@ -124,7 +124,7 @@ pub fn parse_commands(source: String) -> Array[Command] raise CommandParserError
 
         let args = []
 
-        while idx < tokens.length() && not(matches(Semicolon)) {
+        while idx < tokens.length() && !matches(Semicolon) {
           args.push(parse_arg())
         }
 
