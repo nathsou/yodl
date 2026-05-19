@@ -44,10 +44,10 @@ pub const BITS_PER_CHAR = 8
 
 pub(all) enum Type {
   Nat(MinWidth)
-  UInt(IntParam)
-  SInt(IntParam)
+  UInt(IndexExpr)
+  SInt(IndexExpr)
   Clock
-  Vector(ty~: Type, len~: IntParam)
+  Vector(ty~: Type, len~: IndexExpr)
   Instance(sig~: ModuleSignature, params~: Map[String, Param], accessed_ports~: AccessedPorts)
   Name(path~: Path, params~: Array[Param])
   Struct(Map[String, Type])
@@ -65,19 +65,19 @@ pub fn MinWidth::update(self: Self, width: Int) -> Unit {
 }
 
 pub fn Type::bool() -> Type {
-  UInt(Fixed(1))
+  UInt(Lit(1))
 }
 
 pub fn Type::uint(width: Int) -> Type {
-  UInt(Fixed(width))
+  UInt(Lit(width))
 }
 
 pub fn Type::sint(width: Int) -> Type {
-  SInt(Fixed(width))
+  SInt(Lit(width))
 }
 
 pub fn Type::empty() -> Type {
-  UInt(Fixed(0))
+  UInt(Lit(0))
 }
 
 pub fn Type::is_ground(self: Type) -> Bool {
@@ -91,7 +91,7 @@ pub fn Type::is_string(self: Type) -> Bool {
   match self {
     String(_) => true
     Vector(ty~, ..) => match ty {
-      UInt(Fixed(BITS_PER_CHAR)) => true
+      UInt(Lit(BITS_PER_CHAR)) => true
       _ => false
     }
     _ => false
@@ -106,10 +106,10 @@ pub fn Type::is_string(self: Type) -> Bool {
 // high.
 pub fn Type::mask(self: Type, span~: Span) -> Type raise {
   match self {
-    UInt(_) | SInt(_) | Nat(_) | Clock | String(_) => UInt(Fixed(1))
+    UInt(_) | SInt(_) | Nat(_) | Clock | String(_) => UInt(Lit(1))
     Vector(ty~, len~) => Vector(ty=ty.mask(span~), len~)
     Struct(fields) => Struct({
-      let new_fields = Map::new(capacity=fields.length())
+      let new_fields = Map([], capacity=fields.length())
 
       for name, ty in fields {
         new_fields[name] = ty.mask(span~)
@@ -243,21 +243,27 @@ pub(all) struct ForRange {
   inclusive: Bool
 }
 
-pub(all) enum ModuleParameterAnnotation {
-  Type(Type)
-  AnyType
+pub(all) enum ParamSort {
+  NatSort  // N: uint  or  N: Nat
+  TypeSort // T: type  or  T: Type
+} derive(Eq)
+
+pub impl Show for ParamSort with output(self, logger) {
+  match self {
+    NatSort => logger.write_string("Nat")
+    TypeSort => logger.write_string("Type")
+  }
 }
 
-pub impl Show for ModuleParameterAnnotation with output(self, logger) {
-  match self {
-    Type(ty) => logger.write_object(ty)
-    AnyType => logger.write_string("type")
-  }
+pub(all) struct StaticParam {
+  name: String
+  sort: ParamSort
+  span: Span
 }
 
 pub(all) struct ModuleParameter {
   name: String
-  ty: ModuleParameterAnnotation
+  sort: ParamSort
   span: Span
 }
 
@@ -292,7 +298,7 @@ pub(all) struct ConstDecl {
 
 pub(all) struct TypeAliasDecl {
   name: String
-  parameters: Array[String]
+  parameters: Array[StaticParam]
   ty: Type
   span: Span
 }
@@ -308,25 +314,100 @@ pub(all) struct ImportDecl {
   span: Span
 }
 
-pub(all) enum IntParam {
-  Fixed(Int)
-  Dynamic(Expr)
+pub(all) enum IndexExpr {
+  Lit(Int)
+  Var(String)
+  Add(IndexExpr, IndexExpr)
+  Sub(IndexExpr, IndexExpr)
+  Mul(IndexExpr, IndexExpr)
+  Clog2(IndexExpr)
+  CDiv(IndexExpr, IndexExpr)
+} derive(Eq)
+
+// Evaluate a closed IndexExpr to an Int, or return None if it contains unresolved variables.
+pub fn IndexExpr::eval(self: IndexExpr) -> Int? {
+  match self {
+    Lit(n) => Some(n)
+    Var(_) => None
+    Add(a, b) => match (a.eval(), b.eval()) {
+      (Some(x), Some(y)) => Some(x + y)
+      _ => None
+    }
+    Sub(a, b) => match (a.eval(), b.eval()) {
+      (Some(x), Some(y)) => Some(x - y)
+      _ => None
+    }
+    Mul(a, b) => match (a.eval(), b.eval()) {
+      (Some(x), Some(y)) => Some(x * y)
+      _ => None
+    }
+    Clog2(a) => match a.eval() {
+      Some(n) => Some(@utils.clog2_int(n))
+      None => None
+    }
+    CDiv(a, b) => match (a.eval(), b.eval()) {
+      (Some(x), Some(y)) if y != 0 => Some((x + y - 1) / y)
+      _ => None
+    }
+  }
 }
 
-impl Eq for IntParam with equal(self, other) {
-  match (self, other) {
-    (Fixed(a), Fixed(b)) => a == b
-    _ => false
+// Substitute Var(name) with Lit(n) from params_env, then constant-fold.
+pub fn IndexExpr::substitute(self: IndexExpr, params_env: Map[String, ResolvedParam]) -> IndexExpr {
+  match self {
+    Lit(_) => self
+    Var(name) => match params_env.get(name) {
+      Some(ConstParam(value=Natural(value~, ..), ..)) => Lit(value.to_int())
+      _ => self
+    }
+    Add(a, b) => {
+      let a2 = a.substitute(params_env)
+      let b2 = b.substitute(params_env)
+      match (a2, b2) {
+        (Lit(x), Lit(y)) => Lit(x + y)
+        _ => Add(a2, b2)
+      }
+    }
+    Sub(a, b) => {
+      let a2 = a.substitute(params_env)
+      let b2 = b.substitute(params_env)
+      match (a2, b2) {
+        (Lit(x), Lit(y)) => Lit(x - y)
+        _ => Sub(a2, b2)
+      }
+    }
+    Mul(a, b) => {
+      let a2 = a.substitute(params_env)
+      let b2 = b.substitute(params_env)
+      match (a2, b2) {
+        (Lit(x), Lit(y)) => Lit(x * y)
+        _ => Mul(a2, b2)
+      }
+    }
+    Clog2(a) => {
+      let a2 = a.substitute(params_env)
+      match a2 {
+        Lit(n) => Lit(@utils.clog2_int(n))
+        _ => Clog2(a2)
+      }
+    }
+    CDiv(a, b) => {
+      let a2 = a.substitute(params_env)
+      let b2 = b.substitute(params_env)
+      match (a2, b2) {
+        (Lit(x), Lit(y)) if y != 0 => Lit((x + y - 1) / y)
+        _ => CDiv(a2, b2)
+      }
+    }
   }
 }
 
 pub suberror AstError {
   ExpectedIntegerExpression(expr~: Expr, span~: Span)
-  IntParamNotFixed(span~: Span)
+  IndexExprNotLiteral(span~: Span)
   CannotGetWidthOfUnresolvedNamedType(span~: Span)
   InvalidFunCallArity(name~: String, expected~: Arity, actual~: Int, span~: Span)
   ExpectedStringExpression(expr~: Expr, span~: Span)
-  InvalidModuleParameter(span~: Span)
   ConflictingInstanceParameterValue(name~: String, span~: Span)
   UnknownModuleParameter(name~: String, span~: Span)
   TypeParamInsteadOfExpr(span~: Span)
@@ -341,11 +422,10 @@ pub suberror AstError {
 pub impl Show for AstError with output(self, logger) {
   match self {
     ExpectedIntegerExpression(expr~, ..) => logger.write_string("Expected an integer expression, got: \{expr.ctor()}")
-    IntParamNotFixed(_) => logger.write_string("Int parameter must be fixed")
+    IndexExprNotLiteral(_) => logger.write_string("Index expression must be a compile-time literal")
     CannotGetWidthOfUnresolvedNamedType(_) => logger.write_string("Cannot get width of unresolved named type")
     InvalidFunCallArity(name~, expected~, actual~, ..) => logger.write_string("Function '\{name}' expected \{expected} argument(s), but got \{actual}")
     ExpectedStringExpression(expr~, ..) => logger.write_string("Expected a string expression, got: \{expr.ctor()}")
-    InvalidModuleParameter(_) => logger.write_string("Invalid module parameter")
     ConflictingInstanceParameterValue(name~, ..) => {
       logger.write_string("Conflicting value for instance parameter '\{name}'")
     }
@@ -369,11 +449,10 @@ pub impl Show for AstError with output(self, logger) {
 pub impl Spanned for AstError with span(self) -> Span {
   match self {
     ExpectedIntegerExpression(span~, ..) => span
-    IntParamNotFixed(span~) => span
+    IndexExprNotLiteral(span~) => span
     CannotGetWidthOfUnresolvedNamedType(span~) => span
     InvalidFunCallArity(span~, ..) => span
     ExpectedStringExpression(span~, ..) => span
-    InvalidModuleParameter(span~) => span
     ConflictingInstanceParameterValue(span~, ..) => span
     UnknownModuleParameter(span~, ..) => span
     TypeParamInsteadOfExpr(span~) => span
@@ -386,12 +465,10 @@ pub impl Spanned for AstError with span(self) -> Span {
   }
 }
 
-pub fn IntParam::expect_fixed(self: Self, span: Span) -> Int raise {
+pub fn IndexExpr::expect_lit(self: Self, span: Span) -> Int raise AstError {
   match self {
-    Fixed(value) => value
-    Dynamic(_) => {
-      raise IntParamNotFixed(span~)
-    }
+    Lit(value) => value
+    _ => raise IndexExprNotLiteral(span~)
   }
 }
 
@@ -720,7 +797,7 @@ pub fn ResolvedParam::as_expr(self: ResolvedParam) -> Expr raise {
 }
 
 pub fn keep_and_check_resolved(params: Map[String, Param], span~: Span) -> Map[String, ResolvedParam] raise AstError {
-  let resolved_params = Map::new(capacity=params.length())
+  let resolved_params = Map([], capacity=params.length())
 
   for name, param in params {
     if param is Resolved(p) {
@@ -1027,13 +1104,10 @@ pub fn ModuleSignature::get_port(self: Self, name: String) -> Port? {
 pub fn Type::width(self: Type, span: Span) -> Int raise AstError {
   match self {
     Nat({min_width}) => min_width
-    UInt(Fixed(width)) => width
-    SInt(Fixed(width)) => width
+    UInt(idx) => idx.expect_lit(span)
+    SInt(idx) => idx.expect_lit(span)
     Clock => 1
-    Vector(ty~, len=Fixed(len)) => ty.width(span) * len
-    UInt(Dynamic(_)) | SInt(Dynamic(_)) | Vector(ty=_, len=Dynamic(_)) => {
-      raise IntParamNotFixed(span~)
-    }
+    Vector(ty~, len~) => ty.width(span) * len.expect_lit(span)
     Instance(sig~, params~, accessed_ports~) => {
       let mut width = 0
       let resolved_params = keep_and_check_resolved(params, span~)
@@ -1063,27 +1137,12 @@ pub fn Type::width(self: Type, span: Span) -> Int raise AstError {
 pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span~: Span) -> Type raise AstError {
   match self {
     Nat(_) | String(_) => self
-    UInt(Fixed(width)) => UInt(Fixed(width))
-    SInt(Fixed(width)) => SInt(Fixed(width))
-    UInt(Dynamic(expr)) | SInt(Dynamic(expr)) => {
-      let is_unsigned = match self { UInt(_) => true; _ => false }
-      let as_int = try? expr.partial_eval(params=params_env)
-      match as_int {
-        Ok(Expr::Natural(value~, ..)) => if is_unsigned { UInt(Fixed(value.to_int())) } else { SInt(Fixed(value.to_int())) }
-        _ => if is_unsigned { UInt(Dynamic(expr)) } else { SInt(Dynamic(expr)) }
-      }
-    }
+    UInt(idx) => UInt(idx.substitute(params_env))
+    SInt(idx) => SInt(idx.substitute(params_env))
     Clock => Clock
-    Vector(ty~, len=Dynamic(expr)) => {
-      let as_int = try? expr.partial_eval(params=params_env)
-      Vector(ty=ty.substitute(params_env, span~), len=match as_int {
-        Ok(Natural(value~, ..)) => Fixed(value.to_int())
-        _ => Dynamic(expr)
-      })
-    }
-    Vector(ty~, len~) => Vector(ty=ty.substitute(params_env, span~), len~)
+    Vector(ty~, len~) => Vector(ty=ty.substitute(params_env, span~), len=len.substitute(params_env))
     Instance(sig~, params~, accessed_ports~) => {
-      let new_params = Map::new(capacity=params.length()) 
+      let new_params = Map([], capacity=params.length()) 
 
       for name, value in params {
         new_params[name] = match params_env.get(name) {
@@ -1125,7 +1184,7 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
       }
     }
     Struct(fields) => Struct({
-      let new_fields = Map::new(capacity=fields.length())
+      let new_fields = Map([], capacity=fields.length())
 
       for name, ty in fields {
         new_fields[name] = ty.substitute(params_env, span~)
@@ -1168,11 +1227,10 @@ pub fn Type::is_numerical(self: Type) -> Bool {
 pub fn Type::has_zero_width(self: Type) -> Bool {
   match self {
     Nat(_) => false
-    UInt(Fixed(width)) | SInt(Fixed(width)) => width == 0
-    UInt(Dynamic(_)) | SInt(Dynamic(_)) => false
+    UInt(idx) | SInt(idx) => idx == Lit(0)
     Clock => false
     Vector(ty~, len~) => match len {
-      Fixed(0) => true
+      Lit(0) => true
       _ => ty.has_zero_width()
     }
     Instance(sig~, ..) => sig.ports.is_empty()
@@ -1196,7 +1254,7 @@ pub fn Expr::bignat(n: BigInt, width~: Int? = None, base~: Int = 10, span~: Span
 }
 
 pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Map[String, Param] raise AstError {
-  let map = Map::new(capacity=names.length())
+  let map = Map([], capacity=names.length())
 
   fn checked_set(name: String, param: Param) -> Unit raise AstError {
     if !names.contains(name) {
@@ -1224,7 +1282,7 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
       _ => {
         ordered = true
         if idx >= names.length() {
-          raise InvalidModuleParameter(span=param.span())
+          raise UnknownModuleParameter(name=idx.to_string(), span=param.span())
         }
 
         checked_set(names[idx], param)

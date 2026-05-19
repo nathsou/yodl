@@ -105,7 +105,7 @@ module AsciiTable(char: Char) -> (q: uint<64>) {
     }
 }
 
-module CharAt<Length: uint, IndexWidth: uint>(
+module CharAt<Length: Nat, IndexWidth: Nat>(
     str: Char[Length],
     index: uint<IndexWidth>,
 ) -> (
@@ -119,7 +119,7 @@ module CharAt<Length: uint, IndexWidth: uint>(
 const Rows = VGA::V_ACTIVE / 8
 const Cols = VGA::H_ACTIVE / 8
 
-module Text<Length: uint, X: uint, Y: uint>(
+module Text<Length: Nat, X: Nat, Y: Nat>(
     text: Char[Length],
     screen_x: uint<10>,
     screen_y: uint<10>,
@@ -139,7 +139,7 @@ module Text<Length: uint, X: uint, Y: uint>(
     is_active = (bitmap shr pixel_idx)[0]
 }
 
-module TextDynamicPosition<Length: uint>(
+module TextDynamicPosition<Length: Nat>(
     text: Char[Length],
     x_offset: uint<clog2!(Cols)>,
     y_offset: uint<clog2!(Rows)>,
@@ -161,7 +161,7 @@ module TextDynamicPosition<Length: uint>(
     is_active = (bitmap shr pixel_idx)[0]
 }
 
-module Hex<Bits: uint>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
+module Hex<Bits: Nat>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
     const Len = cdiv!(Bits, 4)
     for i in 0..<Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
@@ -185,7 +185,7 @@ module Hex<Bits: uint>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
     }
 }
 
-module Dec<Bits: uint>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
+module Dec<Bits: Nat>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
     const Len = cdiv!(Bits, 4)
     for i in 0..<Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
@@ -203,7 +203,7 @@ module Dec<Bits: uint>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
     }
 }
 
-module Bin<Bits: uint>(n: uint<Bits>) -> (chars: Char[Bits]) {
+module Bin<Bits: Nat>(n: uint<Bits>) -> (chars: Char[Bits]) {
     for i in 0..<Bits {
         chars[Bits - 1 - i] = n[i] ? '1' : '0'
     }

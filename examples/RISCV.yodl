@@ -14,10 +14,12 @@ package Inst {
 }
 
 package Stage {
-    const FETCH_INST = 2'd0
-    const WAIT_INST = 2'd1
-    const EXECUTE = 2'd2
-    const WAIT_DATA = 2'd3
+    const FETCH_INST = 3'd0
+    const WAIT_INST = 3'd1
+    const DECODE = 3'd2
+    const EXECUTE = 3'd3
+    const WAIT_DATA = 3'd4
+    const WAIT_WRITE = 3'd5
 }
 
 module RegisterFile(
@@ -57,6 +59,7 @@ module CPU(
     rst: bool,
     mem_read_data: uint<32>,
     mem_read_busy: bool,
+    mem_write_busy: bool,
 ) -> (
     mem_addr: uint<32>,
     mem_read_enable: bool,
@@ -83,10 +86,9 @@ module CPU(
     let imm_b = {20*{inst.q[31]}, inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0}
     let imm_j = {12*{inst.q[31]}, inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0}
 
-    let stage = Reg<uint<2>>(clk, rst)
-    let fresh_inst = stage.q == Stage::WAIT_INST ? mem_read_data : inst.q
-    let rs1_addr = fresh_inst[19:15]
-    let rs2_addr = fresh_inst[24:20]
+    let stage = Reg<uint<3>>(clk, rst)
+    let rs1_addr = inst.q[19:15]
+    let rs2_addr = inst.q[24:20]
     let rd_addr = inst.q[11:7]
 
     let funct3 = inst.q[14:12]
@@ -147,7 +149,9 @@ module CPU(
         half_word_access ? {16*{load_sign}, load_half_word} :
         mem_read_data
 
-    let write_back_enable = (stage.q == Stage::EXECUTE and (not is_branch) and (not is_store) and (not is_load)) or stage.q == Stage::WAIT_DATA
+    let write_back_enable = (stage.q == Stage::EXECUTE and (not is_branch) and (not is_store) and (not is_load)) or 
+                            (stage.q == Stage::WAIT_DATA and (not mem_read_busy))
+    
     let write_back_data =
         is_jump_inst ? next_addr :
         is_lui ? imm_u :
@@ -168,7 +172,10 @@ module CPU(
         (load_store_addr[0] ? 4'b0010 : 4'b0001)) :
         (half_word_access ? (load_store_addr[1] ? 4'b1100 : 4'b0011) : 4'b1111)
     
-    mem_write_mask = stage.q == Stage::EXECUTE and is_store ? [..mask] : 4*[false]
+    // Fix #4 (part 1): Hold mem_write_mask HIGH throughout the duration of the write process
+    let is_writing = (stage.q == Stage::EXECUTE and is_store) or stage.q == Stage::WAIT_WRITE
+    mem_write_mask = is_writing ? [..mask] : 4*[false]
+    
     regs.rd_data = write_back_data
     regs.write_enable = write_back_enable and rd_addr != 5'd0
 
@@ -181,7 +188,14 @@ module CPU(
                 stage.d = Stage::WAIT_INST
             }
             Stage::WAIT_INST => {
-                inst.d = mem_read_data
+                if not mem_read_busy {
+                    inst.d = mem_read_data
+                    stage.d = Stage::DECODE
+                }
+            }
+            Stage::DECODE => {
+                // By adding DECODE, inst.d gets successfully clocked into inst.q
+                // breaking the critical combinational timing path.
                 rs1.d = regs.rs1
                 rs2.d = regs.rs2
                 stage.d = Stage::EXECUTE
@@ -189,7 +203,13 @@ module CPU(
             Stage::EXECUTE => {
                 if not is_system {
                     pc.d = next_pc
-                    stage.d = is_load ? Stage::WAIT_DATA : Stage::FETCH_INST
+                    if is_load {
+                        stage.d = Stage::WAIT_DATA
+                    } else if is_store {
+                        stage.d = mem_write_busy ? Stage::WAIT_WRITE : Stage::FETCH_INST
+                    } else {
+                        stage.d = Stage::FETCH_INST
+                    }
                 } else {
                     stop!()
                 }
@@ -199,10 +219,17 @@ module CPU(
                     stage.d = Stage::FETCH_INST
                 }
             }
+            Stage::WAIT_WRITE => {
+                if not mem_write_busy {
+                    stage.d = Stage::FETCH_INST
+                }
+            }
         }
     }
 
-    mem_addr = stage.q == Stage::WAIT_INST or stage.q == Stage::FETCH_INST ? pc.q : load_store_addr
-    mem_read_enable = stage.q == Stage::FETCH_INST or (stage.q == Stage::EXECUTE and is_load)
-    status = {uint!(clk), opcode, 6'd0, stage.q, pc.q[7:0]}
+    mem_addr = stage.q == Stage::FETCH_INST or stage.q == Stage::WAIT_INST ? pc.q : load_store_addr
+    let is_fetching = stage.q == Stage::FETCH_INST or stage.q == Stage::WAIT_INST
+    let is_loading = (stage.q == Stage::EXECUTE and is_load) or stage.q == Stage::WAIT_DATA
+    mem_read_enable = is_fetching or is_loading
+    status = {uint!(clk), opcode, 5'd0, stage.q, pc.q[7:0]}
 }

@@ -563,15 +563,36 @@ impl Show for StructField with output(field, logger) {
   logger.write_string(field.ty.to_string())
 }
 
-impl Show for IntParam with output(param, logger) {
-  match param {
-    Fixed(n) => {
-      logger.write_string(n.to_string())
+pub impl Show for IndexExpr with output(self, logger) {
+  match self {
+    Lit(n) => logger.write_string(n.to_string())
+    Var(name) => logger.write_string(name)
+    Add(a, b) => {
+      logger.write_object(a)
+      logger.write_string(" + ")
+      logger.write_object(b)
     }
-    Dynamic(expr) => {
-      let emitter = AstEmitter::new()
-      emitter.emit_expr(expr)
-      logger.write_string(emitter.to_string())
+    Sub(a, b) => {
+      logger.write_object(a)
+      logger.write_string(" - ")
+      logger.write_object(b)
+    }
+    Mul(a, b) => {
+      logger.write_object(a)
+      logger.write_string(" * ")
+      logger.write_object(b)
+    }
+    Clog2(a) => {
+      logger.write_string("clog2!(")
+      logger.write_object(a)
+      logger.write_char(')')
+    }
+    CDiv(a, b) => {
+      logger.write_string("cdiv!(")
+      logger.write_object(a)
+      logger.write_string(", ")
+      logger.write_object(b)
+      logger.write_char(')')
     }
   }
 }
@@ -731,7 +752,7 @@ pub impl Show for Attribute with output(attr, logger) {
 pub impl Show for ModuleParameter with output(param, logger) {
   logger.write_string(param.name)
   logger.write_string(": ")
-  logger.write_object(param.ty)
+  logger.write_object(param.sort)
 }
 
 fn AstEmitter::emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
@@ -789,7 +810,7 @@ pub fn AstEmitter::emit_decl(self: AstEmitter, decl: Decl) -> Unit {
       
       if parameters.length() > 0 {
         self.write("<")
-        self.write(parameters.join(", "))
+        self.write(parameters.map(p => p.name).join(", "))
         self.write(">")
       }
 

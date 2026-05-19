@@ -147,12 +147,15 @@ fn id_of_path(path: Path) -> Id {
 fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
   match ty {
     Nat({min_width}) => UInt(min_width)
-    UInt(Fixed(width)) => UInt(width)
-    SInt(Fixed(width)) => SInt(width)
+    UInt(Lit(width)) => UInt(width)
+    SInt(Lit(width)) => SInt(width)
     Clock => Clock
-    Vector(ty~, len=Fixed(len)) => Vec(lower_type(ty, span~), len)
-    UInt(Dynamic(_)) | SInt(Dynamic(_)) | Vector(ty=_, len=Dynamic(_)) => {
-      raise ElaborationError(message="Integer parameters must be compile-time constants", span~)
+    Vector(ty~, len=Lit(len)) => Vec(lower_type(ty, span~), len)
+    UInt(idx) | SInt(idx) => {
+      raise ElaborationError(message="Integer parameter '\{idx}' must be a compile-time constant", span~)
+    }
+    Vector(ty=_, len=idx) => {
+      raise ElaborationError(message="Vector length '\{idx}' must be a compile-time constant", span~)
     }
     Instance(sig~, params~, accessed_ports~) => {
       let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.ports.length())
@@ -679,7 +682,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
 
       if
         has_value &&
-        subject.ty().val is Some(UInt(Fixed(1))) &&
+        subject.ty().val is Some(UInt(Lit(1))) &&
         cases.length() == 2 &&
         // Require both cases to be simple expressions without statements
         !cases.iter().any(case => case.1.contains_statements()) {
@@ -1331,11 +1334,11 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       scope.add_stmt(Command(Stop(clk~, en~, code~)))
       Empty(span~)
     }
-    FunCall(name="rev", args=[arg], span~, ty={val: Some(Vector(len=Fixed(len), ..) | String(len~) as ty)}) => {
+    FunCall(name="rev", args=[arg], span~, ty={val: Some(Vector(len=Lit(len), ..) | String(len~) as ty)}) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let arg_ref = arg.as_ref(self, scope~)
       let elems = Array::new(capacity=len)
-      let elem_ty = if ty is Vector(ty~, ..) { ty } else { UInt(Fixed(@parse.BITS_PER_CHAR)) }
+      let elem_ty = if ty is Vector(ty~, ..) { ty } else { UInt(Lit(@parse.BITS_PER_CHAR)) }
       let fir_elem_ty = lower_type(elem_ty, span~)
 
       for i in 0..<len {
