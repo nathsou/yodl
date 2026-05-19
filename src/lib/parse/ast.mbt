@@ -52,6 +52,7 @@ pub(all) enum Type {
   Name(path~: Path, params~: Array[Param])
   Struct(Map[String, Type])
   String(len~: Int)
+  MemoryMask(Type)
 } derive(Eq)
 
 pub(all) struct MinWidth {
@@ -104,7 +105,7 @@ pub fn Type::is_string(self: Type) -> Bool {
 // with a single bit unsigned integer type. The non-masked portion of the data value is defined
 // as the set of data value leaf sub-elements where the corresponding mask leaf sub-element is
 // high.
-pub fn Type::mask(self: Type, span~: Span) -> Type raise {
+pub fn Type::mask(self: Type, span~: Span) -> Type raise AstError {
   match self {
     UInt(_) | SInt(_) | Nat(_) | Clock | String(_) => UInt(Lit(1))
     Vector(ty~, len~) => Vector(ty=ty.mask(span~), len~)
@@ -117,7 +118,7 @@ pub fn Type::mask(self: Type, span~: Span) -> Type raise {
 
       new_fields
     })
-    Instance(_) | Name(_) => raise NonStorableType(ty=self, span~)
+    MemoryMask(_) | Instance(_) | Name(_) => raise NonStorableType(ty=self, span~)
   }
 }
 
@@ -1131,6 +1132,7 @@ pub fn Type::width(self: Type, span: Span) -> Int raise AstError {
       width
     }
     String(len~) => len * BITS_PER_CHAR // ascii encoding
+    MemoryMask(ty) => ty.mask(span~).width(span)
   }
 }
 
@@ -1141,6 +1143,13 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
     SInt(idx) => SInt(idx.substitute(params_env))
     Clock => Clock
     Vector(ty~, len~) => Vector(ty=ty.substitute(params_env, span~), len=len.substitute(params_env))
+    MemoryMask(ty) => {
+      let ty = ty.substitute(params_env, span~)
+      match (try? ty.mask(span~)) {
+        Ok(mask) => mask
+        Err(_) => MemoryMask(ty)
+      }
+    }
     Instance(sig~, params~, accessed_ports~) => {
       let new_params = Map([], capacity=params.length()) 
 
@@ -1166,12 +1175,6 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
             new_params.push(Resolved(TypeParam(ty=new_ty, span~)))
           }
           _ => new_params.push(param)
-        }
-      }
-
-      if path is { packages: [], elem: "MemoryMask" } && new_params is [Resolved(TypeParam(ty~, ..))] {
-        if (try? ty.mask(span~)) is Ok(mask) {
-          return mask
         }
       }
 
@@ -1237,6 +1240,7 @@ pub fn Type::has_zero_width(self: Type) -> Bool {
     Name(_) => false
     Struct(fields) => fields.values().all(Type::has_zero_width)
     String(len~) => len == 0
+    MemoryMask(ty) => ty.has_zero_width()
   }
 }
 
@@ -1307,5 +1311,6 @@ pub fn Type::clone(self: Type) -> Type {
     Struct(fields) => Struct(@utils.map_values(fields, Type::clone))
     String(len~) => String(len~)
     Clock => Clock
+    MemoryMask(ty) => MemoryMask(ty.clone())
   }
 }

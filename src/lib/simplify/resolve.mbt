@@ -73,7 +73,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|const false = 1'b0
     #|
     #|@internal
-    #|declare module Reg<T: type>(
+    #|declare module Reg<T: Type>(
     #|    clk: clock,
     #|    d: T,
     #|    en?: bool,
@@ -83,7 +83,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|)
     #|
     #|@internal
-    #|declare module RegAsyncReset<T: type>(
+    #|declare module RegAsyncReset<T: Type>(
     #|    clk: clock,
     #|    d: T,
     #|    en?: bool,
@@ -94,12 +94,12 @@ let builtin_decls: Array[@parse.Decl] = {
     #|
     #|@internal
     #|declare module Memory<
-    #|  T: type,
-    #|  Depth: uint,
-    #|  ReadPorts: uint,
-    #|  WritePorts: uint,
-    #|  ReadLatency: uint,
-    #|  WriteLatency: uint,
+    #|  T: Type,
+    #|  Depth: Nat,
+    #|  ReadPorts: Nat,
+    #|  WritePorts: Nat,
+    #|  ReadLatency: Nat,
+    #|  WriteLatency: Nat,
     #| >(
     #|    read: { clk: clock, en: bool, addr: uint<clog2!(Depth)> }[ReadPorts],
     #|    write: { clk: clock, en: bool, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T> }[WritePorts],

@@ -20,6 +20,20 @@ pub suberror ParserError {
   ExpectedExprOrType(received~: TokenType, span~: Span)
 } derive(Debug)
 
+pub impl Show for ParserError with output(self, logger) {
+  match self {
+    UnexpectedToken(span~, ..) =>
+      logger.write_string("UnexpectedToken at \{span}\n\{span.context()}")
+    ExpectedType(span~, ..) =>
+      logger.write_string("ExpectedType at \{span}\n\{span.context()}")
+    ExpectedExpr(span~, ..) =>
+      logger.write_string("ExpectedExpr at \{span}\n\{span.context()}")
+    ExpectedIdentifier(span~, ..) =>
+      logger.write_string("ExpectedIdentifier at \{span}\n\{span.context()}")
+    _ => logger.write_string("ParserError")
+  }
+}
+
 pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: String) -> Parser {
   { tokens, index: 0, file, file_content }
 }
@@ -507,6 +521,10 @@ fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
   let ports = {}
 
   while !self.matches(Rparen) {
+    self.ignore(Semicolon) // skip auto-inserted semicolons from newlines
+    if self.matches(Rparen) {
+      break
+    }
     let start_idx = self.index
     let name = self.parse_identifier()
     
@@ -517,6 +535,7 @@ fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
     }
 
     if !self.consumes(Comma) {
+      self.ignore(Semicolon) // consume auto-inserted semicolon before ')'
       break
     }
   }
@@ -863,7 +882,11 @@ fn Parser::parse_type(self: Parser) -> Type raise {
         self.expect(Rchevron, start_idx)
       }
 
-      Type::Name(path~, params~)
+      if path is { packages: [], elem: "MemoryMask" } && params is [Unresolved(TypeParam(ty~, ..))] {
+        Type::MemoryMask(ty)
+      } else {
+        Type::Name(path~, params~)
+      }
     }
     Lparen => {
       self.advance()

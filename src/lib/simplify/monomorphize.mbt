@@ -235,6 +235,7 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
       ty
     }
     Clock | Nat(_) | Instance(_) | String(_) => ty
+    MemoryMask(ty) => @parse.Type::MemoryMask(self.monomorphize_type(ty, env~, packages~, span~).ty)
   }
 
   { ty: mono_ty, is_type_alias: false }

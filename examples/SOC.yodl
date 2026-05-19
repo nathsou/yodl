@@ -46,17 +46,27 @@ module Top(
     // wait 125 ms for the FPGA to configure
     let power_reset = Reset::PowerOnReset<CLOCK_FREQ / 8>(clk)
     let rst = power_reset.rst or (not rst_n)
+    
     let slow_clk = {
         let counter = Reg<uint<2>>(clk, rst)
         counter.d = counter.q + 1'b1
         clock!(counter.q[1])
     }
+    
     let ram = RAM(clk: slow_clk)
-    let cpu = RISCV::CPU(clk: slow_clk, rst, mem_read_busy: false)
+    let cpu = RISCV::CPU(
+        clk: slow_clk, 
+        rst, 
+        mem_read_busy: false, 
+        mem_write_busy: false 
+    )
+    
     let word_addr = {2'b0, cpu.mem_addr[31:2]} // divide by 4
     ram.addr = word_addr
+    
     let is_io = cpu.mem_addr[22]
     let is_ram = not is_io
+    
     ram.read_enable = is_ram and cpu.mem_read_enable
     ram.write_data = cpu.mem_write_data
     ram.mask = is_ram ? cpu.mem_write_mask : 4*[false]

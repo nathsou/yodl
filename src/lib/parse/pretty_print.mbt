@@ -671,6 +671,9 @@ pub impl Show for Type with output(ty, logger) {
     String(len~) => {
       logger.write_string("string<\{len}>")
     }
+    MemoryMask(ty) => {
+      logger.write_string("MemoryMask<\{ty}>")
+    }
   }
 }
 

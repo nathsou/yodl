@@ -203,6 +203,7 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
             Struct(field_tys)
         }
         String(len~) => String(len~)
+        MemoryMask(ty) => MemoryMask(self.resolve_ty(ty, span~))
     }
 }
 

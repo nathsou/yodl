@@ -157,6 +157,7 @@ fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
     Vector(ty=_, len=idx) => {
       raise ElaborationError(message="Vector length '\{idx}' must be a compile-time constant", span~)
     }
+    MemoryMask(ty) => lower_type(ty.mask(span~), span~)
     Instance(sig~, params~, accessed_ports~) => {
       let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.ports.length())
       let resolved_params = keep_and_check_resolved(params, span~)

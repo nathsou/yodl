@@ -47,7 +47,7 @@ The `for` loop duplicates its body a fixed number of times, substituting the loo
 
 ```yodl
 // Simple parallel hexadecimal to character decoder
-module Hex<Bits: uint>(n: uint<Bits>) -> (chars: uint<8>[cdiv!(Bits, 4)]) {
+module Hex<Bits: Nat>(n: uint<Bits>) -> (chars: uint<8>[cdiv!(Bits, 4)]) {
     const Len = cdiv!(Bits, 4)
     for i in 0..<Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
