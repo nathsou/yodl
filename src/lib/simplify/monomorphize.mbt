@@ -19,7 +19,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
     parameterized: {},
     monomorphized: {},
     declared_modules: {},
-    instanciated_modules: Set::new(),
+    instanciated_modules: Set([]),
     constants: {},
     type_aliases: {},
     top_env: Scope::new(),
@@ -274,7 +274,7 @@ fn Monomorphizer::register_monomorphized_module(
   let mod_sig = mod_decl.signature()
 
   let params_map = {
-    let map: Map[String, @parse.ResolvedParam] = Map::new(capacity=params.params.length())
+    let map: Map[String, @parse.ResolvedParam] = Map([], capacity=params.params.length())
 
     for name, param in params.as_map(names=mod_decl.params.map(fn(param) { param.name })) {
       let param_sig = mod_sig.get_param(name).unwrap()

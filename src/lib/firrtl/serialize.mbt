@@ -179,6 +179,10 @@ pub impl[T] Show for Reference[T] with output(self, logger) {
   }
 }
 
+pub impl[T] @debug.Debug for Reference[T] with to_repr(self) {
+  @debug.Repr::literal(self.to_string())
+}
+
 pub fn[T] FIRRTLEmitter::emit_stmt(self: Self, stmt: Stmt[T], glued~: Bool = false) -> Unit {
   match stmt {
     Node(id~, expr~) => {

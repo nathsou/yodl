@@ -906,7 +906,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       match elems {
         [elem] => elem
         _ => {
-          let fields = Map::new(capacity=elems.length())
+          let fields = Map([], capacity=elems.length())
 
           for idx, elem in elems {
             fields[idx.to_string()] = elem

@@ -76,7 +76,8 @@ impl Show for TypeCheckerError with output(self, logger) {
                     Dict => "dict"
                 }
             }).join(", ") + "]"
-            logger.write_string("Invalid arguments '\{args}' for attribute '\{name}', expected \{expected_str}")
+            let args_str = args.iter().map(a => a.to_string()).join(", ")
+            logger.write_string("Invalid arguments '[\{args_str}]' for attribute '\{name}', expected \{expected_str}")
         }
     }
 
@@ -194,7 +195,7 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
             }
         }
         Struct(fields) => {
-            let field_tys = Map::new(capacity=fields.length())
+            let field_tys = Map([], capacity=fields.length())
 
             for name, ty in fields {
                 field_tys[name] = self.resolve_ty(ty, span~)
@@ -614,7 +615,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             ret_ty.unwrap()
         }
         Tuple(elems~, ..) => {
-            let fields = Map::new(capacity=elems.length())
+            let fields = Map([], capacity=elems.length())
 
             for idx, elem in elems {
                 fields[idx.to_string()] = self.check_expr(elem, env)
@@ -752,7 +753,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             raise type_error("Function call after monomorphization", span)
         }
         Struct(fields~, ..) => {
-            let field_tys = Map::new(capacity=fields.length())
+            let field_tys = Map([], capacity=fields.length())
 
             for name, ty in fields {
                 field_tys[name] = self.check_expr(ty, env)

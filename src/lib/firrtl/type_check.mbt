@@ -231,7 +231,10 @@ fn TypeEnv::check_expr(self: TypeEnv, expr: UntypedExpr) -> TypedExpr raise {
 
           UInt(w - n)
         }
-        _ => raise Failure::Failure("Unsupported primitive operation '\{op}' with argument types '\{arg_tys}'")
+        _ => {
+          let arg_tys_str = arg_tys.iter().map(t => t.to_string()).join(", ")
+          raise Failure::Failure("Unsupported primitive operation '\{op}' with argument types '[\{arg_tys_str}]'")
+        }
       }
 
       PrimOp(op~, args~, ty~)

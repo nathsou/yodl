@@ -23,7 +23,7 @@ pub struct LoweringTable {
 
 fn LoweringTable::new() -> LoweringTable {
   {
-    namespace_: Set::new(),
+    namespace_: Set([]),
     ref_mapping: {},
   }
 }
@@ -429,7 +429,7 @@ test "subcomponents" {
   ])
 
   let flat = subcomponents("x", Id(Id::from("x"), ty~))
-  inspect(flat.map(field => field.name), content="[\"x_a\", \"x_b_c\", \"x_b_d_0\", \"x_b_d_1\"]")
+  @debug.debug_inspect(flat.map(field => field.name), content="[\"x_a\", \"x_b_c\", \"x_b_d_0\", \"x_b_d_1\"]")
 }
 
 test "flatten" {
@@ -449,7 +449,7 @@ test "flatten" {
   let old_ref = Id(Id::from("x"), ty~)
   let results = table.flatten(prefix="x", old_ref~)
 
-  inspect(results, content="[(x.a, \"x_a\"), (x.b.c, \"x_b_c\"), (x.b.d[0], \"x_b_d_0\"), (x.b.d[1], \"x_b_d_1\")]")
+  @debug.debug_inspect(results, content="[(x.a, \"x_a\"), (x.b.c, \"x_b_c\"), (x.b.d[0], \"x_b_d_0\"), (x.b.d[1], \"x_b_d_1\")]")
 }
 
 test "flatten with name conflict" {
@@ -469,7 +469,7 @@ test "flatten with name conflict" {
 
   let old_ref = Id(Id::from("x"), ty~)
   let results = table.flatten(prefix="x", old_ref~)
-  inspect(results, content="[(x.a, \"x_a\"), (x.b.c, \"x_b_c\"), (x.b.d[0], \"x_b_d_0_0\"), (x.b.d[1], \"x_b_d_1\")]")
+  @debug.debug_inspect(results, content="[(x.a, \"x_a\"), (x.b.c, \"x_b_c\"), (x.b.d[0], \"x_b_d_0_0\"), (x.b.d[1], \"x_b_d_1\")]")
 }
 
 fn LowerAggregateTypesPass::expr_as_ref(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> TypedRef {

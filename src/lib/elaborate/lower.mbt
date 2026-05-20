@@ -224,7 +224,7 @@ fn default_value(ty: @firrtl.Type, span~: Span) -> Value {
       Vector(elems~, ty~, span~)
     }
     Bundle(fields) => {
-      let values = Map::new(capacity=fields.length())
+      let values = Map([], capacity=fields.length())
 
       for field in fields {
         values[field.id.inner()] = default_value(field.ty, span~)
@@ -245,7 +245,7 @@ fn _default_mask(ty: @firrtl.Type, span~: Span) -> Value {
       Vector(elems=@utils.fill(len, _default_mask(elem_ty, span~)), ty~, span~)
     }
     Bundle(fields) => {
-      let values = Map::new(capacity=fields.length())
+      let values = Map([], capacity=fields.length())
 
       for field in fields {
         values[field.id.inner()] = _default_mask(field.ty, span~)
@@ -788,7 +788,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       Vector(elems=values, ty~, span~)
     }
     Struct(fields~, span~, ty=_) => {
-      let val = Map::new(capacity=fields.length())
+      let val = Map([], capacity=fields.length())
       let sorted_keys = { let keys = fields.keys().collect(); keys.sort(); keys }
 
       for field in sorted_keys {
@@ -819,7 +819,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
         }
         None => match self.declared_modules.get(path) {
           Some(sig) => {
-            let ports_sig = Map::new(capacity=sig.ports.length())
+            let ports_sig = Map([], capacity=sig.ports.length())
             let params_map = params.as_map(names=sig.params.map(fn(p) { p.name }))
             let resolved_params = keep_and_check_resolved(params_map, span~)
 

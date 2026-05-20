@@ -20,7 +20,7 @@ pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem) -> Resolver r
   {
     resolved_packages: {},
     available_packages: collect_packages(packages_dir, fs~),
-    imports: Set::new(),
+    imports: Set([]),
     fs,
   }
 }

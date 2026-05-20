@@ -49,7 +49,8 @@ fn ExpandWhensPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule 
   }
 
   if not_fully_init.length() > 0 {
-    raise Failure::Failure("The following wires are not fully initialised: \{not_fully_init}")
+    let not_fully_init_str = not_fully_init.iter().map(r => r.to_string()).join(", ")
+    raise Failure::Failure("The following wires are not fully initialised: [\{not_fully_init_str}]")
   }
 
   self.scopes.pop()

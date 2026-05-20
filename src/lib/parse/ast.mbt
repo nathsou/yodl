@@ -1145,9 +1145,8 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
     Vector(ty~, len~) => Vector(ty=ty.substitute(params_env, span~), len=len.substitute(params_env))
     MemoryMask(ty) => {
       let ty = ty.substitute(params_env, span~)
-      match (try? ty.mask(span~)) {
-        Ok(mask) => mask
-        Err(_) => MemoryMask(ty)
+      try ty.mask(span~) catch {
+        _ => MemoryMask(ty)
       }
     }
     Instance(sig~, params~, accessed_ports~) => {

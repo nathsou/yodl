@@ -113,8 +113,9 @@ pub fn run(
         if top_candidates.contains(@parse.Path::new([], "Top")) {
           "Top"
         } else {
+          let top_str = top_candidates.iter().map(p => p.to_string()).join(", ")
           raise Failure::Failure(
-            "Multiple top-level modules found: \{top_candidates}, remove extraneous uninstanciated modules or rename the top module to `Top`",
+            "Multiple top-level modules found: [\{top_str}], remove extraneous uninstanciated modules or rename the top module to `Top`",
           )
         }
     }

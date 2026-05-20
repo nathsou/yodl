@@ -87,8 +87,8 @@ pub fn Simplifier::simplify_expr(self: Self, expr: @parse.Expr, env~: Simplifier
         @parse.Expr::Unary(op=Not, expr=Binary(op=And, lhs~, rhs~, output_width~, span~, ty~), span~, ty~)
       )
       Tuple(elems~, span~, ty=_) => Some({
-        let fields = Map::new(capacity=elems.length())
-        let types = Map::new(capacity=elems.length())
+        let fields = Map([], capacity=elems.length())
+        let types = Map([], capacity=elems.length())
 
         for idx, elem in elems {
           let key = idx.to_string()

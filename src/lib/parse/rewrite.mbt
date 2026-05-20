@@ -38,7 +38,7 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
     }
     Instance(path~, params~, ports~, span~, ty~) => {
       let new_params = params.map(map_expr=expr => { rewrite_expr(expr, rewr_expr~, rewr_stmt~) }, map_type=ty => ty.clone())
-      let new_ports = Map::new(capacity=ports.length())
+      let new_ports = Map([], capacity=ports.length())
 
       for port, expr in ports {
         new_ports[port] = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
@@ -116,7 +116,7 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
       FunCall(name~, args=new_args, span~, ty=clone_ty(ty))
     }
     Struct(fields~, span~, ty~) => {
-      let new_fields = Map::new(capacity=fields.length())
+      let new_fields = Map([], capacity=fields.length())
 
       for field, expr in fields {
         new_fields[field] = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
