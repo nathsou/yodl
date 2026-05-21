@@ -22,15 +22,30 @@ pub suberror ParserError {
 
 pub impl Show for ParserError with output(self, logger) {
   match self {
-    UnexpectedToken(span~, ..) =>
-      logger.write_string("UnexpectedToken at \{span}\n\{span.context()}")
-    ExpectedType(span~, ..) =>
-      logger.write_string("ExpectedType at \{span}\n\{span.context()}")
-    ExpectedExpr(span~, ..) =>
-      logger.write_string("ExpectedExpr at \{span}\n\{span.context()}")
-    ExpectedIdentifier(span~, ..) =>
-      logger.write_string("ExpectedIdentifier at \{span}\n\{span.context()}")
-    _ => logger.write_string("ParserError")
+    UnexpectedToken(expected~, received~, span~) =>
+      logger.write_string("UnexpectedToken: expected '\{expected}', got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedType(received~, span~) =>
+      logger.write_string("Expected a type, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedExpr(received~, span~) =>
+      logger.write_string("Expected an expression, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedIdentifier(received~, span~) =>
+      logger.write_string("Expected an identifier, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedStmt(received~, span~) =>
+      logger.write_string("Expected a statement, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedDecl(received~, span~) =>
+      logger.write_string("Expected a declaration, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedRangeOperator(received~, span~) =>
+      logger.write_string("Expected a range operator ('..' or '..='), got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedExprOrType(received~, span~) =>
+      logger.write_string("Expected an expression or type, got '\{received}' at \{span}\n\{span.context()}")
+    DidYouMean(received~, suggestion~, span~) =>
+      logger.write_string("Unexpected '\{received}' at \{span}: \{suggestion}\n\{span.context()}")
+    MultipleDefaultCases(span~) =>
+      logger.write_string("Multiple default cases in match at \{span}\n\{span.context()}")
+    InvalidPortOrTupleAccess(span~) =>
+      logger.write_string("Invalid port or tuple access at \{span}\n\{span.context()}")
+    DuplicateStructField(name~, span~) =>
+      logger.write_string("Duplicate struct field '\{name}' at \{span}\n\{span.context()}")
   }
 }
 

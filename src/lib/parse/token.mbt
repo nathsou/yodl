@@ -93,7 +93,7 @@ pub impl Show for TokenType with output(self, logger) {
     BuiltinFunction(name) => logger.write_string("\{name}!")
     Natural(value~, width~, base~) => match width {
       Some(w) => {
-        let base_char = match base { 2 => "b"; 16 => "h"; _ => "d" }
+        let base_char = match base { 2 => "b"; 8 => "o"; 16 => "h"; _ => "d" }
         logger.write_string("\{w}'\{base_char}\{value}")
       }
       None => logger.write_string("\{value}")

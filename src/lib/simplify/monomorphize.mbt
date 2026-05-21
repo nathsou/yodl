@@ -241,7 +241,7 @@ fn Monomorphizer::register_monomorphized_module(
 
       match (resolved_param, param_sig.sort) {
         (ConstParam(value~, span~), NatSort) => {
-          params.instantiated.push((value.as_expr(), @parse.Type::uint(0), span))
+          params.instantiated.push((value.as_expr(), @parse.Type::Nat({min_width: 0}), span))
         }
         (TypeParam(_), TypeSort) => ()
         _ => raise InvalidParameterInstantiation(path~, param=name, span=param.span(), param_span=param_sig.span)
