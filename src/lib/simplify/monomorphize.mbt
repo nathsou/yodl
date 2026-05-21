@@ -45,7 +45,7 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
       logger.write_string("Module '\{path}' expected \{expected} parameter(s), but got \{actual}")
     }
     ReceivedTypeParameterInsteadOfExpr(..) => {
-      logger.write_string("Received type parameter instead of expression")
+      logger.write_string("Type parameter used where a value (Nat) is expected: consider changing the sort from 'Type' to 'Nat'")
     }
     InvalidParameterInstantiation(path~, param~, param_span~, ..) => {
       logger.write_string("Invalid instantiation of parameter '\{param}' in module '\{path}', declared at \{param_span}")

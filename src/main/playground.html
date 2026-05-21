@@ -382,7 +382,7 @@
             updateThemeIcon(theme);
 
             if (typeof monaco !== 'undefined') {
-                const editorTheme = isDark ? 'vs-dark' : 'vs';
+                const editorTheme = isDark ? 'yodl-dark' : 'yodl-light';
                 if (inputEditor) inputEditor.updateOptions({ theme: editorTheme });
                 if (outputEditor) outputEditor.updateOptions({ theme: editorTheme });
             }
@@ -435,11 +435,13 @@
                     'declare', 'module', 'let', 'match', 'if', 'else', 'for', 'in', 'const', 'package', 'import'
                 ],
                 typeKeywords: [
-                    'uint', 'sint', 'bool', 'clock', 'type'
+                    'uint', 'sint', 'bool', 'clock', 'type', 'Nat', 'Type'
+                ],
+                wordOperators: [
+                    'and', 'or', 'not', 'xor', 'nand', 'nor', 'xnor', 'shl', 'shr', 'andr', 'orr', 'xorr'
                 ],
                 operators: [
                     '==', '!=', '<=', '>=', '<:', '>:', '+', '-', '*', '/', '%', '...', '=>', '?', ':', '.',
-                    'and', 'or', 'not', 'xor', 'nand', 'nor', 'xnor', 'shl', 'shr', 'andr', 'orr', 'xorr'
                 ],
                 symbols: /[=><!~?:&|+\-*/^%.]+/,
                 tokenizer: {
@@ -452,6 +454,7 @@
                             cases: { 
                                 '@keywords': 'keyword',
                                 '@typeKeywords': 'type',
+                                '@wordOperators': 'operator',
                                 '@default': 'identifier'
                             }
                         }],
@@ -494,9 +497,29 @@
                 }
             });
 
+            monaco.editor.defineTheme('yodl-light', {
+                base: 'vs',
+                inherit: true,
+                rules: [
+                    { token: 'function', foreground: '795E26', fontStyle: 'bold' },
+                    { token: 'operator', foreground: '0000FF' }
+                ],
+                colors: {}
+            });
+
+            monaco.editor.defineTheme('yodl-dark', {
+                base: 'vs-dark',
+                inherit: true,
+                rules: [
+                    { token: 'function', foreground: 'DCDCAA', fontStyle: 'bold' },
+                    { token: 'operator', foreground: '569CD6' }
+                ],
+                colors: {}
+            });
+
             // Determine current theme
             const isDark = document.documentElement.dataset.theme === 'dark';
-            const editorTheme = isDark ? 'vs-dark' : 'vs';
+            const editorTheme = isDark ? 'yodl-dark' : 'yodl-light';
 
             // Create the editors
             inputEditor = monaco.editor.create(document.getElementById('input-panel'), {

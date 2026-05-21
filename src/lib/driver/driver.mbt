@@ -9,7 +9,9 @@ pub fn run(
 
   let fs = ext.fs
   let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs~)
-  let pkg = resolver.resolve(path~, is_top_package=true)
+  let pkg = try resolver.resolve(path~, is_top_package=true) catch {
+    err => raise Failure::Failure("\{err}")
+  }
 
   for cmd in commands {
     if cmd is WriteSource(path~) {
@@ -30,7 +32,9 @@ pub fn run(
   }
 
   let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = monomorphizer.monomorphize(decls=pkg.body, packages=[])
+  let mono_decls = try monomorphizer.monomorphize(decls=pkg.body, packages=[]) catch {
+    err => raise Failure::Failure(err.to_string())
+  }
 
   for cmd in commands {
     if cmd is WriteMono(path~) {

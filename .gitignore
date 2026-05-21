@@ -8,4 +8,5 @@ verilator/
 src/sim/
 .specs/
 .vscode/
+src/main/bundle/
 _build/

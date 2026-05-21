@@ -16,6 +16,21 @@ pub suberror ResolutionError {
   MultiLevelImportNotSupportedYet(packages~: Array[String])
 } derive(Debug)
 
+pub impl Show for ResolutionError with output(self, logger) {
+  match self {
+    PackageNotFound(name~) => logger.write_string("Package '\{name}' not found")
+    IOError(err) => logger.write_string("IO error: \{err}")
+    LexerError(err) => logger.write_string("Lexer error: \{err}")
+    ParseError(err) => logger.write_string("Parse error: \{err}")
+    CouldNotExtractPackageName(path) => logger.write_string("Could not extract package name from '\{path}'")
+    PackageNameConflict(name~, path1~, path2~) => logger.write_string("Package name conflict for '\{name}': '\{path1}' and '\{path2}'")
+    MultiLevelImportNotSupportedYet(packages~) => {
+      let pkgs = packages.join(", ")
+      logger.write_string("Multi-level imports are not yet supported: [\{pkgs}]")
+    }
+  }
+}
+
 pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem) -> Resolver raise ResolutionError {
   {
     resolved_packages: {},
