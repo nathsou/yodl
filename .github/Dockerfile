@@ -24,7 +24,9 @@ RUN tar -xzf firrtl-bin-linux-x64.tar.gz
 RUN mv firtool-1.129.0/bin/firtool /usr/local/bin/firtool
 RUN rm -rf firrtl-bin-linux-x64.tar.gz firtool-1.129.0
 
-# Run tests
+# Run checks and tests
+RUN moon check
+RUN moon test
 RUN bash scripts/test.sh
 
 # Install Bun

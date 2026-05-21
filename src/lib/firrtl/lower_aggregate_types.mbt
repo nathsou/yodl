@@ -449,7 +449,14 @@ test "flatten" {
   let old_ref = Id(Id::from("x"), ty~)
   let results = table.flatten(prefix="x", old_ref~)
 
-  @debug.debug_inspect(results, content="[(x.a, \"x_a\"), (x.b.c, \"x_b_c\"), (x.b.d[0], \"x_b_d_0\"), (x.b.d[1], \"x_b_d_1\")]")
+  @debug.debug_inspect(results, content=(
+    #|[
+    #|  (x.a, "x_a"),
+    #|  (x.b.c, "x_b_c"),
+    #|  (x.b.d[0], "x_b_d_0"),
+    #|  (x.b.d[1], "x_b_d_1"),
+    #|]
+  ))
 }
 
 test "flatten with name conflict" {
@@ -469,7 +476,14 @@ test "flatten with name conflict" {
 
   let old_ref = Id(Id::from("x"), ty~)
   let results = table.flatten(prefix="x", old_ref~)
-  @debug.debug_inspect(results, content="[(x.a, \"x_a\"), (x.b.c, \"x_b_c\"), (x.b.d[0], \"x_b_d_0_0\"), (x.b.d[1], \"x_b_d_1\")]")
+  @debug.debug_inspect(results, content=(
+    #|[
+    #|  (x.a, "x_0_a"),
+    #|  (x.b.c, "x_0_b_c"),
+    #|  (x.b.d[0], "x_0_b_d_0"),
+    #|  (x.b.d[1], "x_0_b_d_1"),
+    #|]
+  ))
 }
 
 fn LowerAggregateTypesPass::expr_as_ref(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> TypedRef {
