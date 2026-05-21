@@ -86,63 +86,21 @@ pub enum MonoEnvEntry {
 
 type MonoEnv = Scope[@parse.Path, MonoEnvEntry]
 
-fn Monomorphizer::monomorphize_index_expr(self: Self, idx: @parse.IndexExpr, env~: MonoEnv, packages~: Array[String]) -> @parse.IndexExpr raise {
-  match idx {
-    Lit(_) => idx
-    Var(name) => {
-      let path = @parse.Path::new([], name)
-      match resolve_member(env, path~, packages~) {
-        Some((Param(ConstParam(value=Natural(value~, ..), ..)), _)) => Lit(value.to_int())
-        Some((Const(decl), _)) => {
-          match @parse.ConstValue::from(decl.expr.partial_eval()) {
-            Some(Natural(value~, ..)) => Lit(value.to_int())
-            _ => idx
-          }
+fn Monomorphizer::monomorphize_index_expr(_ : Self, idx : @parse.IndexExpr, env~ : MonoEnv, packages~ : Array[String]) -> @parse.IndexExpr raise {
+  idx.map_vars(fn(name) raise {
+    let path = @parse.Path::new([], name)
+    match resolve_member(env, path~, packages~) {
+      Some((Param(ConstParam(value=Natural(value~, ..), ..)), _)) =>
+        @parse.IndexExpr::Lit(value.to_int())
+      Some((Const(decl), _)) =>
+        match @parse.ConstValue::from(decl.expr.partial_eval()) {
+          Some(Natural(value~, ..)) => @parse.IndexExpr::Lit(value.to_int())
+          _ => @parse.IndexExpr::Var(name)
         }
-        Some((GenVar(n), _)) => Lit(n)
-        _ => idx
-      }
+      Some((GenVar(n), _)) => @parse.IndexExpr::Lit(n)
+      _ => @parse.IndexExpr::Var(name)
     }
-    Add(a, b) => {
-      let a2 = self.monomorphize_index_expr(a, env~, packages~)
-      let b2 = self.monomorphize_index_expr(b, env~, packages~)
-      match (a2, b2) {
-        (Lit(x), Lit(y)) => Lit(x + y)
-        _ => Add(a2, b2)
-      }
-    }
-    Sub(a, b) => {
-      let a2 = self.monomorphize_index_expr(a, env~, packages~)
-      let b2 = self.monomorphize_index_expr(b, env~, packages~)
-      match (a2, b2) {
-        (Lit(x), Lit(y)) => Lit(x - y)
-        _ => Sub(a2, b2)
-      }
-    }
-    Mul(a, b) => {
-      let a2 = self.monomorphize_index_expr(a, env~, packages~)
-      let b2 = self.monomorphize_index_expr(b, env~, packages~)
-      match (a2, b2) {
-        (Lit(x), Lit(y)) => Lit(x * y)
-        _ => Mul(a2, b2)
-      }
-    }
-    Clog2(a) => {
-      let a2 = self.monomorphize_index_expr(a, env~, packages~)
-      match a2 {
-        Lit(n) => Lit(@utils.clog2_int(n))
-        _ => Clog2(a2)
-      }
-    }
-    CDiv(a, b) => {
-      let a2 = self.monomorphize_index_expr(a, env~, packages~)
-      let b2 = self.monomorphize_index_expr(b, env~, packages~)
-      match (a2, b2) {
-        (Lit(x), Lit(y)) if y != 0 => Lit((x + y - 1) / y)
-        _ => CDiv(a2, b2)
-      }
-    }
-  }
+  })
 }
 
 priv struct TypeInfo {
