@@ -1,6 +1,4 @@
-options(
-  "warn-list": "-35",
-)
+warnings = "-35"
 
 import {
   "moonbitlang/core/int",

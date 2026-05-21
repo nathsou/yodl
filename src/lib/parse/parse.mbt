@@ -20,6 +20,35 @@ pub suberror ParserError {
   ExpectedExprOrType(received~: TokenType, span~: Span)
 } derive(Debug)
 
+pub impl Show for ParserError with output(self, logger) {
+  match self {
+    UnexpectedToken(expected~, received~, span~) =>
+      logger.write_string("UnexpectedToken: expected '\{expected}', got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedType(received~, span~) =>
+      logger.write_string("Expected a type, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedExpr(received~, span~) =>
+      logger.write_string("Expected an expression, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedIdentifier(received~, span~) =>
+      logger.write_string("Expected an identifier, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedStmt(received~, span~) =>
+      logger.write_string("Expected a statement, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedDecl(received~, span~) =>
+      logger.write_string("Expected a declaration, got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedRangeOperator(received~, span~) =>
+      logger.write_string("Expected a range operator ('..' or '..='), got '\{received}' at \{span}\n\{span.context()}")
+    ExpectedExprOrType(received~, span~) =>
+      logger.write_string("Expected an expression or type, got '\{received}' at \{span}\n\{span.context()}")
+    DidYouMean(received~, suggestion~, span~) =>
+      logger.write_string("Unexpected '\{received}' at \{span}: \{suggestion}\n\{span.context()}")
+    MultipleDefaultCases(span~) =>
+      logger.write_string("Multiple default cases in match at \{span}\n\{span.context()}")
+    InvalidPortOrTupleAccess(span~) =>
+      logger.write_string("Invalid port or tuple access at \{span}\n\{span.context()}")
+    DuplicateStructField(name~, span~) =>
+      logger.write_string("Duplicate struct field '\{name}' at \{span}\n\{span.context()}")
+  }
+}
+
 pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: String) -> Parser {
   { tokens, index: 0, file, file_content }
 }
@@ -507,6 +536,10 @@ fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
   let ports = {}
 
   while !self.matches(Rparen) {
+    self.ignore(Semicolon) // skip auto-inserted semicolons from newlines
+    if self.matches(Rparen) {
+      break
+    }
     let start_idx = self.index
     let name = self.parse_identifier()
     
@@ -517,6 +550,7 @@ fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
     }
 
     if !self.consumes(Comma) {
+      self.ignore(Semicolon) // consume auto-inserted semicolon before ')'
       break
     }
   }
@@ -676,16 +710,116 @@ fn Parser::parse_import_decl(self: Parser) -> ImportDecl raise {
   { packages, span: self.span(start_idx) }
 }
 
+// Parse a compile-time static index expression (Nat-sorted).
+// Supports: literals, identifiers (Var), +, -, *, clog2!(...), cdiv!(...), and parentheses.
+fn Parser::parse_index_expr(self: Parser) -> IndexExpr raise {
+  self.parse_index_expr_add()
+}
+
+fn Parser::parse_index_expr_add(self: Parser) -> IndexExpr raise {
+  let mut lhs = self.parse_index_expr_mul()
+
+  while true {
+    if self.consumes(Plus) {
+      let rhs = self.parse_index_expr_mul()
+      lhs = Add(lhs, rhs)
+    } else if self.consumes(Minus) {
+      let rhs = self.parse_index_expr_mul()
+      lhs = Sub(lhs, rhs)
+    } else {
+      break
+    }
+  }
+
+  lhs
+}
+
+fn Parser::parse_index_expr_mul(self: Parser) -> IndexExpr raise {
+  let mut lhs = self.parse_index_expr_primary()
+
+  while self.consumes(Star) {
+    let rhs = self.parse_index_expr_primary()
+    lhs = Mul(lhs, rhs)
+  }
+
+  lhs
+}
+
+fn Parser::parse_index_expr_primary(self: Parser) -> IndexExpr raise {
+  let start_idx = self.index
+
+  match self.peek() {
+    Natural(value~, ..) => {
+      self.advance()
+      Lit(value.to_int())
+    }
+    Identifier(name) => {
+      self.advance()
+      // Simple single-segment identifier → static variable
+      Var(name)
+    }
+    BuiltinFunction(name) => {
+      self.advance()
+      self.expect(Lparen, start_idx)
+      match name {
+        "clog2" => {
+          let arg = self.parse_index_expr()
+          self.expect(Rparen, start_idx)
+          Clog2(arg)
+        }
+        "cdiv" => {
+          let dividend = self.parse_index_expr()
+          self.expect(Comma, start_idx)
+          let divisor = self.parse_index_expr()
+          self.expect(Rparen, start_idx)
+          CDiv(dividend, divisor)
+        }
+        _ => raise ExpectedExpr(received=BuiltinFunction(name), span=self.span(start_idx))
+      }
+    }
+    Lparen => {
+      self.advance()
+      let inner = self.parse_index_expr()
+      self.expect(Rparen, start_idx)
+      inner
+    }
+    token => raise ExpectedExpr(received=token, span=self.span(start_idx))
+  }
+}
+
+// Parse a parameter sort: `Nat` → NatSort; `Type` → TypeSort
+fn Parser::parse_param_sort(self: Parser) -> ParamSort raise {
+  let start_idx = self.index
+
+  match self.peek() {
+    Identifier("Nat") => {
+      self.advance()
+      NatSort
+    }
+    Identifier("Type") => {
+      self.advance()
+      TypeSort
+    }
+    token => raise ExpectedType(received=token, span=self.span(start_idx))
+  }
+}
+
 fn Parser::parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
   let start_idx = self.index
   self.expect(Type, start_idx)
   let name = self.parse_identifier()
-  let parameters: Array[String] = []
+  let parameters: Array[StaticParam] = []
   
   if self.consumes(Lchevron) {
     while !self.matches(Rchevron) {
-      let param = self.parse_identifier()
-      parameters.push(param)
+      let param_start = self.index
+      let param_name = self.parse_identifier()
+      let sort = if self.consumes(Colon) {
+        self.parse_param_sort()
+      } else {
+        TypeSort // default: type parameter
+      }
+      parameters.push({ name: param_name, sort, span: self.span(param_start) })
 
       if !self.consumes(Comma) {
         break
@@ -722,15 +856,12 @@ fn Parser::parse_type(self: Parser) -> Type raise {
   let mut base_ty: Type = match self.peek() {
     Bool => {
       self.advance()
-      UInt(Fixed(1))
+      UInt(Lit(1))
     }
     UInt => {
       self.advance()
       if self.consumes(Lchevron) {
-        let width = match self.parse_expr() {
-          Natural(value~, width=_, ..) => IntParam::Fixed(value.to_int())
-          expr => Dynamic(expr)
-        }
+        let width = self.parse_index_expr()
         self.expect(Rchevron, start_idx)
         UInt(width)
       } else {
@@ -740,10 +871,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
     SInt => {
       self.advance()
       self.expect(Lchevron, start_idx)
-      let width = match self.parse_expr() {
-        Natural(value~, width=_, ..) => IntParam::Fixed(value.to_int())
-        expr => Dynamic(expr)
-      }
+      let width = self.parse_index_expr()
       self.expect(Rchevron, start_idx)
       SInt(width)
     }
@@ -769,7 +897,11 @@ fn Parser::parse_type(self: Parser) -> Type raise {
         self.expect(Rchevron, start_idx)
       }
 
-      Type::Name(path~, params~)
+      if path is { packages: [], elem: "MemoryMask" } && params is [Unresolved(TypeParam(ty~, ..))] {
+        Type::MemoryMask(ty)
+      } else {
+        Type::Name(path~, params~)
+      }
     }
     Lparen => {
       self.advance()
@@ -789,7 +921,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       match elems {
         [elem] => elem
         _ => {
-          let fields = Map::new(capacity=elems.length())
+          let fields = Map([], capacity=elems.length())
 
           for idx, elem in elems {
             fields[idx.to_string()] = elem
@@ -844,13 +976,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
   }
 
   while self.consumes(Lbracket) {
-    let expr = self.parse_expr()
-
-    let len = match expr {
-      Natural(value~, width=_, ..) => IntParam::Fixed(value.to_int())
-      _ => Dynamic(expr)
-    }
-
+    let len = self.parse_index_expr()
     self.expect(Rbracket, start_idx)
     base_ty = Vector(ty=base_ty, len~)
   }
@@ -1009,15 +1135,11 @@ fn Parser::parse_module_signature(self: Parser, attributes~: Map[String, Attribu
   let name = self.parse_identifier()
   let params = self.parse_module_parameters(() => {
     let param_start_idx = self.index
-    let name = self.parse_identifier()
+    let param_name = self.parse_identifier()
     self.expect(Colon, start_idx)
-    let ty = if self.consumes(Type) {
-      AnyType
-    } else {
-      Type(self.parse_type())
-    }
+    let sort = self.parse_param_sort()
     
-    { name, ty, span: self.span(param_start_idx) }
+    ModuleParameter::{ name: param_name, sort, span: self.span(param_start_idx) }
   })
   let inputs = self.parse_port_list(dir=Input)
   self.expect(RightThinArrow, start_idx)

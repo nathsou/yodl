@@ -1,10 +1,8 @@
+warnings = "-35"
+
 import {
   "nathsou/yodl/lib/utils",
   "moonbitlang/core/int",
   "moonbitlang/core/strconv",
   "moonbitlang/core/ref",
 }
-
-options(
-  "warn-list": "-35",
-)

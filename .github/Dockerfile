@@ -6,14 +6,14 @@ COPY book/ ./book
 COPY src/ ./src
 COPY moon.mod.json ./
 COPY examples/ ./examples
-COPY test.sh ./
+COPY scripts/ ./scripts
 
 # Install dependencies
 RUN apt update
 RUN apt install -y curl git wget tar unzip
 
 # Install Moonbit
-RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.9.1+cd5b07232'
+RUN curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.9.2+bbe2b338f'
 ENV PATH="/root/.moon/bin:${PATH}"
 RUN moon update
 RUN moon install
@@ -25,7 +25,7 @@ RUN mv firtool-1.129.0/bin/firtool /usr/local/bin/firtool
 RUN rm -rf firrtl-bin-linux-x64.tar.gz firtool-1.129.0
 
 # Run tests
-RUN bash test.sh
+RUN bash scripts/test.sh
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash

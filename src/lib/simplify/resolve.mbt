@@ -16,11 +16,26 @@ pub suberror ResolutionError {
   MultiLevelImportNotSupportedYet(packages~: Array[String])
 } derive(Debug)
 
+pub impl Show for ResolutionError with output(self, logger) {
+  match self {
+    PackageNotFound(name~) => logger.write_string("Package '\{name}' not found")
+    IOError(err) => logger.write_string("IO error: \{err}")
+    LexerError(err) => logger.write_string("Lexer error: \{err}")
+    ParseError(err) => logger.write_string("Parse error: \{err}")
+    CouldNotExtractPackageName(path) => logger.write_string("Could not extract package name from '\{path}'")
+    PackageNameConflict(name~, path1~, path2~) => logger.write_string("Package name conflict for '\{name}': '\{path1}' and '\{path2}'")
+    MultiLevelImportNotSupportedYet(packages~) => {
+      let pkgs = packages.join(", ")
+      logger.write_string("Multi-level imports are not yet supported: [\{pkgs}]")
+    }
+  }
+}
+
 pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem) -> Resolver raise ResolutionError {
   {
     resolved_packages: {},
     available_packages: collect_packages(packages_dir, fs~),
-    imports: Set::new(),
+    imports: Set([]),
     fs,
   }
 }
@@ -73,7 +88,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|const false = 1'b0
     #|
     #|@internal
-    #|declare module Reg<T: type>(
+    #|declare module Reg<T: Type>(
     #|    clk: clock,
     #|    d: T,
     #|    en?: bool,
@@ -83,7 +98,7 @@ let builtin_decls: Array[@parse.Decl] = {
     #|)
     #|
     #|@internal
-    #|declare module RegAsyncReset<T: type>(
+    #|declare module RegAsyncReset<T: Type>(
     #|    clk: clock,
     #|    d: T,
     #|    en?: bool,
@@ -94,12 +109,12 @@ let builtin_decls: Array[@parse.Decl] = {
     #|
     #|@internal
     #|declare module Memory<
-    #|  T: type,
-    #|  Depth: uint,
-    #|  ReadPorts: uint,
-    #|  WritePorts: uint,
-    #|  ReadLatency: uint,
-    #|  WriteLatency: uint,
+    #|  T: Type,
+    #|  Depth: Nat,
+    #|  ReadPorts: Nat,
+    #|  WritePorts: Nat,
+    #|  ReadLatency: Nat,
+    #|  WriteLatency: Nat,
     #| >(
     #|    read: { clk: clock, en: bool, addr: uint<clog2!(Depth)> }[ReadPorts],
     #|    write: { clk: clock, en: bool, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T> }[WritePorts],

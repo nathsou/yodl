@@ -18,9 +18,9 @@ module Counter(clk: clock) -> (value: uint<8>) {
 
 ### Parameters
 
-| Parameter | Type | Description |
+| Parameter | Sort | Description |
 |-----------|------|-------------|
-| `T` | type | Data type of the register |
+| `T` | `Type` | Data type of the register |
 
 
 ### Ports
@@ -84,14 +84,14 @@ Some configurations may be synthesised as block RAMs in FPGAs.
 
 ### Parameters
 
-| Parameter | Type | Description |
+| Parameter | Sort | Description |
 |-----------|------|-------------|
-| `T` | type | Data type of each element |
-| `Depth` | uint | Number of entries |
-| `ReadPorts` | uint | Number of read ports |
-| `WritePorts` | uint | Number of write ports |
-| `ReadLatency` | uint | Cycles to read |
-| `WriteLatency` | uint | Cycles to write |
+| `T` | `Type` | Data type of each element |
+| `Depth` | `Nat` | Number of entries |
+| `ReadPorts` | `Nat` | Number of read ports |
+| `WritePorts` | `Nat` | Number of write ports |
+| `ReadLatency` | `Nat` | Cycles to read |
+| `WriteLatency` | `Nat` | Cycles to write |
 
 ### Ports
 

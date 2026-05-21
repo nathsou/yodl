@@ -76,7 +76,8 @@ impl Show for TypeCheckerError with output(self, logger) {
                     Dict => "dict"
                 }
             }).join(", ") + "]"
-            logger.write_string("Invalid arguments '\{args}' for attribute '\{name}', expected \{expected_str}")
+            let args_str = args.iter().map(a => a.to_string()).join(", ")
+            logger.write_string("Invalid arguments '[\{args_str}]' for attribute '\{name}', expected \{expected_str}")
         }
     }
 
@@ -111,7 +112,7 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
         }
 
         match (ty1, ty2) {
-            (Vector(ty=ty1_inner, len=Fixed(len)), Vector(ty=ty2_inner, len=Dynamic(Identifier(path={ packages: [], elem }, ..)))) => {
+            (Vector(ty=ty1_inner, len=Lit(len)), Vector(ty=ty2_inner, len=Var(elem))) => {
                 match subst.get(elem) {
                     Some(Int(len2)) => {
                         if len != len2 {
@@ -128,10 +129,10 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
 
                 eqs.push((ty1_inner, ty2_inner))
             }
-            (Vector(ty=_, len=Dynamic(Identifier(_))), Vector(ty=_, len=Fixed(_))) => {
+            (Vector(ty=_, len=Var(_)), Vector(ty=_, len=Lit(_))) => {
                 eqs.push((ty2, ty1))
             }
-            (UInt(Fixed(width)) | SInt(Fixed(width)), Nat(min_width)) | (Nat(min_width), UInt(Fixed(width)) | SInt(Fixed(width))) => {
+            (UInt(Lit(width)) | SInt(Lit(width)), Nat(min_width)) | (Nat(min_width), UInt(Lit(width)) | SInt(Lit(width))) => {
                 min_width.update(width)
             }
             (UInt(_) | SInt(_), Nat(_)) | (Nat(_), UInt(_) | SInt(_)) => ()
@@ -141,7 +142,7 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
             }
             (Instance(..), Instance(..)) if identical_instances => ()
             (String(len~), ty2) | (ty2, String(len~)) => {
-                eqs.push((Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Fixed(len)), ty2))
+                eqs.push((Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(len)), ty2))
             }
             _ => {
                 raise IncompatibleTypes(ty1~, ty2~, span~)
@@ -194,7 +195,7 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
             }
         }
         Struct(fields) => {
-            let field_tys = Map::new(capacity=fields.length())
+            let field_tys = Map([], capacity=fields.length())
 
             for name, ty in fields {
                 field_tys[name] = self.resolve_ty(ty, span~)
@@ -203,6 +204,7 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
             Struct(field_tys)
         }
         String(len~) => String(len~)
+        MemoryMask(ty) => MemoryMask(self.resolve_ty(ty, span~))
     }
 }
 
@@ -238,7 +240,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
             match op {
                 Not => ty
-                Neg => SInt(Fixed(ty.width(span) + 1))
+                Neg => SInt(Lit(ty.width(span) + 1))
                 Andr | Orr | Xorr => Type::uint(1)
             }
         }
@@ -261,12 +263,12 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             }
 
             let lhs_ty = match lhs_ty {
-                Nat({min_width}) => Type::UInt(Fixed(min_width))
+                Nat({min_width}) => Type::UInt(Lit(min_width))
                 _ => lhs_ty
             }
 
             let rhs_ty = match rhs_ty {
-                Nat({min_width}) => Type::UInt(Fixed(min_width))
+                Nat({min_width}) => Type::UInt(Lit(min_width))
                 _ => rhs_ty
             }
 
@@ -347,9 +349,9 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
             match ty {
                 UInt(_) | SInt(_) => Type::uint(width)
-                String(_) => Type::Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Fixed(width))
+                String(_) => Type::Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(width))
                 Vector(ty=inner_ty, len~) => {
-                    let len = len.expect_fixed(expr.span())
+                    let len = len.expect_lit(expr.span())
                     if hi >= len {
                         raise InvalidSlicingRange(reason="start index out of bounds: lsb: \{hi}, len: \{len}", span~)
                     }
@@ -358,7 +360,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                         raise InvalidSlicingRange(reason="end index must be less than start index", span~)
                     }
 
-                    Type::Vector(ty=inner_ty, len=Fixed(width))
+                    Type::Vector(ty=inner_ty, len=Lit(width))
                 }
                 _ => raise IndexedExpressionMustBeVector(span~)
             }
@@ -405,9 +407,9 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                         let param_sig = sig.get_param(name)
 
                         match (param, param_sig) {
-                            (Resolved(ConstParam(value~, ..) as cnst_param), Some({ ty: Type(param_ty), span: param_span, .. })) => {
+                            (Resolved(ConstParam(value~, ..) as cnst_param), Some({ sort: NatSort, span: param_span, .. })) => {
                                 let value_ty = self.check_expr(value.as_expr(), env)
-                                let _ = unify(param_ty, value_ty, span=param_span, subst~)
+                                let _ = unify(value_ty, Nat({min_width: 0}), span=param_span, subst~)
 
                                 match value {
                                     Natural(value=n, ..) => {
@@ -418,7 +420,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
                                 params_env[name] = cnst_param
                             }
-                            (Resolved(TypeParam(ty~, span~)) | Unresolved(TypeParam(ty~, span~)), Some({ ty: AnyType, .. })) => {
+                            (Resolved(TypeParam(ty~, span~)) | Unresolved(TypeParam(ty~, span~)), Some({ sort: TypeSort, .. })) => {
                                 let ty = self.resolve_ty(ty, span~)
                                 subst[name] = Type(ty)
                                 params_env[name] = TypeParam(ty~, span~)
@@ -431,7 +433,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                                     Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
                                 }
 
-                                let expected_ty = "[" + param_sig.iter().map(p => p.ty.to_string()).join(", ") + "]"
+                                let expected_ty = "[" + param_sig.iter().map(p => p.sort.to_string()).join(", ") + "]"
                                 raise type_error(
                                     "Invalid instantiation of parameter '\{name}' with type '\{ty}', expected '\{expected_ty}'",
                                     param.span(),
@@ -489,16 +491,16 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                     Spread(expr=spread_expr, ..) => {
                         let spread_ty = self.check_expr(spread_expr, env)
                         match spread_ty {
-                            Vector(ty=spread_ty_inner, len=Fixed(spread_len)) => {
+                            Vector(ty=spread_ty_inner, len=Lit(spread_len)) => {
                                 check_elem_ty(spread_ty_inner)
                                 len += spread_len
                             }
-                            UInt(Fixed(int_len)) | SInt(Fixed(int_len)) => {
-                                check_elem_ty(UInt(Fixed(1)))
+                            UInt(Lit(int_len)) | SInt(Lit(int_len)) => {
+                                check_elem_ty(UInt(Lit(1)))
                                 len += int_len
                             }
                             String(len=str_len) => {
-                                check_elem_ty(UInt(Fixed(@parse.BITS_PER_CHAR)))
+                                check_elem_ty(UInt(Lit(@parse.BITS_PER_CHAR)))
                                 len += str_len
                             }
                             _ => {
@@ -514,7 +516,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 }
             }
 
-            Type::Vector(ty=elem_ty.unwrap(), len=Fixed(len))
+            Type::Vector(ty=elem_ty.unwrap(), len=Lit(len))
         }
         Spread(span~, ..) => {
             raise type_error("Spread outside vector", span)
@@ -613,7 +615,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             ret_ty.unwrap()
         }
         Tuple(elems~, ..) => {
-            let fields = Map::new(capacity=elems.length())
+            let fields = Map([], capacity=elems.length())
 
             for idx, elem in elems {
                 fields[idx.to_string()] = self.check_expr(elem, env)
@@ -638,7 +640,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             match expr_ty {
                 UInt(_) if concat => Type::uint(len)
                 SInt(_) if concat => Type::sint(len)
-                _ => Vector(ty=elem_ty, len=Fixed(len))
+                _ => Vector(ty=elem_ty, len=Lit(len))
             }
         }
         FunCall(name="uint", args=[arg], ..) => {
@@ -751,7 +753,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             raise type_error("Function call after monomorphization", span)
         }
         Struct(fields~, ..) => {
-            let field_tys = Map::new(capacity=fields.length())
+            let field_tys = Map([], capacity=fields.length())
 
             for name, ty in fields {
                 field_tys[name] = self.check_expr(ty, env)

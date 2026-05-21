@@ -563,15 +563,58 @@ impl Show for StructField with output(field, logger) {
   logger.write_string(field.ty.to_string())
 }
 
-impl Show for IntParam with output(param, logger) {
-  match param {
-    Fixed(n) => {
-      logger.write_string(n.to_string())
+fn index_expr_prec(expr: IndexExpr) -> Int {
+  match expr {
+    Lit(_) | Var(_) | Clog2(_) | CDiv(_, _) => 3
+    Mul(_, _) => 2
+    Add(_, _) | Sub(_, _) => 1
+  }
+}
+
+fn write_index_expr_child(expr: IndexExpr, logger: &Logger, min_prec: Int) -> Unit {
+  if index_expr_prec(expr) < min_prec {
+    logger.write_char('(')
+    logger.write_object(expr)
+    logger.write_char(')')
+  } else {
+    logger.write_object(expr)
+  }
+}
+
+pub impl Show for IndexExpr with output(self, logger) {
+  match self {
+    Lit(n) => logger.write_string(n.to_string())
+    Var(name) => logger.write_string(name)
+    Add(a, b) => {
+      // Add is left-associative; no children need wrapping at prec 1
+      write_index_expr_child(a, logger, 1)
+      logger.write_string(" + ")
+      write_index_expr_child(b, logger, 1)
     }
-    Dynamic(expr) => {
-      let emitter = AstEmitter::new()
-      emitter.emit_expr(expr)
-      logger.write_string(emitter.to_string())
+    Sub(a, b) => {
+      write_index_expr_child(a, logger, 1)
+      logger.write_string(" - ")
+      // Right child of Sub needs parens when it is Add or Sub (prec <= 1),
+      // since a - (b + c) ≠ a - b + c
+      write_index_expr_child(b, logger, 2)
+    }
+    Mul(a, b) => {
+      // Both children need parens when they are Add or Sub (prec < 2)
+      write_index_expr_child(a, logger, 2)
+      logger.write_string(" * ")
+      write_index_expr_child(b, logger, 2)
+    }
+    Clog2(a) => {
+      logger.write_string("clog2!(")
+      logger.write_object(a)
+      logger.write_char(')')
+    }
+    CDiv(a, b) => {
+      logger.write_string("cdiv!(")
+      logger.write_object(a)
+      logger.write_string(", ")
+      logger.write_object(b)
+      logger.write_char(')')
     }
   }
 }
@@ -649,6 +692,9 @@ pub impl Show for Type with output(ty, logger) {
     }
     String(len~) => {
       logger.write_string("string<\{len}>")
+    }
+    MemoryMask(ty) => {
+      logger.write_string("MemoryMask<\{ty}>")
     }
   }
 }
@@ -731,7 +777,7 @@ pub impl Show for Attribute with output(attr, logger) {
 pub impl Show for ModuleParameter with output(param, logger) {
   logger.write_string(param.name)
   logger.write_string(": ")
-  logger.write_object(param.ty)
+  logger.write_object(param.sort)
 }
 
 fn AstEmitter::emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
@@ -789,7 +835,12 @@ pub fn AstEmitter::emit_decl(self: AstEmitter, decl: Decl) -> Unit {
       
       if parameters.length() > 0 {
         self.write("<")
-        self.write(parameters.join(", "))
+        self.write(parameters.map(fn(p) {
+          match p.sort {
+            NatSort => "\{p.name}: Nat"
+            TypeSort => p.name
+          }
+        }).join(", "))
         self.write(">")
       }
 

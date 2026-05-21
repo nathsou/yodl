@@ -1,6 +1,6 @@
 
 // https://gist.github.com/olofk/e91fba2572396f55525f8814f05fb33d
-module Transmitter<ClockFreq: uint, BaudRate: uint>(
+module Transmitter<ClockFreq: Nat, BaudRate: Nat>(
     clk: clock,
     rst: bool,
     data_in: uint<8>,

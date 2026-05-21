@@ -1,5 +1,3 @@
-import { "nathsou/yodl/lib/parse", "nathsou/yodl/lib/utils" }
+warnings = "-35"
 
-options(
-  "warn-list": "-35",
-)
+import { "nathsou/yodl/lib/parse", "nathsou/yodl/lib/utils" }

@@ -12,7 +12,7 @@ module FullAdder(
     carry_out = (carry_in and xor1) or (a and b)
 }
 
-module Adder<N: uint>(
+module Adder<N: Nat>(
     a: uint<N>,
     b: uint<N>,
     carry_in: bool,

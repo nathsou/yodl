@@ -107,7 +107,7 @@ module FullAdder(
 Modules can be parameterised by specifying a list of parameters surrounded by `<` and `>` after the module name.
 
 ```yodl
-module Adder<N: uint>(
+module Adder<N: Nat>(
     a: uint<N>,
     b: uint<N>,
     carry_in: bool,
@@ -145,7 +145,7 @@ module Adder<N: uint>(
 - Parameter names can be omitted if the parameters are specified in the same order as the declaration.
 
 ```yodl
-module Adder<N: uint>(
+module Adder<N: Nat>(
     a: uint<N>,
     b: uint<N>,
     carry_in: bool,

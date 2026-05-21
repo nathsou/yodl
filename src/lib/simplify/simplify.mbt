@@ -87,8 +87,8 @@ pub fn Simplifier::simplify_expr(self: Self, expr: @parse.Expr, env~: Simplifier
         @parse.Expr::Unary(op=Not, expr=Binary(op=And, lhs~, rhs~, output_width~, span~, ty~), span~, ty~)
       )
       Tuple(elems~, span~, ty=_) => Some({
-        let fields = Map::new(capacity=elems.length())
-        let types = Map::new(capacity=elems.length())
+        let fields = Map([], capacity=elems.length())
+        let types = Map([], capacity=elems.length())
 
         for idx, elem in elems {
           let key = idx.to_string()
@@ -129,13 +129,13 @@ pub fn Simplifier::simplify_expr(self: Self, expr: @parse.Expr, env~: Simplifier
             args=[
               if expr_ty is UInt(_) {
                 // pad! sign-extends if the input is signed, so we need to convert to sint first
-                @parse.Expr::FunCall(name="sint", args=[expr], span=expr.span(), ty={ val: Some(SInt(Fixed(1))) })
+                @parse.Expr::FunCall(name="sint", args=[expr], span=expr.span(), ty={ val: Some(SInt(Lit(1))) })
               } else {
                 expr
               },
               @parse.Expr::nat(width, span=count.span())],
             span~,
-            ty={ val: Some(SInt(Fixed(width))) },
+            ty={ val: Some(SInt(Lit(width))) },
           )
 
           let final_expr = if expr_ty is UInt(_) {

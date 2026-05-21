@@ -19,7 +19,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
     parameterized: {},
     monomorphized: {},
     declared_modules: {},
-    instanciated_modules: Set::new(),
+    instanciated_modules: Set([]),
     constants: {},
     type_aliases: {},
     top_env: Scope::new(),
@@ -45,7 +45,7 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
       logger.write_string("Module '\{path}' expected \{expected} parameter(s), but got \{actual}")
     }
     ReceivedTypeParameterInsteadOfExpr(..) => {
-      logger.write_string("Received type parameter instead of expression")
+      logger.write_string("Type parameter used where a value (Nat) is expected: consider changing the sort from 'Type' to 'Nat'")
     }
     InvalidParameterInstantiation(path~, param~, param_span~, ..) => {
       logger.write_string("Invalid instantiation of parameter '\{param}' in module '\{path}', declared at \{param_span}")
@@ -86,14 +86,21 @@ pub enum MonoEnvEntry {
 
 type MonoEnv = Scope[@parse.Path, MonoEnvEntry]
 
-fn Monomorphizer::monomorphize_int_param(self: Self, param: @parse.IntParam, env~: MonoEnv, packages~: Array[String]) -> @parse.IntParam raise {
-  match param {
-    Fixed(value) => Fixed(value)
-    Dynamic(expr) => match self.monomorphize_expr(expr, env~, packages~) {
-      Natural(value~, ..) => Fixed(value.to_int())
-      expr => Dynamic(expr)
+fn Monomorphizer::monomorphize_index_expr(_ : Self, idx : @parse.IndexExpr, env~ : MonoEnv, packages~ : Array[String]) -> @parse.IndexExpr raise {
+  idx.map_vars(fn(name) raise {
+    let path = @parse.Path::new([], name)
+    match resolve_member(env, path~, packages~) {
+      Some((Param(ConstParam(value=Natural(value~, ..), ..)), _)) =>
+        @parse.IndexExpr::Lit(value.to_int())
+      Some((Const(decl), _)) =>
+        match @parse.ConstValue::from(decl.expr.partial_eval()) {
+          Some(Natural(value~, ..)) => @parse.IndexExpr::Lit(value.to_int())
+          _ => @parse.IndexExpr::Var(name)
+        }
+      Some((GenVar(n), _)) => @parse.IndexExpr::Lit(n)
+      _ => @parse.IndexExpr::Var(name)
     }
-  }
+  })
 }
 
 priv struct TypeInfo {
@@ -138,11 +145,11 @@ fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, env~: MonoEnv,
 
 fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, packages~: Array[String], span~: @parse.Span) -> TypeInfo raise {
   let mono_ty: @parse.Type = match ty {
-    UInt(width) => UInt(self.monomorphize_int_param(width, env~, packages~))
-    SInt(width) => SInt(self.monomorphize_int_param(width, env~, packages~))
+    UInt(idx) => UInt(self.monomorphize_index_expr(idx, env~, packages~))
+    SInt(idx) => SInt(self.monomorphize_index_expr(idx, env~, packages~))
     Vector(ty~, len~) => {
       let mono_ty = self.monomorphize_type(ty, env~, packages~, span~).ty
-      let len = self.monomorphize_int_param(len, env~, packages~)
+      let len = self.monomorphize_index_expr(len, env~, packages~)
 
       @parse.Type::Vector(ty=mono_ty, len~)
     }
@@ -168,7 +175,8 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
 
         let subst: Map[String, @parse.ResolvedParam] = {}
 
-        for name, param in @utils.zip2(type_alias.parameters, params) {
+        for static_param, param in @utils.zip2(type_alias.parameters, params) {
+          let name = static_param.name
           match param {
             Resolved(param) => subst[name] = param
             Unresolved(_) => subst[name] = self.resolve_param(param~, env~, packages~)
@@ -185,6 +193,7 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
       ty
     }
     Clock | Nat(_) | Instance(_) | String(_) => ty
+    MemoryMask(ty) => @parse.Type::MemoryMask(self.monomorphize_type(ty, env~, packages~, span~).ty)
   }
 
   { ty: mono_ty, is_type_alias: false }
@@ -223,18 +232,18 @@ fn Monomorphizer::register_monomorphized_module(
   let mod_sig = mod_decl.signature()
 
   let params_map = {
-    let map: Map[String, @parse.ResolvedParam] = Map::new(capacity=params.params.length())
+    let map: Map[String, @parse.ResolvedParam] = Map([], capacity=params.params.length())
 
     for name, param in params.as_map(names=mod_decl.params.map(fn(param) { param.name })) {
       let param_sig = mod_sig.get_param(name).unwrap()
       let resolved_param = self.resolve_param(param~, env~, packages~)
       map[name] = resolved_param
 
-      match (resolved_param, param_sig.ty) {
-        (ConstParam(value~, span~), Type(ty)) => {
-          params.instantiated.push((value.as_expr(), ty, span))
+      match (resolved_param, param_sig.sort) {
+        (ConstParam(value~, span~), NatSort) => {
+          params.instantiated.push((value.as_expr(), @parse.Type::Nat({min_width: 0}), span))
         }
-        (TypeParam(_), AnyType) => ()
+        (TypeParam(_), TypeSort) => ()
         _ => raise InvalidParameterInstantiation(path~, param=name, span=param.span(), param_span=param_sig.span)
       }
     }

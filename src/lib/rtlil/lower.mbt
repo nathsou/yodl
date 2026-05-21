@@ -40,7 +40,7 @@ pub fn lower_circuit(
             attributes: {},
             memories: {},
           },
-          reg_ids: @set.new(),
+          reg_ids: Set([]),
           ann_target: { circuit: circuit.id.inner(), mod: mod.id, leaf: None },
           annotations: circuit.annotations,
           fs,

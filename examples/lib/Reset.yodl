@@ -1,5 +1,5 @@
 
-module PowerOnReset<ClockCycles: uint>(clk: clock) -> (rst: bool) {
+module PowerOnReset<ClockCycles: Nat>(clk: clock) -> (rst: bool) {
     let counter = Reg<uint<clog2!(ClockCycles)>>(clk)
 
     if counter.q <: ClockCycles - 1 {
