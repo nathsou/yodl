@@ -162,7 +162,8 @@ pub fn CoreExpr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) 
 }
 
 // Lossless conversion from CoreExpr back to Expr (for error messages only).
-// Does NOT round-trip — the result may differ from the original surface expression.
+// Partial conversion for error messages only.
+// Only handles Natural/Identifier/String — all other variants map to a dummy 0.
 pub fn CoreExpr::to_surface(self: CoreExpr) -> Expr {
   match self {
     Natural(value~, width~, base~, span~, ty~) => Expr::Natural(value~, width~, base~, span~, ty~)

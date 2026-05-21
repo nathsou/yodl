@@ -76,9 +76,8 @@ pub fn Simplifier::simplify_expr(
   self: Self,
   expr: @parse.Expr,
   env~ : SimplifierEnv,
-  scope~ : Array[@parse.Stmt],
 ) -> @parse.CoreExpr raise {
-  let simp = fn(e) raise { self.simplify_expr(e, env~, scope~) }
+  let simp = fn(e) raise { self.simplify_expr(e, env~) }
 
   match expr {
     Natural(value~, width~, base~, span~, ty~) =>
@@ -234,7 +233,7 @@ pub fn Simplifier::simplify_expr(
     Block(body~, last~, span~, ty~) => {
       let core_body = []
       for stmt in body {
-        core_body.push_iter(self.simplify_stmt(stmt, env~, scope~))
+        core_body.push_iter(self.simplify_stmt(stmt, env~))
       }
       Block(
         body=core_body,
@@ -315,18 +314,17 @@ pub fn Simplifier::simplify_stmt(
   self: Self,
   stmt: @parse.Stmt,
   env~ : SimplifierEnv,
-  scope~ : Array[@parse.Stmt],
 ) -> Iter[@parse.CoreStmt] raise {
   match stmt {
     Expr(expr~, span~) =>
       Iter::singleton(@parse.CoreStmt::Expr(
-        expr=self.simplify_expr(expr, env~, scope~),
+        expr=self.simplify_expr(expr, env~),
         span~,
       ))
 
     Let(name~, ty~, expr~, span~) => {
       let simplified_expr = match expr {
-        Some(e) => Some(self.simplify_expr(e, env~, scope~))
+        Some(e) => Some(self.simplify_expr(e, env~))
         None => None
       }
       let unique_name = self.declare_unique(name)
@@ -341,8 +339,8 @@ pub fn Simplifier::simplify_stmt(
 
     Assign(lhs~, rhs~, span~) =>
       Iter::singleton(@parse.CoreStmt::Assign(
-        lhs=self.simplify_expr(lhs, env~, scope~),
-        rhs=self.simplify_expr(rhs, env~, scope~),
+        lhs=self.simplify_expr(lhs, env~),
+        rhs=self.simplify_expr(rhs, env~),
         span~,
       ))
 
@@ -352,13 +350,13 @@ pub fn Simplifier::simplify_stmt(
       let scope_env = env.child()
       let stmts = []
       for s in body {
-        stmts.push_iter(self.simplify_stmt(s, env=scope_env, scope~))
+        stmts.push_iter(self.simplify_stmt(s, env=scope_env))
       }
       stmts.iter()
     }
 
     Const(decl~, span=_) => {
-      env.declare_(decl.path, Const(self.simplify_expr(decl.expr, env~, scope~)))
+      env.declare_(decl.path, Const(self.simplify_expr(decl.expr, env~)))
       Iter::empty()
     }
   }
@@ -379,7 +377,7 @@ fn Simplifier::simplify_decl(
       }
 
       for stmt in body {
-        for core_stmt in self.simplify_stmt(stmt, env=mod_env, scope=[]) {
+        for core_stmt in self.simplify_stmt(stmt, env=mod_env) {
           // Discard empty-struct expressions (produced by always-true assertions)
           match core_stmt {
             @parse.CoreStmt::Expr(expr=@parse.CoreExpr::Struct(fields=fields, ..), ..) =>
@@ -393,7 +391,7 @@ fn Simplifier::simplify_decl(
     }
     ModuleDeclaration(sig) => Some(@parse.CoreDecl::ModuleDeclaration(sig))
     Const(decl) => {
-      env.declare_(decl.path, Const(self.simplify_expr(decl.expr, env~, scope=[])))
+      env.declare_(decl.path, Const(self.simplify_expr(decl.expr, env~)))
       None
     }
     Package(_) | Import(_) | TypeAlias(_) => None

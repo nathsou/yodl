@@ -135,7 +135,7 @@ pub fn rewrite_expr(expr: Expr, rewriter: Rewriter) -> Expr raise {
       let new_body = Array::new(capacity=body.length())
 
       for stmt in body {
-        new_body.push_iter(rewrite_stmt(stmt, rewr_expr~, rewr_stmt=rewriter.rewr_stmt))
+        new_body.push_iter((rewriter.rewr_stmt)(stmt))
       }
 
       let last = match last {
@@ -200,22 +200,22 @@ pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
         inclusive: range.inclusive,
       }
 
-      let body = Array::new(capacity=body.length())
+      let new_body = Array::new(capacity=body.length())
 
       for stmt in body {
-        body.push_iter(rewr_stmt(stmt))
+        new_body.push_iter(rewr_stmt(stmt))
       }
 
-      For(variable~, range~, body~, span~)
+      For(variable~, range~, body=new_body, span~)
     }
     Scope(body~, span~) => {
-      let body = Array::new(capacity=body.length())
+      let new_body = Array::new(capacity=body.length())
 
       for stmt in body {
-        body.push_iter(rewr_stmt(stmt))
+        new_body.push_iter(rewr_stmt(stmt))
       }
 
-      Scope(body~, span~)
+      Scope(body=new_body, span~)
     }
   }
 
