@@ -10,3 +10,4 @@ src/sim/
 .vscode/
 src/main/bundle/
 _build/
+bundle/
