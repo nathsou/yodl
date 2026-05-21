@@ -6,7 +6,7 @@ hljs.registerLanguage('yodl', function (hljs) {
     aliases: ['yodl'],
     keywords: {
       keyword: 'declare module let match if else for in const package import',
-      type: 'uint sint bool clock type',
+      type: 'uint sint bool clock type Nat Type',
       literal: 'true false'
     },
     contains: [
@@ -37,7 +37,7 @@ hljs.registerLanguage('yodl', function (hljs) {
           { begin: '\\b\\d+(?:_\\d+)*\\b' } // Regular numbers with optional underscore separators
         ]
       },
-      // Function names: identifiers starting with a '$'
+      // Built-in function calls: identifiers ending with '!'
       {
         className: 'function',
         begin: /[A-Za-z_0-9]+!/

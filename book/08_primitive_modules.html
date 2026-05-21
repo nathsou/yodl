@@ -167,8 +167,8 @@
 }
 </code></pre>
 <h3 id="parameters"><a class="header" href="#parameters">Parameters</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>T</code></td><td>type</td><td>Data type of the register</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Sort</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>T</code></td><td><code>Type</code></td><td>Data type of the register</td></tr>
 </tbody></table>
 </div>
 <h3 id="ports"><a class="header" href="#ports">Ports</a></h3>
@@ -213,13 +213,13 @@
 <p>Memories are arrays of registers that can be read from and written to.</p>
 <p>Some configurations may be synthesised as block RAMs in FPGAs.</p>
 <h3 id="parameters-1"><a class="header" href="#parameters-1">Parameters</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>T</code></td><td>type</td><td>Data type of each element</td></tr>
-<tr><td><code>Depth</code></td><td>uint</td><td>Number of entries</td></tr>
-<tr><td><code>ReadPorts</code></td><td>uint</td><td>Number of read ports</td></tr>
-<tr><td><code>WritePorts</code></td><td>uint</td><td>Number of write ports</td></tr>
-<tr><td><code>ReadLatency</code></td><td>uint</td><td>Cycles to read</td></tr>
-<tr><td><code>WriteLatency</code></td><td>uint</td><td>Cycles to write</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Sort</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>T</code></td><td><code>Type</code></td><td>Data type of each element</td></tr>
+<tr><td><code>Depth</code></td><td><code>Nat</code></td><td>Number of entries</td></tr>
+<tr><td><code>ReadPorts</code></td><td><code>Nat</code></td><td>Number of read ports</td></tr>
+<tr><td><code>WritePorts</code></td><td><code>Nat</code></td><td>Number of write ports</td></tr>
+<tr><td><code>ReadLatency</code></td><td><code>Nat</code></td><td>Cycles to read</td></tr>
+<tr><td><code>WriteLatency</code></td><td><code>Nat</code></td><td>Cycles to write</td></tr>
 </tbody></table>
 </div>
 <h3 id="ports-1"><a class="header" href="#ports-1">Ports</a></h3>

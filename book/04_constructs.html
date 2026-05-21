@@ -248,7 +248,7 @@ module Top() -&gt; () {
 </span></code></pre>
 <h3 id="parameterised-modules"><a class="header" href="#parameterised-modules">Parameterised Modules</a></h3>
 <p>Modules can be parameterised by specifying a list of parameters surrounded by <code>&lt;</code> and <code>&gt;</code> after the module name.</p>
-<pre><code class="language-yodl">module Adder&lt;N: uint&gt;(
+<pre><code class="language-yodl">module Adder&lt;N: Nat&gt;(
     a: uint&lt;N&gt;,
     b: uint&lt;N&gt;,
     carry_in: bool,
@@ -288,7 +288,7 @@ module Top() -&gt; () {
 <p>Parameter names can be omitted if the parameters are specified in the same order as the declaration.</p>
 </li>
 </ul>
-<pre><code class="language-yodl">module Adder&lt;N: uint&gt;(
+<pre><code class="language-yodl">module Adder&lt;N: Nat&gt;(
     a: uint&lt;N&gt;,
     b: uint&lt;N&gt;,
     carry_in: bool,

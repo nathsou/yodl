@@ -512,7 +512,7 @@ module Top() -&gt; () {
 </span></code></pre>
 <h3 id="parameterised-modules"><a class="header" href="#parameterised-modules">Parameterised Modules</a></h3>
 <p>Modules can be parameterised by specifying a list of parameters surrounded by <code>&lt;</code> and <code>&gt;</code> after the module name.</p>
-<pre><code class="language-yodl">module Adder&lt;N: uint&gt;(
+<pre><code class="language-yodl">module Adder&lt;N: Nat&gt;(
     a: uint&lt;N&gt;,
     b: uint&lt;N&gt;,
     carry_in: bool,
@@ -552,7 +552,7 @@ module Top() -&gt; () {
 <p>Parameter names can be omitted if the parameters are specified in the same order as the declaration.</p>
 </li>
 </ul>
-<pre><code class="language-yodl">module Adder&lt;N: uint&gt;(
+<pre><code class="language-yodl">module Adder&lt;N: Nat&gt;(
     a: uint&lt;N&gt;,
     b: uint&lt;N&gt;,
     carry_in: bool,
@@ -871,7 +871,7 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <h3 id="for-loops"><a class="header" href="#for-loops">For Loops</a></h3>
 <p>The <code>for</code> loop duplicates its body a fixed number of times, substituting the loop variable with the current iteration index.</p>
 <pre><code class="language-yodl">// Simple parallel hexadecimal to character decoder
-module Hex&lt;Bits: uint&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[cdiv!(Bits, 4)]) {
+module Hex&lt;Bits: Nat&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[cdiv!(Bits, 4)]) {
     const Len = cdiv!(Bits, 4)
     for i in 0..&lt;Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
@@ -1082,8 +1082,8 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 }
 </code></pre>
 <h3 id="parameters"><a class="header" href="#parameters">Parameters</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>T</code></td><td>type</td><td>Data type of the register</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Sort</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>T</code></td><td><code>Type</code></td><td>Data type of the register</td></tr>
 </tbody></table>
 </div>
 <h3 id="ports"><a class="header" href="#ports">Ports</a></h3>
@@ -1128,13 +1128,13 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 <p>Memories are arrays of registers that can be read from and written to.</p>
 <p>Some configurations may be synthesised as block RAMs in FPGAs.</p>
 <h3 id="parameters-1"><a class="header" href="#parameters-1">Parameters</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>T</code></td><td>type</td><td>Data type of each element</td></tr>
-<tr><td><code>Depth</code></td><td>uint</td><td>Number of entries</td></tr>
-<tr><td><code>ReadPorts</code></td><td>uint</td><td>Number of read ports</td></tr>
-<tr><td><code>WritePorts</code></td><td>uint</td><td>Number of write ports</td></tr>
-<tr><td><code>ReadLatency</code></td><td>uint</td><td>Cycles to read</td></tr>
-<tr><td><code>WriteLatency</code></td><td>uint</td><td>Cycles to write</td></tr>
+<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Sort</th><th>Description</th></tr></thead><tbody>
+<tr><td><code>T</code></td><td><code>Type</code></td><td>Data type of each element</td></tr>
+<tr><td><code>Depth</code></td><td><code>Nat</code></td><td>Number of entries</td></tr>
+<tr><td><code>ReadPorts</code></td><td><code>Nat</code></td><td>Number of read ports</td></tr>
+<tr><td><code>WritePorts</code></td><td><code>Nat</code></td><td>Number of write ports</td></tr>
+<tr><td><code>ReadLatency</code></td><td><code>Nat</code></td><td>Cycles to read</td></tr>
+<tr><td><code>WriteLatency</code></td><td><code>Nat</code></td><td>Cycles to write</td></tr>
 </tbody></table>
 </div>
 <h3 id="ports-1"><a class="header" href="#ports-1">Ports</a></h3>
