@@ -1,5 +1,5 @@
 using @firrtl { type Id, type Annotation, type AnnotationTarget }
-using @parse { type Span, type Path, type ModuleDecl, type Param, type AstEmitter } 
+using @parse { type Span, type Path, type CoreModuleDecl, type Param, type AstEmitter, type CoreExpr, type CoreStmt, type CoreDecl }
 
 type FExpr = @firrtl.UntypedExpr
 type FStmt = @firrtl.UntypedStmt
@@ -256,7 +256,7 @@ fn _default_mask(ty: @firrtl.Type, span~: Span) -> Value {
   }
 }
 
-fn Elaborator::lower_module(self: Elaborator, mod: ModuleDecl) -> Unit raise {
+fn Elaborator::lower_module(self: Elaborator, mod: CoreModuleDecl) -> Unit raise {
   let env = ElaboratorEnv::new()
   let mod_id = id_of_path(mod.path)
   self.current_target = { circuit: self.current_target.circuit, mod: mod_id, leaf: None }
@@ -508,7 +508,7 @@ fn flatten_int(reference: FRef, ty: @firrtl.Type, span~: Span) -> FExpr raise {
   }
 }
 
-fn Elaborator::lower_stmt(self: Elaborator, stmt: Stmt, scope~: &ScopeLike, env~: ElaboratorEnv) -> Unit raise {
+fn Elaborator::lower_stmt(self: Elaborator, stmt: CoreStmt, scope~: &ScopeLike, env~: ElaboratorEnv) -> Unit raise {
   match stmt {
     Expr(expr~, span=_) => {
       let _ = self.lower_expr(expr, scope~, env~, binding=None)
@@ -538,13 +538,10 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: Stmt, scope~: &ScopeLike, env~
       let fir_rhs = self.lower_expr(rhs, scope~, env~, binding=None)
       self.connect(lhs=fir_lhs, value=fir_rhs, scope~)
     }
-    Const(_) | For(_) | Scope(_) => {
-      raise ElaborationError(message="Unexpected statement encountered during elaboration", span=stmt.span())
-    }
   }
 }
 
-fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: FRef? = None) -> Value raise {
+fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: FRef? = None) -> Value raise {
   let expr_span = expr.span()
   let ty = lower_type(unwrap_type(expr.ty(), span=expr_span), span=expr_span)
   
@@ -777,15 +774,6 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
           Empty(span~)
         }
       }
-    }
-    Tuple(elems~, span~, ty=_) => {
-      let values = Array::new(capacity=elems.length())
-
-      for elem in elems {
-        values.push(self.lower_expr(elem, scope~, env~))
-      }
-
-      Vector(elems=values, ty~, span~)
     }
     Struct(fields~, span~, ty=_) => {
       let val = Map([], capacity=fields.length())
@@ -1216,7 +1204,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       }
     }
     String(value=str, span~, ty~) => {
-      let chars: Array[Expr] = Array::new(capacity=str.length())
+      let chars: Array[CoreExpr] = Array::new(capacity=str.length())
 
       for char in str {
         let char_latin1 = char.to_int()
@@ -1225,7 +1213,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
           raise ElaborationError(message="String literal contains unsupported character '\{char}' (expected Latin-1)", span~)
         }
 
-        chars.push(Expr::nat(char_latin1, width=Some(8), span~))
+        chars.push(CoreExpr::nat(char_latin1, width=Some(8), span~))
       }
 
       self.lower_expr(Vector(elems=chars, span~, ty~), scope~, env~)
@@ -1312,7 +1300,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
       } else {
         let pred_fmt = {
           let emitter = AstEmitter::new()
-          emitter.emit_expr(pred)
+          emitter.emit_core_expr(pred)
           
         }
 
@@ -1363,13 +1351,13 @@ fn Elaborator::lower_expr(self: Elaborator, expr: Expr, scope~: &ScopeLike, env~
 
        Value::Expr(expr=concat_rev(bits), ty=UInt(width), span~)
     }
-    Spread(_) | Ternary(_) | Replicate(_) | FunCall(_) | If(_) => {
+    Spread(_) | FunCall(_) => {
       raise ElaborationError(message="Unexpected expression encountered during elaboration", span=expr.span())
     }
   }
 }
 
-pub fn Elaborator::lower(self: Elaborator, decls: Iter[Decl]) -> Unit raise {
+pub fn Elaborator::lower(self: Elaborator, decls: Iter[CoreDecl]) -> Unit raise {
   for decl in decls {
     match decl {
       Module(mod) => {
@@ -1382,7 +1370,6 @@ pub fn Elaborator::lower(self: Elaborator, decls: Iter[Decl]) -> Unit raise {
           self.lower_external_module(sig)
         }
       }
-      Const(_) | Package(_) | Import(_) | TypeAlias(_) => ()
     }
   }
 }

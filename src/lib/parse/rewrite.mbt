@@ -8,40 +8,46 @@ pub fn clone_ty(ty: Ref[Type?]) -> Ref[Type?] {
   { val: new_ty }
 }
 
-pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (Stmt) -> Iter[Stmt] raise) -> Expr raise {
+pub(all) struct Rewriter {
+  rewr_expr: (Expr) -> Expr? raise
+  rewr_stmt: (Stmt) -> Iter[Stmt] raise
+}
+
+pub fn rewrite_expr(expr: Expr, rewriter: Rewriter) -> Expr raise {
+  let rewr_expr = rewriter.rewr_expr
   let res = match expr {
     Natural(value~, width~, base~, span~, ty~) => Expr::Natural(value~, width~, base~, span~, ty=clone_ty(ty))
     Identifier(path~, span~, ty~) => Identifier(path~, span~, ty=clone_ty(ty)) 
     Unary(op~, expr~, span~, ty~) => {
-      let expr = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
+      let expr = rewrite_expr(expr, rewriter)
       Unary(op~, expr~, span~, ty=clone_ty(ty))
     }
     Binary(op~, lhs~, rhs~, output_width~, span~, ty~) => {
-      let lhs = rewrite_expr(lhs, rewr_expr~, rewr_stmt~)
-      let rhs = rewrite_expr(rhs, rewr_expr~, rewr_stmt~)
+      let lhs = rewrite_expr(lhs, rewriter)
+      let rhs = rewrite_expr(rhs, rewriter)
       Binary(op~, lhs~, rhs~, output_width=@ref.new(output_width.val), span~, ty=clone_ty(ty))
     }
     Indexing(expr~, index~, span~, ty~) => {
-      let expr = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
-      let index = rewrite_expr(index, rewr_expr~, rewr_stmt~)
+      let expr = rewrite_expr(expr, rewriter)
+      let index = rewrite_expr(index, rewriter)
       Indexing(expr~, index~, span~, ty=clone_ty(ty))
     }
     Slicing(expr~, hi=msb, lo=lsb, kind~, span~, ty~) => {
-      let expr = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
-      let msb = rewrite_expr(msb, rewr_expr~, rewr_stmt~)
-      let lsb = rewrite_expr(lsb, rewr_expr~, rewr_stmt~)
+      let expr = rewrite_expr(expr, rewriter)
+      let msb = rewrite_expr(msb, rewriter)
+      let lsb = rewrite_expr(lsb, rewriter)
       Slicing(expr~, hi=msb, lo=lsb, kind~, span~, ty=clone_ty(ty))
     }
     FieldAccess(expr~, field=port, span~, ty~) => {
-      let expr = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
+      let expr = rewrite_expr(expr, rewriter)
       FieldAccess(expr~, field=port, span~, ty=clone_ty(ty))
     }
     Instance(path~, params~, ports~, span~, ty~) => {
-      let new_params = params.map(map_expr=expr => { rewrite_expr(expr, rewr_expr~, rewr_stmt~) }, map_type=ty => ty.clone())
+      let new_params = params.map(map_expr=expr => { rewrite_expr(expr, rewriter) }, map_type=ty => ty.clone())
       let new_ports = Map([], capacity=ports.length())
 
       for port, expr in ports {
-        new_ports[port] = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
+        new_ports[port] = rewrite_expr(expr, rewriter)
       }
 
       Instance(path~, params=new_params, ports=new_ports, span~, ty=clone_ty(ty))
@@ -50,43 +56,43 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
       let new_elems = Array::new(capacity=elems.length())
 
       for elem in elems {
-        new_elems.push(rewrite_expr(elem, rewr_expr~, rewr_stmt~))
+        new_elems.push(rewrite_expr(elem, rewriter))
       }
 
       Vector(elems=new_elems, span~, ty=clone_ty(ty))
     }
     Spread(expr~, span~, ty~) => {
-      let expr = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
+      let expr = rewrite_expr(expr, rewriter)
       Spread(expr~, span~, ty=clone_ty(ty))
     }
     Concat(elems~, span~, ty~) => {
       let new_elems = Array::new(capacity=elems.length())
 
       for elem in elems {
-        new_elems.push(rewrite_expr(elem, rewr_expr~, rewr_stmt~))
+        new_elems.push(rewrite_expr(elem, rewriter))
       }
 
       Concat(elems=new_elems, span~, ty=clone_ty(ty))
     }
     Ternary(cond~, then~, else_~, span~, ty~) => {
-      let cond = rewrite_expr(cond, rewr_expr~, rewr_stmt~)
-      let then = rewrite_expr(then, rewr_expr~, rewr_stmt~)
-      let else_ = rewrite_expr(else_, rewr_expr~, rewr_stmt~)
+      let cond = rewrite_expr(cond, rewriter)
+      let then = rewrite_expr(then, rewriter)
+      let else_ = rewrite_expr(else_, rewriter)
       Ternary(cond~, then~, else_~, span~, ty=clone_ty(ty))
     }
     Match(subject~, cases~, default~, span~, ty~) => {
-      let new_subject = rewrite_expr(subject, rewr_expr~, rewr_stmt~)
+      let new_subject = rewrite_expr(subject, rewriter)
       let new_cases = Array::new(capacity=cases.length())
 
       for case in cases {
         let (pat, case_expr) = case
-        let pat = rewrite_expr(pat, rewr_expr~, rewr_stmt~)
-        let case_expr = rewrite_expr(case_expr, rewr_expr~, rewr_stmt~)
+        let pat = rewrite_expr(pat, rewriter)
+        let case_expr = rewrite_expr(case_expr, rewriter)
         new_cases.push((pat, case_expr))
       }
 
       let new_default = match default {
-        Some(expr) => Some(rewrite_expr(expr, rewr_expr~, rewr_stmt~))
+        Some(expr) => Some(rewrite_expr(expr, rewriter))
         None => None
       }
 
@@ -96,21 +102,21 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
       let new_elems = Array::new(capacity=elems.length())
 
       for elem in elems {
-        new_elems.push(rewrite_expr(elem, rewr_expr~, rewr_stmt~))
+        new_elems.push(rewrite_expr(elem, rewriter))
       }
 
       Tuple(elems=new_elems, span~, ty=clone_ty(ty))
     }
     Replicate(expr~, count~, concat~, span~, ty~) => {
-      let expr = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
-      let count = rewrite_expr(count, rewr_expr~, rewr_stmt~)
+      let expr = rewrite_expr(expr, rewriter)
+      let count = rewrite_expr(count, rewriter)
       Replicate(expr~, count~, concat~, span~, ty=clone_ty(ty))
     }
     FunCall(name~, args~, span~, ty~) => {
       let new_args = Array::new(capacity=args.length())
 
       for arg in args {
-        new_args.push(rewrite_expr(arg, rewr_expr~, rewr_stmt~))
+        new_args.push(rewrite_expr(arg, rewriter))
       }
 
       FunCall(name~, args=new_args, span~, ty=clone_ty(ty))
@@ -119,7 +125,7 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
       let new_fields = Map([], capacity=fields.length())
 
       for field, expr in fields {
-        new_fields[field] = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
+        new_fields[field] = rewrite_expr(expr, rewriter)
       }
 
       Struct(fields=new_fields, span~, ty=clone_ty(ty))
@@ -129,21 +135,21 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
       let new_body = Array::new(capacity=body.length())
 
       for stmt in body {
-        new_body.push_iter(rewrite_stmt(stmt, rewr_expr~, rewr_stmt~))
+        new_body.push_iter(rewrite_stmt(stmt, rewr_expr~, rewr_stmt=rewriter.rewr_stmt))
       }
 
       let last = match last {
-        Some(last) => Some(rewrite_expr(last, rewr_expr~, rewr_stmt~))
+        Some(last) => Some(rewrite_expr(last, rewriter))
         None => None
       }
 
       Block(body=new_body, last~, span~, ty=clone_ty(ty))
     }
     If(cond~, then~, else_~, span~, ty~) => {
-      let cond = rewrite_expr(cond, rewr_expr~, rewr_stmt~)
-      let then = rewrite_expr(then, rewr_expr~, rewr_stmt~)
+      let cond = rewrite_expr(cond, rewriter)
+      let then = rewrite_expr(then, rewriter)
       let else_ = match else_ {
-        Some(expr) => Some(rewrite_expr(expr, rewr_expr~, rewr_stmt~))
+        Some(expr) => Some(rewrite_expr(expr, rewriter))
         None => None
       }
 
@@ -158,16 +164,17 @@ pub fn rewrite_expr(expr: Expr, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
 }
 
 pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (Stmt) -> Iter[Stmt] raise) -> Iter[Stmt] raise {
+  let rewriter: Rewriter = { rewr_expr, rewr_stmt: stmt => rewrite_stmt(stmt, rewr_expr~, rewr_stmt~) }
   let res = match stmt {
     Expr(expr~, span~) => {
-      let expr = rewrite_expr(expr, rewr_expr~, rewr_stmt~)
+      let expr = rewrite_expr(expr, rewriter)
       Stmt::Expr(expr~, span~)
     }
     Const(decl~, span~) => {
       let new_decl: ConstDecl = {
         path: decl.path,
         ty: decl.ty,
-        expr: rewrite_expr(decl.expr, rewr_expr~, rewr_stmt~),
+        expr: rewrite_expr(decl.expr, rewriter),
         span: decl.span,
       }
 
@@ -175,21 +182,21 @@ pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
     }
     Let(name~, ty~, expr~, span~) => {
       let expr = match expr {
-        Some(expr) => Some(rewrite_expr(expr, rewr_expr~, rewr_stmt~))
+        Some(expr) => Some(rewrite_expr(expr, rewriter))
         None => None
       }
 
       Let(name~, ty~, expr~, span~)
     }
     Assign(lhs~, rhs~, span~) => {
-      let lhs = rewrite_expr(lhs, rewr_expr~, rewr_stmt~)
-      let rhs = rewrite_expr(rhs, rewr_expr~, rewr_stmt~)
+      let lhs = rewrite_expr(lhs, rewriter)
+      let rhs = rewrite_expr(rhs, rewriter)
       Assign(lhs~, rhs~, span~)
     }
     For(variable~, range~, body~, span~) => {
       let range: ForRange = {
-        start: rewrite_expr(range.start, rewr_expr~, rewr_stmt~),
-        end: rewrite_expr(range.end, rewr_expr~, rewr_stmt~),
+        start: rewrite_expr(range.start, rewriter),
+        end: rewrite_expr(range.end, rewriter),
         inclusive: range.inclusive,
       }
 
@@ -213,142 +220,4 @@ pub fn rewrite_stmt(stmt: Stmt, rewr_expr~: (Expr) -> Expr? raise, rewr_stmt~: (
   }
 
   (rewr_stmt)(res)
-}
-
-// top-down traversal
-pub fn visit_expr(expr: Expr, on_expr~: (Expr) -> Bool raise, on_stmt~: (Stmt) -> Bool raise) -> Unit raise {
-  let should_visit = (on_expr)(expr)
-
-  if should_visit {
-    match expr {
-      Natural(_) => ()
-      Identifier(_) => ()
-      Unary(expr~, op=_, span=_, ty=_) => visit_expr(expr, on_expr~, on_stmt~)
-      Binary(lhs~, rhs~, op=_, output_width=_, span=_, ty=_) => {
-        visit_expr(lhs, on_expr~, on_stmt~)
-        visit_expr(rhs, on_expr~, on_stmt~)
-      }
-      Indexing(expr~, index~, span=_, ty=_) => {
-        visit_expr(expr, on_expr~, on_stmt~)
-        visit_expr(index, on_expr~, on_stmt~)
-      }
-      Slicing(expr~, hi=msb, lo=lsb, kind=_, span=_, ty=_) => {
-        visit_expr(expr, on_expr~, on_stmt~)
-        visit_expr(msb, on_expr~, on_stmt~)
-        visit_expr(lsb, on_expr~, on_stmt~)
-      }
-      FieldAccess(expr~, field=_, span=_, ty=_) => visit_expr(expr, on_expr~, on_stmt~)
-      Instance(path=_, params~, ports~, span=_, ty=_) => {
-        for param in params.params {
-          match param.1 {
-            Unresolved(ExprParam(expr)) => visit_expr(expr, on_expr~, on_stmt~)
-            Unresolved(PathParam(_)) => ()
-            Unresolved(TypeParam(_)) => ()
-            Resolved(_) => ()
-          }
-        }
-
-        for _, expr in ports {
-          visit_expr(expr, on_expr~, on_stmt~)
-        }
-      }
-      Vector(elems~, span=_, ty=_) | Concat(elems~, ..) => {
-        for elem in elems {
-          visit_expr(elem, on_expr~, on_stmt~)
-        }
-      }
-      Spread(expr~, span=_, ty=_) => visit_expr(expr, on_expr~, on_stmt~)
-      Ternary(cond~, then~, else_~, span=_, ty=_) => {
-        visit_expr(cond, on_expr~, on_stmt~)
-        visit_expr(then, on_expr~, on_stmt~)
-        visit_expr(else_, on_expr~, on_stmt~)
-      }
-      Match(subject~, cases~, default~, span=_, ty=_) => {
-        visit_expr(subject, on_expr~, on_stmt~)
-
-        for case in cases {
-          visit_expr(case.0, on_expr~, on_stmt~)
-          visit_expr(case.1, on_expr~, on_stmt~)
-        }
-
-        match default {
-          Some(expr) => visit_expr(expr, on_expr~, on_stmt~)
-          None => ()
-        }
-      }
-      Tuple(elems~, span=_, ty=_) => {
-        for elem in elems {
-          visit_expr(elem, on_expr~, on_stmt~)
-        }
-      }
-      Replicate(expr~, count~, concat=_, span=_, ty=_) => {
-        visit_expr(expr, on_expr~, on_stmt~)
-        visit_expr(count, on_expr~, on_stmt~)
-      }
-      FunCall(name=_, args~, span=_, ty=_) => {
-        for arg in args {
-          visit_expr(arg, on_expr~, on_stmt~)
-        }
-      }
-      Struct(fields~, span=_, ty=_) => {
-        for _, expr in fields {
-          visit_expr(expr, on_expr~, on_stmt~)
-        }
-      }
-      String(_) => ()
-      Block(body~, last~, span=_, ty=_) => {
-        for stmt in body {
-          visit_stmt(stmt, on_expr~, on_stmt~)
-        }
-
-        match last {
-          Some(expr) => visit_expr(expr, on_expr~, on_stmt~)
-          None => ()
-        }
-      }
-      If(cond~, then~, else_~, span=_, ty=_) => {
-        visit_expr(cond, on_expr~, on_stmt~)
-        visit_expr(then, on_expr~, on_stmt~)
-
-        match else_ {
-          Some(expr) => visit_expr(expr, on_expr~, on_stmt~)
-          None => ()
-        }
-      }
-    }
-  }
-}
-
-pub fn visit_stmt(stmt: Stmt, on_expr~: (Expr) -> Bool raise, on_stmt~: (Stmt) -> Bool raise) -> Unit raise {
-  let should_visit = (on_stmt)(stmt)
-
-  if should_visit {
-    match stmt {
-      Expr(expr~, span=_) => visit_expr(expr, on_expr~, on_stmt~)
-      Const(decl=_, span=_) => ()
-      Let(name=_, ty=_, expr~, span=_) => {
-        match expr {
-          Some(expr) => visit_expr(expr, on_expr~, on_stmt~)
-          None => ()
-        }
-      }
-      Assign(lhs~, rhs~, span=_) => {
-        visit_expr(lhs, on_expr~, on_stmt~)
-        visit_expr(rhs, on_expr~, on_stmt~)
-      }
-      For(variable=_, range~, body~, span=_) => {
-        visit_expr(range.start, on_expr~, on_stmt~)
-        visit_expr(range.end, on_expr~, on_stmt~)
-
-        for stmt in body {
-          visit_stmt(stmt, on_expr~, on_stmt~)
-        }
-      }
-      Scope(body~, span=_) => {
-        for stmt in body {
-          visit_stmt(stmt, on_expr~, on_stmt~)
-        }
-      }
-    }
-  }
 }

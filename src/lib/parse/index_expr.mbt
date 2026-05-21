@@ -13,25 +13,19 @@ pub fn IndexExpr::eval(self: IndexExpr) -> Int? {
   match self {
     Lit(n) => Some(n)
     Var(_) => None
-    Add(a, b) => match (a.eval(), b.eval()) {
-      (Some(x), Some(y)) => Some(x + y)
-      _ => None
-    }
-    Sub(a, b) => match (a.eval(), b.eval()) {
-      (Some(x), Some(y)) => Some(x - y)
-      _ => None
-    }
-    Mul(a, b) => match (a.eval(), b.eval()) {
-      (Some(x), Some(y)) => Some(x * y)
+    Add(a, b) | Sub(a, b) | Mul(a, b) | CDiv(a, b) => match (a.eval(), b.eval()) {
+      (Some(x), Some(y)) => match self {
+        Add(_, _) => Some(x + y)
+        Sub(_, _) => Some(x - y)
+        Mul(_, _) => Some(x * y)
+        CDiv(_, _) if y != 0 => Some((x + y - 1) / y)
+        _ => None
+      }
       _ => None
     }
     Clog2(a) => match a.eval() {
       Some(n) => Some(@utils.clog2_int(n))
       None => None
-    }
-    CDiv(a, b) => match (a.eval(), b.eval()) {
-      (Some(x), Some(y)) if y != 0 => Some((x + y - 1) / y)
-      _ => None
     }
   }
 }

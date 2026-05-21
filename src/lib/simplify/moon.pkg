@@ -1,3 +1,7 @@
 warnings = "-35"
 
-import { "nathsou/yodl/lib/parse", "nathsou/yodl/lib/utils" }
+import {
+  "nathsou/yodl/lib/parse",
+  "nathsou/yodl/lib/utils",
+  "moonbitlang/core/ref",
+}
