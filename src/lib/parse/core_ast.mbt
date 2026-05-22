@@ -96,7 +96,7 @@ pub impl Spanned for CoreStmt with span(self: CoreStmt) -> Span {
   match self {
     Expr(span~, ..) => span
     Let(span~, ..) => span
-    Assign(lhs~, ..) => lhs.span()
+    Assign(span~, ..) => span
   }
 }
 

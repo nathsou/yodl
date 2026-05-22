@@ -1301,7 +1301,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         let pred_fmt = {
           let emitter = AstEmitter::new()
           emitter.emit_core_expr(pred)
-          
+          emitter.to_string()
         }
 
         ("assertion failed: \{pred_fmt}", [])
