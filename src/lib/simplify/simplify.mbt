@@ -138,10 +138,12 @@ pub fn Simplifier::simplify_expr(
       )
 
     Slicing(expr~, hi=msb, lo=width, kind=Width, span~, ty~) => {
-      let lsb = msb.as_int() - width.as_int() + 1
+      let msb_simplified = simp(msb)
+      let width_simplified = simp(width)
+      let lsb = msb_simplified.as_int() - width_simplified.as_int() + 1
       Slicing(
         expr=simp(expr),
-        hi=simp(msb),
+        hi=msb_simplified,
         lo=@parse.CoreExpr::nat(lsb, span=width.span()),
         span~,
         ty=@parse.clone_ty(ty),
@@ -276,7 +278,8 @@ pub fn Simplifier::simplify_expr(
     Replicate(expr~, count~, concat~, span~, ty~) => {
       if concat && expr.ty() is { val: Some(UInt(_) | SInt(_) as expr_ty) } && expr_ty.width(span) == 1 {
         // Single-bit replication: rewrite as pad!
-        let width = count.as_int()
+        let count_simplified = simp(count)
+        let width = count_simplified.as_int()
         let pad_expr = @parse.Expr::FunCall(
           name="pad",
           args=[
@@ -298,13 +301,14 @@ pub fn Simplifier::simplify_expr(
         simp(final_expr)
       } else {
         // General replication: expand into a vector
+        let count_simplified = simp(count)
         let simplified_elem = simp(expr)
         let spread_elem = if concat {
           @parse.CoreExpr::Spread(expr=simplified_elem, span~, ty=@parse.clone_ty(simplified_elem.ty()))
         } else {
           simplified_elem
         }
-        Vector(elems=@utils.fill(count.as_int(), spread_elem), span~, ty=@parse.clone_ty(ty))
+        Vector(elems=@utils.fill(count_simplified.as_int(), spread_elem), span~, ty=@parse.clone_ty(ty))
       }
     }
   }

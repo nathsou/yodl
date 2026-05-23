@@ -135,7 +135,7 @@ pub fn rewrite_expr(expr: Expr, rewriter: Rewriter) -> Expr raise {
       let new_body = Array::new(capacity=body.length())
 
       for stmt in body {
-        new_body.push_iter((rewriter.rewr_stmt)(stmt))
+        new_body.push_iter(rewrite_stmt(stmt, rewr_expr=rewriter.rewr_expr, rewr_stmt=rewriter.rewr_stmt))
       }
 
       let last = match last {
