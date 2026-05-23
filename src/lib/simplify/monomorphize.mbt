@@ -302,7 +302,7 @@ fn[T] resolve_member(env: Scope[@parse.Path, T], path~: @parse.Path, packages~: 
 fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv, packages~: Array[String]) -> @parse.Expr raise {
   let rewr_stmt = fn(stmt) raise { Iter::singleton(self.monomorphize_stmt(stmt, env~, packages~)) }
 
-  let res = @parse.rewrite_expr(expr, rewr_stmt~, rewr_expr=expr => {
+  let res = @parse.rewrite_expr(expr, { rewr_stmt, rewr_expr: expr => {
     (match expr {
       Identifier(path~, span~, ty=_) => Some({
         match resolve_member(env, path~, packages~) {
@@ -375,7 +375,7 @@ fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv
       }
       _ => None
     })
-  })
+  }})
 
   res.partial_eval()
 }

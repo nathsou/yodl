@@ -85,7 +85,7 @@ pub fn run(
       let emitter = @parse.AstEmitter::new()
 
       for decl in simplified_decls {
-        emitter.emit_decl(decl)
+        emitter.emit_core_decl(decl)
         emitter.emit("\n")
       }
 

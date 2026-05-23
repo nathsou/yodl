@@ -240,12 +240,16 @@ pub(all) struct ImportDecl {
 }
 
 
+pub trait Ctor {
+  ctor(Self) -> String
+}
+
 pub suberror AstError {
-  ExpectedIntegerExpression(expr~: Expr, span~: Span)
+  ExpectedIntegerExpression(expr~: &Ctor, span~: Span)
   IndexExprNotLiteral(span~: Span)
   CannotGetWidthOfUnresolvedNamedType(span~: Span)
   InvalidFunCallArity(name~: String, expected~: Arity, actual~: Int, span~: Span)
-  ExpectedStringExpression(expr~: Expr, span~: Span)
+  ExpectedStringExpression(expr~: &Ctor, span~: Span)
   ConflictingInstanceParameterValue(name~: String, span~: Span)
   UnknownModuleParameter(name~: String, span~: Span)
   TypeParamInsteadOfExpr(span~: Span)
@@ -327,6 +331,31 @@ pub fn Expr::ty(self: Expr) -> Ref[Type?] {
     String(ty~, ..) => ty
     Block(ty~, ..) => ty
     If(ty~, ..) => ty
+  }
+}
+
+pub impl Ctor for Expr with ctor(self: Expr) -> String {
+  match self {
+    Natural(..) => "Natural"
+    Identifier(..) => "Identifier"
+    Unary(..) => "Unary"
+    Binary(..) => "Binary"
+    Indexing(..) => "Indexing"
+    Slicing(..) => "Slicing"
+    FieldAccess(..) => "FieldAccess"
+    Instance(..) => "Instance"
+    Vector(..) => "Vector"
+    Spread(..) => "Spread"
+    Concat(..) => "Concat"
+    Ternary(..) => "Ternary"
+    Match(..) => "Match"
+    Tuple(..) => "Tuple"
+    Struct(..) => "Struct"
+    Replicate(..) => "Replicate"
+    FunCall(..) => "FunCall"
+    String(..) => "String"
+    Block(..) => "Block"
+    If(..) => "If"
   }
 }
 

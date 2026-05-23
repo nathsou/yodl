@@ -123,7 +123,7 @@ pub fn keep_and_check_resolved(params: Map[String, Param], span~: Span) -> Map[S
 
 // perform partial evaluation on the expression
 pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Expr raise {
-  rewrite_expr(self, rewr_stmt=fn(stmt) { Iter::singleton(stmt) }, rewr_expr=expr => {
+  fn rewr_expr(expr: Expr) -> Expr? raise {
     match expr {
       Identifier(path={ packages: [], elem }, ..) => {
         match params.get(elem) {
@@ -212,11 +212,11 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
         }
       }
       Ternary(cond~, then~, else_~, ..) | If(cond~, then~, else_=Some(else_), ..) => {
-         try cond.partial_eval().as_int() catch {
+        try cond.partial_eval().as_int() catch {
           _ => None
-         } noraise {
+        } noraise {
           cond => Some(if cond != 0 { then } else { else_ })
-         }
+        }
       }
       If(cond~, then~, else_=None, span~, ty~) => {
         try cond.partial_eval().as_int() catch {
@@ -259,7 +259,9 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
       }
       _ => None
     }
-  })
+  }
+
+  rewrite_expr(self, { rewr_expr, rewr_stmt: stmt => Iter::singleton(stmt) })
 }
 
 enum Arity {
