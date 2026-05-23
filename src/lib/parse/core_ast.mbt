@@ -71,6 +71,27 @@ pub fn CoreExpr::set_ty(self: CoreExpr, ty: Type) -> Unit {
   self.ty().val = Some(ty)
 }
 
+pub impl Ctor for CoreExpr with ctor(self: CoreExpr) -> String {
+    match self {
+      Natural(..) => "Natural"
+      Identifier(..) => "Identifier"
+      Unary(..) => "Unary"
+      Binary(..) => "Binary"
+    Indexing(..) => "Indexing"
+    Slicing(..) => "Slicing"
+    FieldAccess(..) => "FieldAccess"
+    Instance(..) => "Instance"
+    Vector(..) => "Vector"
+    Spread(..) => "Spread"
+    Concat(..) => "Concat"
+    Match(..) => "Match"
+    Struct(..) => "Struct"
+    FunCall(..) => "FunCall"
+    String(..) => "String"
+    Block(..) => "Block"
+  }
+}
+
 pub impl Spanned for CoreExpr with span(self: CoreExpr) -> Span {
   match self {
     Natural(span~, ..) => span
@@ -141,14 +162,14 @@ pub fn CoreExpr::contains_statements(self: CoreExpr) -> Bool {
 pub fn CoreExpr::as_int(self: CoreExpr) -> Int raise {
   match self {
     Natural(value~, ..) => value.to_int()
-    _ => raise ExpectedIntegerExpression(expr=self.to_surface(), span=self.span())
+    _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
   }
 }
 
 pub fn CoreExpr::as_string(self: CoreExpr) -> String raise {
   match self {
     String(value=str, ..) => str
-    _ => raise ExpectedStringExpression(expr=self.to_surface(), span=self.span())
+    _ => raise ExpectedStringExpression(expr=self, span=self.span())
   }
 }
 
@@ -159,16 +180,4 @@ pub fn CoreExpr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) 
   }
 
   Natural(value=BigInt::from_int(n), width~, base~, span~, ty={ val: Some(ty) })
-}
-
-// Lossless conversion from CoreExpr back to Expr (for error messages only).
-// Partial conversion for error messages only.
-// Only handles Natural/Identifier/String — all other variants map to a dummy 0.
-pub fn CoreExpr::to_surface(self: CoreExpr) -> Expr {
-  match self {
-    Natural(value~, width~, base~, span~, ty~) => Expr::Natural(value~, width~, base~, span~, ty~)
-    Identifier(path~, span~, ty~) => Expr::Identifier(path~, span~, ty~)
-    String(value~, span~, ty~) => Expr::String(value~, span~, ty~)
-    _ => Expr::Natural(value=BigInt::from_int(0), width=None, base=10, span=self.span(), ty={ val: None })
-  }
 }
