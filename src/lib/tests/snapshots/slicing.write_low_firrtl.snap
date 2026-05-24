@@ -1,0 +1,14 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a: UInt<8>
+    output hi_nibble: UInt<4>
+    output lo_nibble: UInt<4>
+    output bit0: UInt<1>
+    output nibble: UInt<4>
+
+    connect hi_nibble, bits(a, 7, 4)
+    connect lo_nibble, bits(a, 3, 0)
+    connect bit0, bits(a, 0, 0)
+    connect nibble, bits(a, 7, 4)
+

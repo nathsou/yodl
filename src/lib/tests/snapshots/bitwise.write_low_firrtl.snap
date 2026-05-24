@@ -1,0 +1,21 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a: UInt<8>
+    input b: UInt<8>
+    output out_and: UInt<8>
+    output out_or: UInt<8>
+    output out_xor: UInt<8>
+    output out_nand: UInt<8>
+    output out_nor: UInt<8>
+    output out_xnor: UInt<8>
+    output out_not: UInt<8>
+
+    connect out_and, and(a, b)
+    connect out_or, or(a, b)
+    connect out_xor, xor(a, b)
+    connect out_nand, not(and(a, b))
+    connect out_nor, not(or(a, b))
+    connect out_xnor, not(xor(a, b))
+    connect out_not, not(a)
+

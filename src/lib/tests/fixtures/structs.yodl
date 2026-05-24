@@ -1,0 +1,6 @@
+type Point = { x: uint<8>, y: uint<8> }
+
+module Top(p: Point) -> (out: uint<16>, sum: uint<9>) {
+    out = {p.x, p.y}
+    sum = p.x + p.y
+}

@@ -3,6 +3,12 @@
 # Exit on error
 set -e
 
+echo "Running snapshot tests..."
+# To regenerate snapshots after intentional compiler changes, run:
+#   UPDATE_SNAPSHOTS=1 moon test src/lib/tests
+moon test src/lib/tests
+echo "All snapshot tests passed."
+
 EXAMPLES_PATH=examples
 # all examples except files starting with underscore
 EXAMPLES=$(ls $EXAMPLES_PATH/*.yodl | grep -v '/_')

@@ -1,0 +1,12 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a: UInt<8>
+    output r_and: UInt<1>
+    output r_or: UInt<1>
+    output r_xor: UInt<1>
+
+    connect r_and, andr(a)
+    connect r_or, orr(a)
+    connect r_xor, xorr(a)
+

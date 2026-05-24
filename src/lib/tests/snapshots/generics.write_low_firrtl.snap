@@ -1,0 +1,31 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Identity$0:
+    input a: UInt<8>
+    output out: UInt<8>
+
+    connect out, a
+
+  public module Identity$1:
+    input a: UInt<16>
+    output out: UInt<16>
+
+    connect out, a
+
+  public module Top:
+    input a: UInt<8>
+    input b: UInt<16>
+    output x: UInt<8>
+    output y: UInt<16>
+
+    wire ix_out: UInt<8>
+    inst inst_0$ of Identity$0
+    wire iy_out: UInt<16>
+    inst inst_1$ of Identity$1
+    connect x, ix_out
+    connect y, iy_out
+    connect ix_out, inst_0$.out
+    connect inst_0$.a, a
+    connect iy_out, inst_1$.out
+    connect inst_1$.a, b
+

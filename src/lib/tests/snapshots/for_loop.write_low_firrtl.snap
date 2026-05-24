@@ -1,0 +1,18 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a_0: UInt<8>
+    input a_1: UInt<8>
+    input a_2: UInt<8>
+    input a_3: UInt<8>
+    input mask: UInt<8>
+    output out_0: UInt<8>
+    output out_1: UInt<8>
+    output out_2: UInt<8>
+    output out_3: UInt<8>
+
+    connect out_0, xor(a_0, mask)
+    connect out_1, xor(a_1, mask)
+    connect out_2, xor(a_2, mask)
+    connect out_3, xor(a_3, mask)
+

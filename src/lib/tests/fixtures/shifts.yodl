@@ -1,0 +1,4 @@
+module Top(a: uint<8>, n: uint<3>) -> (shifted_left: uint<8>, shifted_right: uint<8>) {
+    shifted_left  = a shl n
+    shifted_right = a shr n
+}

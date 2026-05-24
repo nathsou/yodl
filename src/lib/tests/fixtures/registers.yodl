@@ -1,0 +1,5 @@
+module Top(clk: clock, d: uint<8>) -> (q: uint<8>) {
+    let reg = Reg<uint<8>>(clk)
+    reg.d = d
+    q = reg.q
+}

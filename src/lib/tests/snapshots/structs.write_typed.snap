@@ -1,0 +1,36 @@
+const true = (1'b1: uint<1>);
+const false = (1'b0: uint<1>);
+@internal
+module Reg<T: Type>(
+  clk: clock,
+  d: T,
+  en?: uint<1>,
+  rst?: uint<1>,
+) -> (
+  q: T,
+)
+@internal
+module RegAsyncReset<T: Type>(
+  clk: clock,
+  d: T,
+  en?: uint<1>,
+  rst?: uint<1>,
+) -> (
+  q: T,
+)
+@internal
+module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
+  read: { clk: clock, en: uint<1>, addr: uint<clog2!(Depth)> }[ReadPorts],
+  write: { clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T> }[WritePorts],
+) -> (
+  q: T[ReadPorts],
+)
+module Top(
+  p: { x: uint<8>, y: uint<8> },
+) -> (
+  out: uint<16>,
+  sum: uint<9>,
+) {
+  (out: uint<16>) = ({((p: { x: uint<8>, y: uint<8> }).x: uint<8>), ((p: { x: uint<8>, y: uint<8> }).y: uint<8>)}: uint<16>);
+  (sum: uint<9>) = ((((p: { x: uint<8>, y: uint<8> }).x: uint<8>) + ((p: { x: uint<8>, y: uint<8> }).y: uint<8>)): uint<9>);
+}

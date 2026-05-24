@@ -1,0 +1,20 @@
+module Top(
+    a: uint<8>,
+    b: uint<8>,
+) -> (
+    out_and:  uint<8>,
+    out_or:   uint<8>,
+    out_xor:  uint<8>,
+    out_nand: uint<8>,
+    out_nor:  uint<8>,
+    out_xnor: uint<8>,
+    out_not:  uint<8>,
+) {
+    out_and  = a and b
+    out_or   = a or b
+    out_xor  = a xor b
+    out_nand = a nand b
+    out_nor  = a nor b
+    out_xnor = a xnor b
+    out_not  = not a
+}

@@ -1,0 +1,13 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input sel: UInt<2>
+    input a: UInt<8>
+    input b: UInt<8>
+    input c: UInt<8>
+    output out: UInt<8>
+
+    wire match_0$: UInt<8>
+    connect out, match_0$
+    connect match_0$, mux(eq(sel, UInt<2>(0)), a, mux(eq(sel, UInt<2>(1)), b, mux(eq(sel, UInt<2>(2)), c, UInt<8>(0))))
+

@@ -1,0 +1,11 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input p_x: UInt<8>
+    input p_y: UInt<8>
+    output out: UInt<16>
+    output sum: UInt<9>
+
+    connect out, cat(p_x, p_y)
+    connect sum, add(p_x, p_y)
+

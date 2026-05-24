@@ -1,0 +1,11 @@
+// Suppress [0024] unused_error_type: VFS callbacks must match the `raise`
+// signatures in FileSystem even when our implementations never raise.
+warnings = "-24"
+
+import {
+  "moonbitlang/core/builtin",
+  "nathsou/yodl/lib/driver",
+  "nathsou/yodl/lib/utils",
+  "moonbitlang/x/fs",
+  "moonbitlang/x/sys",
+}

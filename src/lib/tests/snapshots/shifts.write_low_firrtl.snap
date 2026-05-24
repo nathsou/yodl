@@ -1,0 +1,11 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a: UInt<8>
+    input n: UInt<3>
+    output shifted_left: UInt<8>
+    output shifted_right: UInt<8>
+
+    connect shifted_left, bits(dshl(a, n), 7, 0)
+    connect shifted_right, dshr(a, n)
+

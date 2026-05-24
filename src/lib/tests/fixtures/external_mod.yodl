@@ -1,0 +1,6 @@
+declare module DFF(clk: clock, d: bool) -> (q: bool)
+
+module Top(clk: clock, d: bool) -> (q: bool) {
+    let ff = DFF(clk: clk, d: d)
+    q = ff.q
+}
