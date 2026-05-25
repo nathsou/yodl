@@ -6,7 +6,8 @@
 //
 // To add a new snapshot test:
 //   1. Add (or reuse) a fixture in src/lib/tests/fixtures/<name>.yodl
-//   2. Run `UPDATE_SNAPSHOTS=1 moon test src/lib/tests`  ← generates the snap file
+//   2. Create a stub: touch src/lib/tests/snapshots/<name>.<stage>.snap
+//   3. Run `UPDATE_SNAPSHOTS=1 moon test src/lib/tests`  ← populates the stub
 //
 // To regenerate snapshots after an intentional compiler change:
 //   UPDATE_SNAPSHOTS=1 moon test src/lib/tests
