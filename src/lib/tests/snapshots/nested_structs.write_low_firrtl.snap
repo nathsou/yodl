@@ -1,0 +1,27 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Dot:
+    input a_x: UInt<8>
+    input a_y: UInt<8>
+    input b_x: UInt<8>
+    input b_y: UInt<8>
+    output result: UInt<17>
+
+    connect result, add(mul(a_x, b_x), mul(a_y, b_y))
+
+  public module Top:
+    input p_x: UInt<8>
+    input p_y: UInt<8>
+    input q_x: UInt<8>
+    input q_y: UInt<8>
+    output dot: UInt<17>
+
+    wire d_result: UInt<17>
+    inst inst_0$ of Dot
+    connect dot, d_result
+    connect d_result, inst_0$.result
+    connect inst_0$.a_x, p_x
+    connect inst_0$.a_y, p_y
+    connect inst_0$.b_x, q_x
+    connect inst_0$.b_y, q_y
+

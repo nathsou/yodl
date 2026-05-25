@@ -5,9 +5,10 @@ let snapshot_dir : String = "src/lib/tests/snapshots"
 
 /// Creates an in-memory `FileSystem` backed by a map of path → content.
 ///
-/// Keys should be relative paths (e.g., `"fixture.yodl"` for a file in the
-/// current directory, `"lib/Foo.yodl"` for a sub-package).
-/// Directories are inferred from the paths present in the map.
+/// Keys should be relative paths (e.g., `"fixture.yodl"`). Only exact file
+/// paths are tracked — `path_exists` and `is_dir` do not synthesise directory
+/// entries. `read_dir` returns the filenames whose directory component matches
+/// the requested path.
 pub fn make_vfs(files: Map[String, String]) -> @utils.FileSystem {
   {
     path_exists: fn(p) { files.contains(p) },
@@ -82,19 +83,22 @@ fn parse_snap_name(filename: String) -> (String, String)? {
 /// Reads fixture source from `src/lib/tests/fixtures/<fixture>.yodl`.
 /// Compares actual compiler output against `src/lib/tests/snapshots/<fixture>.<stage>.snap`.
 ///
-/// The snapshot is written (instead of compared) when:
-///   - The `UPDATE_SNAPSHOTS` environment variable is set, or
-///   - The `.snap` file does not yet exist (first-time generation).
+/// Snapshots are only written when `UPDATE_SNAPSHOTS` is set in the environment.
+/// A missing snapshot file is a test failure — run with `UPDATE_SNAPSHOTS=1` to
+/// generate it.
 pub fn check_snapshot(fixture: String, stage: String) -> Unit raise {
   let source = @fs.read_file_to_string("\{fixture_dir}/\{fixture}.yodl")
   let actual = compile_stage(source, stage)
   let snap_path = "\{snapshot_dir}/\{fixture}.\{stage}.snap"
-  let update = @sys.get_env_var("UPDATE_SNAPSHOTS") != None
-  if update || !@fs.path_exists(snap_path) {
+  if @sys.get_env_var("UPDATE_SNAPSHOTS") != None {
     if !@fs.path_exists(snapshot_dir) {
       @fs.create_dir(snapshot_dir)
     }
     @fs.write_string_to_file(snap_path, actual)
+  } else if !@fs.path_exists(snap_path) {
+    fail(
+      "Missing snapshot: \{snap_path}\nRun with UPDATE_SNAPSHOTS=1 to generate it.",
+    )
   } else {
     let expected = @fs.read_file_to_string(snap_path)
     if actual != expected {
