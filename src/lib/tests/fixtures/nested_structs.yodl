@@ -1,0 +1,14 @@
+// Exercises LowerAggregateTypesPass recursive flattening of struct-typed
+// submodule ports (process_stmt Inst) and struct arguments passing.
+// Dot has two Point inputs which LowerAggregateTypes must flatten into
+// scalar port pairs, and the Inst stmt rewrite updates references accordingly.
+type Point = { x: uint<8>, y: uint<8> }
+
+module Dot(a: Point, b: Point) -> (result: uint<17>) {
+    result = a.x * b.x + a.y * b.y
+}
+
+module Top(p: Point, q: Point) -> (dot: uint<17>) {
+    let d = Dot(a: p, b: q)
+    dot = d.result
+}

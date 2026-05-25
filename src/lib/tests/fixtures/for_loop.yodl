@@ -1,0 +1,5 @@
+module Top(a: uint<8>[4], mask: uint<8>) -> (out: uint<8>[4]) {
+    for i in 0..<4 {
+        out[i] = a[i] xor mask
+    }
+}

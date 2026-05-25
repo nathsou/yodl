@@ -1,0 +1,14 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a: UInt<1>
+    input b: UInt<8>
+    input c: SInt<4>
+    output x: UInt<1>
+    output y: UInt<8>
+    output z: SInt<4>
+
+    connect x, a
+    connect y, b
+    connect z, c
+

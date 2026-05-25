@@ -1,0 +1,8 @@
+module Top(a: uint<8>, b: uint<8>) -> (eq: bool, ne: bool, lt: bool, le: bool, gt: bool, ge: bool) {
+    eq = a == b
+    ne = a != b
+    lt = a <: b
+    le = a <= b
+    gt = a >: b
+    ge = a >= b
+}

@@ -1,0 +1,10 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input sel: UInt<1>
+    input a: UInt<8>
+    input b: UInt<8>
+    output out: UInt<8>
+
+    connect out, mux(sel, a, b)
+

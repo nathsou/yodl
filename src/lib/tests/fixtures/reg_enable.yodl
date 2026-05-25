@@ -1,0 +1,9 @@
+// Exercises ExpandWhensPass merge_scopes (Some, None, Found(Some)) arm:
+// Reg with en: produces a no-else When { cond: en, body: [reg = d] }.
+// Since reg is pre-initialized to itself (scope[reg] = Some(reg)),
+// the merge yields Mux(en, d, reg_q) — the enable-hold pattern.
+module Top(clk: clock, en: bool, d: uint<8>) -> (q: uint<8>) {
+    let reg = Reg<uint<8>>(clk, en: en)
+    reg.d = d
+    q = reg.q
+}

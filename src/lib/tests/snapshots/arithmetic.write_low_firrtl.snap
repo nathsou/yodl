@@ -1,0 +1,13 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a: UInt<8>
+    input b: UInt<8>
+    output sum: UInt<9>
+    output diff: UInt<9>
+    output prod: UInt<16>
+
+    connect sum, add(a, b)
+    connect diff, sub(a, b)
+    connect prod, mul(a, b)
+

@@ -1,0 +1,12 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input hi: UInt<4>
+    input mid: UInt<4>
+    input lo: UInt<4>
+    output out12: UInt<12>
+    output out8: UInt<8>
+
+    connect out12, cat(hi, cat(mid, lo))
+    connect out8, cat(hi, lo)
+

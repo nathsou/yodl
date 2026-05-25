@@ -1,0 +1,11 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a: SInt<8>
+    input b: SInt<8>
+    output sum: SInt<9>
+    output gt: UInt<1>
+
+    connect sum, add(a, b)
+    connect gt, gt(a, b)
+

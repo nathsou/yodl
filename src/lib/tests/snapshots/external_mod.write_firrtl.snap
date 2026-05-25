@@ -1,0 +1,14 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input clk: Clock
+    input d: UInt<1>
+    output q: UInt<1>
+
+    wire ff: { q: UInt<1> }
+    inst inst_0$ of DFF
+    connect inst_0$.clk, clk
+    connect inst_0$.d, d
+    connect ff.q, inst_0$.q
+    connect q, ff.q
+

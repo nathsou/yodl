@@ -1,0 +1,4 @@
+module Top(a: sint<8>, b: sint<8>) -> (sum: sint<9>, gt: bool) {
+    sum = a + b
+    gt  = a >: b
+}

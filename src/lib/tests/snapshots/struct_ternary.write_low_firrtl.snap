@@ -1,0 +1,19 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input sel: UInt<1>
+    input a_x: UInt<8>
+    input a_y: UInt<8>
+    input b_x: UInt<8>
+    input b_y: UInt<8>
+    output out_x: UInt<8>
+    output out_y: UInt<8>
+
+    wire muxbundle0$_x: UInt<8>
+    wire muxbundle0$_y: UInt<8>
+    node muxcond1$ = sel
+    connect out_x, muxbundle0$_x
+    connect out_y, muxbundle0$_y
+    connect muxbundle0$_x, mux(muxcond1$, a_x, b_x)
+    connect muxbundle0$_y, mux(muxcond1$, a_y, b_y)
+

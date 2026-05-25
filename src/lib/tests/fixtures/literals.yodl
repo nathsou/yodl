@@ -1,0 +1,5 @@
+module Top(a: bool, b: uint<8>, c: sint<4>) -> (x: bool, y: uint<8>, z: sint<4>) {
+    x = a
+    y = b
+    z = c
+}

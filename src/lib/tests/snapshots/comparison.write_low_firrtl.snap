@@ -1,0 +1,19 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a: UInt<8>
+    input b: UInt<8>
+    output eq: UInt<1>
+    output ne: UInt<1>
+    output lt: UInt<1>
+    output le: UInt<1>
+    output gt: UInt<1>
+    output ge: UInt<1>
+
+    connect eq, eq(a, b)
+    connect ne, neq(a, b)
+    connect lt, lt(a, b)
+    connect le, leq(a, b)
+    connect gt, gt(a, b)
+    connect ge, geq(a, b)
+

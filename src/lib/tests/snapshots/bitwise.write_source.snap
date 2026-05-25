@@ -1,0 +1,47 @@
+const true = 1'b1;
+const false = 1'b0;
+@internal
+module Reg<T: Type>(
+  clk: clock,
+  d: T,
+  en?: uint<1>,
+  rst?: uint<1>,
+) -> (
+  q: T,
+)
+@internal
+module RegAsyncReset<T: Type>(
+  clk: clock,
+  d: T,
+  en?: uint<1>,
+  rst?: uint<1>,
+) -> (
+  q: T,
+)
+@internal
+module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
+  read: { clk: clock, en: uint<1>, addr: uint<clog2!(Depth)> }[ReadPorts],
+  write: { clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T> }[WritePorts],
+) -> (
+  q: T[ReadPorts],
+)
+module Top(
+  a: uint<8>,
+  b: uint<8>,
+) -> (
+  out_and: uint<8>,
+  out_or: uint<8>,
+  out_xor: uint<8>,
+  out_nand: uint<8>,
+  out_nor: uint<8>,
+  out_xnor: uint<8>,
+  out_not: uint<8>,
+) {
+  out_and = (a and b);
+  out_or = (a or b);
+  out_xor = (a xor b);
+  out_nand = (a nand b);
+  out_nor = (a nor b);
+  out_xnor = (a xnor b);
+  out_not = (not a);
+}

@@ -1,0 +1,17 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input clk: Clock
+    input rst: UInt<1>
+    input en: UInt<1>
+    input d: UInt<8>
+    output q: UInt<8>
+
+    wire reg_d: UInt<8>
+    wire reg_q: UInt<8>
+    regreset reg_0: UInt<8>, clk, asAsyncReset(rst), UInt<8>(0)
+    connect q, reg_q
+    connect reg_d, d
+    connect reg_q, reg_0
+    connect reg_0, mux(en, reg_d, reg_0)
+

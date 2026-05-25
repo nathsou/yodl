@@ -1,0 +1,6 @@
+module Top(a: uint<8>) -> (hi_nibble: uint<4>, lo_nibble: uint<4>, bit0: bool, nibble: uint<4>) {
+    hi_nibble = a[7:4]
+    lo_nibble = a[3:0]
+    bit0      = a[0]
+    nibble    = a[7-:4]
+}
