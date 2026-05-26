@@ -70,9 +70,9 @@ pub impl FIRRTLPass for CollapseWireAliasesPass with run(_, circuit) -> TypedCir
 //
 //   Phase 6 — Strip Wire declarations
 //     Remove Wire statements for every fully-collapsible wire.
-fn rewrite_module(mod: TypedModule) -> TypedModule {
+fn rewrite_module(mod: TypedModule) -> TypedModule raise {
   if mod.body.iter().any(has_when) {
-    return mod
+    raise Failure::Failure("CollapseWireAliasesPass: module '\{mod.id}' still contains When statements. Run ExpandWhensPass before this pass.")
   }
 
   let wire_leafs: Map[Id, Array[TypedRef]] = {}
