@@ -1,0 +1,11 @@
+
+module Counter<N: Nat>(clk: clock, rst: bool) -> (q: uint<N>) {
+    let r = Reg<uint<N>>(clk, rst)
+    r.d = r.q + 1
+    q = r.q
+}
+
+module Top(clk: clock, rst: bool) -> (leds: uint<16>) {
+    let counter = Counter<24>(clk, rst)
+    leds = counter.q[23:8]
+}

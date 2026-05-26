@@ -12,6 +12,7 @@ fn low_firrtl_passes() -> Array[&@firrtl.FIRRTLPass] {
   [
     @firrtl.ExpandConnectsPass::new(),
     @firrtl.ExpandWhensPass::new(),
+    @firrtl.CollapseWireAliasesPass::new(),
     @firrtl.LowerAggregateTypesPass::new(split_memories=false),
   ]
 }
@@ -158,7 +159,11 @@ pub fn parse_commands(source: String) -> Array[Command] raise CommandParserError
       "write_mono" => WriteMono(path~)
       "write_typed" => WriteTyped(path~)
       "write_simplified" => WriteSimplified(path~)
-      "write_firrtl" | "write_fir" => WriteFIRRTL(path~, passes=[])
+      "write_firrtl" | "write_fir" => WriteFIRRTL(path~, passes=[
+        @firrtl.ExpandConnectsPass::new(),
+        @firrtl.ExpandWhensPass::new(),
+        @firrtl.CollapseWireAliasesPass::new(),
+      ])
       "write_low_firrtl" | "write_lofir" => WriteFIRRTL(path~, passes=low_firrtl_passes())
       "write_rtlil" => WriteRTLIL(path~)
       _ => raise UnknownCommand(name=cmd.name)

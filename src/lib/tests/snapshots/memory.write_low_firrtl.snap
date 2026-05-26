@@ -9,23 +9,6 @@ circuit Top:
     input rd_addr: UInt<4>
     output rd_data: UInt<8>
 
-    wire mem_q_0: UInt<8>
-    wire vec_0$_0_clk: Clock
-    wire vec_0$_0_en: UInt<1>
-    wire vec_0$_0_addr: UInt<4>
-    wire struct_1$_clk: Clock
-    wire struct_1$_en: UInt<1>
-    wire struct_1$_addr: UInt<4>
-    wire vec_2$_0_clk: Clock
-    wire vec_2$_0_en: UInt<1>
-    wire vec_2$_0_addr: UInt<4>
-    wire vec_2$_0_data: UInt<8>
-    wire vec_2$_0_mask: UInt<1>
-    wire struct_3$_clk: Clock
-    wire struct_3$_en: UInt<1>
-    wire struct_3$_addr: UInt<4>
-    wire struct_3$_data: UInt<8>
-    wire struct_3$_mask: UInt<1>
     mem mem_4$:
       data-type => UInt<8>
       depth => 16
@@ -35,30 +18,13 @@ circuit Top:
       reader => mem_4$_reader0
       writer => mem_4$_writer0
 
-    connect rd_data, mem_q_0
-    connect mem_q_0, mem_4$.mem_4$_reader0.data
-    connect vec_0$_0_clk, struct_1$_clk
-    connect vec_0$_0_en, struct_1$_en
-    connect vec_0$_0_addr, struct_1$_addr
-    connect struct_1$_clk, clk
-    connect struct_1$_en, rd_en
-    connect struct_1$_addr, rd_addr
-    connect vec_2$_0_clk, struct_3$_clk
-    connect vec_2$_0_en, struct_3$_en
-    connect vec_2$_0_addr, struct_3$_addr
-    connect vec_2$_0_data, struct_3$_data
-    connect vec_2$_0_mask, struct_3$_mask
-    connect struct_3$_clk, clk
-    connect struct_3$_en, wr_en
-    connect struct_3$_addr, wr_addr
-    connect struct_3$_data, wr_data
-    connect struct_3$_mask, UInt<1>(1)
-    connect mem_4$.mem_4$_writer0.addr, vec_2$_0_addr
-    connect mem_4$.mem_4$_writer0.en, vec_2$_0_en
-    connect mem_4$.mem_4$_writer0.clk, vec_2$_0_clk
-    connect mem_4$.mem_4$_writer0.data, vec_2$_0_data
-    connect mem_4$.mem_4$_writer0.mask, vec_2$_0_mask
-    connect mem_4$.mem_4$_reader0.addr, vec_0$_0_addr
-    connect mem_4$.mem_4$_reader0.en, vec_0$_0_en
-    connect mem_4$.mem_4$_reader0.clk, vec_0$_0_clk
+    connect rd_data, mem_4$.mem_4$_reader0.data
+    connect mem_4$.mem_4$_writer0.addr, wr_addr
+    connect mem_4$.mem_4$_writer0.en, wr_en
+    connect mem_4$.mem_4$_writer0.clk, clk
+    connect mem_4$.mem_4$_writer0.data, wr_data
+    connect mem_4$.mem_4$_writer0.mask, UInt<1>(1)
+    connect mem_4$.mem_4$_reader0.addr, rd_addr
+    connect mem_4$.mem_4$_reader0.en, rd_en
+    connect mem_4$.mem_4$_reader0.clk, clk
 
