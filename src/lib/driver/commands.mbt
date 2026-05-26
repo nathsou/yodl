@@ -8,6 +8,12 @@ pub(all) enum Command {
   WriteRTLIL(path~: String?)
 }
 
+/// Passes applied by `write_firrtl`: collapses elaborator proxy wires to
+/// produce clean, readable FIRRTL without expanding or lowering anything.
+pub fn firrtl_passes() -> Array[&@firrtl.FIRRTLPass] {
+  [@firrtl.CollapseWireAliasesPass::new()]
+}
+
 fn low_firrtl_passes() -> Array[&@firrtl.FIRRTLPass] {
   [
     @firrtl.ExpandConnectsPass::new(),
@@ -159,11 +165,7 @@ pub fn parse_commands(source: String) -> Array[Command] raise CommandParserError
       "write_mono" => WriteMono(path~)
       "write_typed" => WriteTyped(path~)
       "write_simplified" => WriteSimplified(path~)
-      "write_firrtl" | "write_fir" => WriteFIRRTL(path~, passes=[
-        @firrtl.ExpandConnectsPass::new(),
-        @firrtl.ExpandWhensPass::new(),
-        @firrtl.CollapseWireAliasesPass::new(),
-      ])
+      "write_firrtl" | "write_fir" => WriteFIRRTL(path~, passes=firrtl_passes())
       "write_low_firrtl" | "write_lofir" => WriteFIRRTL(path~, passes=low_firrtl_passes())
       "write_rtlil" => WriteRTLIL(path~)
       _ => raise UnknownCommand(name=cmd.name)

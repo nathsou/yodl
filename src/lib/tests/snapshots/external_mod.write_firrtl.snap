@@ -6,7 +6,7 @@ circuit Top:
     output q: UInt<1>
 
     inst inst_0$ of DFF
-    connect q, inst_0$.q
     connect inst_0$.clk, clk
     connect inst_0$.d, d
+    connect q, inst_0$.q
 

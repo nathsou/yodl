@@ -6,8 +6,8 @@ circuit Top:
     output q: UInt<24>
 
     regreset reg_0: UInt<24>, clk, rst, UInt<24>(0)
-    connect q, reg_0
     connect reg_0, bits(add(reg_0, UInt<1>(1)), 23, 0)
+    connect q, reg_0
 
   public module Top:
     input clk: Clock
@@ -15,7 +15,7 @@ circuit Top:
     output leds: UInt<16>
 
     inst inst_1$ of Counter$0
-    connect leds, bits(inst_1$.q, 23, 8)
     connect inst_1$.clk, clk
     connect inst_1$.rst, rst
+    connect leds, bits(inst_1$.q, 23, 8)
 

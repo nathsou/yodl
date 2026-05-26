@@ -32,22 +32,34 @@ pub impl FIRRTLPass for CollapseWireAliasesPass with run(_, circuit) -> TypedCir
   }
 }
 
-// Rewrite a single module to remove collapsible wire aliases
+// Rewrite a single module to remove collapsible wire aliases.
+//
+// The pass runs correctly both before and after ExpandWhensPass:
+//
+//   - Without ExpandWhensPass: wire leaves that are the LHS of any connect
+//     inside a When block are conservatively kept (marked "when_assigned");
+//     only unconditional proxy wires (e.g. instance port bundles and simple
+//     registers with no conditional enables) are collapsed.
+//
+//   - After ExpandWhensPass: all When blocks are gone, so every leaf with a
+//     unique driver is eligible, giving complete cleanup.
 //
 // Algorithm:
 //
 //   Phase 1 — Scan
-//     Walk all statements once. Record:
-//     - wire_leafs:  Id → [ground-type leaf refs] for every Wire declaration
-//     - drivers:     leaf ref → the expression that last drives it
-//     - use_counts:  leaf ref → how many times it appears on a RHS
+//     Walk all statements recursively. Record:
+//     - wire_leafs:    Id → [ground-type leaf refs] for every Wire declaration
+//     - drivers:       leaf ref → the expression that LAST drives it at top-level
+//     - use_counts:    leaf ref → how many times it appears on any RHS
+//     - when_assigned: set of wire leaves that appear as LHS inside a When block
 //
 //   Phase 2 — Classify leaves
 //     For each wire leaf decide its fate:
-//     - use_count == 0           → dead (never read; the connect can be dropped)
-//     - driver satisfies should_inline → alias (inline the driver at every use)
+//     - when_assigned                → not collapsible (conditional driver)
+//     - use_count == 0               → dead (never read; connect can be dropped)
+//     - driver satisfies should_inline → alias (inline driver at every use)
 //     Inlining policy: References and Literals always; single-use PrimOps;
-//     never Mux (would duplicate conditionals already eliminated by ExpandWhens).
+//     never Mux (would duplicate conditional logic).
 //
 //   Phase 3 — Resolve alias chains
 //     Aliases may chain: wire_a ← wire_b ← reg_0. Transitively follow each
@@ -66,21 +78,20 @@ pub impl FIRRTLPass for CollapseWireAliasesPass with run(_, circuit) -> TypedCir
 //     - Connect(lhs, rhs): skip if lhs belongs to a fully-collapsible wire;
 //       otherwise substitute resolved aliases inside rhs; also drop trivial
 //       self-connects (connect x, x) that arise after substitution.
+//     - When(..): kept in place but cond and all nested connects/exprs are
+//       rewritten (aliases substituted).
 //     - All other statements: substitute resolved aliases in sub-expressions.
 //
 //   Phase 6 — Strip Wire declarations
 //     Remove Wire statements for every fully-collapsible wire.
-fn rewrite_module(mod: TypedModule) -> TypedModule raise {
-  if mod.body.iter().any(has_when) {
-    raise Failure::Failure("CollapseWireAliasesPass: module '\{mod.id}' still contains When statements. Run ExpandWhensPass before this pass.")
-  }
-
+fn rewrite_module(mod: TypedModule) -> TypedModule {
   let wire_leafs: Map[Id, Array[TypedRef]] = {}
   let drivers: Map[TypedRef, TypedExpr] = {}
   let use_counts: Map[TypedRef, Int] = {}
+  let when_assigned: Set[TypedRef] = Set([])
 
   for stmt in mod.body {
-    collect_stmt_info(stmt, wire_leafs~, drivers~, use_counts~)
+    collect_stmt_info(stmt, wire_leafs~, drivers~, use_counts~, when_assigned~)
   }
 
   let raw_aliases: Map[TypedRef, TypedExpr] = {}
@@ -88,6 +99,11 @@ fn rewrite_module(mod: TypedModule) -> TypedModule raise {
 
   for _, leafs in wire_leafs {
     for leaf in leafs {
+      // when_assigned leaves have conditional drivers — conservative: leave them.
+      if when_assigned.contains(leaf) {
+        continue
+      }
+
       let use_count = use_counts.get(leaf).unwrap_or(0)
 
       if use_count == 0 {
@@ -162,15 +178,6 @@ fn rewrite_module(mod: TypedModule) -> TypedModule raise {
   { ..mod, body: filtered_body }
 }
 
-fn has_when(stmt: TypedStmt) -> Bool {
-  match stmt {
-    When({ body, otherwise, .. }) => {
-      body.iter().any(has_when) || otherwise.map_or(false, else_body => else_body.iter().any(has_when))
-    }
-    _ => false
-  }
-}
-
 // Returns the root Id of any TypedRef (e.g. StaticIndexing(Id("v"), 0) → "v").
 fn ref_root_id(ref_ : TypedRef) -> Id {
   match ref_ {
@@ -218,43 +225,53 @@ fn scan_body_aggregate_wire_uses(
 ) -> Set[Id] {
   let aggregate_uses: Set[Id] = Set([])
 
-  for stmt in stmts {
-    match stmt {
-      Wire(..) | Inst(..) | Mem(_) | Skip | When(_) => ()
-      Node(expr~, ..) => scan_expr_aggregate_wire_uses(expr, wire_leafs, aggregate_uses)
-      Reg(clock~, ..) => scan_expr_aggregate_wire_uses(clock, wire_leafs, aggregate_uses)
-      RegReset(clock~, reset~, init~, ..) => {
-        scan_expr_aggregate_wire_uses(clock, wire_leafs, aggregate_uses)
-        scan_expr_aggregate_wire_uses(reset, wire_leafs, aggregate_uses)
-        scan_expr_aggregate_wire_uses(init, wire_leafs, aggregate_uses)
-      }
-      Connect(_, rhs) => scan_expr_aggregate_wire_uses(rhs, wire_leafs, aggregate_uses)
-      Command(cmd) => {
-        match cmd {
-          Printf(clk~, en~, args~, ..) => {
-            scan_expr_aggregate_wire_uses(clk, wire_leafs, aggregate_uses)
-            scan_expr_aggregate_wire_uses(en, wire_leafs, aggregate_uses)
-            for arg in args {
-              scan_expr_aggregate_wire_uses(arg, wire_leafs, aggregate_uses)
-            }
+  fn scan_stmts(stmts: Array[TypedStmt]) -> Unit {
+    for stmt in stmts {
+      match stmt {
+        Wire(..) | Inst(..) | Mem(_) | Skip => ()
+        When({ cond, body, otherwise }) => {
+          scan_expr_aggregate_wire_uses(cond, wire_leafs, aggregate_uses)
+          scan_stmts(body)
+          if otherwise is Some(else_body) {
+            scan_stmts(else_body)
           }
-          Assert(clk~, pred~, en~, args~, ..) => {
-            scan_expr_aggregate_wire_uses(clk, wire_leafs, aggregate_uses)
-            scan_expr_aggregate_wire_uses(pred, wire_leafs, aggregate_uses)
-            scan_expr_aggregate_wire_uses(en, wire_leafs, aggregate_uses)
-            for arg in args {
-              scan_expr_aggregate_wire_uses(arg, wire_leafs, aggregate_uses)
+        }
+        Node(expr~, ..) => scan_expr_aggregate_wire_uses(expr, wire_leafs, aggregate_uses)
+        Reg(clock~, ..) => scan_expr_aggregate_wire_uses(clock, wire_leafs, aggregate_uses)
+        RegReset(clock~, reset~, init~, ..) => {
+          scan_expr_aggregate_wire_uses(clock, wire_leafs, aggregate_uses)
+          scan_expr_aggregate_wire_uses(reset, wire_leafs, aggregate_uses)
+          scan_expr_aggregate_wire_uses(init, wire_leafs, aggregate_uses)
+        }
+        Connect(_, rhs) => scan_expr_aggregate_wire_uses(rhs, wire_leafs, aggregate_uses)
+        Command(cmd) => {
+          match cmd {
+            Printf(clk~, en~, args~, ..) => {
+              scan_expr_aggregate_wire_uses(clk, wire_leafs, aggregate_uses)
+              scan_expr_aggregate_wire_uses(en, wire_leafs, aggregate_uses)
+              for arg in args {
+                scan_expr_aggregate_wire_uses(arg, wire_leafs, aggregate_uses)
+              }
             }
-          }
-          Stop(clk~, en~, ..) => {
-            scan_expr_aggregate_wire_uses(clk, wire_leafs, aggregate_uses)
-            scan_expr_aggregate_wire_uses(en, wire_leafs, aggregate_uses)
+            Assert(clk~, pred~, en~, args~, ..) => {
+              scan_expr_aggregate_wire_uses(clk, wire_leafs, aggregate_uses)
+              scan_expr_aggregate_wire_uses(pred, wire_leafs, aggregate_uses)
+              scan_expr_aggregate_wire_uses(en, wire_leafs, aggregate_uses)
+              for arg in args {
+                scan_expr_aggregate_wire_uses(arg, wire_leafs, aggregate_uses)
+              }
+            }
+            Stop(clk~, en~, ..) => {
+              scan_expr_aggregate_wire_uses(clk, wire_leafs, aggregate_uses)
+              scan_expr_aggregate_wire_uses(en, wire_leafs, aggregate_uses)
+            }
           }
         }
       }
     }
   }
 
+  scan_stmts(stmts)
   aggregate_uses
 }
 
@@ -313,15 +330,18 @@ fn collect_expr_uses(expr: TypedExpr, use_counts: Map[TypedRef, Int]) -> Unit {
   }
 }
 
-// Phase 1 helper: populate wire_leafs, drivers, and use_counts from one statement.
-// Connect(lhs, rhs) records the driver for lhs (last-connect wins — iterating
-// the body in order naturally overwrites earlier drivers) and bumps use counts
-// for all refs appearing in rhs.
+// Phase 1 helper: populate wire_leafs, drivers, use_counts, and when_assigned
+// from one statement. Connect(lhs, rhs) records the driver for lhs at the
+// top level (last-connect wins) and bumps use counts for all refs in rhs.
+// When-block connects mark their LHS leaves as when_assigned (conditional
+// drivers) so Phase 2 treats them as non-collapsible; use counts from their
+// RHSs are still collected.
 fn collect_stmt_info(
   stmt: TypedStmt,
   wire_leafs~: Map[Id, Array[TypedRef]],
   drivers~: Map[TypedRef, TypedExpr],
-  use_counts~: Map[TypedRef, Int]
+  use_counts~: Map[TypedRef, Int],
+  when_assigned~: Set[TypedRef],
 ) -> Unit {
   match stmt {
     Wire(id~, ty~) => {
@@ -340,6 +360,13 @@ fn collect_stmt_info(
       }
 
       collect_expr_uses(rhs, use_counts)
+    }
+    When({ cond, body, otherwise }) => {
+      collect_expr_uses(cond, use_counts)
+      collect_when_body_info(body, use_counts~, when_assigned~)
+      if otherwise is Some(else_body) {
+        collect_when_body_info(else_body, use_counts~, when_assigned~)
+      }
     }
     Command(cmd) => {
       match cmd {
@@ -366,8 +393,64 @@ fn collect_stmt_info(
         }
       }
     }
-    When(_) => ()
     Inst(..) | Mem(_) | Skip => ()
+  }
+}
+
+// Recursively scan a When body: collect use counts from all RHS expressions
+// and mark connect LHSs as when_assigned (their drivers are conditional).
+fn collect_when_body_info(
+  stmts: Array[TypedStmt],
+  use_counts~: Map[TypedRef, Int],
+  when_assigned~: Set[TypedRef],
+) -> Unit {
+  for stmt in stmts {
+    match stmt {
+      Connect(lhs, rhs) => {
+        if lhs.ty().is_ground() {
+          when_assigned.add(lhs)
+        }
+        collect_expr_uses(rhs, use_counts)
+      }
+      When({ cond, body, otherwise }) => {
+        collect_expr_uses(cond, use_counts)
+        collect_when_body_info(body, use_counts~, when_assigned~)
+        if otherwise is Some(else_body) {
+          collect_when_body_info(else_body, use_counts~, when_assigned~)
+        }
+      }
+      Node(expr~, ..) => collect_expr_uses(expr, use_counts)
+      Reg(clock~, ..) => collect_expr_uses(clock, use_counts)
+      RegReset(clock~, reset~, init~, ..) => {
+        collect_expr_uses(clock, use_counts)
+        collect_expr_uses(reset, use_counts)
+        collect_expr_uses(init, use_counts)
+      }
+      Command(cmd) => {
+        match cmd {
+          Printf(clk~, en~, args~, ..) => {
+            collect_expr_uses(clk, use_counts)
+            collect_expr_uses(en, use_counts)
+            for arg in args {
+              collect_expr_uses(arg, use_counts)
+            }
+          }
+          Assert(clk~, pred~, en~, args~, ..) => {
+            collect_expr_uses(clk, use_counts)
+            collect_expr_uses(pred, use_counts)
+            collect_expr_uses(en, use_counts)
+            for arg in args {
+              collect_expr_uses(arg, use_counts)
+            }
+          }
+          Stop(clk~, en~, ..) => {
+            collect_expr_uses(clk, use_counts)
+            collect_expr_uses(en, use_counts)
+          }
+        }
+      }
+      Wire(..) | Inst(..) | Mem(_) | Skip => ()
+    }
   }
 }
 
@@ -532,6 +615,20 @@ fn rewrite_stmt(
         }
       }
     }
-    When(_) => body.push(stmt)
+    When({ cond, body: when_body, otherwise }) => {
+      fn rewrite_stmts(stmts: Array[TypedStmt]) -> Array[TypedStmt] {
+        let out = Array::new(capacity=stmts.length())
+        for s in stmts {
+          rewrite_stmt(s, body=out, resolved_aliases~, collapsible_connects~)
+        }
+        out
+      }
+
+      body.push(When({
+        cond: rewrite_expr(cond, resolved_aliases),
+        body: rewrite_stmts(when_body),
+        otherwise: otherwise.map(rewrite_stmts),
+      }))
+    }
   }
 }
