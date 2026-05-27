@@ -303,13 +303,20 @@ fn flatten_alias_ref(reference: TypedRef) -> Array[TypedRef] {
 }
 
 // Increment use counts for every ground-type leaf of `reference`.
+// DynamicIndexing references (e.g. arr[i]) are skipped: they contain an
+// expression as the index so they cannot be used as map keys, and they can
+// never be proxy wire leaves anyway.
 fn bump_ref_use(use_counts: Map[TypedRef, Int], reference: TypedRef) -> Unit {
-  if reference.ty().is_ground() {
-    use_counts[reference] = use_counts.get(reference).unwrap_or(0) + 1
-  } else {
-    for leaf in flatten_alias_ref(reference) {
-      bump_ref_use(use_counts, leaf)
-    }
+  match reference {
+    DynamicIndexing(..) => ()
+    _ =>
+      if reference.ty().is_ground() {
+        use_counts[reference] = use_counts.get(reference).unwrap_or(0) + 1
+      } else {
+        for leaf in flatten_alias_ref(reference) {
+          bump_ref_use(use_counts, leaf)
+        }
+      }
   }
 }
 
@@ -355,7 +362,7 @@ fn collect_stmt_info(
       collect_expr_uses(init, use_counts)
     }
     Connect(lhs, rhs) => {
-      if lhs.ty().is_ground() {
+      if !(lhs is DynamicIndexing(..)) && lhs.ty().is_ground() {
         drivers[lhs] = rhs
       }
 
@@ -407,7 +414,7 @@ fn collect_when_body_info(
   for stmt in stmts {
     match stmt {
       Connect(lhs, rhs) => {
-        if lhs.ty().is_ground() {
+        if !(lhs is DynamicIndexing(..)) && lhs.ty().is_ground() {
           when_assigned.add(lhs)
         }
         collect_expr_uses(rhs, use_counts)
@@ -479,28 +486,39 @@ fn resolve_alias_expr(
   visiting~: Array[TypedRef]
 ) -> TypedExpr? {
   match expr {
-    Reference(reference, ty=_) => {
-      if cache.get(reference) is Some(resolved) {
-        Some(resolved)
-      } else if raw_aliases.get(reference) is Some(alias_expr) {
-        if visiting.contains(reference) {
-          None
-        } else {
-          visiting.push(reference)
-
-          let resolved = resolve_alias_expr(alias_expr, raw_aliases~, cache~, visiting~)
-          let _ = visiting.pop()
-
-          match resolved {
-            Some(resolved) => {
-              cache[reference] = resolved
-              Some(resolved)
-            }
+    Reference(reference, ty=ref_ty) => {
+      match reference {
+        DynamicIndexing(lhs~, index~, ty~) => {
+          // Can't look up dynamic indices in alias maps; resolve aliases in index only.
+          match resolve_alias_expr(index, raw_aliases~, cache~, visiting~) {
+            Some(new_index) =>
+              Some(Reference(DynamicIndexing(lhs~, index=new_index, ty~), ty=ref_ty))
             None => None
           }
         }
-      } else {
-        Some(expr)
+        _ =>
+          if cache.get(reference) is Some(resolved) {
+            Some(resolved)
+          } else if raw_aliases.get(reference) is Some(alias_expr) {
+            if visiting.contains(reference) {
+              None
+            } else {
+              visiting.push(reference)
+
+              let resolved = resolve_alias_expr(alias_expr, raw_aliases~, cache~, visiting~)
+              let _ = visiting.pop()
+
+              match resolved {
+                Some(resolved) => {
+                  cache[reference] = resolved
+                  Some(resolved)
+                }
+                None => None
+              }
+            }
+          } else {
+            Some(expr)
+          }
       }
     }
     Literal(_, ty=_) => Some(expr)
@@ -534,8 +552,19 @@ fn resolve_alias_expr(
 // Phase 5 helper: substitute resolved aliases throughout an expression.
 fn rewrite_expr(expr: TypedExpr, resolved_aliases: Map[TypedRef, TypedExpr]) -> TypedExpr {
   match expr {
-    Reference(reference, ty=_) => {
-      resolved_aliases.get(reference).unwrap_or(expr)
+    Reference(reference, ty=ref_ty) => {
+      // DynamicIndexing can't be a resolved alias (it can't be a map key);
+      // also need to rewrite the index expression inside it.
+      match reference {
+        DynamicIndexing(lhs~, index~, ty~) => {
+          Reference(DynamicIndexing(
+            lhs~,
+            index=rewrite_expr(index, resolved_aliases),
+            ty~,
+          ), ty=ref_ty)
+        }
+        _ => resolved_aliases.get(reference).unwrap_or(expr)
+      }
     }
     Literal(_, ty=_) => expr
     Mux(cond~, tval~, fval~, ty~) => {
@@ -577,7 +606,7 @@ fn rewrite_stmt(
       ))
     }
     Connect(lhs, rhs) => {
-      if collapsible_connects.contains(lhs) {
+      if !(lhs is DynamicIndexing(..)) && collapsible_connects.contains(lhs) {
         return
       }
 
