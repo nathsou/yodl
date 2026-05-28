@@ -9,22 +9,22 @@ circuit Top:
     input rd_addr: UInt<4>
     output rd_data: UInt<8>
 
-    mem mem_4$:
+    mem mem:
       data-type => UInt<8>
       depth => 16
       read-latency => 1
       write-latency => 1
       read-under-write => undefined
-      reader => mem_4$_reader0
-      writer => mem_4$_writer0
+      reader => mem_reader0
+      writer => mem_writer0
 
-    connect rd_data, mem_4$.mem_4$_reader0.data
-    connect mem_4$.mem_4$_writer0.addr, wr_addr
-    connect mem_4$.mem_4$_writer0.en, wr_en
-    connect mem_4$.mem_4$_writer0.clk, clk
-    connect mem_4$.mem_4$_writer0.data, wr_data
-    connect mem_4$.mem_4$_writer0.mask, UInt<1>(1)
-    connect mem_4$.mem_4$_reader0.addr, rd_addr
-    connect mem_4$.mem_4$_reader0.en, rd_en
-    connect mem_4$.mem_4$_reader0.clk, clk
+    connect rd_data, mem.mem_reader0.data
+    connect mem.mem_writer0.addr, wr_addr
+    connect mem.mem_writer0.en, wr_en
+    connect mem.mem_writer0.clk, clk
+    connect mem.mem_writer0.data, wr_data
+    connect mem.mem_writer0.mask, UInt<1>(1)
+    connect mem.mem_reader0.addr, rd_addr
+    connect mem.mem_reader0.en, rd_en
+    connect mem.mem_reader0.clk, clk
 

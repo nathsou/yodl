@@ -23,13 +23,28 @@ pub fn CollapseWireAliasesPass::new() -> Self {
 }
 
 pub impl FIRRTLPass for CollapseWireAliasesPass with run(_, circuit) -> TypedCircuit raise {
-  {
-    ..circuit,
-    decls: circuit.decls.map(decl => match decl {
-      Module(mod) => Module(rewrite_module(mod))
-      ExtModule(extmod) => ExtModule(extmod)
-    }),
-  }
+  // Collect per-module renames so we can also patch circuit-level annotations.
+  let all_renames: Map[Id, Map[Id, Id]] = {}
+  let new_decls = circuit.decls.map(decl => match decl {
+    Module(mod) => {
+      let (new_mod, renames) = rewrite_module(mod)
+      all_renames[mod.id] = renames
+      Module(new_mod)
+    }
+    ExtModule(extmod) => ExtModule(extmod)
+  })
+
+  let new_annotations = circuit.annotations.map(ann => {
+    let target = ann.target()
+    let module_renames = all_renames.get(target.mod)
+    match (module_renames, target.leaf) {
+      (Some(renames), Some(leaf)) =>
+        ann.with_target({ ..target, leaf: Some(renames.get(leaf).unwrap_or(leaf)) })
+      _ => ann
+    }
+  })
+
+  { ..circuit, decls: new_decls, annotations: new_annotations }
 }
 
 // Rewrite a single module to remove collapsible wire aliases.
@@ -84,7 +99,7 @@ pub impl FIRRTLPass for CollapseWireAliasesPass with run(_, circuit) -> TypedCir
 //
 //   Phase 6 — Strip Wire declarations
 //     Remove Wire statements for every fully-collapsible wire.
-fn rewrite_module(mod: TypedModule) -> TypedModule {
+fn rewrite_module(mod: TypedModule) -> (TypedModule, Map[Id, Id]) {
   let wire_leafs: Map[Id, Array[TypedRef]] = {}
   let drivers: Map[TypedRef, TypedExpr] = {}
   let use_counts: Map[TypedRef, Int] = {}
@@ -290,17 +305,27 @@ fn rewrite_module(mod: TypedModule) -> TypedModule {
     }
   }
 
-  // Remove renames targeting memories — their reader/writer port names and
-  // annotations would also need updating which adds too much complexity.
-  let mem_ids: Set[Id] = Set([])
+  // For memory renames: also add reader/writer port IDs to the rename map
+  // (e.g. mem_18$_reader0 → color_idx_reader0) so that field-path references
+  // are updated too. Then the circuit-level annotations are patched by `run`.
   for stmt in mod.body {
     if stmt is Mem(mem) {
-      mem_ids.add(mem.id)
-    }
-  }
-  for old, _ in renames {
-    if mem_ids.contains(old) {
-      renames.remove(old)
+      if renames.get(mem.id) is Some(new_mem_id) {
+        let old_prefix = mem.id.value()
+        let new_prefix = new_mem_id.value()
+        for r in mem.readers {
+          let new_r = Id::from(r.value().replace(old=old_prefix, new=new_prefix))
+          renames[r] = new_r
+        }
+        for w in mem.writers {
+          let new_w = Id::from(w.value().replace(old=old_prefix, new=new_prefix))
+          renames[w] = new_w
+        }
+        for rw in mem.readwriters {
+          let new_rw = Id::from(rw.value().replace(old=old_prefix, new=new_prefix))
+          renames[rw] = new_rw
+        }
+      }
     }
   }
 
@@ -346,7 +371,7 @@ fn rewrite_module(mod: TypedModule) -> TypedModule {
     })
   }
 
-  { ..mod, body: final_body, ports: final_ports }
+  ({ ..mod, body: final_body, ports: final_ports }, renames)
 }
 
 /// Checks whether a wire name looks user-provided (from a let-binding) rather
@@ -383,7 +408,9 @@ fn ref_root_id(ref_ : TypedRef) -> Id {
   }
 }
 
-// Rename the root Id of a reference if it appears in the rename map.
+// Rename the root Id AND field names of a reference if they appear in the
+// rename map. Field renaming is needed for memory port access paths like
+// `color_idx.color_idx_reader0.addr` where the port name is a field id.
 fn rename_ref(ref_: TypedRef, renames: Map[Id, Id]) -> TypedRef {
   match ref_ {
     Id(id, ty~) => Id(renames.get(id).unwrap_or(id), ty~)
@@ -392,7 +419,7 @@ fn rename_ref(ref_: TypedRef, renames: Map[Id, Id]) -> TypedRef {
     DynamicIndexing(lhs~, index~, ty~) =>
       DynamicIndexing(lhs=rename_ref(lhs, renames), index=rename_expr(index, renames), ty~)
     FieldAccess(lhs~, field~, ty~) =>
-      FieldAccess(lhs=rename_ref(lhs, renames), field~, ty~)
+      FieldAccess(lhs=rename_ref(lhs, renames), field=renames.get(field).unwrap_or(field), ty~)
   }
 }
 
