@@ -370,7 +370,7 @@ fn RTLILLowering::lower_mem(self : Self, mem : @firrtl.Mem) -> Unit raise {
       connections={
         "CLK": {
           let clk = self.mod.add_wire(
-            name=GenId("\{mem.id.inner()}.\{read_port}.clk"),
+            name=lower_id("\{mem.id.inner()}.\{read_port}.clk"),
             width=1,
           )
           if is_combinational {
@@ -381,19 +381,19 @@ fn RTLILLowering::lower_mem(self : Self, mem : @firrtl.Mem) -> Unit raise {
         },
         "ADDR": SigWire(
           self.mod.add_wire(
-            name=GenId("\{mem.id.inner()}.\{read_port}.addr"),
+            name=lower_id("\{mem.id.inner()}.\{read_port}.addr"),
             width=addr_width,
           ),
         ),
         "DATA": SigWire(
           self.mod.add_wire(
-            name=GenId("\{mem.id.inner()}.\{read_port}.data"),
+            name=lower_id("\{mem.id.inner()}.\{read_port}.data"),
             width=data_width,
           ),
         ),
         "EN": {
           let en = self.mod.add_wire(
-            name=GenId("\{mem.id.inner()}.\{read_port}.en"),
+            name=lower_id("\{mem.id.inner()}.\{read_port}.en"),
             width=1,
           )
           // yosys requires EN to be 1 if read latency is 0
@@ -423,7 +423,7 @@ fn RTLILLowering::lower_mem(self : Self, mem : @firrtl.Mem) -> Unit raise {
       connections={
         "CLK": {
           let clk = self.mod.add_wire(
-            name=GenId("\{mem.id.inner()}.\{write_port}.clk"),
+            name=lower_id("\{mem.id.inner()}.\{write_port}.clk"),
             width=1,
           )
           if is_combinational {
@@ -434,25 +434,25 @@ fn RTLILLowering::lower_mem(self : Self, mem : @firrtl.Mem) -> Unit raise {
         },
         "ADDR": SigWire(
           self.mod.add_wire(
-            name=GenId("\{mem.id.inner()}.\{write_port}.addr"),
+            name=lower_id("\{mem.id.inner()}.\{write_port}.addr"),
             width=addr_width,
           ),
         ),
         "DATA": SigWire(
           self.mod.add_wire(
-            name=GenId("\{mem.id.inner()}.\{write_port}.data"),
+            name=lower_id("\{mem.id.inner()}.\{write_port}.data"),
             width=data_width,
           ),
         ),
         "EN": {
           let en = SigWire(
             self.mod.add_wire(
-              name=GenId("\{mem.id.inner()}.\{write_port}.en"),
+              name=lower_id("\{mem.id.inner()}.\{write_port}.en"),
               width=1,
             ),
           )
           let mask = self.mod.add_wire(
-            name=GenId("\{mem.id.inner()}.\{write_port}.mask"),
+            name=lower_id("\{mem.id.inner()}.\{write_port}.mask"),
             width=mask_width,
           )
           let mask_bits = Array::new(capacity=data_width)
@@ -469,11 +469,11 @@ fn RTLILLowering::lower_mem(self : Self, mem : @firrtl.Mem) -> Unit raise {
             }
           }
           let mask_and_en = self.mod.add_wire(
-            name=GenId("\{mem.id.inner()}.\{write_port}.mask_and_en.y"),
+            name=lower_id("\{mem.id.inner()}.\{write_port}.mask_and_en.y"),
             width=data_width,
           )
           self.mk_cell(
-            id=GenId("\{mem.id.inner()}.\{write_port}.mask_and_en"),
+            id=lower_id("\{mem.id.inner()}.\{write_port}.mask_and_en"),
             kind=GenId("and"),
             parameters={
               "A_SIGNED": ConstInteger(0),
