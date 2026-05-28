@@ -226,11 +226,13 @@ fn LowerAggregateTypesPass::process_stmt(self: Self, stmt: TypedStmt, body: Arra
       let inst_ty = sig.as_bundle()
       let new_name = self.uniquify(id.value(), inst_ty)
       let inst_ref = Id(Id::from(new_name), ty=inst_ty)
+      let orig_ref = Id(id, ty=inst_ty)
       let new_sig = self.module_signatures[of]
 
       if inst_ty is Bundle(fields) {
         for field in fields {
-          let old_ref = FieldAccess(lhs=inst_ref, field=field.id, ty=field.ty)
+          // Use original id for old_ref so the table maps pre-uniquify references
+          let old_ref = FieldAccess(lhs=orig_ref, field=field.id, ty=field.ty)
           for flat in subcomponents(field.id.value(), old_ref) {
             let new_ref = FieldAccess(
               lhs=inst_ref,

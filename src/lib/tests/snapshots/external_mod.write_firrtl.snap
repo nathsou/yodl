@@ -5,8 +5,8 @@ circuit Top:
     input d: UInt<1>
     output q: UInt<1>
 
-    inst inst_0$ of DFF
-    connect inst_0$.clk, clk
-    connect inst_0$.d, d
-    connect q, inst_0$.q
+    inst ff of DFF
+    connect ff.clk, clk
+    connect ff.d, d
+    connect q, ff.q
 

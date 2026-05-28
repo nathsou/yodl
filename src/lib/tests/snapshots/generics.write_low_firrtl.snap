@@ -18,10 +18,10 @@ circuit Top:
     output x: UInt<8>
     output y: UInt<16>
 
-    inst inst_0$ of Identity$0
-    inst inst_1$ of Identity$1
-    connect x, inst_0$.out
-    connect y, inst_1$.out
-    connect inst_0$.a, a
-    connect inst_1$.a, b
+    inst ix of Identity$0
+    inst iy of Identity$1
+    connect x, ix.out
+    connect y, iy.out
+    connect ix.a, a
+    connect iy.a, b
 
