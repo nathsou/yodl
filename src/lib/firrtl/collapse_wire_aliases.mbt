@@ -127,26 +127,87 @@ fn rewrite_module(mod: TypedModule) -> TypedModule {
     }
   }
 
-  // A wire is fully collapsible only when ALL its leaves are either aliased or
-  // dead, AND it is never referenced as an aggregate (non-leaf) expression.
+  // Phase 2b — Detect LHS aliases for wire leaves.
+  //
+  // Register proxy pattern:
+  //   wire r: { flip d: T, q: T }
+  //   regreset reg_N: T, ...
+  //   connect r.q, reg_N      (r.q is an RHS alias for reg_N — already in resolved_aliases)
+  //   connect reg_N, r.d      (reg_N is driven by r.d)
+  //   connect r.d, r.q        (default self-connect or overridden later)
+  //
+  // Detection: for each non-wire ref T driven by Reference(L) where L is a wire
+  // leaf, L is an LHS alias for T: rewrite `connect L, X` → `connect T, X`.
+  // Also add L as an RHS alias for T so `connect T, Reference(L)` → self-connect.
+  let lhs_aliases: Map[TypedRef, TypedRef] = {}
+
+  // Build a set of all wire leaf refs for quick lookup
+  let all_wire_leafs: Set[TypedRef] = Set([])
+  for _, leafs in wire_leafs {
+    for leaf in leafs {
+      all_wire_leafs.add(leaf)
+    }
+  }
+
+  for target, expr in drivers {
+    // target must NOT be a wire leaf (it's the register/other sink)
+    if all_wire_leafs.contains(target) {
+      continue
+    }
+
+    // The driver must be a simple Reference to a wire leaf
+    let leaf = match expr {
+      Reference(r, ty=_) =>
+        if all_wire_leafs.contains(r) {
+          r
+        } else {
+          continue
+        }
+      _ => continue
+    }
+
+    // The leaf must not already be an RHS alias or dead
+    if resolved_aliases.contains(leaf) || dead_wire_leafs.contains(leaf) {
+      continue
+    }
+
+    // The leaf must be used exactly once as a source — in the connect `target ← leaf`.
+    // If use_count > 1, the leaf is also referenced in expressions and we can't
+    // safely replace those RHS occurrences with the LHS alias target.
+    let use_count = use_counts.get(leaf).unwrap_or(0)
+    if use_count != 1 {
+      continue
+    }
+
+    lhs_aliases[leaf] = target
+    // Also make leaf an RHS alias for target so `connect target, Reference(leaf)`
+    // becomes `connect target, Reference(target)` → self-connect → dropped
+    resolved_aliases[leaf] = target.as_expr()
+  }
+
+  // A wire is fully collapsible only when ALL its leaves are either aliased,
+  // dead, or LHS-aliased, AND it is never referenced as an aggregate.
   // Aggregate references (e.g. a whole Vec used as a regreset init) cannot be
   // inlined by rewrite_expr, so the wire must be kept in those cases.
   let aggregate_used_wires = scan_body_aggregate_wire_uses(mod.body, wire_leafs)
   let wire_fully_collapsible: Map[Id, Bool] = {}
   for wire_id, leafs in wire_leafs {
     let all_removable = leafs.iter().all(leaf =>
-      resolved_aliases.contains(leaf) || dead_wire_leafs.contains(leaf)
+      resolved_aliases.contains(leaf) || dead_wire_leafs.contains(leaf) || lhs_aliases.contains(leaf)
     ) && !aggregate_used_wires.contains(wire_id)
     wire_fully_collapsible[wire_id] = all_removable
   }
 
   // Build the set of connect-LHSs that are safe to drop — only leaves whose
-  // enclosing wire will itself be removed.
+  // enclosing wire will itself be removed AND that are RHS-aliased or dead
+  // (not LHS-aliased — those connects must be kept and LHS-rewritten).
   let collapsible_connects: Set[TypedRef] = Set([])
   for wire_id, leafs in wire_leafs {
     if wire_fully_collapsible.get(wire_id).unwrap_or(false) {
       for leaf in leafs {
-        collapsible_connects.add(leaf)
+        if !lhs_aliases.contains(leaf) {
+          collapsible_connects.add(leaf)
+        }
       }
     }
   }
@@ -159,6 +220,7 @@ fn rewrite_module(mod: TypedModule) -> TypedModule {
       body=new_body,
       resolved_aliases~,
       collapsible_connects~,
+      lhs_aliases~,
     )
   }
 
@@ -587,6 +649,7 @@ fn rewrite_stmt(
   body~: Array[TypedStmt],
   resolved_aliases~: Map[TypedRef, TypedExpr],
   collapsible_connects~: Set[TypedRef],
+  lhs_aliases~: Map[TypedRef, TypedRef],
 ) -> Unit {
   match stmt {
     Wire(..) | Inst(..) | Mem(_) | Skip => body.push(stmt)
@@ -610,10 +673,14 @@ fn rewrite_stmt(
         return
       }
 
+      let new_lhs = match lhs {
+        DynamicIndexing(..) => lhs
+        _ => lhs_aliases.get(lhs).unwrap_or(lhs)
+      }
       let new_rhs = rewrite_expr(rhs, resolved_aliases)
 
-      if !(new_rhs is Reference(reference, ..) && reference == lhs) {
-        body.push(Connect(lhs, new_rhs))
+      if !(new_rhs is Reference(reference, ..) && reference == new_lhs) {
+        body.push(Connect(new_lhs, new_rhs))
       }
     }
     Command(cmd) => {
@@ -648,7 +715,7 @@ fn rewrite_stmt(
       fn rewrite_stmts(stmts: Array[TypedStmt]) -> Array[TypedStmt] {
         let out = Array::new(capacity=stmts.length())
         for s in stmts {
-          rewrite_stmt(s, body=out, resolved_aliases~, collapsible_connects~)
+          rewrite_stmt(s, body=out, resolved_aliases~, collapsible_connects~, lhs_aliases~)
         }
         out
       }

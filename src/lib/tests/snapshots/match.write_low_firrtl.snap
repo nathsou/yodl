@@ -7,7 +7,5 @@ circuit Top:
     input c: UInt<8>
     output out: UInt<8>
 
-    wire match_0$: UInt<8>
-    connect out, match_0$
-    connect match_0$, mux(eq(sel, UInt<2>(0)), a, mux(eq(sel, UInt<2>(1)), b, mux(eq(sel, UInt<2>(2)), c, UInt<8>(0))))
+    connect out, mux(eq(sel, UInt<2>(0)), a, mux(eq(sel, UInt<2>(1)), b, mux(eq(sel, UInt<2>(2)), c, UInt<8>(0))))
 

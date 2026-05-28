@@ -11,7 +11,7 @@ pub(all) enum Command {
 /// Passes applied by `write_firrtl`: collapses elaborator proxy wires to
 /// produce clean, readable FIRRTL without expanding or lowering anything.
 pub fn firrtl_passes() -> Array[&@firrtl.FIRRTLPass] {
-  [@firrtl.CollapseWireAliasesPass::new()]
+  [@firrtl.ExpandConnectsPass::new(), @firrtl.CollapseWireAliasesPass::new()]
 }
 
 fn low_firrtl_passes() -> Array[&@firrtl.FIRRTLPass] {

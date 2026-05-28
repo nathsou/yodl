@@ -14,11 +14,9 @@ circuit Top:
     output out_3: UInt<8>
     output rd_val: UInt<8>
 
-    wire dynidx1$: UInt<8>
     connect out_0, mux(eq(wr_idx, UInt<2>(0)), wr_val, a_0)
     connect out_1, mux(eq(wr_idx, UInt<2>(0)), a_1, mux(eq(wr_idx, UInt<2>(1)), wr_val, a_1))
     connect out_2, mux(eq(wr_idx, UInt<2>(0)), a_2, mux(eq(wr_idx, UInt<2>(1)), a_2, mux(eq(wr_idx, UInt<2>(2)), wr_val, a_2)))
     connect out_3, mux(eq(wr_idx, UInt<2>(0)), a_3, mux(eq(wr_idx, UInt<2>(1)), a_3, mux(eq(wr_idx, UInt<2>(2)), a_3, wr_val)))
-    connect rd_val, dynidx1$
-    connect dynidx1$, mux(eq(rd_idx, UInt<2>(0)), out_0, mux(eq(rd_idx, UInt<2>(1)), out_1, mux(eq(rd_idx, UInt<2>(2)), out_2, out_3)))
+    connect rd_val, mux(eq(rd_idx, UInt<2>(0)), out_0, mux(eq(rd_idx, UInt<2>(1)), out_1, mux(eq(rd_idx, UInt<2>(2)), out_2, out_3)))
 

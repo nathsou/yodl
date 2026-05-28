@@ -15,17 +15,9 @@ circuit Top:
     output out_2: UInt<8>
     output out_3: UInt<8>
 
-    wire muxvec0$_0: UInt<8>
-    wire muxvec0$_1: UInt<8>
-    wire muxvec0$_2: UInt<8>
-    wire muxvec0$_3: UInt<8>
     node muxcond1$ = sel
-    connect out_0, muxvec0$_0
-    connect out_1, muxvec0$_1
-    connect out_2, muxvec0$_2
-    connect out_3, muxvec0$_3
-    connect muxvec0$_0, mux(muxcond1$, a_0, b_0)
-    connect muxvec0$_1, mux(muxcond1$, a_1, b_1)
-    connect muxvec0$_2, mux(muxcond1$, a_2, b_2)
-    connect muxvec0$_3, mux(muxcond1$, a_3, b_3)
+    connect out_0, mux(muxcond1$, a_0, b_0)
+    connect out_1, mux(muxcond1$, a_1, b_1)
+    connect out_2, mux(muxcond1$, a_2, b_2)
+    connect out_3, mux(muxcond1$, a_3, b_3)
 
