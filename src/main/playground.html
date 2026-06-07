@@ -441,17 +441,22 @@
                     'and', 'or', 'not', 'xor', 'nand', 'nor', 'xnor', 'shl', 'shr', 'andr', 'orr', 'xorr'
                 ],
                 operators: [
-                    '==', '!=', '<=', '>=', '<:', '>:', '+', '-', '*', '/', '%', '...', '=>', '?', ':', '.',
+                    '==', '!=', '<=', '>=', '<:', '>:', '+:', '-:', '..', '..<', '..=',
+                    '+', '-', '*', '/', '%', '=>', '?', ':', '.', '->', '::'
                 ],
                 symbols: /[=><!~?:&|+\-*/^%.]+/,
                 tokenizer: {
                     root: [
-                        // Function names: end with !
+                        // Builtin function calls: name ending with !
                         [/\w+!/, 'function'],
 
+                        // Sized integer types: u8, s7, u32, ...
+                        // (must come before the generic identifier rule)
+                        [/\b[us]\d+\b/, 'type'],
+
                         // Identifiers and keywords
-                        [/[a-zA-Z_]\w*/, { 
-                            cases: { 
+                        [/[a-zA-Z_]\w*/, {
+                            cases: {
                                 '@keywords': 'keyword',
                                 '@typeKeywords': 'type',
                                 '@wordOperators': 'operator',
@@ -465,7 +470,7 @@
                         
                         // Characters
                         [/'[^'\\]'/, 'string'],
-                        [/'/, 'string.invalid'],
+                        [/'\\.'/, 'string'],
                         
                         // Comments
                         [/\/\/.*$/, 'comment'],
@@ -483,7 +488,7 @@
                         }],
                         
                         // Delimiters and operators
-                        [/[(),;:]/, 'delimiter'],
+                        [/[(){}\[\],;]/, 'delimiter'],
                         
                         // Whitespace
                         [/\s+/, 'white']

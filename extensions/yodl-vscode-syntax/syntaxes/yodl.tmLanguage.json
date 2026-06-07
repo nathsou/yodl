@@ -15,8 +15,12 @@
             "match": "[A-Za-z_0-9]+!"
         },
         {
+            "name": "storage.type.sized.yodl",
+            "match": "\\b[us]\\d+\\b"
+        },
+        {
             "name": "storage.type.yodl",
-            "match": "\\b(uint|sint|bool|clock|type)\\b"
+            "match": "\\b(uint|sint|bool|clock|type|Nat|Type)\\b"
         },
         {
             "name": "constant.numeric.yodl",
@@ -24,11 +28,11 @@
         },
         {
             "name": "punctuation.separator.parameters.yodl",
-            "match": "[(),;:]|(->)"
+            "match": "[(){}\\[\\],;:]|(->)|(=>)|(::)"
         },
         {
             "name": "keyword.operator.yodl",
-            "match": "(andr|orr|xorr|and|or|not|xor|nand|nor|xnor|shl|shr|==|!=|<=|>=|<:|>:|\\+|-|\\*|\\/|%|\\.{3}|=>|\\?|:|\\.)"
+            "match": "(andr|orr|xorr|and|or|not|xor|nand|nor|xnor|shl|shr|==|!=|<=|>=|<:|>:|\\+:|-:|\\.\\.<|\\.\\.=|\\.\\.|\\+|-|\\*|/|%|\\?|\\.)"
         },
         {
             "name": "keyword.other.yodl",
