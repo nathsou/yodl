@@ -1,0 +1,33 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/driver"
+
+import {
+  "moonbitlang/core/debug",
+  "nathsou/yodl/lib/firrtl",
+  "nathsou/yodl/lib/utils",
+}
+
+// Values
+pub fn cli(@utils.Externals) -> Unit
+
+pub fn parse_commands(String) -> Array[Command] raise CommandParserError
+
+pub fn run(path~ : String, commands~ : Array[Command], ext~ : @utils.Externals) -> Unit raise
+
+// Errors
+type CommandParserError derive(@debug.Debug)
+
+// Types and methods
+pub(all) enum Command {
+  WriteSource(path~ : String?)
+  WriteMono(path~ : String?)
+  WriteTyped(path~ : String?)
+  WriteSimplified(path~ : String?)
+  WriteFIRRTL(path~ : String?, passes~ : Array[&@firrtl.FIRRTLPass])
+  WriteRTLIL(path~ : String?)
+}
+
+// Type aliases
+
+// Traits
+

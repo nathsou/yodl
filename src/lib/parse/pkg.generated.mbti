@@ -1,0 +1,522 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/parse"
+
+import {
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/ref",
+  "nathsou/yodl/lib/utils",
+}
+
+// Values
+pub const BITS_PER_CHAR : Int = 8
+
+pub fn clone_ty(@ref.Ref[Type?]) -> @ref.Ref[Type?]
+
+pub fn[T : @utils.BinaryLike] parse_mem_file(String, base~ : Int, start~ : Int, end~ : Int?) -> Array[T] raise MemFileError
+
+pub fn rewrite_expr(Expr, Rewriter) -> Expr raise
+
+pub fn rewrite_stmt(Stmt, rewr_expr~ : (Expr) -> Expr? raise, rewr_stmt~ : (Stmt) -> Iter[Stmt] raise) -> Iter[Stmt] raise
+
+pub fn show_natural(value~ : @bigint.BigInt, base~ : Int, width~ : Int?) -> String
+
+// Errors
+pub suberror AstError {
+  ExpectedIntegerExpression(expr~ : &Ctor, span~ : Span)
+  IndexExprNotLiteral(span~ : Span)
+  CannotGetWidthOfUnresolvedNamedType(span~ : Span)
+  InvalidFunCallArity(name~ : String, expected~ : Arity, actual~ : Int, span~ : Span)
+  ExpectedStringExpression(expr~ : &Ctor, span~ : Span)
+  ConflictingInstanceParameterValue(name~ : String, span~ : Span)
+  UnknownModuleParameter(name~ : String, span~ : Span)
+  TypeParamInsteadOfExpr(span~ : Span)
+  UnknownFunction(name~ : String, span~ : Span)
+  UnresolvedParameter(name~ : String, span~ : Span)
+  CannotMixNamedAndOrderedModuleParameters(span~ : Span)
+  ExpectedTypeParameter(span~ : Span)
+  ExpectedIntParameter(span~ : Span)
+  NonStorableType(ty~ : Type, span~ : Span)
+}
+pub impl Show for AstError
+pub impl Spanned for AstError
+
+pub suberror LexerError {
+  UnexepectedChar(char~ : Char, span~ : Span)
+}
+pub impl Show for LexerError
+pub impl Spanned for LexerError
+
+pub suberror MemFileError {
+  UnexpectedChar(Char)
+  InvalidBase(Int)
+  InvalidDigitForBase(digit~ : Char, base~ : Int)
+  InconsistentWidth(expected~ : Int, actual~ : Int)
+  Error(Error)
+} derive(@debug.Debug)
+
+pub suberror ParserError {
+  UnexpectedToken(expected~ : TokenType, received~ : TokenType, span~ : Span)
+  ExpectedIdentifier(received~ : TokenType, span~ : Span)
+  ExpectedExpr(received~ : TokenType, span~ : Span)
+  ExpectedStmt(received~ : TokenType, span~ : Span)
+  ExpectedType(received~ : TokenType, span~ : Span)
+  ExpectedDecl(received~ : TokenType, span~ : Span)
+  ExpectedRangeOperator(received~ : TokenType, span~ : Span)
+  MultipleDefaultCases(span~ : Span)
+  InvalidPortOrTupleAccess(span~ : Span)
+  DuplicateStructField(name~ : String, span~ : Span)
+} derive(@debug.Debug)
+pub impl Show for ParserError
+
+// Types and methods
+pub struct AccessedPorts {
+  mut ports : Map[String, PortAccess]
+} derive(Eq)
+pub fn AccessedPorts::contains(Self, String) -> Bool
+pub fn AccessedPorts::is_read(Self, String) -> Bool
+pub fn AccessedPorts::is_written_to(Self, String) -> Bool
+pub fn AccessedPorts::merge_inplace(Self, Self) -> Unit
+pub fn AccessedPorts::mutate(Self, Self) -> Unit
+pub fn AccessedPorts::new() -> Self
+pub fn AccessedPorts::register_access(Self, String) -> Unit
+pub fn AccessedPorts::register_write(Self, String) -> Unit
+pub fn AccessedPorts::set(Self, String, PortAccess) -> Unit
+pub impl Show for AccessedPorts
+
+type Arity
+
+pub(all) struct AstEmitter {
+  mut indent : Int
+  builder : StringBuilder
+  show_expr_types : Bool
+}
+pub fn AstEmitter::emit(Self, String) -> Unit
+pub fn AstEmitter::emit_core_decl(Self, CoreDecl) -> Unit
+pub fn AstEmitter::emit_core_expr(Self, CoreExpr, indent? : Bool) -> Unit
+pub fn AstEmitter::emit_core_module_decl(Self, CoreModuleDecl) -> Unit
+pub fn AstEmitter::emit_core_stmt(Self, CoreStmt) -> Unit
+pub fn AstEmitter::emit_decl(Self, Decl) -> Unit
+pub fn AstEmitter::emit_expr(Self, Expr, indent? : Bool) -> Unit
+pub fn AstEmitter::emit_stmt(Self, Stmt) -> Unit
+pub fn AstEmitter::new(show_expr_types? : Bool) -> Self
+pub fn AstEmitter::write(Self, String) -> Unit
+pub fn AstEmitter::write_indent(Self) -> Unit
+pub impl Show for AstEmitter
+
+pub(all) struct Attribute {
+  name : String
+  args : Array[AttributeValue]
+  span : Span
+}
+pub impl Show for Attribute
+
+pub(all) enum AttributeValue {
+  String(String)
+  Int(Int)
+  Dict(Map[String, AttributeValue])
+}
+pub impl Show for AttributeValue
+
+pub(all) enum BinaryOp {
+  And
+  Or
+  Xor
+  Nand
+  Nor
+  Xnor
+  Add
+  Sub
+  Mul
+  Div
+  Mod
+  Equ
+  Neq
+  Lss
+  Gtr
+  Leq
+  Geq
+  Shl
+  Shr
+  Ternary
+} derive(Eq)
+pub impl Show for BinaryOp
+
+pub(all) struct ConstDecl {
+  path : Path
+  ty : Type?
+  expr : Expr
+  span : Span
+}
+
+pub(all) enum ConstValue {
+  Natural(value~ : @bigint.BigInt, width~ : Int?, base~ : Int, span~ : Span)
+  String(value~ : String, span~ : Span)
+} derive(Eq)
+pub fn ConstValue::as_expr(Self) -> Expr
+pub fn ConstValue::from(Expr) -> Self?
+pub impl Show for ConstValue
+
+pub(all) enum CoreDecl {
+  Module(CoreModuleDecl)
+  ModuleDeclaration(ModuleSignature)
+}
+
+pub(all) enum CoreExpr {
+  Natural(value~ : @bigint.BigInt, width~ : Int?, base~ : Int, span~ : Span, ty~ : @ref.Ref[Type?])
+  Identifier(path~ : Path, span~ : Span, ty~ : @ref.Ref[Type?])
+  Unary(op~ : UnaryOp, expr~ : CoreExpr, span~ : Span, ty~ : @ref.Ref[Type?])
+  Binary(op~ : BinaryOp, lhs~ : CoreExpr, rhs~ : CoreExpr, output_width~ : @ref.Ref[Int?], span~ : Span, ty~ : @ref.Ref[Type?])
+  Indexing(expr~ : CoreExpr, index~ : CoreExpr, span~ : Span, ty~ : @ref.Ref[Type?])
+  Slicing(expr~ : CoreExpr, hi~ : CoreExpr, lo~ : CoreExpr, span~ : Span, ty~ : @ref.Ref[Type?])
+  FieldAccess(expr~ : CoreExpr, field~ : String, span~ : Span, ty~ : @ref.Ref[Type?])
+  Instance(path~ : Path, params~ : InstanceParams, ports~ : Map[String, CoreExpr], span~ : Span, ty~ : @ref.Ref[Type?])
+  Vector(elems~ : Array[CoreExpr], span~ : Span, ty~ : @ref.Ref[Type?])
+  Spread(expr~ : CoreExpr, span~ : Span, ty~ : @ref.Ref[Type?])
+  Match(subject~ : CoreExpr, cases~ : Array[(CoreExpr, CoreExpr)], default~ : CoreExpr?, span~ : Span, ty~ : @ref.Ref[Type?])
+  Struct(fields~ : Map[String, CoreExpr], span~ : Span, ty~ : @ref.Ref[Type?])
+  FunCall(name~ : String, args~ : Array[CoreExpr], span~ : Span, ty~ : @ref.Ref[Type?])
+  String(value~ : String, span~ : Span, ty~ : @ref.Ref[Type?])
+  Block(body~ : Array[CoreStmt], last~ : CoreExpr?, span~ : Span, ty~ : @ref.Ref[Type?])
+}
+pub fn CoreExpr::as_int(Self) -> Int raise
+pub fn CoreExpr::as_string(Self) -> String raise
+pub fn CoreExpr::contains_statements(Self) -> Bool
+pub fn CoreExpr::nat(Int, width? : Int?, base? : Int, span~ : Span) -> Self
+pub fn CoreExpr::set_ty(Self, Type) -> Unit
+pub fn CoreExpr::ty(Self) -> @ref.Ref[Type?]
+pub impl Ctor for CoreExpr
+pub impl Spanned for CoreExpr
+
+pub(all) struct CoreModuleDecl {
+  path : Path
+  attributes : Map[String, Attribute]
+  ports : Array[Port]
+  body : Array[CoreStmt]
+  span : Span
+}
+
+pub(all) enum CoreStmt {
+  Expr(expr~ : CoreExpr, span~ : Span)
+  Let(name~ : String, ty~ : @ref.Ref[Type?], expr~ : CoreExpr?, span~ : Span)
+  Assign(lhs~ : CoreExpr, rhs~ : CoreExpr, span~ : Span)
+}
+pub impl Spanned for CoreStmt
+
+pub(all) enum Decl {
+  Module(ModuleDecl)
+  ModuleDeclaration(ModuleSignature)
+  Const(ConstDecl)
+  Package(PackageDecl)
+  Import(ImportDecl)
+  TypeAlias(TypeAliasDecl)
+}
+
+pub(all) enum Expr {
+  Natural(value~ : @bigint.BigInt, width~ : Int?, base~ : Int, span~ : Span, ty~ : @ref.Ref[Type?])
+  Identifier(path~ : Path, span~ : Span, ty~ : @ref.Ref[Type?])
+  Unary(op~ : UnaryOp, expr~ : Expr, span~ : Span, ty~ : @ref.Ref[Type?])
+  Binary(op~ : BinaryOp, lhs~ : Expr, rhs~ : Expr, output_width~ : @ref.Ref[Int?], span~ : Span, ty~ : @ref.Ref[Type?])
+  Indexing(expr~ : Expr, index~ : Expr, span~ : Span, ty~ : @ref.Ref[Type?])
+  Slicing(expr~ : Expr, hi~ : Expr, lo~ : Expr, kind~ : PartSelect, span~ : Span, ty~ : @ref.Ref[Type?])
+  FieldAccess(expr~ : Expr, field~ : String, span~ : Span, ty~ : @ref.Ref[Type?])
+  Instance(path~ : Path, params~ : InstanceParams, ports~ : Map[String, Expr], span~ : Span, ty~ : @ref.Ref[Type?])
+  Vector(elems~ : Array[Expr], span~ : Span, ty~ : @ref.Ref[Type?])
+  Spread(expr~ : Expr, span~ : Span, ty~ : @ref.Ref[Type?])
+  Ternary(cond~ : Expr, then~ : Expr, else_~ : Expr, span~ : Span, ty~ : @ref.Ref[Type?])
+  Match(subject~ : Expr, cases~ : Array[(Expr, Expr)], default~ : Expr?, span~ : Span, ty~ : @ref.Ref[Type?])
+  Struct(fields~ : Map[String, Expr], span~ : Span, ty~ : @ref.Ref[Type?])
+  FunCall(name~ : String, args~ : Array[Expr], span~ : Span, ty~ : @ref.Ref[Type?])
+  String(value~ : String, span~ : Span, ty~ : @ref.Ref[Type?])
+  Block(body~ : Array[Stmt], last~ : Expr?, span~ : Span, ty~ : @ref.Ref[Type?])
+  If(cond~ : Expr, then~ : Expr, else_~ : Expr?, span~ : Span, ty~ : @ref.Ref[Type?])
+}
+pub fn Expr::as_bigint(Self) -> @bigint.BigInt raise
+pub fn Expr::as_int(Self) -> Int raise
+pub fn Expr::as_string(Self) -> String raise
+pub fn Expr::bignat(@bigint.BigInt, width? : Int?, base? : Int, span~ : Span) -> Self
+pub fn Expr::contains_statements(Self) -> Bool
+pub fn Expr::ctor(Self) -> String
+pub fn Expr::is_constant_expr(Self) -> Bool
+pub fn Expr::nat(Int, width? : Int?, base? : Int, span~ : Span) -> Self
+pub fn Expr::partial_eval(Self, params? : Map[String, ResolvedParam]) -> Self raise
+pub fn Expr::set_ty(Self, Type) -> Unit
+pub fn Expr::ty(Self) -> @ref.Ref[Type?]
+pub impl Ctor for Expr
+pub impl Spanned for Expr
+
+pub(all) struct ForRange {
+  start : Expr
+  end : Expr
+  inclusive : Bool
+}
+
+pub(all) struct ImportDecl {
+  packages : Array[String]
+  span : Span
+}
+
+pub(all) enum IndexExpr {
+  Lit(Int)
+  Var(String)
+  Add(IndexExpr, IndexExpr)
+  Sub(IndexExpr, IndexExpr)
+  Mul(IndexExpr, IndexExpr)
+  Clog2(IndexExpr)
+  CDiv(IndexExpr, IndexExpr)
+} derive(Eq)
+pub fn IndexExpr::eval(Self) -> Int?
+pub fn IndexExpr::expect_lit(Self, Span) -> Int raise AstError
+pub fn[E : Error] IndexExpr::map_vars(Self, (String) -> Self raise E) -> Self raise E
+pub fn IndexExpr::substitute(Self, Map[String, ResolvedParam]) -> Self
+pub impl Show for IndexExpr
+
+pub(all) struct InstanceParams {
+  params : Array[(String?, Param)]
+  instantiated : Array[(Expr, Type, Span)]
+}
+pub fn InstanceParams::as_map(Self, names~ : Array[String]) -> Map[String, Param] raise AstError
+pub fn InstanceParams::as_resolved_map(Self, names~ : Array[String]) -> Map[String, ResolvedParam] raise AstError
+pub fn[E : Error] InstanceParams::map_raw(Self, map_type~ : (Type) -> Type raise E) -> Self raise E
+pub fn InstanceParams::new(Array[(String?, Param)]) -> Self
+pub fn InstanceParams::unwrap_resolved(Self) -> Array[(String?, ResolvedParam)] raise AstError
+
+pub struct Lexer {
+  input : String
+  mut index : Int
+  mut line : Int
+  mut column : Int
+  file : String
+  file_content : String
+  tokens : Array[Token]
+}
+pub fn Lexer::lex(Self) -> Array[Token] raise
+pub fn Lexer::new(String, file~ : String, file_content~ : String) -> Self
+
+pub(all) struct MinWidth {
+  mut min_width : Int
+} derive(Eq)
+pub fn MinWidth::update(Self, Int) -> Unit
+
+pub(all) struct ModuleDecl {
+  path : Path
+  params : Array[ModuleParameter]
+  attributes : Map[String, Attribute]
+  ports : Array[Port]
+  body : Array[Stmt]
+  span : Span
+}
+pub fn ModuleDecl::signature(Self) -> ModuleSignature
+
+pub(all) struct ModuleParameter {
+  name : String
+  sort : ParamSort
+  span : Span
+}
+pub impl Show for ModuleParameter
+
+pub(all) struct ModuleSignature {
+  path : Path
+  params : Array[ModuleParameter]
+  attributes : Map[String, Attribute]
+  ports : Array[Port]
+  span : Span
+}
+pub fn ModuleSignature::get_param(Self, String) -> ModuleParameter?
+pub fn ModuleSignature::get_port(Self, String) -> Port?
+pub fn ModuleSignature::inouts(Self) -> Iter[Port]
+pub fn ModuleSignature::inputs(Self) -> Iter[Port]
+pub fn ModuleSignature::outputs(Self) -> Iter[Port]
+
+pub(all) struct PackageDecl {
+  name : String
+  mut body : Array[Decl]
+  span : Span
+}
+
+pub(all) enum Param {
+  Unresolved(UnresolvedParam)
+  Resolved(ResolvedParam)
+} derive(Eq)
+pub fn Param::as_int(Self) -> Int raise
+pub fn Param::as_type(Self) -> Type raise
+pub impl Show for Param
+pub impl Spanned for Param
+
+pub(all) enum ParamSort {
+  NatSort
+  TypeSort
+} derive(Eq)
+pub impl Show for ParamSort
+
+pub(all) enum ParsedParam {
+  ExprParam(expr~ : Expr, span~ : Span)
+  TypeParam(ty~ : Type, span~ : Span)
+}
+
+pub struct Parser {
+  tokens : Array[Token]
+  mut index : Int
+  file : String
+  file_content : StringView
+}
+pub fn Parser::new(Array[Token], file~ : String, file_content~ : StringView) -> Self
+pub fn Parser::parse(Self) -> Array[Decl] raise
+pub fn Parser::span(Self, Int) -> Span
+
+pub(all) enum PartSelect {
+  Absolute
+  WidthAscending
+  WidthDescending
+}
+
+pub(all) struct Path {
+  packages : Array[String]
+  elem : String
+} derive(Eq)
+pub fn Path::new(Array[String], String) -> Self
+pub fn Path::prepend(Self, Array[String]) -> Self
+pub impl Hash for Path
+pub impl Show for Path
+
+pub(all) struct Port {
+  name : String
+  ty : Type
+  dir : PortDir
+  span : Span
+  optional : Bool
+  attributes : Map[String, Attribute]
+}
+pub impl Show for Port
+
+pub(all) enum PortAccess {
+  Read
+  Write
+} derive(Eq)
+
+pub(all) enum PortDir {
+  Input
+  Output
+  InOut
+} derive(Eq)
+pub impl Show for PortDir
+
+pub(all) enum ResolvedParam {
+  NatParam(value~ : ConstValue, span~ : Span)
+  TypeParam(ty~ : Type, span~ : Span)
+}
+pub fn ResolvedParam::as_expr(Self) -> Expr raise
+pub fn ResolvedParam::as_int(Self) -> Int raise
+pub fn ResolvedParam::as_type(Self) -> Type raise
+pub impl Eq for ResolvedParam
+pub impl Hash for ResolvedParam
+pub impl Show for ResolvedParam
+pub impl Spanned for ResolvedParam
+
+pub(all) struct Rewriter {
+  rewr_expr : (Expr) -> Expr? raise
+  rewr_stmt : (Stmt) -> Iter[Stmt] raise
+}
+
+pub(all) struct SourceLoc {
+  index : Int
+  line : Int
+  column : Int
+} derive(Eq, Hash, @debug.Debug)
+
+pub(all) struct Span {
+  file : String
+  file_content : StringView
+  start : SourceLoc
+  end : SourceLoc
+} derive(@debug.Debug)
+pub fn Span::context(Self, window_size? : Int, use_ansi_colors? : Bool) -> String
+pub fn Span::text(Self) -> StringView
+pub impl Eq for Span
+pub impl Show for Span
+
+pub(all) struct StaticParam {
+  name : String
+  sort : ParamSort
+  span : Span
+}
+
+pub(all) enum Stmt {
+  Expr(expr~ : Expr, span~ : Span)
+  Const(decl~ : ConstDecl, span~ : Span)
+  Let(name~ : String, ty~ : @ref.Ref[Type?], expr~ : Expr?, span~ : Span)
+  Assign(lhs~ : Expr, rhs~ : Expr, span~ : Span)
+  For(variable~ : String, range~ : ForRange, body~ : Array[Stmt], span~ : Span)
+  Scope(body~ : Array[Stmt], span~ : Span)
+}
+pub impl Spanned for Stmt
+
+type Token derive(@debug.Debug)
+
+type TokenType derive(Eq, @debug.Debug)
+pub impl Show for TokenType
+
+pub(all) enum Type {
+  Nat(MinWidth)
+  UInt(IndexExpr)
+  SInt(IndexExpr)
+  Clock
+  Vector(ty~ : Type, len~ : IndexExpr)
+  Instance(sig~ : ModuleSignature, params~ : Map[String, ResolvedParam], accessed_ports~ : AccessedPorts)
+  Name(path~ : Path, params~ : Array[Type])
+  Struct(Map[String, Type])
+  String(len~ : Int)
+  MemoryMask(Type)
+} derive(Eq)
+pub fn Type::bool() -> Self
+pub fn Type::clone(Self) -> Self
+pub fn Type::empty() -> Self
+pub fn Type::has_zero_width(Self) -> Bool
+pub fn Type::is_ground(Self) -> Bool
+pub fn Type::is_numerical(Self) -> Bool
+pub fn Type::is_string(Self) -> Bool
+pub fn Type::mask(Self, span~ : Span) -> Self raise AstError
+pub fn Type::sint(Int) -> Self
+pub fn Type::substitute(Self, Map[String, ResolvedParam], span~ : Span) -> Self raise AstError
+pub fn Type::uint(Int) -> Self
+pub fn Type::width(Self, Span) -> Int raise AstError
+pub impl Show for Type
+
+pub(all) struct TypeAliasDecl {
+  name : String
+  parameters : Array[StaticParam]
+  ty : Type
+  span : Span
+}
+
+pub(all) enum UnaryOp {
+  Not
+  Neg
+  Andr
+  Orr
+  Xorr
+} derive(Eq)
+pub impl Show for UnaryOp
+
+pub(all) struct UnresolvedParam {
+  tokens : Array[Token]
+  file : String
+  text : StringView
+  span : Span
+}
+pub fn UnresolvedParam::parse(Self, ParamSort) -> ParsedParam raise
+pub impl Eq for UnresolvedParam
+pub impl Show for UnresolvedParam
+
+// Type aliases
+
+// Traits
+pub trait Ctor {
+  fn ctor(Self) -> String
+}
+
+pub(open) trait Spanned {
+  fn span(Self) -> Span
+  fn show_context(Self, use_ansi_colors~ : Bool) -> String = _
+}
+

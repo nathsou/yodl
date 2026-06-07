@@ -3,7 +3,7 @@
   "version": "0.2.2",
   "deps": {
     "moonbitlang/x": "0.4.38",
-    "peter-jerry-ye/wasi": "0.24.3"
+    "peter-jerry-ye/wasi": "0.25.0"
   },
   "readme": "README.md",
   "repository": "",

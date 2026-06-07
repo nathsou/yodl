@@ -6,7 +6,7 @@ pub fn start() -> Unit {
       @fs.mkdir(path) catch {
         e => {
           try! @stdio.stderr.write_sync(
-            "Failed to create directory \{path}: \{e}\n",
+            "Failed to create directory \{path}: \{@debug.to_string(e)}\n",
           )
           @wasi.proc_exit(1)
         }
@@ -16,7 +16,7 @@ pub fn start() -> Unit {
       @fs.write_file_sync(path, content) catch {
         e => {
           try! @stdio.stderr.write_sync(
-            "Failed to write to file \{path}: \{e}\n",
+            "Failed to write to file \{path}: \{@debug.to_string(e)}\n",
           )
           @wasi.proc_exit(1)
         }
@@ -26,7 +26,7 @@ pub fn start() -> Unit {
       @fs.readdir(path, include_hidden=true, include_special=true, sort=true) catch {
         e => {
           try! @stdio.stderr.write_sync(
-            "Failed to read directory \{path}: \{e}\n",
+            "Failed to read directory \{path}: \{@debug.to_string(e)}\n",
           )
           @wasi.proc_exit(1)
         }
@@ -36,7 +36,7 @@ pub fn start() -> Unit {
       let kind = @fs.kind(path) catch {
         e => {
           try! @stdio.stderr.write_sync(
-            "Failed to get kind of path \{path}: \{e}\n",
+            "Failed to get kind of path \{path}: \{@debug.to_string(e)}\n",
           )
           @wasi.proc_exit(1)
         }
@@ -46,7 +46,7 @@ pub fn start() -> Unit {
     read_file_to_string: path => {
       let bytes = @fs.read_file_sync(path) catch {
         e => {
-          try! @stdio.stderr.write_sync("Failed to read file \{path}: \{e}\n")
+          try! @stdio.stderr.write_sync("Failed to read file \{path}: \{@debug.to_string(e)}\n")
           @wasi.proc_exit(1)
         }
       }
@@ -65,7 +65,7 @@ pub fn start() -> Unit {
       @wasi.args_get() catch {
         e => {
           try! @stdio.stderr.write_sync(
-            "Failed to get command line arguments: \{e}\n",
+            "Failed to get command line arguments: \{@debug.to_string(e)}\n",
           )
           @wasi.proc_exit(1)
         }

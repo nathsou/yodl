@@ -1,0 +1,95 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/simplify"
+
+import {
+  "moonbitlang/core/debug",
+  "moonbitlang/core/set",
+  "nathsou/yodl/lib/parse",
+  "nathsou/yodl/lib/utils",
+}
+
+// Values
+pub fn simplify_decls(Array[@parse.Decl]) -> Array[@parse.CoreDecl] raise
+
+// Errors
+pub suberror MonomorphizerError {
+  ModuleNotFound(path~ : @parse.Path, span~ : @parse.Span)
+  InvalidModuleParameterCount(path~ : @parse.Path, expected~ : Int, actual~ : Int, span~ : @parse.Span)
+  ReceivedTypeParameterInsteadOfExpr(span~ : @parse.Span)
+  InvalidParameter(sort~ : @parse.ParamSort, span~ : @parse.Span)
+  ReceivedTypeAliasInsteadOfExpr(span~ : @parse.Span)
+  InvalidParameterInstantiation(path~ : @parse.Path, param~ : String, span~ : @parse.Span, param_span~ : @parse.Span)
+  InvalidTypeAliasParameters(path~ : @parse.Path, exptected~ : Int, actual~ : Int, span~ : @parse.Span)
+  UnresolvedNamedType(path~ : @parse.Path, span~ : @parse.Span)
+}
+pub impl Show for MonomorphizerError
+pub impl @parse.Spanned for MonomorphizerError
+
+pub suberror ResolutionError {
+  PackageNotFound(name~ : String)
+  IOError(Error)
+  LexerError(Error)
+  ParseError(Error)
+  CouldNotExtractPackageName(String)
+  PackageNameConflict(name~ : String, path1~ : String, path2~ : String)
+  MultiLevelImportNotSupportedYet(packages~ : Array[String])
+} derive(@debug.Debug)
+pub impl Show for ResolutionError
+
+pub suberror SimplifierError {
+  AssertionAlwaysFails(span~ : @parse.Span)
+}
+pub impl Show for SimplifierError
+pub impl @parse.Spanned for SimplifierError
+
+// Types and methods
+pub enum MonoEnvEntry {
+  Param(@parse.ResolvedParam)
+  Const(@parse.ConstDecl)
+  Type(@parse.TypeAliasDecl)
+  Name(packages~ : Array[String])
+  GenVar(Int)
+}
+
+pub struct Monomorphizer {
+  modules : Map[@parse.Path, @parse.ModuleDecl]
+  parameterized : Map[@parse.Path, @parse.ModuleDecl]
+  monomorphized : Map[@parse.Path, Map[UInt, @parse.ModuleDecl]]
+  declared_modules : Map[@parse.Path, @parse.ModuleSignature]
+  instanciated_modules : @set.Set[@parse.Path]
+  constants : Map[@parse.Path, @parse.ConstDecl]
+  type_aliases : Map[@parse.Path, @parse.TypeAliasDecl]
+  top_env : @utils.Scope[@parse.Path, MonoEnvEntry]
+}
+pub fn Monomorphizer::monomorphize(Self, decls~ : Array[@parse.Decl], packages~ : Array[String]) -> Array[@parse.Decl] raise
+pub fn Monomorphizer::new() -> Self
+
+pub struct Resolver {
+  resolved_packages : Map[String, @parse.PackageDecl]
+  available_packages : Map[String, String]
+  imports : @set.Set[String]
+  fs : @utils.FileSystem
+}
+pub fn Resolver::new(String, fs~ : @utils.FileSystem) -> Self raise ResolutionError
+pub fn Resolver::resolve(Self, path~ : String, is_top_package~ : Bool) -> @parse.PackageDecl raise ResolutionError
+pub fn Resolver::resolve_decl(Self, @parse.Decl) -> @parse.Decl? raise ResolutionError
+
+pub struct Simplifier {
+  name_counts : Map[String, Int]
+}
+pub fn Simplifier::declare_unique(Self, String) -> UniqueName
+pub fn Simplifier::new() -> Self
+pub fn Simplifier::simplify_expr(Self, @parse.Expr, env~ : @utils.Scope[@parse.Path, SimplifierEnvEntry]) -> @parse.CoreExpr raise
+pub fn Simplifier::simplify_stmt(Self, @parse.Stmt, env~ : @utils.Scope[@parse.Path, SimplifierEnvEntry]) -> Iter[@parse.CoreStmt] raise
+
+pub enum SimplifierEnvEntry {
+  Name(UniqueName)
+  Const(@parse.CoreExpr)
+}
+
+type UniqueName
+
+// Type aliases
+
+// Traits
+

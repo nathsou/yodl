@@ -1,0 +1,397 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/firrtl"
+
+import {
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/debug",
+  "moonbitlang/core/set",
+  "nathsou/yodl/lib/parse",
+  "nathsou/yodl/lib/utils",
+}
+
+// Values
+pub fn min_version() -> (Int, Int, Int)
+
+pub fn[T : Default] mk_dynamic_indexing(lhs~ : Reference[T], index~ : Expr[T]) -> Reference[T]
+
+pub fn[T : Default] mk_field_access(lhs~ : Reference[T], field~ : Id) -> Reference[T]
+
+pub fn[T : Default] mk_id(Id) -> Reference[T]
+
+pub fn[T : Default] mk_lit(Literal) -> Expr[T]
+
+pub fn[T : Default] mk_mux(Expr[T], Expr[T], Expr[T]) -> Expr[T]
+
+pub fn[T : Default] mk_prim(PrimOp, Array[Expr[T]]) -> Expr[T]
+
+pub fn[T : Default] mk_ref(Reference[T]) -> Expr[T]
+
+pub fn[T : Default] mk_static_indexing(lhs~ : Reference[T], index~ : Int) -> Reference[T]
+
+pub fn rewrite_module_default_impl(&FIRRTLRewriter, Module[Type]) -> Module[Type] raise
+
+pub fn type_check_circuit(Circuit[Unit]) -> Circuit[Type] raise
+
+// Errors
+
+// Types and methods
+pub(all) enum Annotation {
+  MemoryFileInlineAnnotation(target~ : AnnotationTarget, filename~ : String, is_hex~ : Bool)
+  InlineAnnotation(target~ : AnnotationTarget)
+  FlattenAnnotation(target~ : AnnotationTarget)
+  BlackBoxPathAnnotation(target~ : AnnotationTarget, path~ : String)
+}
+pub fn Annotation::target(Self) -> AnnotationTarget
+pub fn Annotation::with_target(Self, AnnotationTarget) -> Self
+pub impl ToJson for Annotation
+
+pub(all) struct AnnotationTarget {
+  circuit : String
+  mod : Id
+  leaf : Id?
+} derive(Eq)
+pub impl Show for AnnotationTarget
+
+pub(all) struct BundleField {
+  id : Id
+  flip : Bool
+  ty : Type
+} derive(Eq)
+pub fn BundleField::from(id~ : Id, ty~ : Type, flip? : Bool) -> Self
+
+pub(all) struct Circuit[T] {
+  version : (Int, Int, Int)
+  id : Id
+  annotations : Array[Annotation]
+  decls : Array[Decl[T]]
+}
+
+pub(all) enum Command[T] {
+  Printf(clk~ : Expr[T], en~ : Expr[T], fmt~ : String, args~ : Array[Expr[T]])
+  Assert(clk~ : Expr[T], pred~ : Expr[T], en~ : Expr[T], fmt~ : String, args~ : Array[Expr[T]])
+  Stop(clk~ : Expr[T], en~ : Expr[T], code~ : Int)
+}
+pub fn[T] Command::name(Self[T]) -> String
+pub fn[T] Command::replace_en(Self[T], (Expr[T]) -> Expr[T]) -> Self[T]
+
+pub(all) enum Decl[T] {
+  Module(Module[T])
+  ExtModule(ExtModule)
+}
+pub fn[T] Decl::id(Self[T]) -> Id
+
+pub struct ExpandConnectsPass {
+  mut next_ref_id : Int
+}
+pub fn ExpandConnectsPass::new() -> Self
+pub impl FIRRTLPass for ExpandConnectsPass
+
+type ExpandWhensPass
+pub fn ExpandWhensPass::new() -> Self
+pub impl FIRRTLPass for ExpandWhensPass
+
+pub(all) enum Expr[T] {
+  Reference(Reference[T], ty~ : T)
+  Literal(Literal, ty~ : T)
+  Mux(cond~ : Expr[T], tval~ : Expr[T], fval~ : Expr[T], ty~ : T)
+  PrimOp(op~ : PrimOp, args~ : Array[Expr[T]], ty~ : T)
+} derive(Eq)
+pub fn[T] Expr::build_mux_tree(Array[(Self[T], Self[T])], Self[T]) -> Self[T]
+pub fn[T] Expr::build_when_tree(Array[(Self[T], Array[Stmt[T]])], default? : Array[Stmt[T]]?) -> Array[Stmt[T]]
+pub fn[T] Expr::ty(Self[T]) -> T
+pub fn Expr::uint(Int) -> Self[Unit]
+pub impl[T] Show for Expr[T]
+
+pub(all) struct ExtModule {
+  id : Id
+  ports : Array[Port]
+  defname : String?
+  parameters : Array[(String, ParameterLiteral)]
+}
+
+pub struct FIRRTLEmitter(@utils.Emitter)
+pub fn[T] FIRRTLEmitter::emit_circuit(Self, Circuit[T]) -> Unit
+pub fn[T] FIRRTLEmitter::emit_decl(Self, Decl[T]) -> Unit
+pub fn FIRRTLEmitter::emit_ext_module(Self, ExtModule) -> Unit
+pub fn[T] FIRRTLEmitter::emit_module(Self, Module[T]) -> Unit
+pub fn FIRRTLEmitter::emit_port(Self, Port) -> Unit
+pub fn[T] FIRRTLEmitter::emit_stmt(Self, Stmt[T], glued? : Bool) -> Unit
+pub fn FIRRTLEmitter::new() -> Self
+
+type FlattenMemoriesPass
+pub fn FlattenMemoriesPass::new() -> Self
+pub impl FIRRTLPass for FlattenMemoriesPass
+
+pub(all) enum Flow {
+  Sink
+  Source
+  Duplex
+} derive(Eq, Hash)
+pub fn Flow::from_port_dir(@parse.PortDir) -> Self
+pub fn Flow::swap(Self) -> Self
+
+pub struct FormatString {
+  parts : Array[FormatStringPart]
+} derive(Eq)
+pub fn FormatString::parse(String) -> Self raise
+
+pub enum FormatStringPart {
+  StringPart(String)
+  BinaryPlaceholder
+  AsciiPlaceholder
+  DecimalPlaceholder
+  HexadecimalPlaceholder
+  EscapedChar(Char)
+} derive(Eq)
+pub impl Show for FormatStringPart
+
+pub(all) enum Id {
+  Ident(String)
+  Literal(String)
+} derive(Eq, Hash)
+pub fn Id::from(String) -> Self
+pub fn Id::inner(Self) -> String
+pub fn Id::join(Self, String) -> Self
+pub fn Id::value(Self) -> String
+pub impl Show for Id
+
+pub(all) enum Literal {
+  UInt(width~ : Int, radix~ : Int?, value~ : @bigint.BigInt)
+  SInt(width~ : Int, radix~ : Int?, value~ : @bigint.BigInt)
+} derive(Eq, Hash)
+pub fn Literal::as_bigint(Self) -> @bigint.BigInt
+pub fn Literal::as_int(Self) -> Int
+pub fn Literal::sint(Int) -> Self
+pub fn Literal::uint(Int) -> Self
+pub impl Show for Literal
+
+pub struct LowerAggregateTypesPass {
+  split_memories : Bool
+  mut table : LoweringTable
+  module_signatures : Map[Id, ModuleSignature]
+}
+pub fn LowerAggregateTypesPass::new(split_memories? : Bool) -> Self
+pub impl FIRRTLPass for LowerAggregateTypesPass
+
+pub struct LoweringTable {
+  namespace_ : @set.Set[String]
+  ref_mapping : Map[Reference[Type], Array[Reference[Type]]]
+}
+
+pub(all) struct Mem {
+  id : Id
+  is_flat : Bool
+  data_type : Type
+  depth : Int
+  mask_ty : Type
+  read_latency : Int
+  write_latency : Int
+  read_under_write : ReadUnderWrite
+  readers : Array[Id]
+  writers : Array[Id]
+  readwriters : Array[Id]
+}
+pub fn Mem::as_bundle(Self) -> Type
+pub fn Mem::ports(Self) -> Array[(Id, Type)]
+pub fn Mem::reader_writer_types(Self) -> MemPorts
+
+pub struct MemPorts {
+  read : Type
+  write : Type
+  read_write : Type
+}
+
+pub(all) struct Module[T] {
+  public : Bool
+  id : Id
+  ports : Array[Port]
+  body : Array[Stmt[T]]
+}
+
+pub(all) struct ModuleSignature {
+  ports : Map[String, PortSignature]
+}
+pub fn ModuleSignature::as_bundle(Self) -> Type
+
+pub(all) enum ParameterLiteral {
+  IntLiteral(@bigint.BigInt)
+  StringLiteral(String)
+  RawStringLiteral(String)
+}
+
+pub(all) struct Port {
+  dir : @parse.PortDir
+  id : Id
+  ty : Type
+}
+
+pub(all) struct PortSignature {
+  dir : @parse.PortDir
+  ty : Type
+}
+pub fn PortSignature::from(Port) -> Self
+
+pub(all) enum PrimOp {
+  AsUInt
+  AsSInt
+  AsClock
+  AsAsyncReset
+  Cvt
+  Neg
+  Not
+  Andr
+  Orr
+  Xorr
+  Add
+  Sub
+  Mul
+  Div
+  Rem
+  Lt
+  Leq
+  Gt
+  Geq
+  Eq
+  Neq
+  Dshl
+  Dshr
+  And
+  Or
+  Xor
+  Cat
+  Pad
+  Shl
+  Shr
+  Head
+  Tail
+  Bits
+} derive(Eq, Hash)
+pub impl Show for PrimOp
+
+pub(all) enum ReadUnderWrite {
+  Undefined
+  Old
+  New
+}
+
+pub(all) enum Reference[T] {
+  Id(Id, ty~ : T)
+  StaticIndexing(lhs~ : Reference[T], index~ : Int, ty~ : T)
+  DynamicIndexing(lhs~ : Reference[T], index~ : Expr[T], ty~ : T)
+  FieldAccess(lhs~ : Reference[T], field~ : Id, ty~ : T)
+}
+pub fn Reference::as_expr(Self[Type]) -> Expr[Type]
+pub fn[T] Reference::as_id(Self[T]) -> Id?
+pub fn[T] Reference::indexing_from(lhs~ : Self[T], index~ : Expr[T], ty~ : T) -> Self[T]
+pub fn[T] Reference::ty(Self[T]) -> T
+pub impl[T] Show for Reference[T]
+pub impl[T] @debug.Debug for Reference[T]
+
+pub(all) enum Stmt[T] {
+  Node(id~ : Id, expr~ : Expr[T])
+  Wire(id~ : Id, ty~ : Type)
+  Inst(id~ : Id, of~ : Id, sig~ : ModuleSignature)
+  Reg(id~ : Id, ty~ : Type, clock~ : Expr[T])
+  RegReset(id~ : Id, ty~ : Type, clock~ : Expr[T], reset~ : Expr[T], init~ : Expr[T])
+  Mem(Mem)
+  Connect(Reference[T], Expr[T])
+  When(When[T])
+  Command(Command[T])
+  Skip
+}
+
+pub(all) enum Type {
+  Const(Type)
+  Clock
+  Reset
+  AsyncReset
+  UInt(Int)
+  SInt(Int)
+  Bundle(Array[BundleField])
+  Vec(Type, Int)
+} derive(Eq)
+pub fn Type::bool() -> Self
+pub fn Type::bundle_fields(Self) -> Array[BundleField]
+pub fn Type::is_aggregate(Self) -> Bool
+pub fn Type::is_equivalent_to(Self, Self) -> Bool
+pub fn Type::is_ground(Self) -> Bool
+pub fn Type::is_signed(Self) -> Bool
+pub fn Type::mem_mask(Self) -> Self
+pub fn Type::mem_mask_granularity(Self) -> Int
+pub fn Type::no_flips(Self) -> Self
+pub fn Type::width(Self) -> Int
+pub fn Type::without_const(Self) -> Self
+pub impl Show for Type
+
+pub(all) struct When[T] {
+  cond : Expr[T]
+  body : Array[Stmt[T]]
+  mut otherwise : Array[Stmt[T]]?
+}
+
+// Type aliases
+pub type TypedCircuit = Circuit[Type]
+
+pub type TypedCommand = Command[Type]
+
+pub type TypedDecl = Decl[Type]
+
+pub type TypedExpr = Expr[Type]
+
+pub type TypedModule = Module[Type]
+
+pub type TypedRef = Reference[Type]
+
+pub type TypedStmt = Stmt[Type]
+
+pub type TypedWhen = When[Type]
+
+pub type UntypedCircuit = Circuit[Unit]
+
+pub type UntypedCommand = Command[Unit]
+
+pub type UntypedDecl = Decl[Unit]
+
+pub type UntypedExpr = Expr[Unit]
+
+pub type UntypedModule = Module[Unit]
+
+pub type UntypedRef = Reference[Unit]
+
+pub type UntypedStmt = Stmt[Unit]
+
+pub type UntypedWhen = When[Unit]
+
+// Traits
+pub trait Default {
+  fn default() -> Self
+}
+pub impl Default for Unit
+
+pub trait FIRRTLPass {
+  fn run(Self, Circuit[Type]) -> Circuit[Type] raise
+}
+
+pub trait FIRRTLRewriter {
+  fn rewrite_expr(Self, Expr[Type], stmts~ : Array[Stmt[Type]]) -> Expr[Type] raise
+  fn rewrite_reference_expr(Self, Reference[Type], ty~ : Type, stmts~ : Array[Stmt[Type]]) -> Expr[Type] raise
+  fn rewrite_mux_expr(Self, cond~ : Expr[Type], tval~ : Expr[Type], fval~ : Expr[Type], ty~ : Type, stmts~ : Array[Stmt[Type]]) -> Expr[Type] raise
+  fn rewrite_literal_expr(Self, value~ : Literal, ty~ : Type, Array[Stmt[Type]]) -> Expr[Type] raise
+  fn rewrite_primop_expr(Self, op~ : PrimOp, args~ : Array[Expr[Type]], ty~ : Type, stmts~ : Array[Stmt[Type]]) -> Expr[Type] raise
+  fn rewrite_stmt(Self, Stmt[Type], stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_node_stmt(Self, id~ : Id, expr~ : Expr[Type], stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_wire_stmt(Self, id~ : Id, ty~ : Type, stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_inst_stmt(Self, id~ : Id, of~ : Id, sig~ : ModuleSignature, stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_reg_stmt(Self, id~ : Id, ty~ : Type, clock~ : Expr[Type], stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_regreset_stmt(Self, id~ : Id, ty~ : Type, clock~ : Expr[Type], reset~ : Expr[Type], init~ : Expr[Type], stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_connect_stmt(Self, Reference[Type], Expr[Type], stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_when_stmt(Self, When[Type], stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_mem_stmt(Self, Mem, stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_command_stmt(Self, Command[Type], stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_skip_stmt(Self, stmts~ : Array[Stmt[Type]]) -> Unit raise
+  fn rewrite_ref(Self, Reference[Type], Array[Stmt[Type]]) -> Reference[Type] raise
+  fn rewrite_module(Self, Module[Type]) -> Module[Type] raise
+  fn rewrite_extmodule(Self, ExtModule) -> ExtModule raise
+  fn rewrite_circuit(Self, Circuit[Type]) -> Circuit[Type] raise
+}
+

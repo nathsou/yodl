@@ -1,0 +1,129 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/rtlil"
+
+import {
+  "moonbitlang/core/bigint",
+  "nathsou/yodl/lib/firrtl",
+  "nathsou/yodl/lib/parse",
+  "nathsou/yodl/lib/utils",
+}
+
+// Values
+pub fn lower_circuit(@firrtl.Circuit[@firrtl.Type], fs~ : @utils.FileSystem) -> Design raise
+
+// Errors
+
+// Types and methods
+pub(all) enum BinaryDigit {
+  Zero
+  One
+  X
+  Z
+  M
+  DontCare
+} derive(Eq, Hash)
+pub fn BinaryDigit::is_determined(Self) -> Bool
+pub impl Show for BinaryDigit
+pub impl @utils.BinaryLike for BinaryDigit
+
+pub(all) struct Bits {
+  bits : Array[BinaryDigit]
+  mut value : @bigint.BigInt?
+}
+pub impl Eq for Bits
+pub impl Hash for Bits
+pub impl Show for Bits
+
+pub(all) struct Cell {
+  name : Id
+  mut cell_name : Id
+  attributes : Map[Id, Constant]
+  parameters : Map[Id, Constant]
+  connections : Map[Id, Signal]
+}
+
+pub(all) enum Constant {
+  ConstValue(width~ : Int, bits~ : Array[BinaryDigit])
+  ConstInteger(Int)
+  ConstString(String)
+}
+pub fn Constant::size(Self) -> Int
+pub impl Show for Constant
+
+pub(all) struct Design {
+  mut autoidx : Int
+  modules : Map[Id, Module]
+}
+
+pub(all) enum Id {
+  PubId(String)
+  GenId(String)
+} derive(Eq, Hash)
+pub fn Id::inner(Self) -> String
+pub fn Id::join(Self, String) -> Self
+pub impl Add for Id
+pub impl Show for Id
+
+pub(all) struct Memory {
+  id : Id
+  width : Int
+  size : Int
+}
+
+pub(all) struct Module {
+  name : Id
+  wires : Map[Id, Wire]
+  memories : Map[Id, Memory]
+  cells : Map[Id, Cell]
+  attributes : Map[Id, Constant]
+  parameters : Map[Id, Constant]
+  connections : Array[(Signal, Signal)]
+}
+pub fn Module::add_cell(Self, name~ : Id, cell_name~ : Id, parameters? : Map[Id, Constant], connections? : Map[Id, Signal], attributes? : Map[Id, Constant]) -> Cell raise
+pub fn Module::add_memory(Self, id~ : Id, width~ : Int, size~ : Int) -> Memory raise
+pub fn Module::add_wire(Self, name~ : Id, width~ : Int, port? : PortSpec?, attributes? : Map[Id, Constant]) -> Wire raise
+pub fn Module::connect(Self, Signal, Signal) -> Unit raise
+pub fn Module::new(Id) -> Self
+pub fn Module::ports(Self) -> Iter[PortSpec]
+
+pub(all) struct PortSpec {
+  id : Int
+  direction : @parse.PortDir
+  optional : Bool
+}
+
+pub(all) struct Serializer {
+  design : Design
+  builder : StringBuilder
+  mut indent : Int
+}
+pub fn Serializer::new(Design) -> Self
+pub impl Show for Serializer
+
+pub(all) enum Signal {
+  SigConst(Constant)
+  SigWire(Wire)
+  SigChunk(signal~ : Signal, offset~ : Int, width~ : Int)
+  SigConcat(Array[Signal])
+}
+pub fn Signal::size(Self) -> Int
+pub impl Show for Signal
+
+pub(all) struct Value {
+  width : Int
+  bits : Array[BinaryDigit]
+}
+pub impl Show for Value
+
+pub(all) struct Wire {
+  name : Id
+  width : Int
+  port : PortSpec?
+  attributes : Map[Id, Constant]
+  mod : Module
+}
+
+// Type aliases
+
+// Traits
+

@@ -1,0 +1,41 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/elaborate"
+
+import {
+  "nathsou/yodl/lib/firrtl",
+  "nathsou/yodl/lib/parse",
+}
+
+// Values
+
+// Errors
+pub suberror ElaborationError {
+  ElaborationError(message~ : String, span~ : @parse.Span)
+  UnresolvedIdentifier(path~ : @parse.Path, span~ : @parse.Span)
+  Unreachable(message~ : String, span~ : @parse.Span)
+  Unsupported(message~ : String, span~ : @parse.Span)
+}
+
+// Types and methods
+pub struct Elaborator {
+  mut autoidx : Int
+  circuit_name : String
+  modules : Map[@parse.Path, @firrtl.Module[Unit]]
+  extmodules : Map[@parse.Path, @firrtl.ExtModule]
+  annotations : Array[@firrtl.Annotation]
+  declared_modules : Map[@parse.Path, @parse.ModuleSignature]
+  mut current_target : @firrtl.AnnotationTarget
+  memories : Map[String, @firrtl.Id]
+  mut current_clock : @firrtl.Expr[Unit]?
+}
+pub fn Elaborator::lower(Self, Iter[@parse.CoreDecl]) -> Unit raise
+pub fn Elaborator::new(String) -> Self
+
+type TypeChecker
+pub fn TypeChecker::check_decl(Self, @parse.Decl) -> Unit raise
+pub fn TypeChecker::new() -> Self
+
+// Type aliases
+
+// Traits
+

@@ -13,7 +13,7 @@ module Cell(
 ) {
     let alive = Reg[bool](clk, rst, en: enable, q: state)
     let count: u3 = neighbors[0] + neighbors[1] + neighbors[2] + neighbors[3] +
-                         neighbors[4] + neighbors[5] + neighbors[6] + neighbors[7]
+                    neighbors[4] + neighbors[5] + neighbors[6] + neighbors[7]
 
     alive.d = if write_enable {
         write_state // direct write during initialization
@@ -100,7 +100,7 @@ module GridInit[Rows: Nat, Cols: Nat](
         counter.d = counter.q + 1'1
 
         if col.q == Cols - 1 {
-            col.d = uint!(fill!(clog2!(Cols), 1'0))
+            col.d = pad!(1'0, clog2!(Cols))
             row.d = row.q + 1'1
         } else {
             col.d = col.q + 1'1
@@ -108,8 +108,8 @@ module GridInit[Rows: Nat, Cols: Nat](
     } else {
         grid.write_enable = 1'0
         grid.write_state = 1'0
-        grid.write_row = uint!(fill!(clog2!(Rows), 1'0))
-        grid.write_col = uint!(fill!(clog2!(Cols), 1'0))
+        grid.write_row = pad!(1'0, clog2!(Rows))
+        grid.write_col = pad!(1'0, clog2!(Cols))
         ready = 1'b1
     }
 }

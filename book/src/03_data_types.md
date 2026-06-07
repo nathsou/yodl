@@ -9,7 +9,7 @@ Yodl supports two integer types, which require a width specifier:
 | Form           | Example            | When to use            |
 |----------------|--------------------|------------------------|
 | `uN` / `sN`    | `u8`, `u32`, `s7`  | Width is a literal     |
-| `uint[expr]` / `sint[expr]` | `uint[clog2!(N)]`, `sint[W + 1]` | Width is a compile-time expression |
+| `uint[expr]` / `sint[expr]` | `uint[clog2!(N)]`, `sint[W + 1], uint<8>` | Width is a compile-time expression |
 
 #### Unsigned Integers
 

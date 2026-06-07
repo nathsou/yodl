@@ -126,12 +126,12 @@ If any argument is a signed integer (`sint`), every argument must be signed.
 
 ### `fill!(n, x)`
 
-Produces a vector `T[n]` containing `n` copies of `x`. For bit-replication
+Produces a vector `[n]T` containing `n` copies of `x`. For bit-replication
 (SystemVerilog `{n{x}}`), combine with `cat!`:
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let zeros: [4]bool = fill!(4, 1'b0)
+    let zeros: [4]u1 = fill!(4, 1'b0)
     let mask:  u4 = cat!(fill!(4, 1'b1))   // 4'b1111
     assert!(uint!(zeros) == 4'd0)
     assert!(mask == 4'b1111)

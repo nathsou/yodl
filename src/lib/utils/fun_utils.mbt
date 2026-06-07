@@ -4,7 +4,6 @@ pub fn[T] unreachable_code() -> T {
 }
 
 pub fn[T] fail(msg: String) -> T {
-  println("Error: " + msg)
   abort(msg)
 }
 

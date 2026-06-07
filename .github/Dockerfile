@@ -19,10 +19,10 @@ RUN moon update
 RUN moon install
 
 # Install firtool
-RUN wget https://github.com/llvm/circt/releases/download/firtool-1.129.0/firrtl-bin-linux-x64.tar.gz
+RUN wget https://github.com/llvm/circt/releases/download/firtool-1.149.0/firrtl-bin-linux-x64.tar.gz
 RUN tar -xzf firrtl-bin-linux-x64.tar.gz
-RUN mv firtool-1.129.0/bin/firtool /usr/local/bin/firtool
-RUN rm -rf firrtl-bin-linux-x64.tar.gz firtool-1.129.0
+RUN mv firtool-1.149.0/bin/firtool /usr/local/bin/firtool
+RUN rm -rf firrtl-bin-linux-x64.tar.gz firtool-1.149.0
 
 # Run checks and tests
 RUN moon check

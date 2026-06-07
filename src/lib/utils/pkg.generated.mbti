@@ -1,0 +1,170 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/utils"
+
+import {
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/debug",
+}
+
+// Values
+pub fn abs(@bigint.BigInt) -> @bigint.BigInt
+
+pub fn[T : Eq] all_eq(Array[T]) -> Bool
+
+pub fn bin(@bigint.BigInt, width~ : Int) -> Array[Bool] raise
+
+pub fn[T : BinaryLike] bin_uint(UInt, width~ : Int) -> Iter[T] raise
+
+pub fn bits(@bigint.BigInt) -> Array[Bool] raise
+
+pub fn bitwise_not(@bigint.BigInt, width~ : Int) -> @bigint.BigInt raise
+
+pub fn bools_to_bigint(Iter[Bool]) -> @bigint.BigInt
+
+pub fn bools_to_bytes(Iter[Bool]) -> Bytes
+
+pub fn cdiv(@bigint.BigInt, @bigint.BigInt) -> @bigint.BigInt
+
+pub fn char_at(String, Int) -> Char
+
+pub fn[T] chunk(Iter[T], Int) -> Iter[Array[T]]
+
+pub fn clamp(Int, min~ : Int, max~ : Int) -> Int
+
+pub fn clog2(@bigint.BigInt) -> @bigint.BigInt
+
+pub fn clog2_int(Int) -> Int
+
+pub fn[T] concat(Array[T], Array[T]) -> Array[T]
+
+pub fn csqrt(@bigint.BigInt) -> @bigint.BigInt
+
+pub fn dir_name(String) -> String
+
+pub fn[T] fail(String) -> T
+
+pub fn file_extension(String) -> String?
+
+pub fn file_name(String) -> String
+
+pub fn[T] fill(Int, T) -> Array[T]
+
+pub fn[A, B] filter_map(Iter[A], (A) -> B?) -> Iter[B]
+
+pub fn gcd(Int, Int) -> Int
+
+pub fn[T] identity(T) -> T
+
+pub fn is_alpha(Char) -> Bool
+
+pub fn is_alphanumeric(Char) -> Bool
+
+pub fn is_ascii(Char) -> Bool
+
+pub fn is_digit(Char, base~ : Int) -> Bool
+
+pub fn is_whitespace(Char) -> Bool
+
+pub fn join_paths(String, String) -> String
+
+pub fn log_b_2(Int) -> Double
+
+pub fn log_n(Double, Double) -> Double
+
+pub fn[A, B, E : Error] map(Array[A], (A) -> B raise E) -> Array[B] raise E
+
+pub fn[K1, K2 : Eq + Hash, V] map_keys(Map[K1, V], (K1, V) -> K2) -> Map[K2, V]
+
+pub fn[K : Eq + Hash, U, V] map_values(Map[K, U], (U) -> V) -> Map[K, V]
+
+pub fn max(Int, Int) -> Int
+
+pub fn[K : Eq + Hash, V] merge(Map[K, V], Map[K, V]) -> Map[K, V]
+
+pub fn min(Int, Int) -> Int
+
+pub fn pow(@bigint.BigInt, @bigint.BigInt) -> @bigint.BigInt
+
+pub fn pow2(Int) -> @bigint.BigInt
+
+pub fn[K : Eq + Hash, V] push_map(Map[K, Array[V]], K, V) -> Unit
+
+pub fn show_nat(@bigint.BigInt, base~ : Int, width? : Int?) -> String
+
+pub fn significant_bits(@bigint.BigInt, is_signed? : Bool) -> Int
+
+pub fn[K : Eq + Hash + Compare, V] sorted_keys(Map[K, V]) -> Map[K, V]
+
+pub fn substring(String, start~ : Int, end? : Int) -> String
+
+pub fn sum(Iter[Int]) -> Int
+
+pub fn[T] unreachable_code() -> T
+
+pub fn without_extension(String) -> String
+
+pub fn[X, Y] zip(Array[X], Array[Y]) -> Iter[(X, Y)]
+
+pub fn[X, Y] zip2(Array[X], Array[Y]) -> Iter2[X, Y]
+
+pub fn[X, Y] zip2_iter(Iter[X], Iter[Y]) -> Iter2[X, Y]
+
+pub fn[X, Y] zip_iter(Iter[X], Iter[Y]) -> Iter[(X, Y)]
+
+// Errors
+pub suberror ScopeError {
+  MemberAlreadyDeclared(name~ : String)
+} derive(@debug.Debug)
+
+// Types and methods
+pub(all) struct Emitter {
+  mut indent : Int
+  builder : StringBuilder
+}
+pub fn[T : Show] Emitter::emit(Self, T) -> Unit
+pub fn Emitter::new() -> Self
+pub fn[T : Show] Emitter::write(Self, T) -> Unit
+pub fn Emitter::write_indent(Self) -> Unit
+pub fn[T : Show] Emitter::write_iter(Self, Iter[T], prefix~ : String, suffix~ : String, sep~ : String, trailing? : Bool, indent? : Bool) -> Unit
+pub impl Show for Emitter
+
+pub(all) struct Externals {
+  fs : FileSystem
+  println : (String) -> Unit
+  get_args : () -> Array[String]
+  exit : (UInt) -> Unit
+}
+
+pub(all) struct FileSystem {
+  path_exists : (String) -> Bool
+  create_dir : (String) -> Unit raise
+  write_string_to_file : (String, String) -> Unit raise
+  read_dir : (String) -> Array[String] raise
+  is_dir : (String) -> Bool raise
+  read_file_to_string : (String) -> String raise
+}
+
+pub struct Scope[K, T] {
+  members : Map[K, T]
+  parent : Scope[K, T]?
+}
+pub fn[K : Eq + Hash, T] Scope::child(Self[K, T]) -> Self[K, T]
+pub fn[K : Eq + Hash, T] Scope::contains(Self[K, T], K) -> Bool
+pub fn[K : Eq + Hash, T] Scope::contains_local(Self[K, T], K) -> Bool
+pub fn[K : Eq + Hash + Show, T] Scope::declare_(Self[K, T], K, T) -> Unit raise ScopeError
+pub fn[K : Eq + Hash, T] Scope::declare_shadowing(Self[K, T], K, T) -> Unit
+pub fn[K, T] Scope::members(Self[K, T]) -> Iter[K]
+pub fn[K, T] Scope::members_rec(Self[K, T]) -> Iter[K]
+pub fn[K : Eq + Hash, T] Scope::new() -> Self[K, T]
+pub fn[K : Eq + Hash, T] Scope::remove(Self[K, T], K) -> Unit
+pub fn[K : Eq + Hash, T] Scope::resolve(Self[K, T], K) -> T?
+pub fn[K, T] Scope::values(Self[K, T]) -> Iter[T]
+
+// Type aliases
+
+// Traits
+pub(open) trait BinaryLike {
+  fn from_bool(Bool) -> Self
+}
+pub impl BinaryLike for Bool
+

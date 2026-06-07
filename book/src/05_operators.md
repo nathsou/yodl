@@ -67,10 +67,6 @@ Note 2: The `and`, `or`, `xor`, `nand`, `nor`, and `xnor` operators are used bot
 | `<=` | Less Than or Equal | `a <= b` |
 | `>=` | Greater Than or Equal | `a >= b` |
 
-<div class="warning">
-    Note: The `<` and `>` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
-</div>
-
 ## Ternary Operator
 
 The ternary operator is a concise way to express conditional expressions, generally spanning a single line.
@@ -127,7 +123,7 @@ There are three forms of bit slicing:
 2. `[base-:width]` - Extract `width` bits ending at `base` (selects `[base : base - width + 1]`)
 3. `[base+:width]` - Extract `width` bits starting at `base` (selects `[base + width - 1 : base]`)
 
-The `+:` and `-:` forms match SystemVerilog's [indexed part-select](https://www.systemverilog.io/sv-explained/operators#bit-slicing).
+The `+:` and `-:` forms match SystemVerilog's indexed part-select syntax
 
 
 Note:

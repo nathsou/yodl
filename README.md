@@ -25,7 +25,7 @@ A `WASI Preview 1` build of yodl is included in this repository:
 wasmtime --dir examples res/yodl-wasi.wasm examples/RISCV.yodl "write_firrtl"
 ```
 
-To compile FIRRTL outputs to SystemVerilog, install [firtool](https://github.com/llvm/circt/releases/tag/firtool-1.129.0)
+To compile FIRRTL outputs to SystemVerilog, install [firtool](https://github.com/llvm/circt/releases/tag/firtool-1.149.0)
 
 ## Usage
 ```bash
@@ -46,7 +46,7 @@ $ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.9.3+08f337
 - [x] Generic multi-port memories
 - [x] Imports (TODO: unqualified imports)
 - [x] Verilator + SDL graphics simulation example
-- [x] Multi-dimensional vectors (uint<16>[4][8])
+- [x] Multi-dimensional vectors ([4][8]u16)
 - [ ] Optional module parameters (and register initial value)
 - [x] Arbitrary port types
 - [x] Type parameters

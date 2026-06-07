@@ -2,6 +2,7 @@ import {
   "nathsou/yodl/lib/utils",
   "nathsou/yodl/lib/driver",
   "moonbitlang/core/encoding/utf8",
+  "moonbitlang/core/debug",
   "peter-jerry-ye/wasi",
   "peter-jerry-ye/wasi/fs",
   "peter-jerry-ye/wasi/stdio",
