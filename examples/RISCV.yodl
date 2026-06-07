@@ -81,10 +81,10 @@ module CPU(
     let is_system = opcode == Inst::SYSTEM
 
     let imm_u = cat!(inst.q[31:12], 12'0)
-    let imm_i = cat!(fill!(21, inst.q[31]), inst.q[30:20])
-    let imm_s = cat!(fill!(21, inst.q[31]), inst.q[30:25], inst.q[11:7])
-    let imm_b = cat!(fill!(20, inst.q[31]), inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0)
-    let imm_j = cat!(fill!(12, inst.q[31]), inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0)
+    let imm_i = uint!(pad!(sint!(inst.q[31:20]), 32))
+    let imm_s = uint!(pad!(sint!(cat!(inst.q[31:25], inst.q[11:7])), 32))
+    let imm_b = uint!(pad!(sint!(cat!(inst.q[31], inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0)), 32))
+    let imm_j = uint!(pad!(sint!(cat!(inst.q[31], inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0)), 32))
 
     let stage = Reg<uint<3>>(clk, rst)
     let rs1_addr = inst.q[19:15]
@@ -113,8 +113,8 @@ module CPU(
     let alu_out = match funct3 {
         3'b000 => (funct7[5] and inst.q[5] ? alu_minus : alu_plus)[31:0]
         3'b001 => left_shift
-        3'b010 => cat!(31'b0, alu_lss_signed)
-        3'b011 => cat!(31'b0, alu_lss_unsigned)
+        3'b010 => pad!(alu_lss_signed, 32)
+        3'b011 => pad!(alu_lss_unsigned, 32)
         3'b100 => alu_in1 xor alu_in2
         3'b101 => shifter
         3'b110 => alu_in1 or alu_in2
