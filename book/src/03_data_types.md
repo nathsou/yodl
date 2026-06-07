@@ -145,34 +145,44 @@ Individual characters can be accessed using the following syntax:
 # }
 ```
 
-## Tuples
+## Records
 
-Tuples group a fixed number of ordered values of potentially different types. A 1-tuple
-requires a trailing comma to distinguish from grouping.
+Records group a fixed number of values, accessed either by position or by name.
+They subsume what other languages call *tuples* (positional) and *structs* /
+*bundles* (named).
+
+### Positional records (tuples)
+
+Fields are accessed by their index (`.0`, `.1`, ...). A 1-element positional
+record requires a trailing comma to distinguish it from a parenthesised
+expression.
 
 ```yodl
 # module Test() -> () {
     let pair: (bool, uint<8>) = (true, 8'hFF)
-    let triplet: ((a: uint<4>[1], b: bool), (bool, uint<8>), uint<1>) = ((a: [4'd1], b: false), pair, 1'b0)
-    
+    let single: (uint<8>,) = (8'hFF,)
+    let nested: ((a: uint<4>[1], b: bool), (bool, uint<8>), uint<1>) =
+        ((a: [4'd1], b: false), pair, 1'b0)
+
     let first: bool = pair.0 // true
     let second: uint<8> = pair.1 // 8'hFF
 # }
 ```
 
-## Structs
+### Named records (structs / bundles)
 
-Structures (also known as Bundles in Chisel/FIRRTL) are tuples with named fields:
+Fields are named. This is what other HDLs call a *bundle* (Chisel/FIRRTL) or
+*struct* (SystemVerilog).
 
 ```yodl
 # module Test() -> () {
     let colour: (r: uint<8>, g: uint<8>, b: uint<8>) = (r: 8'd17, g: 8'd128, b: 8'd211)
-    let red = colour.r;
+    let red = colour.r
 # }
 ```
 
-Struct values can be partially updated using a spread `..base` followed by overriding
-named fields:
+A named record can be partially updated by spreading another record with `..base`
+followed by overriding fields. Spread is only allowed in named records.
 
 ```yodl
 # module Test() -> () {
@@ -181,11 +191,33 @@ named fields:
 # }
 ```
 
+Mixing positional and named fields in a single record is not allowed: a record
+is either fully positional or fully named.
+
+### Records and module signatures
+
+Because a module's input and output port lists use the same `(name: type, ...)`
+syntax as named record types, a module signature is literally a function from a
+record of inputs to a record of outputs. Module instantiation passes a record of
+named ports:
+
+```yodl
+# module Adder(a: uint<8>, b: uint<8>) -> (sum: uint<9>) {
+#     sum = a + b
+# }
+# module Test() -> () {
+    let r = Adder(a: 8'd1, b: 8'd2)
+# }
+```
+
 ### Instance Types
 
-The type of a module instance is similar to a structure corresponding to the port signature of the module.
+The type of a module instance behaves like a named record corresponding to the
+port signature of the module.
 
-Note: Instance types are not compatible with structure types because only the ports which are accessed on a particular instance are included in the resulting type.
+Note: Instance types are not compatible with named record types because only the
+ports which are accessed on a particular instance are included in the resulting
+type.
 
 ```yodl
 module Adder(a: uint<8>, b: uint<8>) -> (sum: uint<9>) {
