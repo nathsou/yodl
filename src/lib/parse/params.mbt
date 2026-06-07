@@ -1,11 +1,25 @@
-pub(all) enum UnresolvedParam {
-  PathParam(path~: Path, span~: Span)
-  ExprParam(Expr)
+pub(all) struct UnresolvedParam {
+  tokens: Array[Token]
+  file: String
+  text: StringView
+  span: Span
+}
+
+pub(all) enum ParsedParam {
+  ExprParam(expr~: Expr, span~: Span)
   TypeParam(ty~: Type, span~: Span)
 }
 
+pub fn UnresolvedParam::parse(self: UnresolvedParam, sort: ParamSort) -> ParsedParam raise {
+  let parser = Parser::new(self.tokens, file=self.file, file_content=self.text)
+  match sort {
+    NatSort => ParsedParam::ExprParam(expr=parser.parse_expr(), span=self.span)
+    TypeSort => ParsedParam::TypeParam(ty=parser.parse_type(), span=self.span)
+  }
+}
+
 pub(all) enum ResolvedParam {
-  ConstParam(value~: ConstValue, span~: Span)
+  NatParam(value~: ConstValue, span~: Span)
   TypeParam(ty~: Type, span~: Span)
 }
 
@@ -29,24 +43,19 @@ pub(all) enum Param {
 
 pub impl Eq for ResolvedParam with equal(self, other) {
   match (self, other) {
-    (ConstParam(value=a, ..), ConstParam(value=b, ..)) => a == b
+    (NatParam(value=a, ..), NatParam(value=b, ..)) => a == b
     (TypeParam(ty=a, ..), TypeParam(ty=b, ..)) => a == b
     _ => false
   }
 }
 
 pub impl Eq for UnresolvedParam with equal(self, other) {
-  match (self, other) {
-    (PathParam(path=a, ..), PathParam(path=b, ..)) => a == b
-    (ExprParam(_), ExprParam(_)) => false
-    (TypeParam(ty=a, ..), TypeParam(ty=b, ..)) => a == b
-    _ => false
-  }
+  self.span == other.span
 }
 
 pub impl Hash for ResolvedParam with hash_combine(self, hasher) {
   match self {
-    ConstParam(value~, ..) => {
+    NatParam(value~, ..) => {
       match value {
         Natural(value~, width~, base=_, span=_) => {
           for byte in value.to_octets() {
@@ -64,13 +73,9 @@ pub impl Hash for ResolvedParam with hash_combine(self, hasher) {
 
 pub impl Spanned for Param with span(self) -> Span {
   match self {
-    Unresolved(param) => match param {
-      PathParam(span~, ..) => span
-      ExprParam(expr) => expr.span()
-      TypeParam(span~, ..) => span
-    }
+    Unresolved(param) => param.span
     Resolved(param) => match param {
-      ConstParam(span~, ..) => span
+      NatParam(span~, ..) => span
       TypeParam(span~, ..) => span
     }
   }
@@ -78,7 +83,6 @@ pub impl Spanned for Param with span(self) -> Span {
 
 pub fn Param::as_type(self: Param) -> Type raise {
   match self {
-    Unresolved(TypeParam(ty~, ..)) => ty
     Resolved(TypeParam(ty~, ..)) => ty
     _ => raise ExpectedTypeParameter(span=self.span())
   }
@@ -86,8 +90,7 @@ pub fn Param::as_type(self: Param) -> Type raise {
 
 pub fn Param::as_int(self: Param) -> Int raise {
   match self {
-    Unresolved(ExprParam(expr)) => expr.as_int()
-    Resolved(ConstParam(value=Natural(value~, ..), span=_)) => value.to_int()
+    Resolved(NatParam(value=Natural(value~, ..), span=_)) => value.to_int()
     _ => raise ExpectedIntParameter(span=self.span())
   }
 }
@@ -101,7 +104,7 @@ pub fn ConstValue::as_expr(self: ConstValue) -> Expr {
 
 pub fn ResolvedParam::as_expr(self: ResolvedParam) -> Expr raise {
   match self {
-    ConstParam(value~, span=_) => value.as_expr()
+    NatParam(value~, span=_) => value.as_expr()
     TypeParam(span~, ..) => raise TypeParamInsteadOfExpr(span~)
   }
 }
@@ -127,7 +130,7 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
     match expr {
       Identifier(path={ packages: [], elem }, ..) => {
         match params.get(elem) {
-          Some(ConstParam(value~, span=_)) => {
+          Some(NatParam(value~, span=_)) => {
             Some(value.as_expr())
           }
           Some(TypeParam(_)) => {

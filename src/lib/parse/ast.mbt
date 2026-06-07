@@ -138,18 +138,10 @@ pub fn[E: Error] InstanceParams::map(self: Self, map_expr~: (Expr) -> Expr raise
   for param in self.params {
     let name = param.0
     match param.1 {
+      Unresolved(unresolved) => {
+        new_list.push((name, Unresolved(unresolved)))
+      }
       Resolved(TypeParam(ty~, span~)) => {
-        let new_ty = map_type(ty)
-        new_list.push((name, Resolved(TypeParam(ty=new_ty, span~))))
-      }
-      Unresolved(PathParam(path~, span~)) => {
-        new_list.push((name, Unresolved(PathParam(path~, span~))))
-      }
-      Unresolved(ExprParam(expr)) => {
-        let new_expr = map_expr(expr)
-        new_list.push((name, Unresolved(ExprParam(new_expr))))
-      }
-      Unresolved(TypeParam(ty~, span~)) => {
         let new_ty = map_type(ty)
         new_list.push((name, Resolved(TypeParam(ty=new_ty, span~))))
       }
@@ -586,10 +578,7 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
 
       for param in params {
         match param {
-          Unresolved(PathParam(path~, span~)) => {
-            new_params.push(Unresolved(PathParam(path~, span~)))
-          }
-          Resolved(TypeParam(ty~, span~)) | Unresolved(TypeParam(ty~, span~)) => {
+          Resolved(TypeParam(ty~, span~)) => {
             let new_ty = ty.substitute(params_env, span~)
             new_params.push(Resolved(TypeParam(ty=new_ty, span~)))
           }
@@ -600,7 +589,7 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
       match path.packages {
         [] => match params_env.get(path.elem) {
           Some(TypeParam(ty~, ..)) => ty.substitute(params_env, span~)
-          None | Some(ConstParam(_)) => Name(path~, params=new_params)
+          None | Some(NatParam(_)) => Name(path~, params=new_params)
         }
         _ => Name(path~, params=new_params)
       }

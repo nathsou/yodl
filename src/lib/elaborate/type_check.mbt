@@ -407,7 +407,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                         let param_sig = sig.get_param(name)
 
                         match (param, param_sig) {
-                            (Resolved(ConstParam(value~, ..) as cnst_param), Some({ sort: NatSort, span: param_span, .. })) => {
+                            (Resolved(NatParam(value~, ..) as cnst_param), Some({ sort: NatSort, span: param_span, .. })) => {
                                 let value_ty = self.check_expr(value.as_expr(), env)
                                 let _ = unify(value_ty, Nat({min_width: 0}), span=param_span, subst~)
 
@@ -420,7 +420,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
                                 params_env[name] = cnst_param
                             }
-                            (Resolved(TypeParam(ty~, span~)) | Unresolved(TypeParam(ty~, span~)), Some({ sort: TypeSort, .. })) => {
+                            (Resolved(TypeParam(ty~, span~)), Some({ sort: TypeSort, .. })) => {
                                 let ty = self.resolve_ty(ty, span~)
                                 subst[name] = Type(ty)
                                 params_env[name] = TypeParam(ty~, span~)
@@ -429,7 +429,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                             _ => {
                                 let ty = match param {
                                     Unresolved(_) => unreachable_code()
-                                    Resolved(ConstParam(value~, ..)) => self.check_expr(value.as_expr(), env)
+                                    Resolved(NatParam(value~, ..)) => self.check_expr(value.as_expr(), env)
                                     Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
                                 }
 
