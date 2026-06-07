@@ -20,6 +20,7 @@ enum TokenType {
   BuiltinFunction(String)
   Natural(value~: BigInt, width~: Int?, base~: Int)
   StringLiteral(String); CharacterLiteral(Char)
+  UIntType(Int); SIntType(Int)  // sugar for uint<N> / sint<N> with literal width
 } derive(Eq, Debug)
 
 pub impl Show for TokenType with output(self, logger) {
@@ -100,6 +101,8 @@ pub impl Show for TokenType with output(self, logger) {
     }
     StringLiteral(s) => logger.write_string(s)
     CharacterLiteral(c) => logger.write_char(c)
+    UIntType(w) => logger.write_string("u\{w}")
+    SIntType(w) => logger.write_string("s\{w}")
   }
 }
 

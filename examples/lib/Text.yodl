@@ -2,9 +2,9 @@ import VGA
 import LFSR
 import Timing
 
-type Char = uint<8>
+type Char = u8
 
-module AsciiTable(char: Char) -> (q: uint<64>) {
+module AsciiTable(char: Char) -> (q: u64) {
     q = match char[6:0] {
         7'h21 => 64'h000C000C0C1E1E0C
         7'h22 => 64'h0000000000363636
@@ -121,8 +121,8 @@ const Cols = VGA::H_ACTIVE / 8
 
 module Text<Length: Nat, X: Nat, Y: Nat>(
     text: Char[Length],
-    screen_x: uint<10>,
-    screen_y: uint<10>,
+    screen_x: u10,
+    screen_y: u10,
 ) -> (
     is_active: bool,
 ) {
@@ -131,11 +131,11 @@ module Text<Length: Nat, X: Nat, Y: Nat>(
     let y_div = screen_y[9:3]
     let x = screen_x[2:0]
     let y = screen_y[2:0]
-    let cell_idx: uint<13> = y_div * Cols + x_div
-    let diff: uint<13> = cell_idx - StartIdx
+    let cell_idx: u13 = y_div * Cols + x_div
+    let diff: u13 = cell_idx - StartIdx
     let char = cell_idx >= StartIdx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : ' '
     let bitmap = AsciiTable(char).q
-    let pixel_idx: uint<6> = y * 8 + x
+    let pixel_idx: u6 = y * 8 + x
     is_active = (bitmap shr pixel_idx)[0]
 }
 
@@ -143,8 +143,8 @@ module TextDynamicPosition<Length: Nat>(
     text: Char[Length],
     x_offset: uint<clog2!(Cols)>,
     y_offset: uint<clog2!(Rows)>,
-    screen_x: uint<10>,
-    screen_y: uint<10>,
+    screen_x: u10,
+    screen_y: u10,
 ) -> (
     is_active: bool,
 ) {
@@ -152,12 +152,12 @@ module TextDynamicPosition<Length: Nat>(
     let y_div = screen_y[9:3]
     let x = screen_x[2:0]
     let y = screen_y[2:0]
-    let start_idx: uint<13> = y_offset * Cols + x_offset
-    let cell_idx: uint<13> = y_div * Cols + x_div
-    let diff: uint<13> = cell_idx - start_idx
+    let start_idx: u13 = y_offset * Cols + x_offset
+    let cell_idx: u13 = y_div * Cols + x_div
+    let diff: u13 = cell_idx - start_idx
     let char = cell_idx >= start_idx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : ' '
     let bitmap = AsciiTable(char).q
-    let pixel_idx: uint<6> = y * 8 + x
+    let pixel_idx: u6 = y * 8 + x
     is_active = (bitmap shr pixel_idx)[0]
 }
 

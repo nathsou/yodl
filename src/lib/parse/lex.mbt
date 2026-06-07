@@ -46,8 +46,42 @@ fn should_insert_semicolon(last_token: Token) -> Bool {
     Natural(_) | StringLiteral(_) | CharacterLiteral(_) => true
     Identifier(_) => true
     Bool | UInt | SInt => true
+    UIntType(_) | SIntType(_) => true
     Rparen | Rbracket | Rbrace | Rchevron => true
     _ => false
+  }
+}
+
+// Recognise sized integer type identifiers `u<digits>` and `s<digits>`
+// such as `u8`, `s7`, `u32`. Returns None for plain identifiers like
+// `u`, `s`, `u8_buffer`, `u_8`, `uart`.
+fn sized_int_type(identifier: String) -> TokenType? {
+  if identifier.length() < 2 {
+    return None
+  }
+
+  let first = @utils.char_at(identifier, 0)
+
+  if first != 'u' && first != 's' {
+    return None
+  }
+
+  let mut value = 0
+
+  for i in 1..<identifier.length() {
+    let c = @utils.char_at(identifier, i)
+
+    if @utils.is_digit(c, base=10) {
+      value = value * 10 + (c.to_int() - '0'.to_int())
+    } else {
+      return None
+    }
+  }
+
+  if first == 'u' {
+    Some(UIntType(value))
+  } else {
+    Some(SIntType(value))
   }
 }
 
@@ -399,37 +433,41 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
         if self.consumes('!') {
           Ok(BuiltinFunction(identifier))
         } else {
-          Ok(match identifier {
-            "module" => Module
-            "let" => Let
-            "bool" => Bool
-            "uint" => UInt
-            "sint" => SInt
-            "in" => In
-            "for" => For
-            "declare" => Declare
-            "if" => If
-            "else" => Else
-            "match" => Match
-            "const" => Const
-            "package" => Package
-            "import" => Import
-            "and" => And
-            "or" => Or
-            "not" => Not
-            "xor" => Xor
-            "nand" => Nand
-            "nor" => Nor
-            "xnor" => Xnor
-            "shl" => Shl
-            "shr" => Shr
-            "type" => Type
-            "clock" => Clock
-            "andr" => Andr
-            "orr" => Orr
-            "xorr" => Xorr
-            _ => Identifier(identifier)
-          })
+          // Sized integer types: u<digits> or s<digits> (e.g. u8, s7)
+          match sized_int_type(identifier) {
+            Some(token) => Ok(token)
+            None => Ok(match identifier {
+              "module" => Module
+              "let" => Let
+              "bool" => Bool
+              "uint" => UInt
+              "sint" => SInt
+              "in" => In
+              "for" => For
+              "declare" => Declare
+              "if" => If
+              "else" => Else
+              "match" => Match
+              "const" => Const
+              "package" => Package
+              "import" => Import
+              "and" => And
+              "or" => Or
+              "not" => Not
+              "xor" => Xor
+              "nand" => Nand
+              "nor" => Nor
+              "xnor" => Xnor
+              "shl" => Shl
+              "shr" => Shr
+              "type" => Type
+              "clock" => Clock
+              "andr" => Andr
+              "orr" => Orr
+              "xorr" => Xorr
+              _ => Identifier(identifier)
+            })
+          }
         }
       } else {
         self.advance()

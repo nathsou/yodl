@@ -1,6 +1,6 @@
-type Color = (r: uint<3>, g: uint<3>, b: uint<3>)
+type Color = (r: u3, g: u3, b: u3)
 
-module Top(rin: uint<3>, gin: uint<3>, bin: uint<3>) -> (out: Color, copy: Color) {
+module Top(rin: u3, gin: u3, bin: u3) -> (out: Color, copy: Color) {
     let base = (r: rin, g: gin, b: bin)
     out = base
     // spread update: override only g

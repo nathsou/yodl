@@ -9,7 +9,7 @@ Yodl supports several control flow constructs that help express complex behaviou
 If expressions evaluate a condition and execute one of two branches based on the result:
 
 ```yodl
-# module Test(a: uint<8>, b: uint<8>) -> () {
+# module Test(a: u8, b: u8) -> () {
     let max = if a >: b {
         a
     } else {
@@ -47,7 +47,7 @@ The `for` loop duplicates its body a fixed number of times, substituting the loo
 
 ```yodl
 // Simple parallel hexadecimal to character decoder
-module Hex<Bits: Nat>(n: uint<Bits>) -> (chars: uint<8>[cdiv!(Bits, 4)]) {
+module Hex<Bits: Nat>(n: uint<Bits>) -> (chars: u8[cdiv!(Bits, 4)]) {
     const Len = cdiv!(Bits, 4)
     for i in 0..<Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {

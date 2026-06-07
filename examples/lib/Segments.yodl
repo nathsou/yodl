@@ -1,5 +1,5 @@
 
-module SevenSegmentDecoder(char: uint<4>) -> (segs: uint<7>) {
+module SevenSegmentDecoder(char: u4) -> (segs: u7) {
     segs = match char {
         4'h0 => 7'b0111111
         4'h1 => 7'b0000110
@@ -23,12 +23,12 @@ module SevenSegmentDecoder(char: uint<4>) -> (segs: uint<7>) {
 module Multi(
     clk: clock,
     rst: bool,
-    value: uint<16>,
+    value: u16,
 ) -> (
-    segs: uint<8>,
-    sel: uint<4>,
+    segs: u8,
+    sel: u4,
 ) {
-    let counter = Reg<uint<13>>(clk, rst)
+    let counter = Reg<u13>(clk, rst)
     counter.d = counter.q + 1
 
     let active_seg = match counter.q[12:11] {

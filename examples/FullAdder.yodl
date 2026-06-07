@@ -41,9 +41,9 @@ module Adder<N: Nat>(
 module Top(
     clk: clock,
 ) -> (
-    led: uint<16>,
+    led: u16,
 ) {
-    let counter = Reg<uint<32>>(clk)
+    let counter = Reg<u32>(clk)
     let adder = Adder<32>(
         a: counter.q,
         b: 32'1,

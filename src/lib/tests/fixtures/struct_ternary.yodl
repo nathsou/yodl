@@ -1,7 +1,7 @@
 // Exercises ExpandConnectsPass connect(Bundle) and rewrite_mux_expr for Bundle:
 // a ternary where the result is a struct type causes ExpandConnects to emit
 // field-by-field connections and handle a Bundle-typed Mux expression.
-type Pair = (x: uint<8>, y: uint<8>)
+type Pair = (x: u8, y: u8)
 
 module Top(sel: bool, a: Pair, b: Pair) -> (out: Pair) {
     out = sel ? a : b

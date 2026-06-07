@@ -4,8 +4,8 @@ const false = 1'b0;
 module Reg<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
@@ -13,27 +13,27 @@ module Reg<T: Type>(
 module RegAsyncReset<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
 @internal
 module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
-  read: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>)[ReadPorts],
-  write: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
+  read: (clk: clock, en: u1, addr: uint<clog2!(Depth)>)[ReadPorts],
+  write: (clk: clock, en: u1, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
 ) -> (
   q: T[ReadPorts],
 )
 module Top(
-  u4: uint<4>,
-  s4: sint<4>,
+  uval: u4,
+  sval: s4,
 ) -> (
-  zext_u4_u8: uint<8>,
-  sext_s4_s8: sint<8>,
-  sext_u4_u8: uint<8>,
+  zext: u8,
+  sext_sint: s8,
+  sext_uint: u8,
 ) {
-  zext_u4_u8 = pad!(u4, 8);
-  sext_s4_s8 = pad!(s4, 8);
-  sext_u4_u8 = uint!(pad!(sint!(u4), 8));
+  zext = pad!(uval, 8);
+  sext_sint = pad!(sval, 8);
+  sext_uint = uint!(pad!(sint!(uval), 8));
 }

@@ -4,17 +4,17 @@
 //
 // To sign-extend a UInt, cast through SInt: uint!(pad!(sint!(x), n))
 module Top(
-    u4:  uint<4>,
-    s4:  sint<4>,
+    uval: u4,
+    sval: s4,
 ) -> (
-    zext_u4_u8:  uint<8>,
-    sext_s4_s8:  sint<8>,
-    sext_u4_u8:  uint<8>,
+    zext:      u8,
+    sext_sint: s8,
+    sext_uint: u8,
 ) {
     // zero-extend a UInt
-    zext_u4_u8 = pad!(u4, 8)
+    zext = pad!(uval, 8)
     // sign-extend a SInt
-    sext_s4_s8 = pad!(s4, 8)
+    sext_sint = pad!(sval, 8)
     // sign-extend a UInt by casting through SInt
-    sext_u4_u8 = uint!(pad!(sint!(u4), 8))
+    sext_uint = uint!(pad!(sint!(uval), 8))
 }

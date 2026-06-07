@@ -5,12 +5,12 @@ import Text
 module Top(
     clk: clock,
 ) -> (
-    led: uint<4>,
+    led: u4,
     vga_hsync: bool,
     vga_vsync: bool,
-    vga_red: uint<3>,
-    vga_green: uint<3>,
-    vga_blue: uint<3>,
+    vga_red: u3,
+    vga_green: u3,
+    vga_blue: u3,
 ) {
     let vga = VGA::SyncPulses(
         pixel_clk: clk,

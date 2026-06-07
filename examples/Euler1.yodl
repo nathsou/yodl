@@ -1,11 +1,11 @@
 import Text
 
-module Euler1(clk: clock, rst: bool) -> (q: uint<18>, is_ready: bool) {
+module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
     const N = 1000
     let counter = Reg<uint<clog2!(N)>>(clk, rst)
     let is_active = counter.q <: N
     counter.d = counter.q + is_active
-    let sum = Reg<uint<18>>(clk, en: is_active, rst, q)
+    let sum = Reg<u18>(clk, en: is_active, rst, q)
     let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0
     sum.d = sum.q + (is_divisible ? counter.q : 0)
     is_ready = not is_active
@@ -13,14 +13,14 @@ module Euler1(clk: clock, rst: bool) -> (q: uint<18>, is_ready: bool) {
 
 module Top(
     clk: clock,
-    button: uint<4>,
+    button: u4,
 ) -> (
-    led: uint<4>,
+    led: u4,
     vga_hsync: bool,
     vga_vsync: bool,
-    vga_red: uint<3>,
-    vga_green: uint<3>,
-    vga_blue: uint<3>,
+    vga_red: u3,
+    vga_green: u3,
+    vga_blue: u3,
 ) {
     let rst = orr button
     let vga = VGA::SyncPulses(

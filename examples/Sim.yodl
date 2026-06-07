@@ -6,11 +6,11 @@ module TopSim(
     rst: bool,
 ) -> (
     is_active_area: bool,
-    screen_x: uint<10>,
-    screen_y: uint<10>,
-    r: uint<3>,
-    g: uint<3>,
-    b: uint<3>,
+    screen_x: u10,
+    screen_y: u10,
+    r: u3,
+    g: u3,
+    b: u3,
 ) {
    let vga = VGA::SyncPulses(
         pixel_clk: clk,

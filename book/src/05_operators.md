@@ -76,7 +76,7 @@ Note 2: The `and`, `or`, `xor`, `nand`, `nor`, and `xnor` operators are used bot
 The ternary operator is a concise way to express conditional expressions, generally spanning a single line.
 
 ```yodl
-# module Test(a: uint<8>, b: uint<8>) -> () {
+# module Test(a: u8, b: u8) -> () {
     let max = a >= b ? a : b
 # }
 ```
@@ -135,7 +135,7 @@ Note:
 - Integers are indexed from the least significant bit (LSB) to the most significant bit (MSB) (right to left).
 - Vectors follow standard array-indexing conventions, with the first element at index 0 (left to right).
 
-When a bit vector (`bool[N]` i.e. `uint<1>[N]`) is used as the argument of the `uint` and `sint` built-in functions,
+When a bit vector (`bool[N]` i.e. `u1[N]`) is used as the argument of the `uint` and `sint` built-in functions,
 the first element of the vector becomes the MSB of the resulting integer:
 
 ```yodl
@@ -197,9 +197,9 @@ The spread operator `..` can only appear inside a vector expression and is used 
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let bits: uint<1>[4] = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
-    let chars: uint<8>[3] = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
-    let flat: uint<2>[3] = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
+    let bits: u1[4] = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
+    let chars: u8[3] = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
+    let flat: u2[3] = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
 
     assert!(bits[0] == 1'b0)
     assert!(bits[1] == 1'b0)
@@ -248,8 +248,8 @@ The following table summarises the resulting type for each operation:
 | `/` | `sint<A>` | `sint<B>` | `sint<A + 1>` |
 | `mod` | `uint<A>` | `uint<B>` | `uint<min(A, B)>` |
 | `mod` | `sint<A>` | `sint<B>` | `sint<min(A, B)>` |
-| `==`, `!=`, `<:`, `>:` | `uint<A>` | `uint<B>` | `uint<1>` |
-| `==`, `!=`, `<:`, `>:` | `sint<A>` | `sint<B>` | `uint<1>` |
+| `==`, `!=`, `<:`, `>:` | `uint<A>` | `uint<B>` | `u1` |
+| `==`, `!=`, `<:`, `>:` | `sint<A>` | `sint<B>` | `u1` |
 | `and`, `nand`, `or`, `nor`, `xor`, `xnor` | `uint<A>` | `uint<B>` | `uint<max(A, B)>` |
 | `and`, `nand`, `or`, `nor`, `xor`, `xnor` | `sint<A>` | `sint<B>` | `uint<max(A, B)>` |
 

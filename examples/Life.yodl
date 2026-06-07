@@ -12,7 +12,7 @@ module Cell(
     state: bool,
 ) {
     let alive = Reg<bool>(clk, rst, en: enable, q: state)
-    let count: uint<3> = neighbors[0] + neighbors[1] + neighbors[2] + neighbors[3] +
+    let count: u3 = neighbors[0] + neighbors[1] + neighbors[2] + neighbors[3] +
                          neighbors[4] + neighbors[5] + neighbors[6] + neighbors[7]
 
     alive.d = if write_enable {
@@ -119,10 +119,10 @@ module Life(
     rst: bool,
     hsync: bool,
     vsync: bool,
-    row: uint<10>,
-    col: uint<10>,
+    row: u10,
+    col: u10,
 ) -> (
-    color: (r: uint<3>, g: uint<3>, b: uint<3>),
+    color: (r: u3, g: u3, b: u3),
 ) {
     const Rows = 480 / 16
     const Cols = 640 / 16

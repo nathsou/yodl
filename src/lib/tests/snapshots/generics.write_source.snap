@@ -4,8 +4,8 @@ const false = 1'b0;
 module Reg<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
@@ -13,15 +13,15 @@ module Reg<T: Type>(
 module RegAsyncReset<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
 @internal
 module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
-  read: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>)[ReadPorts],
-  write: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
+  read: (clk: clock, en: u1, addr: uint<clog2!(Depth)>)[ReadPorts],
+  write: (clk: clock, en: u1, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
 ) -> (
   q: T[ReadPorts],
 )
@@ -33,11 +33,11 @@ module Identity<N: Nat>(
   out = a;
 }
 module Top(
-  a: uint<8>,
-  b: uint<16>,
+  a: u8,
+  b: u16,
 ) -> (
-  x: uint<8>,
-  y: uint<16>,
+  x: u8,
+  y: u16,
 ) {
   let ix = Identity<8>(a: a);
   let iy = Identity<16>(a: b);

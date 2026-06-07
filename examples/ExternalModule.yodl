@@ -15,9 +15,9 @@ declare module U74x74(
 module Top(
     clk: clock,
     rst: bool,
-    button: uint<4>,
+    button: u4,
 ) -> (
-    led: uint<4>,
+    led: u4,
 ) {
     let u74x74 = U74x74(
         Preset_bar: [1'b1, 1'b1],

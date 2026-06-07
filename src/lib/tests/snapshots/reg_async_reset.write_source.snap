@@ -4,8 +4,8 @@ const false = 1'b0;
 module Reg<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
@@ -13,27 +13,27 @@ module Reg<T: Type>(
 module RegAsyncReset<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
 @internal
 module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
-  read: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>)[ReadPorts],
-  write: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
+  read: (clk: clock, en: u1, addr: uint<clog2!(Depth)>)[ReadPorts],
+  write: (clk: clock, en: u1, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
 ) -> (
   q: T[ReadPorts],
 )
 module Top(
   clk: clock,
-  rst: uint<1>,
-  en: uint<1>,
-  d: uint<8>,
+  rst: u1,
+  en: u1,
+  d: u8,
 ) -> (
-  q: uint<8>,
+  q: u8,
 ) {
-  let reg = RegAsyncReset<uint<8>>(
+  let reg = RegAsyncReset<u8>(
     clk: clk, 
     rst: rst, 
     en: en, 

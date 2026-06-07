@@ -4,8 +4,8 @@ const false = 1'b0;
 module Reg<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
@@ -13,26 +13,26 @@ module Reg<T: Type>(
 module RegAsyncReset<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
 @internal
 module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
-  read: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>)[ReadPorts],
-  write: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
+  read: (clk: clock, en: u1, addr: uint<clog2!(Depth)>)[ReadPorts],
+  write: (clk: clock, en: u1, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
 ) -> (
   q: T[ReadPorts],
 )
 module Top(
-  a: uint<8>,
+  a: u8,
 ) -> (
-  hi_nibble: uint<4>,
-  lo_nibble: uint<4>,
-  bit0: uint<1>,
-  nibble_desc: uint<4>,
-  nibble_asc: uint<4>,
+  hi_nibble: u4,
+  lo_nibble: u4,
+  bit0: u1,
+  nibble_desc: u4,
+  nibble_asc: u4,
 ) {
   hi_nibble = a[7:4];
   lo_nibble = a[3:0];

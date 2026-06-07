@@ -1,4 +1,4 @@
-module Top(a: uint<8>) -> (r_and: bool, r_or: bool, r_xor: bool) {
+module Top(a: u8) -> (r_and: bool, r_or: bool, r_xor: bool) {
     r_and = andr a
     r_or  = orr a
     r_xor = xorr a

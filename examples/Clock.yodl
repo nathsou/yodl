@@ -2,11 +2,11 @@ import Text
 
 const CLOCK_FREQ = 25_000_000 // 25 Mhz on Nandland Go
 
-module Dabble(bin: uint<4>) -> (q: uint<4>) {
+module Dabble(bin: u4) -> (q: u4) {
     q = bin >= 4'd5 ? bin + 4'd3 : bin
 }
 
-module BCD2(bin: uint<6>) -> (q: uint<8>) {
+module BCD2(bin: u6) -> (q: u8) {
     let a = bin[5]
     let b = bin[4]
     let c = bin[3]
@@ -33,13 +33,13 @@ module Clock(
     rst: bool,
 ) -> (
     is_active_area: bool,
-    screen_x: uint<10>,
-    screen_y: uint<10>,
+    screen_x: u10,
+    screen_y: u10,
     vga_hsync: bool,
     vga_vsync: bool,
-    vga_red: uint<3>,
-    vga_green: uint<3>,
-    vga_blue: uint<3>,
+    vga_red: u3,
+    vga_green: u3,
+    vga_blue: u3,
 ) {
     VGA::SyncPulses(
         pixel_clk,
@@ -78,14 +78,14 @@ module Clock(
 
 module Top(
     clk: clock,
-    button: uint<4>,
+    button: u4,
 ) -> (
-    led: uint<4>,
+    led: u4,
     vga_hsync: bool,
     vga_vsync: bool,
-    vga_red: uint<3>,
-    vga_green: uint<3>,
-    vga_blue: uint<3>,
+    vga_red: u3,
+    vga_green: u3,
+    vga_blue: u3,
 ) {
     Clock(
         clk,

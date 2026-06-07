@@ -1,4 +1,4 @@
-module Top(hi: uint<4>, mid: uint<4>, lo: uint<4>) -> (out12: uint<12>, out8: uint<8>) {
+module Top(hi: u4, mid: u4, lo: u4) -> (out12: u12, out8: u8) {
     out12 = cat!(hi, mid, lo)
     out8  = cat!(hi, lo)
 }

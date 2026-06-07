@@ -4,8 +4,8 @@ const false = 1'b0;
 module Reg<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
@@ -13,28 +13,28 @@ module Reg<T: Type>(
 module RegAsyncReset<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
 @internal
 module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
-  read: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>)[ReadPorts],
-  write: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
+  read: (clk: clock, en: u1, addr: uint<clog2!(Depth)>)[ReadPorts],
+  write: (clk: clock, en: u1, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
 ) -> (
   q: T[ReadPorts],
 )
 module Top(
-  a: uint<8>,
-  b: uint<8>,
+  a: u8,
+  b: u8,
 ) -> (
-  eq: uint<1>,
-  ne: uint<1>,
-  lt: uint<1>,
-  le: uint<1>,
-  gt: uint<1>,
-  ge: uint<1>,
+  eq: u1,
+  ne: u1,
+  lt: u1,
+  le: u1,
+  gt: u1,
+  ge: u1,
 ) {
   eq = (a == b);
   ne = (a != b);

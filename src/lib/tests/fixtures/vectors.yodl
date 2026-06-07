@@ -1,4 +1,4 @@
-module Top(a: uint<8>[4], b: uint<8>[4]) -> (out: uint<8>[4]) {
+module Top(a: u8[4], b: u8[4]) -> (out: u8[4]) {
     out[0] = a[0] xor b[0]
     out[1] = a[1] xor b[1]
     out[2] = a[2] xor b[2]

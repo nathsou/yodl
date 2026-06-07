@@ -2,13 +2,13 @@ import VGA
 import LFSR
 import Timing
 
-type u3 = uint<3>
+type u3 = u3
 
 module Top(
     clk: clock,
-    button: uint<4>,
+    button: u4,
 ) -> (
-    led: uint<4>,
+    led: u4,
     vga_hsync: bool,
     vga_vsync: bool,
     vga_red: u3,
@@ -17,7 +17,7 @@ module Top(
 ) {
     let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync)
     let div = (x: vga.col[9:2], y: vga.row[9:2])
-    let cell_idx: uint<15> = div.y * 160 + div.x
+    let cell_idx: u15 = div.y * 160 + div.x
     let timer = Timing::Timer<100_000>(clk)
     let rand_cell = LFSR::LFSR<15>(clk, enable: timer.q).q
     let rand_color = LFSR::LFSR<3>(clk, enable: timer.q).q

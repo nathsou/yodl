@@ -24,17 +24,17 @@ package Stage {
 
 module RegisterFile(
     clk: clock,
-    rs1_addr: uint<5>,
-    rs2_addr: uint<5>,
-    rd_addr: uint<5>,
-    rd_data: uint<32>,
+    rs1_addr: u5,
+    rs2_addr: u5,
+    rd_addr: u5,
+    rd_data: u32,
     write_enable: bool,
 ) -> (
-    rs1: uint<32>,
-    rs2: uint<32>,
+    rs1: u32,
+    rs2: u32,
 ) {
     let regs = Memory<
-        T: uint<32>,
+        T: u32,
         Depth: 32,
         ReadPorts: 2,
         WritePorts: 1,
@@ -57,17 +57,17 @@ module RegisterFile(
 module CPU(
     clk: clock,
     rst: bool,
-    mem_read_data: uint<32>,
+    mem_read_data: u32,
     mem_read_busy: bool,
     mem_write_busy: bool,
 ) -> (
-    mem_addr: uint<32>,
+    mem_addr: u32,
     mem_read_enable: bool,
-    mem_write_data: uint<8>[4],
+    mem_write_data: u8[4],
     mem_write_mask: bool[4],
-    status: uint<24>,
+    status: u24,
 ) {
-    let inst = Reg<uint<32>>(clk, rst)
+    let inst = Reg<u32>(clk, rst)
     let opcode = inst.q[6:0]
     let is_alu_reg = opcode == Inst::ALU_REG
     let is_alu_imm = opcode == Inst::ALU_IMM
@@ -86,7 +86,7 @@ module CPU(
     let imm_b = uint!(pad!(sint!(cat!(inst.q[31], inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0)), 32))
     let imm_j = uint!(pad!(sint!(cat!(inst.q[31], inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0)), 32))
 
-    let stage = Reg<uint<3>>(clk, rst)
+    let stage = Reg<u3>(clk, rst)
     let rs1_addr = inst.q[19:15]
     let rs2_addr = inst.q[24:20]
     let rd_addr = inst.q[11:7]
@@ -94,20 +94,20 @@ module CPU(
     let funct3 = inst.q[14:12]
     let funct7 = inst.q[31:25]
     
-    let pc = Reg<uint<32>>(clk, rst)
-    let rs1 = Reg<uint<32>>(clk, rst)
-    let rs2 = Reg<uint<32>>(clk, rst)
+    let pc = Reg<u32>(clk, rst)
+    let rs1 = Reg<u32>(clk, rst)
+    let rs2 = Reg<u32>(clk, rst)
     let regs = RegisterFile(clk, rs1_addr, rs2_addr, rd_addr)
 
     let alu_in1 = rs1.q
     let alu_in2 = is_alu_reg or is_branch ? rs2.q : imm_i
     let alu_plus = alu_in1 + alu_in2
-    let alu_minus: uint<33> = cat!(1'b1, not alu_in2) + cat!(1'b0, alu_in1) + 33'b1
+    let alu_minus: u33 = cat!(1'b1, not alu_in2) + cat!(1'b0, alu_in1) + 33'b1
     let alu_equ = alu_minus[31:0] == 32'b0
     let alu_lss_unsigned = alu_minus[32]
     let alu_lss_signed = alu_in1[31] xor alu_in2[31] ? alu_in1[31] : alu_minus[32]
     let shifter_in = funct3 == 3'd1 ? flip!(alu_in1) : alu_in1
-    let shifter: uint<32> = sint!(cat!(inst.q[30] and alu_in1[31], shifter_in)) shr alu_in2[4:0]
+    let shifter: u32 = sint!(cat!(inst.q[30] and alu_in1[31], shifter_in)) shr alu_in2[4:0]
     let left_shift = flip!(shifter)
 
     let alu_out = match funct3 {
@@ -122,9 +122,9 @@ module CPU(
     }
 
     let is_jump_inst = is_jal or is_jalr
-    let next_addr: uint<32> = pc.q + 4
+    let next_addr: u32 = pc.q + 4
     let inst_imm = inst.q[3] ? imm_j : inst.q[4] ? imm_u : imm_b
-    let pc_plus_imm: uint<32> = pc.q + inst_imm
+    let pc_plus_imm: u32 = pc.q + inst_imm
     let take_branch = match funct3 {
         3'b000 => alu_equ
         3'b001 => not alu_equ
@@ -139,7 +139,7 @@ module CPU(
                   is_jalr ? cat!(alu_plus[31:1], 1'b0) :
                   next_addr
 
-    let load_store_addr: uint<32> = rs1.q + (is_store ? imm_s : imm_i)
+    let load_store_addr: u32 = rs1.q + (is_store ? imm_s : imm_i)
     let load_half_word = load_store_addr[1] ? mem_read_data[31:16] : mem_read_data[15:0]
     let load_byte = load_store_addr[0] ? load_half_word[15:8] : load_half_word[7:0]
     let byte_access = funct3[1:0] == 2'd0

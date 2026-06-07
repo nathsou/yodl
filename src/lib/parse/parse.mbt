@@ -871,6 +871,14 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       self.expect(Rchevron, start_idx)
       SInt(width)
     }
+    UIntType(width) => {
+      self.advance()
+      UInt(Lit(width))
+    }
+    SIntType(width) => {
+      self.advance()
+      SInt(Lit(width))
+    }
     Clock => {
       self.advance()
       Clock

@@ -9,8 +9,8 @@ Registers are fundamental storage elements in digital circuits. They store data 
 ### Basic Register
 
 ```yodl
-module Counter(clk: clock) -> (value: uint<8>) {
-    let counter = Reg<uint<8>>(clk)
+module Counter(clk: clock) -> (value: u8) {
+    let counter = Reg<u8>(clk)
     counter.d = counter.q + 1'b1
     value = counter.q
 }
@@ -35,8 +35,8 @@ module Counter(clk: clock) -> (value: uint<8>) {
 ### Register with Reset
 
 ```yodl
-module Counter(clk: clock, rst: bool) -> (value: uint<8>) {
-    let counter = Reg<uint<8>>(clk, rst)
+module Counter(clk: clock, rst: bool) -> (value: u8) {
+    let counter = Reg<u8>(clk, rst)
     counter.d = counter.q + 1'b1
     value = counter.q
 }
@@ -47,8 +47,8 @@ When `rst` is asserted, the register's value is synchronously reset to 0.
 ### Register with Enable
 
 ```yodl
-module Counter(clk: clock, enable: bool) -> (value: uint<8>) {
-    let counter = Reg<uint<8>>(clk, en: enable)
+module Counter(clk: clock, enable: bool) -> (value: u8) {
+    let counter = Reg<u8>(clk, en: enable)
     counter.d = counter.q + 1'b1
     value = counter.q
 }
@@ -59,8 +59,8 @@ The register only updates its value when `enable` is asserted.
 The same behaviour can be obtained using the `d` port only:
 
 ```yodl
-module Counter(clk: clock, enable: bool) -> (value: uint<8>) {
-    let counter = Reg<uint<8>>(clk)
+module Counter(clk: clock, enable: bool) -> (value: u8) {
+    let counter = Reg<u8>(clk)
     counter.d = enable ? counter.q + 1'b1 : counter.q
     value = counter.q
 }
@@ -70,7 +70,7 @@ module Counter(clk: clock, enable: bool) -> (value: uint<8>) {
 
 ```yodl
 # module Test(clk: clock, rst: bool) -> () {
-    let state = RegAsyncReset<uint<2>>(clk, rst)
+    let state = RegAsyncReset<u2>(clk, rst)
 # }
 ```
 
@@ -106,14 +106,14 @@ Some configurations may be synthesised as block RAMs in FPGAs.
 ```yodl
 module RAM(
     clk: clock,
-    addr: uint<10>,
-    write_data: uint<8>,
+    addr: u10,
+    write_data: u8,
     write_enable: bool,
 ) -> (
-    read_data: uint<8>,
+    read_data: u8,
 ) {
     let mem = Memory<
-        T: uint<8>,           // Data type
+        T: u8,           // Data type
         Depth: 1024,          // Number of entries
         ReadPorts: 1,         // Number of read ports
         WritePorts: 1,        // Number of write ports
@@ -135,15 +135,15 @@ Write masking allows selective updates to parts of a memory word:
 ```yodl
 module ByteAddressableRAM(
     clk: clock,
-    addr: uint<10>,
-    write_data: uint<8>[4],   // 32-bit word as 4 bytes
+    addr: u10,
+    write_data: u8[4],   // 32-bit word as 4 bytes
     byte_mask: bool[4],       // Which bytes to write
     write_enable: bool,
 ) -> (
-    read_data: uint<32>,
+    read_data: u32,
 ) {
     let mem = Memory<
-        T: uint<8>[4],
+        T: u8[4],
         Depth: 1024,
         ReadPorts: 1,
         WritePorts: 1,
@@ -167,10 +167,10 @@ Examples:
 | Data Type | Mask Type |
 |-----------|-----------|
 | `bool` | `bool` |
-| `uint<8>` | `bool` |
-| `uint<32>[4]` | `bool[4]` |
-| `(a: uint<8>, b: uint<8>)` | `(a: bool, b: bool)` |
-| `(a: (b: uint<16>[64], c: bool))` | `(a: (b: bool[64], c: bool))` |
+| `u8` | `bool` |
+| `u32[4]` | `bool[4]` |
+| `(a: u8, b: u8)` | `(a: bool, b: bool)` |
+| `(a: (b: u16[64], c: bool))` | `(a: (b: bool[64], c: bool))` |
 
 <div class="warning">
     Portions of an integer cannot directly be masked in Yodl, just like in Chisel.

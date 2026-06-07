@@ -1,11 +1,11 @@
-const true = (1'b1: uint<1>);
-const false = (1'b0: uint<1>);
+const true = (1'b1: u1);
+const false = (1'b0: u1);
 @internal
 module Reg<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
@@ -13,24 +13,24 @@ module Reg<T: Type>(
 module RegAsyncReset<T: Type>(
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
 @internal
 module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
-  read: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>)[ReadPorts],
-  write: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
+  read: (clk: clock, en: u1, addr: uint<clog2!(Depth)>)[ReadPorts],
+  write: (clk: clock, en: u1, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
 ) -> (
   q: T[ReadPorts],
 )
 module Top(
-  p: (x: uint<8>, y: uint<8>),
+  p: (x: u8, y: u8),
 ) -> (
-  out: uint<16>,
-  sum: uint<9>,
+  out: u16,
+  sum: u9,
 ) {
-  (out: uint<16>) = (cat!(((p: (x: uint<8>, y: uint<8>)).x: uint<8>), ((p: (x: uint<8>, y: uint<8>)).y: uint<8>)): uint<16>);
-  (sum: uint<9>) = ((((p: (x: uint<8>, y: uint<8>)).x: uint<8>) + ((p: (x: uint<8>, y: uint<8>)).y: uint<8>)): uint<9>);
+  (out: u16) = (cat!(((p: (x: u8, y: u8)).x: u8), ((p: (x: u8, y: u8)).y: u8)): u16);
+  (sum: u9) = ((((p: (x: u8, y: u8)).x: u8) + ((p: (x: u8, y: u8)).y: u8)): u9);
 }

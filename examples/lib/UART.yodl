@@ -3,16 +3,16 @@
 module Transmitter<ClockFreq: Nat, BaudRate: Nat>(
     clk: clock,
     rst: bool,
-    data_in: uint<8>,
+    data_in: u8,
     data_valid: bool, 
 ) -> (
-    tx: uint<1>,
+    tx: u1,
     ready: bool,
 ) {
     const START_VALUE = ClockFreq / BaudRate
     const WIDTH = clog2!(START_VALUE)
     let counter = Reg<uint<WIDTH + 1>>(clk, rst)
-    let data = Reg<uint<10>>(clk, rst)
+    let data = Reg<u10>(clk, rst)
     let ready_reg = Reg<bool>(clk, rst, q: ready)
 
     if counter.q[WIDTH] and data.q == 0 {

@@ -1,13 +1,13 @@
 FIRRTL version 4.1.0
 circuit Top:
   public module Top:
-    input u4: UInt<4>
-    input s4: SInt<4>
-    output zext_u4_u8: UInt<8>
-    output sext_s4_s8: SInt<8>
-    output sext_u4_u8: UInt<8>
+    input uval: UInt<4>
+    input sval: SInt<4>
+    output zext: UInt<8>
+    output sext_sint: SInt<8>
+    output sext_uint: UInt<8>
 
-    connect zext_u4_u8, pad(u4, 8)
-    connect sext_s4_s8, pad(s4, 8)
-    connect sext_u4_u8, asUInt(pad(asSInt(u4), 8))
+    connect zext, pad(uval, 8)
+    connect sext_sint, pad(sval, 8)
+    connect sext_uint, asUInt(pad(asSInt(uval), 8))
 

@@ -1,6 +1,6 @@
-type Point = (x: uint<8>, y: uint<8>)
+type Point = (x: u8, y: u8)
 
-module Top(p: Point) -> (out: uint<16>, sum: uint<9>) {
+module Top(p: Point) -> (out: u16, sum: u9) {
     out = cat!(p.x, p.y)
     sum = p.x + p.y
 }

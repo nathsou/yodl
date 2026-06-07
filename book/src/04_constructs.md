@@ -31,7 +31,7 @@ module Top(
 ) -> (
     hsync: bool,
     vsync: bool,
-    vga_color: (r: uint<8>, g: uint<8>, b: uint<8>),
+    vga_color: (r: u8, g: u8, b: u8),
 ) {
     let pulses = VGA::SyncPulses(clk, hsync, vsync)
     vga_color = (
@@ -62,7 +62,7 @@ const CYCLES_PER_BIT = CLOCK_FREQ / BAUD_RATE
 Type aliases are used to give a name to a commonly used type.
 
 ```yodl
-type U8 = uint<8>
+type U8 = u8
 type RGB = (r: U8, g: U8, b: U8)
 # module Top() -> () {}
 ```
@@ -159,7 +159,7 @@ module Adder<N: Nat>(
 }
 
 module Top(clk: clock) -> () {
-    let counter = Reg<uint<32>>(clk)
+    let counter = Reg<u32>(clk)
     counter.d = counter.q + 1
     
     let adder = Adder<32>( // or Adder<N: 32>(..)
@@ -178,9 +178,9 @@ All three `Reg` instances in the following example are equivalent.
 
 ```yodl
 module Top(clk: clock, rst: bool) -> () {
-    let reg1 = Reg<uint<32>>(clk: clk, rst: rst)
-    let reg2 = Reg<uint<32>>(clk, rst)
-    let reg3 = Reg<uint<32>>()
+    let reg1 = Reg<u32>(clk: clk, rst: rst)
+    let reg2 = Reg<u32>(clk, rst)
+    let reg3 = Reg<u32>()
 
     reg3.clk = clk
     reg3.rst = rst
@@ -196,10 +196,10 @@ module Top(clk: clock, rst: bool) -> () {
 
 ```yodl
 # module Test() -> () {
-    let message1: uint<8>[3]
+    let message1: u8[3]
     message1 = "Yo!"
     let message2 = "Hi!"
-    let message3: uint<8>[3] = "Hey"
+    let message3: u8[3] = "Hey"
 # }
 ```
 

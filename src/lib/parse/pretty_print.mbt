@@ -598,10 +598,16 @@ pub impl Show for Type with output(ty, logger) {
       logger.write_string("nat<\{min_width}>")
     }
     UInt(width) => {
-      logger.write_string("uint<\{width}>")
+      match width {
+        Lit(n) => logger.write_string("u\{n}")
+        _ => logger.write_string("uint<\{width}>")
+      }
     }
     SInt(width) => {
-      logger.write_string("sint<\{width}>")
+      match width {
+        Lit(n) => logger.write_string("s\{n}")
+        _ => logger.write_string("sint<\{width}>")
+      }
     }
     Clock => {
       logger.write_string("clock")

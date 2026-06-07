@@ -1,15 +1,15 @@
 module Top(
     clk:     clock,
     wr_en:   bool,
-    wr_addr: uint<4>,
-    wr_data: uint<8>,
+    wr_addr: u4,
+    wr_data: u8,
     rd_en:   bool,
-    rd_addr: uint<4>,
+    rd_addr: u4,
 ) -> (
-    rd_data: uint<8>,
+    rd_data: u8,
 ) {
     let mem = Memory<
-        T:           uint<8>,
+        T:           u8,
         Depth:       16,
         ReadPorts:   1,
         WritePorts:  1,

@@ -1,7 +1,7 @@
-module Top(b: bool, byte: uint<8>) -> (
+module Top(b: bool, byte: u8) -> (
     bools4: bool[4],
-    bytes3: uint<8>[3],
-    bits4:  uint<4>,
+    bytes3: u8[3],
+    bits4:  u4,
 ) {
     bools4 = fill!(4, b)
     bytes3 = fill!(3, byte)
