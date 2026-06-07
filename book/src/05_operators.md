@@ -147,7 +147,7 @@ the first element of the vector becomes the MSB of the resulting integer:
 
 ## Replication
 
-The `fill!(n, x)` built-in produces a vector `[n]T` of `n` copies of `x`:
+The `fill!(n, x)` built-in produces a vector `T[n]` of `n` copies of `x`:
 
 ```yodl
 # const a = 1'b1
