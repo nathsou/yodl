@@ -220,7 +220,11 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
     }
     '+' => {
       self.advance()
-      Ok(Plus)
+      if self.consumes(':') {
+        Ok(PlusColon)
+      } else {
+        Ok(Plus)
+      }
     }
     '-' => {
       self.advance()

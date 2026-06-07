@@ -160,12 +160,14 @@ fn Parser::parse_indexing_expr(self: Parser) -> Expr raise {
       let index = self.parse_expr()
 
       match self.peek() {
-        Colon | MinusColon as op => {
+        Colon | MinusColon | PlusColon as op => {
           self.advance()
           
           let kind = match op {
             Colon => PartSelect::Absolute
-            _ => PartSelect::Width
+            MinusColon => PartSelect::WidthDescending
+            PlusColon => PartSelect::WidthAscending
+            _ => @utils.unreachable_code()
           }
 
           let lsb = self.parse_expr()

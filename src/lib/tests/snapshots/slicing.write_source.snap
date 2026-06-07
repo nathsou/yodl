@@ -31,10 +31,12 @@ module Top(
   hi_nibble: uint<4>,
   lo_nibble: uint<4>,
   bit0: uint<1>,
-  nibble: uint<4>,
+  nibble_desc: uint<4>,
+  nibble_asc: uint<4>,
 ) {
   hi_nibble = a[7:4];
   lo_nibble = a[3:0];
   bit0 = a[0];
-  nibble = a[7-:4];
+  nibble_desc = a[7-:4];
+  nibble_asc = a[4+:4];
 }

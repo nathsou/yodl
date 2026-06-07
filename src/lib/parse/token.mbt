@@ -9,7 +9,7 @@ enum TokenType {
   LchevronEqual; RchevronEqual
   DotDotLeftChevron; DotDotEqual; DotDot
   Percent; QuestionMark; At; Underscore
-  ColonColon; MinusColon
+  ColonColon; MinusColon; PlusColon
   // keywords
   Module; Let; UInt; SInt; Bool; In; For; Declare; Const
   And; Or; Not; Xor; Nand; Nor; Xnor; Shl; Shr
@@ -56,6 +56,7 @@ pub impl Show for TokenType with output(self, logger) {
     DotDotEqual => logger.write_string("..=")
     ColonColon => logger.write_string("::")
     MinusColon => logger.write_string("-:")
+    PlusColon => logger.write_string("+:")
     LchevronColon => logger.write_string("<:")
     RchevronColon => logger.write_string(">:")
     LchevronEqual => logger.write_string("<=")

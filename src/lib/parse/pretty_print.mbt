@@ -171,7 +171,11 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.emit_expr(expr)
       self.write("[")
       self.emit_expr(msb)
-      self.write(match kind { Absolute => ":"; Width => "-:" })
+      self.write(match kind {
+        Absolute => ":"
+        WidthDescending => "-:"
+        WidthAscending => "+:"
+      })
       self.emit_expr(lsb)
       self.write("]")
     }

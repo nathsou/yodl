@@ -216,7 +216,9 @@ fn BinaryOp::precedence(self: BinaryOp) -> Int {
 }
 
 pub(all) enum PartSelect {
-  Absolute; Width
+  Absolute        // [hi:lo]
+  WidthAscending  // [base +: w]
+  WidthDescending // [base -: w]
 }
 
 pub(all) enum AttributeValue {

@@ -135,7 +135,8 @@ pub fn Simplifier::simplify_expr(
         ty=@parse.clone_ty(ty),
       )
 
-    Slicing(expr~, hi=msb, lo=width, kind=Width, span~, ty~) => {
+    Slicing(expr~, hi=msb, lo=width, kind=WidthDescending, span~, ty~) => {
+      // [base -: w] selects bits [base : base - w + 1]
       let msb_simplified = simp(msb)
       let width_simplified = simp(width)
       let lsb = msb_simplified.as_int() - width_simplified.as_int() + 1
@@ -143,6 +144,22 @@ pub fn Simplifier::simplify_expr(
         expr=simp(expr),
         hi=msb_simplified,
         lo=@parse.CoreExpr::nat(lsb, span=width.span()),
+        span~,
+        ty=@parse.clone_ty(ty),
+      )
+    }
+
+    Slicing(expr~, hi=base, lo=width, kind=WidthAscending, span~, ty~) => {
+      // [base +: w] selects bits [base + w - 1 : base]
+      let base_simplified = simp(base)
+      let width_simplified = simp(width)
+      let base_val = base_simplified.as_int()
+      let width_val = width_simplified.as_int()
+      let new_msb = base_val + width_val - 1
+      Slicing(
+        expr=simp(expr),
+        hi=@parse.CoreExpr::nat(new_msb, span=base.span()),
+        lo=@parse.CoreExpr::nat(base_val, span=base.span()),
         span~,
         ty=@parse.clone_ty(ty),
       )

@@ -5,10 +5,12 @@ circuit Top:
     output hi_nibble: UInt<4>
     output lo_nibble: UInt<4>
     output bit0: UInt<1>
-    output nibble: UInt<4>
+    output nibble_desc: UInt<4>
+    output nibble_asc: UInt<4>
 
     connect hi_nibble, bits(a, 7, 4)
     connect lo_nibble, bits(a, 3, 0)
     connect bit0, bits(a, 0, 0)
-    connect nibble, bits(a, 7, 4)
+    connect nibble_desc, bits(a, 7, 4)
+    connect nibble_asc, bits(a, 7, 4)
 

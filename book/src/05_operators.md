@@ -110,19 +110,24 @@ Elements of vectors and bits of integers can be accessed using the `[]` operator
 ```yodl
 # module Test(clk: clock) -> () {
     let bits = [..8'd233]
-    let first = bits[0]     // Access the first element
-    let nibble = bits[7:4] // Extract a range of bits (inclusive)
-    let byte = bits[7-:8]   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
+    let first = bits[0]      // Access the first element
+    let nibble = bits[7:4]   // Extract a range of bits (inclusive)
+    let byte_desc = bits[7-:8] // 8 bits ending at bit 7 (equivalent to bits[7:0])
+    let byte_asc = bits[0+:8]  // 8 bits starting at bit 0 (equivalent to bits[7:0])
 
     assert!(first == 1'b1)
     assert!(uint!(nibble) == 4'hE)
-    assert!(uint!(byte) == 8'hE9)
+    assert!(uint!(byte_desc) == 8'hE9)
+    assert!(uint!(byte_asc) == 8'hE9)
 # }
 ```
 
-There are two forms of bit slicing:
+There are three forms of bit slicing:
 1. `[high:low]` - Extract bits from position `high` down to `low` (inclusive)
-2. `[start-:width]` - Extract `width` bits starting from position `start`
+2. `[base-:width]` - Extract `width` bits ending at `base` (selects `[base : base - width + 1]`)
+3. `[base+:width]` - Extract `width` bits starting at `base` (selects `[base + width - 1 : base]`)
+
+The `+:` and `-:` forms match SystemVerilog's [indexed part-select](https://www.systemverilog.io/sv-explained/operators#bit-slicing).
 
 
 Note:

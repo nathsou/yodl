@@ -343,24 +343,33 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 _ => raise InvalidSlicingRange(reason="start and end must be natural numbers", span~)
             }
 
-            let hi = eval_const_expr(hi)
-            let lo = match (kind, eval_const_expr(lo)) {
-                (Absolute, lsb) => lsb
-                (Width, width) => hi + 1 - width
+            let hi_val = eval_const_expr(hi)
+            let (msb, lsb) = match kind {
+                Absolute => (hi_val, eval_const_expr(lo))
+                WidthDescending => {
+                    // [base -: w] selects bits [base : base - w + 1]
+                    let width = eval_const_expr(lo)
+                    (hi_val, hi_val + 1 - width)
+                }
+                WidthAscending => {
+                    // [base +: w] selects bits [base + w - 1 : base]
+                    let width = eval_const_expr(lo)
+                    (hi_val + width - 1, hi_val)
+                }
             }
 
-            let width = hi + 1 - lo
+            let width = msb + 1 - lsb
 
             match ty {
                 UInt(_) | SInt(_) => Type::uint(width)
                 String(_) => Type::Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(width))
                 Vector(ty=inner_ty, len~) => {
                     let len = len.expect_lit(expr.span())
-                    if hi >= len {
-                        raise InvalidSlicingRange(reason="start index out of bounds: lsb: \{hi}, len: \{len}", span~)
+                    if msb >= len {
+                        raise InvalidSlicingRange(reason="start index out of bounds: lsb: \{msb}, len: \{len}", span~)
                     }
 
-                    if lo >= hi {
+                    if lsb >= msb {
                         raise InvalidSlicingRange(reason="end index must be less than start index", span~)
                     }
 
