@@ -211,8 +211,6 @@
 <tr><td><code>&lt;=</code></td><td>Less Than or Equal</td><td><code>a &lt;= b</code></td></tr>
 <tr><td><code>&gt;=</code></td><td>Greater Than or Equal</td><td><code>a &gt;= b</code></td></tr>
 </tbody></table>
-</div><div class="warning">
-    Note: The `<` and `>` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
 </div>
 <h2 id="ternary-operator"><a class="header" href="#ternary-operator">Ternary Operator</a></h2>
 <p>The ternary operator is a concise way to express conditional expressions, generally spanning a single line.</p>
@@ -256,7 +254,7 @@
 <li><code>[base-:width]</code> - Extract <code>width</code> bits ending at <code>base</code> (selects <code>[base : base - width + 1]</code>)</li>
 <li><code>[base+:width]</code> - Extract <code>width</code> bits starting at <code>base</code> (selects <code>[base + width - 1 : base]</code>)</li>
 </ol>
-<p>The <code>+:</code> and <code>-:</code> forms match SystemVerilog's <a href="https://www.systemverilog.io/sv-explained/operators#bit-slicing">indexed part-select</a>.</p>
+<p>The <code>+:</code> and <code>-:</code> forms match SystemVerilog's indexed part-select syntax</p>
 <p>Note:</p>
 <ul>
 <li>Integers are indexed from the least significant bit (LSB) to the most significant bit (MSB) (right to left).</li>

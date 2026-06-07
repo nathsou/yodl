@@ -238,10 +238,10 @@ integers are flattened recursively.</p>
 <span class="boring"> }
 </span></code></pre>
 <h3 id="filln-x"><a class="header" href="#filln-x"><code>fill!(n, x)</code></a></h3>
-<p>Produces a vector <code>T[n]</code> containing <code>n</code> copies of <code>x</code>. For bit-replication
+<p>Produces a vector <code>[n]T</code> containing <code>n</code> copies of <code>x</code>. For bit-replication
 (SystemVerilog <code>{n{x}}</code>), combine with <code>cat!</code>:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let zeros: [4]bool = fill!(4, 1'b0)
+</span>    let zeros: [4]u1 = fill!(4, 1'b0)
     let mask:  u4 = cat!(fill!(4, 1'b1))   // 4'b1111
     assert!(uint!(zeros) == 4'd0)
     assert!(mask == 4'b1111)

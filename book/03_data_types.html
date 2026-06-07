@@ -161,7 +161,7 @@
 <p>Yodl supports two integer types, which require a width specifier:</p>
 <div class="table-wrapper"><table><thead><tr><th>Form</th><th>Example</th><th>When to use</th></tr></thead><tbody>
 <tr><td><code>uN</code> / <code>sN</code></td><td><code>u8</code>, <code>u32</code>, <code>s7</code></td><td>Width is a literal</td></tr>
-<tr><td><code>uint[expr]</code> / <code>sint[expr]</code></td><td><code>uint[clog2!(N)]</code>, <code>sint[W + 1]</code></td><td>Width is a compile-time expression</td></tr>
+<tr><td><code>uint[expr]</code> / <code>sint[expr]</code></td><td><code>uint[clog2!(N)]</code>, <code>sint[W + 1], uint&lt;8&gt;</code></td><td>Width is a compile-time expression</td></tr>
 </tbody></table>
 </div>
 <h4 id="unsigned-integers"><a class="header" href="#unsigned-integers">Unsigned Integers</a></h4>
