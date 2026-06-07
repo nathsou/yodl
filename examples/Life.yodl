@@ -38,7 +38,7 @@ module Grid<Rows: Nat, Cols: Nat>(
 ) -> (
     read_state: bool,
 ) {
-    let cells = Cols * [Rows * [Cell(clk, rst)]]
+    let cells = fill!(Cols, fill!(Rows, Cell(clk, rst)))
 
     for row in 0..<Rows {
         for col in 0..<Cols {
@@ -100,7 +100,7 @@ module GridInit<Rows: Nat, Cols: Nat>(
         counter.d = counter.q + 1'1
 
         if col.q == Cols - 1 {
-            col.d = uint!(clog2!(Cols) * {1'0})
+            col.d = uint!(fill!(clog2!(Cols), 1'0))
             row.d = row.q + 1'1
         } else {
             col.d = col.q + 1'1
@@ -108,8 +108,8 @@ module GridInit<Rows: Nat, Cols: Nat>(
     } else {
         grid.write_enable = 1'0
         grid.write_state = 1'0
-        grid.write_row = uint!(clog2!(Rows) * {1'0})
-        grid.write_col = uint!(clog2!(Cols) * {1'0})
+        grid.write_row = uint!(fill!(clog2!(Rows), 1'0))
+        grid.write_col = uint!(fill!(clog2!(Cols), 1'0))
         ready = 1'b1
     }
 }
@@ -122,7 +122,7 @@ module Life(
     row: uint<10>,
     col: uint<10>,
 ) -> (
-    color: { r: uint<3>, g: uint<3>, b: uint<3> },
+    color: (r: uint<3>, g: uint<3>, b: uint<3>),
 ) {
     const Rows = 480 / 16
     const Cols = 640 / 16
@@ -174,14 +174,14 @@ module Life(
     grid.clk = grid.ready ? clock!(vsync) : clk
 
     color = match grid.ready {
-        1'0 => { r: 3'd0, g: 3'd0, b: 3'd0 }
+        1'0 => (r: 3'd0, g: 3'd0, b: 3'd0)
         1'1 => {
             if col[3:0] == 4'0 or row[3:0] == 4'0 {
-                { r: 3'd1, g: 3'd1, b: 3'd1 }
+                (r: 3'd1, g: 3'd1, b: 3'd1)
             } else if grid.read_state {
-                { r: 3'd1, g: 3'd6, b: 3'd4 }
+                (r: 3'd1, g: 3'd6, b: 3'd4)
             } else {
-                { r: 3'd0, g: 3'd0, b: 3'd0 }
+                (r: 3'd0, g: 3'd0, b: 3'd0)
             }
         }
     }

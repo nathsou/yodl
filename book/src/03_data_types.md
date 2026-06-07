@@ -147,12 +147,13 @@ Individual characters can be accessed using the following syntax:
 
 ## Tuples
 
-Tuples group a fixed number of ordered values of potentially different types.
+Tuples group a fixed number of ordered values of potentially different types. A 1-tuple
+requires a trailing comma to distinguish from grouping.
 
 ```yodl
 # module Test() -> () {
     let pair: (bool, uint<8>) = (true, 8'hFF)
-    let triplet: ({ a: uint<4>[1], b: bool }, (bool, uint<8>), uint<1>) = ({ a: [4'd1], b: false }, pair, 1'b0)
+    let triplet: ((a: uint<4>[1], b: bool), (bool, uint<8>), uint<1>) = ((a: [4'd1], b: false), pair, 1'b0)
     
     let first: bool = pair.0 // true
     let second: uint<8> = pair.1 // 8'hFF
@@ -161,12 +162,22 @@ Tuples group a fixed number of ordered values of potentially different types.
 
 ## Structs
 
-Structures (also known as Bundles in Chisel/FIRRTL) group multiple named values under a single name.
+Structures (also known as Bundles in Chisel/FIRRTL) are tuples with named fields:
 
 ```yodl
 # module Test() -> () {
-    let colour: { r: uint<8>, g: uint<8>, b: uint<8> } = { r: 8'd17, g: 8'd128, b: 8'd211 }
+    let colour: (r: uint<8>, g: uint<8>, b: uint<8>) = (r: 8'd17, g: 8'd128, b: 8'd211)
     let red = colour.r;
+# }
+```
+
+Struct values can be partially updated using a spread `..base` followed by overriding
+named fields:
+
+```yodl
+# module Test() -> () {
+    let base = (r: 8'd17, g: 8'd128, b: 8'd211)
+    let darker = (..base, r: 8'd0)
 # }
 ```
 
@@ -197,10 +208,10 @@ Yodl's type system is structural (except for instance types), which means that t
 |--------|--------|-------------|
 | `uint<8>` | `uint<8>` | Yes |
 | `uint<1>` | `bool` | Yes | 
-| `{ a: uint<16>, b: bool }` | `{ b: bool, a: uint<16> }` | Yes |
-| `{ a: uint<16>, b: bool }` | `{ a: uint<16> }` | No |
-| `{ a: uint<16>, b: bool }` | `{ a: uint<16>, b: bool, c: bool[7] }` | No |
+| `(a: uint<16>, b: bool)` | `(b: bool, a: uint<16>)` | Yes |
+| `(a: uint<16>, b: bool)` | `(a: uint<16>)` | No |
+| `(a: uint<16>, b: bool)` | `(a: uint<16>, b: bool, c: bool[7])` | No |
 | `uint<8>[8][8]` | `uint<8>[64]` | No |
 | `Adder` | `Adder` | Yes |
-| `Adder` | `{ a: uint<8>, b: uint<8>, sum: uint<9> }` | No |
+| `Adder` | `(a: uint<8>, b: uint<8>, sum: uint<9>)` | No |
 

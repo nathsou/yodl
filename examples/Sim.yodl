@@ -28,7 +28,7 @@ module TopSim(
         col: vga.col,
     )
 
-    let color = vga.is_active_area ? life.color : { r: 3'd0, g: 3'd0, b: 3'd0 }
+    let color = vga.is_active_area ? life.color : (r: 3'd0, g: 3'd0, b: 3'd0)
 
     r = color.r
     g = color.g

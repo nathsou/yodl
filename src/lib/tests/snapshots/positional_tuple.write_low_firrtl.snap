@@ -1,0 +1,32 @@
+FIRRTL version 4.1.0
+circuit Top:
+  public module Top:
+    input a: UInt<8>
+    input b: UInt<8>
+    input c: UInt<8>
+    output single: UInt<8>
+    output pair_0: UInt<8>
+    output pair_1: UInt<8>
+    output triple_0: UInt<8>
+    output triple_1: UInt<8>
+    output triple_2: UInt<8>
+
+    wire struct_0$_0: UInt<8>
+    wire struct_1$_0: UInt<8>
+    wire struct_1$_1: UInt<8>
+    wire struct_2$_0: UInt<8>
+    wire struct_2$_1: UInt<8>
+    wire struct_2$_2: UInt<8>
+    connect single, struct_0$_0
+    connect pair_0, struct_1$_0
+    connect pair_1, struct_1$_1
+    connect triple_0, struct_2$_0
+    connect triple_1, struct_2$_1
+    connect triple_2, struct_2$_2
+    connect struct_0$_0, a
+    connect struct_1$_0, a
+    connect struct_1$_1, b
+    connect struct_2$_0, a
+    connect struct_2$_1, b
+    connect struct_2$_2, c
+

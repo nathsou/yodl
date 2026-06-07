@@ -1,0 +1,5 @@
+module Top(a: uint<8>, b: uint<8>, c: uint<8>) -> (single: uint<8>, pair: (uint<8>, uint<8>), triple: (uint<8>, uint<8>, uint<8>)) {
+    single = (a,).0
+    pair = (a, b)
+    triple = (a, b, c)
+}

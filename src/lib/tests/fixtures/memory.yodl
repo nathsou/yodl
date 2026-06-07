@@ -16,8 +16,8 @@ module Top(
         ReadLatency:  1,
         WriteLatency: 1,
     >(
-        read:  [{ clk: clk, en: rd_en,  addr: rd_addr }],
-        write: [{ clk: clk, en: wr_en, addr: wr_addr, data: wr_data, mask: true }],
+        read:  [(clk: clk, en: rd_en,  addr: rd_addr)],
+        write: [(clk: clk, en: wr_en, addr: wr_addr, data: wr_data, mask: true)],
     )
     rd_data = mem.q[0]
 }

@@ -25,14 +25,16 @@ module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency:
 ) -> (
   q: T[ReadPorts],
 )
+type Color = (r: uint<3>, g: uint<3>, b: uint<3>);
 module Top(
-  clk: clock,
-  en: uint<1>,
-  d: uint<8>,
+  rin: uint<3>,
+  gin: uint<3>,
+  bin: uint<3>,
 ) -> (
-  q: uint<8>,
+  out: Color,
+  copy: Color,
 ) {
-  let reg = Reg<uint<8>>(clk: clk, en: en);
-  reg.d = d;
-  q = reg.q;
+  let base = (r: rin, g: gin, b: bin);
+  out = base;
+  copy = (..base, g: 3'd0);
 }

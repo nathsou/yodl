@@ -2,11 +2,12 @@
 // Synthesisable subset of the AST, produced by the simplifier and consumed by the elaborator.
 //
 // Invariants guaranteed by construction (enforced by the simplifier):
-//   - No Ternary, If, Replicate, Tuple (all rewritten to Match / Vector / Struct)
+//   - No Ternary, If (all rewritten to Match)
 //   - Slicing is always Absolute — the `kind` field is absent
 //   - BinaryOp::Nand does not appear (rewritten to Not(And(...)))
 //   - CoreStmt has no For, Scope, or Const
 //   - CoreDecl has no Package, Import, TypeAlias, or parameterised Module
+//   - Concat is expressed via FunCall(name="cat", ..) and routed through lower
 
 pub(all) enum CoreExpr {
   Natural(value~: BigInt, width~: Int?, base~: Int, span~: Span, ty~: Ref[Type?])
@@ -19,7 +20,6 @@ pub(all) enum CoreExpr {
   Instance(path~: Path, params~: InstanceParams, ports~: Map[String, CoreExpr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[CoreExpr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: CoreExpr, span~: Span, ty~: Ref[Type?])
-  Concat(elems~: Array[CoreExpr], span~: Span, ty~: Ref[Type?])
   Match(subject~: CoreExpr, cases~: Array[(CoreExpr, CoreExpr)], default~: CoreExpr?, span~: Span, ty~: Ref[Type?])
   Struct(fields~: Map[String, CoreExpr], span~: Span, ty~: Ref[Type?])
   FunCall(name~: String, args~: Array[CoreExpr], span~: Span, ty~: Ref[Type?])
@@ -58,7 +58,6 @@ pub fn CoreExpr::ty(self: CoreExpr) -> Ref[Type?] {
     Instance(ty~, ..) => ty
     Vector(ty~, ..) => ty
     Spread(ty~, ..) => ty
-    Concat(ty~, ..) => ty
     Match(ty~, ..) => ty
     Struct(ty~, ..) => ty
     FunCall(ty~, ..) => ty
@@ -83,7 +82,6 @@ pub impl Ctor for CoreExpr with ctor(self: CoreExpr) -> String {
     Instance(..) => "Instance"
     Vector(..) => "Vector"
     Spread(..) => "Spread"
-    Concat(..) => "Concat"
     Match(..) => "Match"
     Struct(..) => "Struct"
     FunCall(..) => "FunCall"
@@ -104,7 +102,6 @@ pub impl Spanned for CoreExpr with span(self: CoreExpr) -> Span {
     Instance(span~, ..) => span
     Vector(span~, ..) => span
     Spread(span~, ..) => span
-    Concat(span~, ..) => span
     Match(span~, ..) => span
     Struct(span~, ..) => span
     FunCall(span~, ..) => span
@@ -145,7 +142,6 @@ pub fn CoreExpr::contains_statements(self: CoreExpr) -> Bool {
     Instance(ports~, ..) => ports.values().any(CoreExpr::contains_statements)
     Vector(elems~, ..) => elems.iter().any(CoreExpr::contains_statements)
     Spread(expr~, ..) => expr.contains_statements()
-    Concat(elems~, ..) => elems.iter().any(CoreExpr::contains_statements)
     Match(subject~, cases~, default~, ..) => {
       if subject.contains_statements() || cases.iter().any(case => case.0.contains_statements() || case.1.contains_statements()) {
         return true

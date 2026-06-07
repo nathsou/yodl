@@ -26,13 +26,15 @@ module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency:
   q: T[ReadPorts],
 )
 module Top(
-  clk: clock,
-  en: uint<1>,
-  d: uint<8>,
+  a: uint<8>,
+  b: uint<8>,
+  c: uint<8>,
 ) -> (
-  q: uint<8>,
+  single: uint<8>,
+  pair: (uint<8>, uint<8>),
+  triple: (uint<8>, uint<8>, uint<8>),
 ) {
-  let reg = Reg<uint<8>>(clk: clk, en: en);
-  reg.d = d;
-  q = reg.q;
+  single = (a,).0;
+  pair = (a, b);
+  triple = (a, b, c);
 }

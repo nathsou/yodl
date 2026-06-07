@@ -65,11 +65,9 @@ pub impl @parse.Spanned for SimplifierError with span(self) -> @parse.Span {
 // Rewrites performed:
 // - Resolve identifiers to unique names / inline constants
 // - Binary Nand -> Not(And(...))
-// - Tuple -> Struct (with integer-keyed fields)
 // - Ternary -> Match
 // - If -> Match
 // - Width-select Slicing -> Absolute Slicing
-// - Replicate -> Vector / FunCall(pad)
 // - Port accesses on Match expressions are pushed inside the cases
 // - Static assertions are checked; always-true ones produce an empty struct
 pub fn Simplifier::simplify_expr(
@@ -182,9 +180,6 @@ pub fn Simplifier::simplify_expr(
     Spread(expr~, span~, ty~) =>
       Spread(expr=simp(expr), span~, ty=@parse.clone_ty(ty))
 
-    Concat(elems~, span~, ty~) =>
-      Concat(elems=elems.map(simp), span~, ty=@parse.clone_ty(ty))
-
     Match(subject~, cases~, default~, span~, ty~) =>
       Match(
         subject=simp(subject),
@@ -199,23 +194,39 @@ pub fn Simplifier::simplify_expr(
 
     Struct(fields~, span~, ty~) => {
       let core_fields = Map([], capacity=fields.length())
-      for name, e in fields {
-        core_fields[name] = simp(e)
-      }
-      Struct(fields=core_fields, span~, ty=@parse.clone_ty(ty))
-    }
 
-    Tuple(elems~, span~, ty=_) => {
-      // Tuples become integer-keyed structs
-      let fields = Map([], capacity=elems.length())
-      let types = Map([], capacity=elems.length())
-      for idx, elem in elems {
-        let key = idx.to_string()
-        let core_elem = simp(elem)
-        fields[key] = core_elem
-        types[key] = core_elem.ty().val.unwrap_or_error(Failure::Failure("Untyped tuple element"))
+      // Expand spreads first so later explicit fields override.
+      for name, e in fields {
+        if name.has_prefix("..") {
+          // The spread expression must have a Struct type at this point
+          let spread_base = match e {
+            Spread(expr~, ..) => expr
+            _ => raise Failure::Failure("Internal: spread field is not a Spread expression")
+          }
+          let simp_base = simp(spread_base)
+          match simp_base.ty().val {
+            Some(@parse.Type::Struct(spread_tys)) => {
+              for spread_name, spread_ty in spread_tys {
+                core_fields[spread_name] = @parse.CoreExpr::FieldAccess(
+                  expr=simp_base,
+                  field=spread_name,
+                  span=spread_base.span(),
+                  ty={ val: Some(spread_ty) },
+                )
+              }
+            }
+            _ => raise Failure::Failure("Spread inside a record must have a record type")
+          }
+        }
       }
-      Struct(fields~, span~, ty={ val: Some(Struct(types)) })
+
+      for name, e in fields {
+        if !name.has_prefix("..") {
+          core_fields[name] = simp(e)
+        }
+      }
+
+      Struct(fields=core_fields, span~, ty=@parse.clone_ty(ty))
     }
 
     FunCall(name="assert", args=[pred, ..rest], span~, ty~) => {
@@ -274,43 +285,6 @@ pub fn Simplifier::simplify_expr(
         span~,
         ty~,
       ))
-
-    Replicate(expr~, count~, concat~, span~, ty~) => {
-      if concat && expr.ty() is { val: Some(UInt(_) | SInt(_) as expr_ty) } && expr_ty.width(span) == 1 {
-        // Single-bit replication: rewrite as pad!
-        let count_simplified = simp(count)
-        let width = count_simplified.as_int()
-        let pad_expr = @parse.Expr::FunCall(
-          name="pad",
-          args=[
-            if expr_ty is UInt(_) {
-              @parse.Expr::FunCall(name="sint", args=[expr], span=expr.span(), ty={ val: Some(SInt(Lit(1))) })
-            } else {
-              expr
-            },
-            @parse.Expr::nat(width, span=count.span()),
-          ],
-          span~,
-          ty={ val: Some(SInt(Lit(width))) },
-        )
-        let final_expr = if expr_ty is UInt(_) {
-          @parse.Expr::FunCall(name="uint", args=[pad_expr], span~, ty~)
-        } else {
-          pad_expr
-        }
-        simp(final_expr)
-      } else {
-        // General replication: expand into a vector
-        let count_simplified = simp(count)
-        let simplified_elem = simp(expr)
-        let spread_elem = if concat {
-          @parse.CoreExpr::Spread(expr=simplified_elem, span~, ty=@parse.clone_ty(simplified_elem.ty()))
-        } else {
-          simplified_elem
-        }
-        Vector(elems=@utils.fill(count_simplified.as_int(), spread_elem), span~, ty=@parse.clone_ty(ty))
-      }
-    }
   }
 }
 

@@ -17,7 +17,7 @@ Reinterprets a value as an unsigned integer.
 
 When applied to a vector of bits, it concatenates them into a single unsigned integer.
 
-Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the `{<expr_list>}` concatenation operator. 
+Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the `cat!` built-in.
 
 ```yodl
 # module Test(clk: clock) -> () {
@@ -103,6 +103,41 @@ Reverses the bit order of `x`.
 
 ## Vector Functions
 
+### `cat!(args...)`
+
+Concatenates one or more integers (or integer vectors) into a single integer.
+The width of the result is the sum of the widths of the arguments. Vectors of
+integers are flattened recursively.
+
+If any argument is a signed integer (`sint`), every argument must be signed.
+
+```yodl
+# module Test(clk: clock) -> () {
+    let upper_nibble = 8'hAB
+    let lower_nibble = 8'hCD
+    let word = cat!(upper_nibble, lower_nibble)
+    assert!(word == 16'hABCD)
+
+    // Vectors are flattened
+    let from_vec = cat!([16'hBABA, 16'hFABE])
+    assert!(from_vec == 32'hBABAFABE)
+# }
+```
+
+### `fill!(n, x)`
+
+Produces a vector `[n]T` containing `n` copies of `x`. For bit-replication
+(SystemVerilog `{n{x}}`), combine with `cat!`:
+
+```yodl
+# module Test(clk: clock) -> () {
+    let zeros: bool[4] = fill!(4, 1'b0)
+    let mask:  uint<4> = cat!(fill!(4, 1'b1))   // 4'b1111
+    assert!(uint!(zeros) == 4'd0)
+    assert!(mask == 4'b1111)
+# }
+```
+
 ### `rev!(vec)`
 
 Reverses the order of elements in a vector.
@@ -156,7 +191,7 @@ Initializes a memory from a binary format file.
         ReadPorts: 1,
         WritePorts: 0,
     >(
-        read: [{ clk: clk, en: true, addr: addr }],
+        read: [(clk: clk, en: true, addr: addr)],
     )
 
     // Initialize memory from binary file
@@ -178,7 +213,7 @@ Initializes a memory from a hexadecimal format file.
         ReadPorts: 1,
         WritePorts: 0,
     >(
-        read: [{ clk: clk, en: true, addr: addr }],
+        read: [(clk: clk, en: true, addr: addr)],
     )
 
     // Initialize memory from hex file

@@ -255,23 +255,8 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write("]")
     }
     Spread(expr~, ..) => {
-      self.write("...")
+      self.write("..")
       self.emit_expr(expr)
-    }
-    Concat(elems~, ..) => {
-      self.write("{")
-      self.indent += 1
-
-      for i, elem in elems {
-        if i > 0 {
-          self.write(", ")
-        }
-
-        self.emit_expr(elem)
-      }
-
-      self.indent -= 1
-      self.write("}")
     }
     Ternary(cond~, then~, else_~, ..) => {
       self.write("(")
@@ -311,28 +296,6 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write_indent()
       self.write("}")
     }
-    Tuple(elems~, ..) => {
-      self.write("(")
-      self.indent += 1
-
-      for i, elem in elems {
-        if i > 0 {
-          self.write(", ")
-        }
-
-        self.emit_expr(elem)
-      }
-
-      self.indent -= 1
-      self.write(")")
-    }
-    Replicate(expr~, count~, concat~, ..) => {
-      self.emit_expr(count)
-      self.write("*")
-      self.write(if concat { "{" } else { "[" })
-      self.emit_expr(expr)
-      self.write(if concat { "}" } else { "]" })
-    }
     FunCall(name~, args~, ..) => {
       self.write(name)
       self.write("!(")
@@ -348,36 +311,54 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write(")")
     }
     Struct(fields~, ..) => {
-      let is_tuple = fields.contains("0") && fields.contains("1")
+      // Detect a positional record: keys are "0", "1", ..., "n-1" contiguously.
+      let n = fields.length()
+      let mut is_positional = n > 0
 
-      if is_tuple {
+      for i in 0..<n {
+        if !fields.contains(i.to_string()) {
+          is_positional = false
+          break
+        }
+      }
+
+      if n == 0 {
+        self.write("()")
+      } else if is_positional {
         self.write("(")
-
-        fields.values().eachi(fn(idx, elem) {
-          if idx > 0 {
+        for i in 0..<n {
+          if i > 0 {
             self.write(", ")
           }
-
-          self.emit_expr(elem)
-        })
-
+          self.emit_expr(fields.get(i.to_string()).unwrap())
+        }
+        if n == 1 {
+          self.write(",")
+        }
         self.write(")")
       } else {
-        self.write("{\n")
-        self.indent += 1
+        self.write("(")
+        let mut first = true
 
         for field in fields {
           let (name, expr) = field
-          self.write_indent()
-          self.write(name)
-          self.write(": ")
-          self.emit_expr(expr)
-          self.write(",\n")
+
+          if !first {
+            self.write(", ")
+          }
+
+          first = false
+
+          if name.has_prefix("..") {
+            self.emit_expr(expr)
+          } else {
+            self.write(name)
+            self.write(": ")
+            self.emit_expr(expr)
+          }
         }
 
-        self.indent -= 1
-        self.write_indent()
-        self.write("}")
+        self.write(")")
       }
     }
     Block(body~, last~, ..) => {
@@ -657,24 +638,39 @@ pub impl Show for Type with output(ty, logger) {
       }
     }
     Struct(fields) => {
-      let is_tuple = fields.contains("0") && fields.contains("1")
+      let n = fields.length()
+      let mut is_positional = n > 0
 
-      if is_tuple {
-        logger.write_iter(
-          prefix="(",
-          fields.values(),
-          sep=", ",
-          suffix=")",
-        )
+      for i in 0..<n {
+        if !fields.contains(i.to_string()) {
+          is_positional = false
+          break
+        }
+      }
+
+      if n == 0 {
+        logger.write_string("()")
+      } else if is_positional {
+        logger.write_char('(')
+        for i in 0..<n {
+          if i > 0 {
+            logger.write_string(", ")
+          }
+          logger.write_object(fields.get(i.to_string()).unwrap())
+        }
+        if n == 1 {
+          logger.write_char(',')
+        }
+        logger.write_char(')')
       } else {
         logger.write_iter(
-          prefix="{ ",
+          prefix="(",
           fields.iter().map(fn(field) {
             let (name, ty) = field
             { name, ty }
           }),
           sep=", ",
-          suffix=" }",
+          suffix=")",
         )
       }
     }

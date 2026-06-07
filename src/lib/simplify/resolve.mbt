@@ -116,8 +116,8 @@ let builtin_decls: Array[@parse.Decl] = {
     #|  ReadLatency: Nat,
     #|  WriteLatency: Nat,
     #| >(
-    #|    read: { clk: clock, en: bool, addr: uint<clog2!(Depth)> }[ReadPorts],
-    #|    write: { clk: clock, en: bool, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T> }[WritePorts],
+    #|    read: (clk: clock, en: bool, addr: uint<clog2!(Depth)>)[ReadPorts],
+    #|    write: (clk: clock, en: bool, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
     #|) -> (
     #|    q: T[ReadPorts],
     #|)

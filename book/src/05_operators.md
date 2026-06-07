@@ -83,22 +83,22 @@ The ternary operator is a concise way to express conditional expressions, genera
 
 ## Concatenation
 
-Integer concatenation can be performed by wrapping a list of values in curly braces:
+Integer concatenation is performed with the `cat!` built-in function:
 
 ```yodl
 # module Test(clk: clock) -> () {
     let upper_nibble = 8'hAB
     let lower_nibble = 8'hCD
-    let word = {upper_nibble, lower_nibble}
+    let word = cat!(upper_nibble, lower_nibble)
     assert!(word == 16'hABCD)
 # }
 ```
 
-The concatenation operator also accepts Vectors of integers.
+`cat!` also accepts Vectors of integers, which it flattens automatically.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let value = {[1'1, 1'0, 1'0, 1'0]} // 4'b1000
+    let value = cat!([1'1, 1'0, 1'0, 1'0]) // 4'b1000
     assert!(value == 4'b1000)
 # }
 ```
@@ -142,17 +142,17 @@ the first element of the vector becomes the MSB of the resulting integer:
 
 ## Replication
 
-Replication expressions `<uint>*[<expr-list>]` and `<uint>*{<expr-list>}` create a vector by repeating a value multiple times:
+The `fill!(n, x)` built-in produces a vector `[n]T` of `n` copies of `x`:
 
 ```yodl
 # const a = 1'b1
 # const b = 1'b0
 # module Test(clk: clock) -> () {
-    let zeros = 4*[1'b0]   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
-    let ones = 3*{1'b1} // Expands to {1'b, 1'b, 1'b1}
+    let zeros = fill!(4, 1'b0)        // [1'b0, 1'b0, 1'b0, 1'b0]
+    let ones  = cat!(fill!(3, 1'b1))  // Concat-replicate: 3'b111
 
     assert!(uint!(zeros) == 4'd0)
-    assert!(uint!(ones) == 3'b111)
+    assert!(ones == 3'b111)
 # }
 ```
 
@@ -165,21 +165,21 @@ The repeated expressions can contain any value, including instances:
 
 # module Test(clk: clock, rst: bool) -> () {
     // initialise a Rows by Cols grid of cells
-    let cells = Cols * [Rows * [Cell(clk, rst)]]
+    let cells = fill!(Cols, fill!(Rows, Cell(clk, rst)))
 # }
 ```
 
 ## Concatenation
 
-Concatenation expressions `{<expr-list>}` create an integer from a list of smaller integers.
-The width of the resulting integer is the sum of the widths of the operands.
+The `cat!` built-in concatenates a list of integers (or integer vectors) into a single integer.
+The width of the result is the sum of the widths of the operands.
 
 If any operand is a signed integer (sint), then all operands are required to be signed.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let concat_args = {16'hBABA, 16'hFABE}
-    let concat_vec = {[16'hBABA, 16'hFABE]}
+    let concat_args = cat!(16'hBABA, 16'hFABE)
+    let concat_vec  = cat!([16'hBABA, 16'hFABE])
 
     assert!(concat_args == 32'hBABAFABE)
     assert!(concat_vec == 32'hBABAFABE)

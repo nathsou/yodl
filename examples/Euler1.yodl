@@ -30,7 +30,7 @@ module Top(
     )
 
     let euler1 = Euler1(clk, rst)
-    let hex = Text::Hex<20>(n: {2'0, euler1.q})
+    let hex = Text::Hex<20>(n: cat!(2'0, euler1.q))
     let text = Text::Text<Length: 40, X: 20, Y: 30>(
         text: [.."The solution to Project Euler 1 is ", ..hex.chars],
         screen_x: vga.col,
@@ -38,12 +38,12 @@ module Top(
     )
 
     let color = match vga.is_active_area and text.is_active {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 }
-        1'b1 => { r: 3'd1, g: 3'd5, b: 3'd6 }
+        1'b0 => (r: 3'd0, g: 3'd0, b: 3'd0)
+        1'b1 => (r: 3'd1, g: 3'd5, b: 3'd6)
     }
 
     vga_red = color.r
     vga_green = color.g
     vga_blue = color.b
-    led = uint!(4*{euler1.is_ready})
+    led = uint!(cat!(fill!(4, euler1.is_ready)))
 }

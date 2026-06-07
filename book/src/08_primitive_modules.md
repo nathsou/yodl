@@ -97,8 +97,8 @@ Some configurations may be synthesised as block RAMs in FPGAs.
 
 | Port | Direction | Type | Description |
 |------|-----|------|-------------|
-| `read` | Input | {`clk`: `clock`, `en`: `bool`, `addr`: `uint<clog2!(Depth)>`}[`ReadPorts`] | Read port(s) |
-| `write` | Input | {`clk`: `clock`, `en`: `bool`, `addr`: `uint<clog2!(Depth)>`, `data`: `T`, `mask`: `MemoryMask<T>`}[`WritePorts`] | Write port(s) |
+| `read` | Input | (`clk`: `clock`, `en`: `bool`, `addr`: `uint<clog2!(Depth)>`)[`ReadPorts`] | Read port(s) |
+| `write` | Input | (`clk`: `clock`, `en`: `bool`, `addr`: `uint<clog2!(Depth)>`, `data`: `T`, `mask`: `MemoryMask<T>`)[`WritePorts`] | Write port(s) |
 | `q` | Output | `T`[`ReadPorts`] | Read data port(s) |
 
 ### Basic Memory
@@ -120,8 +120,8 @@ module RAM(
         ReadLatency: 1,       // Cycles to read
         WriteLatency: 1,      // Cycles to write
     >(
-        read: [{ clk: clk, en: true, addr: addr }],
-        write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: true }],
+        read: [(clk: clk, en: true, addr: addr)],
+        write: [(clk: clk, en: write_enable, addr: addr, data: write_data, mask: true)],
     )
     
     read_data = mem.q[0]
@@ -150,8 +150,8 @@ module ByteAddressableRAM(
         ReadLatency: 1,
         WriteLatency: 1,
     >(
-        read: [{ clk: clk, en: true, addr: addr }],
-        write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask }],
+        read: [(clk: clk, en: true, addr: addr)],
+        write: [(clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask)],
     )
 
     read_data = uint!(mem.q[0])
@@ -169,8 +169,8 @@ Examples:
 | `bool` | `bool` |
 | `uint<8>` | `bool` |
 | `uint<32>[4]` | `bool[4]` |
-| `{a: uint<8>, b: uint<8>}` | `{a: bool, b: bool}` |
-| `{a: {b: uint<16>[64], c: bool}}` | `{a: {b: bool[64], c: bool}}` |
+| `(a: uint<8>, b: uint<8>)` | `(a: bool, b: bool)` |
+| `(a: (b: uint<16>[64], c: bool))` | `(a: (b: bool[64], c: bool))` |
 
 <div class="warning">
     Portions of an integer cannot directly be masked in Yodl, just like in Chisel.

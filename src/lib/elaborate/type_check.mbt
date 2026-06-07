@@ -521,49 +521,6 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
         Spread(span~, ..) => {
             raise type_error("Spread outside vector", span)
         }
-        Concat(elems~, ..) => {
-            let mut len = 0
-            let mut is_signed: Bool? = None
-            let stack = @stack.new()
-
-            for elem in elems {
-                let ty = self.check_expr(elem, env)
-                let span = elem.span()
-                len += ty.width(span)
-                stack.push((ty, span))
-            }
-
-            while !stack.is_empty() {
-                let (ty, span) = stack.unsafe_pop()
-
-                match ty {
-                    UInt(_) | SInt(_) | Nat(_) => {
-                        let is_elem_signed = ty is SInt(_)
-
-                        match is_signed {
-                            Some(is_signed) => {
-                                if is_signed != is_elem_signed {
-                                    raise type_error("Cannot mix unsigned and signed integers in a concatenation expression", span)
-                                }
-                            }
-                            None => {
-                                is_signed = Some(is_elem_signed)
-                            }
-                        }
-                    }
-                    Vector(ty=elem_ty, len=_) => {
-                        stack.push((elem_ty, span))
-                    }
-                    _ => raise type_error("Invalid element of type '\{ty}' in concatenation expression", span)
-                }
-            }
-
-            if is_signed is Some(true) {
-                Type::sint(len)
-            } else {
-                Type::uint(len)
-            }
-        }
         Ternary(cond~, then~, else_~, span~, ..) => {
             let cond_ty = self.check_expr(cond, env, expected_ty=Some(Type::uint(1)))
             let then_ty = self.check_expr(then, env, expected_ty~)
@@ -613,35 +570,6 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             }
 
             ret_ty.unwrap()
-        }
-        Tuple(elems~, ..) => {
-            let fields = Map([], capacity=elems.length())
-
-            for idx, elem in elems {
-                fields[idx.to_string()] = self.check_expr(elem, env)
-            }
-
-            Type::Struct(fields)
-        }
-        Replicate(expr~, count~, concat~, span~, ..) => {
-            let count_ty = self.check_expr(count, env)
-            let _ = unify(count_ty, Nat({min_width: 0}), span~)
-            let expr_ty = self.check_expr(expr, env)
-            let count = eval_const_expr(count)
-            
-            let (elem_ty, len) = match concat {
-                true => {
-                    let expr_width = expr_ty.width(expr.span())
-                    (Type::uint(1), count * expr_width)
-                }
-                false => (expr_ty, count)
-            }
-
-            match expr_ty {
-                UInt(_) if concat => Type::uint(len)
-                SInt(_) if concat => Type::sint(len)
-                _ => Vector(ty=elem_ty, len=Lit(len))
-            }
         }
         FunCall(name="uint", args=[arg], ..) => {
             let arg_ty = self.check_expr(arg, env)
@@ -807,11 +735,33 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
         FunCall(span~, ..) => {
             raise type_error("Function call after monomorphization", span)
         }
-        Struct(fields~, ..) => {
+        Struct(fields~, span~, ty=_) => {
             let field_tys = Map([], capacity=fields.length())
+            // First pass: expand spreads (fields with key prefixed by "..").
+            // A spread's expression must have a Struct type; its fields are added
+            // first, so later explicit fields can override.
+            for name, ty in fields {
+                if name.has_prefix("..") {
+                    let inner = match ty {
+                        Spread(expr~, ..) => expr
+                        _ => raise type_error("Internal: spread field is not a Spread expression", span)
+                    }
+                    let inner_ty = self.check_expr(inner, env)
+                    match inner_ty {
+                        Type::Struct(spread_fields) => {
+                            for spread_name, spread_ty in spread_fields {
+                                field_tys[spread_name] = spread_ty
+                            }
+                        }
+                        _ => raise type_error("Spread inside a record must have a record type, got '\{inner_ty}'", inner.span())
+                    }
+                }
+            }
 
             for name, ty in fields {
-                field_tys[name] = self.check_expr(ty, env)
+                if !name.has_prefix("..") {
+                    field_tys[name] = self.check_expr(ty, env)
+                }
             }
 
             Type::Struct(field_tys)

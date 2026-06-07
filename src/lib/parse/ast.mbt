@@ -10,12 +10,9 @@ pub(all) enum Expr {
   Instance(path~: Path, params~: InstanceParams, ports~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
   Vector(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Spread(expr~: Expr, span~: Span, ty~: Ref[Type?])
-  Concat(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Ternary(cond~: Expr, then~: Expr, else_~: Expr, span~: Span, ty~: Ref[Type?])
   Match(subject~: Expr, cases~: Array[(Expr, Expr)], default~: Expr?, span~: Span, ty~: Ref[Type?])
-  Tuple(elems~: Array[Expr], span~: Span, ty~: Ref[Type?])
   Struct(fields~: Map[String, Expr], span~: Span, ty~: Ref[Type?])
-  Replicate(expr~: Expr, count~: Expr, concat~: Bool, span~: Span, ty~: Ref[Type?])
   FunCall(name~: String, args~: Array[Expr], span~: Span, ty~: Ref[Type?])
   String(value~: String, span~: Span, ty~: Ref[Type?])
   Block(body~: Array[Stmt], last~: Expr?, span~: Span, ty~: Ref[Type?])
@@ -348,12 +345,9 @@ pub fn Expr::ty(self: Expr) -> Ref[Type?] {
     Instance(ty~, ..) => ty
     Vector(ty~, ..) => ty
     Spread(ty~, ..) => ty
-    Concat(ty~, ..) => ty
     Ternary(ty~, ..) => ty
     Match(ty~, ..) => ty
-    Tuple(ty~, ..) => ty
     Struct(ty~, ..) => ty
-    Replicate(ty~, ..) => ty
     FunCall(ty~, ..) => ty
     String(ty~, ..) => ty
     Block(ty~, ..) => ty
@@ -373,12 +367,9 @@ pub impl Ctor for Expr with ctor(self: Expr) -> String {
     Instance(..) => "Instance"
     Vector(..) => "Vector"
     Spread(..) => "Spread"
-    Concat(..) => "Concat"
     Ternary(..) => "Ternary"
     Match(..) => "Match"
-    Tuple(..) => "Tuple"
     Struct(..) => "Struct"
-    Replicate(..) => "Replicate"
     FunCall(..) => "FunCall"
     String(..) => "String"
     Block(..) => "Block"
@@ -425,12 +416,9 @@ pub impl Spanned for Expr with span(self: Expr) -> Span {
     Instance(span~, ..) => span
     Vector(span~, ..) => span
     Spread(span~, ..) => span
-    Concat(span~, ..) => span
     Ternary(span~, ..) => span
     Match(span~, ..) => span
-    Tuple(span~, ..) => span
     Struct(span~, ..) => span
-    Replicate(span~, ..) => span
     FunCall(span~, ..) => span
     String(span~, ..) => span
     Block(span~, ..) => span
@@ -461,12 +449,9 @@ pub fn Expr::ctor(self: Expr) -> String {
     Instance(_) => "Instance"
     Vector(_) => "Vector"
     Spread(_) => "Spread"
-    Concat(_) => "Concat"
     Ternary(_) => "Ternary"
     Match(_) => "Match"
-    Tuple(_) => "Tuple"
     Struct(_) => "Struct"
-    Replicate(_) => "Replicate"
     FunCall(_) => "FunCall"
     String(_) => "String"
     Block(_) => "Block"
@@ -491,12 +476,9 @@ pub fn Expr::is_constant_expr(self: Expr) -> Bool {
     Instance(_) => false
     Vector(elems~, ..) => elems.iter().all(Expr::is_constant_expr)
     Spread(_) => false
-    Concat(_) => false
     Ternary(_) => false
     Match(_) => false
-    Tuple(_) => false
     Struct(_) => false
-    Replicate(_) => false
     FunCall(name="flip" | "rev", args=[arg], ..) => arg.is_constant_expr()
     FunCall(_) => false
     Block(body=[], last=Some(last), ..) => last.is_constant_expr()
@@ -530,7 +512,6 @@ pub fn Expr::contains_statements(self: Expr) -> Bool {
     Instance(ports~, ..) => ports.values().any(Expr::contains_statements)
     Vector(elems~, ..) => elems.iter().any(Expr::contains_statements)
     Spread(expr~, ..) => expr.contains_statements()
-    Concat(elems~, ..) => elems.iter().any(Expr::contains_statements)
     Ternary(cond~, then~, else_~, ..) => cond.contains_statements() || then.contains_statements() || else_.contains_statements()
     Match(subject~, cases~, default~, ..) => {
       if subject.contains_statements() || cases.iter().any(case => case.0.contains_statements() || case.1.contains_statements()) {
@@ -539,9 +520,7 @@ pub fn Expr::contains_statements(self: Expr) -> Bool {
       
       default.map_or(false, Expr::contains_statements)
     }
-    Tuple(elems~, ..) => elems.iter().any(Expr::contains_statements)
     Struct(fields~, ..) => fields.values().any(Expr::contains_statements)
-    Replicate(expr~, count~, ..) => expr.contains_statements() || count.contains_statements()
     FunCall(args~, ..) => args.iter().any(Expr::contains_statements)
     Natural(_) | Identifier(_) | String(_) => false
   }

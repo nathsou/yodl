@@ -16,7 +16,7 @@ module Top(
     vga_blue: u3,
 ) {
     let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync)
-    let div = { x: vga.col[9:2], y: vga.row[9:2] }
+    let div = (x: vga.col[9:2], y: vga.row[9:2])
     let cell_idx: uint<15> = div.y * 160 + div.x
     let timer = Timing::Timer<100_000>(clk)
     let rand_cell = LFSR::LFSR<15>(clk, enable: timer.q).q
@@ -29,8 +29,8 @@ module Top(
         ReadPorts: 1,
         WritePorts: 1,
     >(
-        read: [{ clk: clk, en: vga.is_active_area, addr: cell_idx }],
-        write: [{ clk: clk, en: add_noise and timer.q, addr: rand_cell, data: rand_color, mask: true }],
+        read: [(clk: clk, en: vga.is_active_area, addr: cell_idx)],
+        write: [(clk: clk, en: add_noise and timer.q, addr: rand_cell, data: rand_color, mask: true)],
     )
 
     readmemb!("res/york.mem", mem)
@@ -38,21 +38,21 @@ module Top(
     let color_idx = mem.q[0]
 
     let color = match vga.is_active_area {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 }
+        1'b0 => (r: 3'd0, g: 3'd0, b: 3'd0)
         1'b1 => match color_idx {
-            3'd0 => { r: 3'd3, g: 3'd5, b: 3'd7 }
-            3'd1 => { r: 3'd2, g: 3'd2, b: 3'd2 }
-            3'd2 => { r: 3'd0, g: 3'd0, b: 3'd0 }
-            3'd3 => { r: 3'd1, g: 3'd1, b: 3'd0 }
-            3'd4 => { r: 3'd1, g: 3'd1, b: 3'd1 }
-            3'd5 => { r: 3'd7, g: 3'd7, b: 3'd6 }
-            3'd6 => { r: 3'd7, g: 3'd7, b: 3'd7 }
-            3'd7 => { r: 3'd3, g: 3'd3, b: 3'd3 }
+            3'd0 => (r: 3'd3, g: 3'd5, b: 3'd7)
+            3'd1 => (r: 3'd2, g: 3'd2, b: 3'd2)
+            3'd2 => (r: 3'd0, g: 3'd0, b: 3'd0)
+            3'd3 => (r: 3'd1, g: 3'd1, b: 3'd0)
+            3'd4 => (r: 3'd1, g: 3'd1, b: 3'd1)
+            3'd5 => (r: 3'd7, g: 3'd7, b: 3'd6)
+            3'd6 => (r: 3'd7, g: 3'd7, b: 3'd7)
+            3'd7 => (r: 3'd3, g: 3'd3, b: 3'd3)
         }
     }
 
     vga_red = color.r
     vga_green = color.g
     vga_blue = color.b
-    led = uint!(4*{add_noise})
+    led = uint!(cat!(fill!(4, add_noise)))
 }

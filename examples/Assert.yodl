@@ -12,8 +12,8 @@ module Top(clk: clock) -> () {
     assert!(uint!(clock!(1'b1)) == 1'b1)
 
     // concatenation
-    assert!({8'hBA, 8'hFA} == 16'hBAFA)
-    assert!({[8'hBE, 8'hEF]} == 16'hBEEF)
+    assert!(cat!(8'hBA, 8'hFA) == 16'hBAFA)
+    assert!(cat!([8'hBE, 8'hEF]) == 16'hBEEF)
 
     // decomposition
     assert!([..4'b1000][0] == 1'b0)

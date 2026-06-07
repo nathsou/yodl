@@ -8,7 +8,7 @@ enum TokenType {
   Equal; EqualEqual; BangEqual; RightThinArrow; RightThickArrow
   LchevronEqual; RchevronEqual
   DotDotLeftChevron; DotDotEqual; DotDot
-  Percent; QuestionMark; At; Underscore; X // Replication operator
+  Percent; QuestionMark; At; Underscore
   ColonColon; MinusColon
   // keywords
   Module; Let; UInt; SInt; Bool; In; For; Declare; Const
@@ -51,7 +51,6 @@ pub impl Show for TokenType with output(self, logger) {
     Underscore => logger.write_string("_")
     QuestionMark => logger.write_string("?")
     Percent => logger.write_string("%")
-    X => logger.write_string("x")
     DotDot => logger.write_string("..")
     DotDotLeftChevron => logger.write_string("..<")
     DotDotEqual => logger.write_string("..=")

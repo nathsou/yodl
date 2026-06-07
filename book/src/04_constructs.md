@@ -31,14 +31,14 @@ module Top(
 ) -> (
     hsync: bool,
     vsync: bool,
-    vga_color: { r: uint<8>, g: uint<8>, b: uint<8> },
+    vga_color: (r: uint<8>, g: uint<8>, b: uint<8>),
 ) {
     let pulses = VGA::SyncPulses(clk, hsync, vsync)
-    vga_color = {
+    vga_color = (
         r: pulses.row[7:0],
         g: pulses.col[7:0],
         b: 8'd127,
-    }
+    )
 }
 ```
 
@@ -63,7 +63,7 @@ Type aliases are used to give a name to a commonly used type.
 
 ```yodl
 type U8 = uint<8>
-type RGB = { r: U8, g: U8, b: U8 }
+type RGB = (r: U8, g: U8, b: U8)
 # module Top() -> () {}
 ```
 

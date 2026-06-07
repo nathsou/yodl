@@ -26,5 +26,5 @@ module Top(
         clk: [clk, clk],
     )
 
-    led = {4*{u74x74.Q[0]}}
+    led = cat!(fill!(4, u74x74.Q[0]))
 }

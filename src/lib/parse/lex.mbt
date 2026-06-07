@@ -41,22 +41,6 @@ fn Lexer::lookahead(self: Lexer, n: Int) -> Char {
   @utils.char_at(self.input, self.index + n)
 }
 
-fn Lexer::next_non_whitespace(self: Lexer) -> Char? {
-  let mut i = self.index
-
-  while i < self.input.length() {
-    let char = @utils.char_at(self.input, i)
-
-    if !@utils.is_whitespace(char) {
-      return Some(char)
-    }
-
-    i += 1
-  }
-
-  None
-}
-
 fn should_insert_semicolon(last_token: Token) -> Bool {
   match last_token.kind {
     Natural(_) | StringLiteral(_) | CharacterLiteral(_) => true
@@ -250,11 +234,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
     }
     '*' => {
       self.advance()
-
-      match self.next_non_whitespace() {
-        Some('{' | '[') => Ok(X) // replication operator
-        _ => Ok(Star)
-      }
+      Ok(Star)
     }
     '/' => {
       self.advance()

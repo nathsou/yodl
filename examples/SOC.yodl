@@ -17,8 +17,8 @@ module RAM(
         ReadPorts: 1,
         WritePorts: 1,
     >(
-        read: [{ clk: clk, en: read_enable, addr: addr[10:0] }],
-        write: [{ clk: clk, en: true, addr: addr[10:0], data: write_data, mask: mask }],
+        read: [(clk: clk, en: read_enable, addr: addr[10:0])],
+        write: [(clk: clk, en: true, addr: addr[10:0], data: write_data, mask: mask)],
     )
 
     readmemh!("prog.hex", mem)
@@ -61,7 +61,7 @@ module Top(
         mem_write_busy: false 
     )
     
-    let word_addr = {2'b0, cpu.mem_addr[31:2]} // divide by 4
+    let word_addr = cat!(2'b0, cpu.mem_addr[31:2]) // divide by 4
     ram.addr = word_addr
     
     let is_io = cpu.mem_addr[22]
@@ -69,7 +69,7 @@ module Top(
     
     ram.read_enable = is_ram and cpu.mem_read_enable
     ram.write_data = cpu.mem_write_data
-    ram.mask = is_ram ? cpu.mem_write_mask : 4*[false]
+    ram.mask = is_ram ? cpu.mem_write_mask : fill!(4, false)
     let write_enable = orr uint!(cpu.mem_write_mask)
 
     // devices
@@ -96,7 +96,7 @@ module Top(
     }
 
     let io_read_data = word_addr[MemoryMappedIO::UART_BUSY] ?
-        {22'b0, not uart_transmitter.ready, 9'b0} :
+        cat!(22'b0, not uart_transmitter.ready, 9'b0) :
         32'd0
 
     cpu.mem_read_data = is_ram ? ram.q : io_read_data

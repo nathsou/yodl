@@ -14,11 +14,11 @@ module BCD2(bin: uint<6>) -> (q: uint<8>) {
     let e = bin[1]
     let f = bin[0]
 
-    let t = Dabble(bin: {1'b0, a, b, c}).q
-    let u = Dabble(bin: {t[2:0], d}).q
-    let v = Dabble(bin: {u[2:0], e}).q
+    let t = Dabble(bin: cat!(1'b0, a, b, c)).q
+    let u = Dabble(bin: cat!(t[2:0], d)).q
+    let v = Dabble(bin: cat!(u[2:0], e)).q
 
-    q = {1'b0, t[3], u[3], v, f}
+    q = cat!(1'b0, t[3], u[3], v, f)
 }
 
 module TicTac<Max: Nat>(clk: clock, en: bool, rst: bool) -> (tick: bool, count: uint<clog2!(Max)>) {
@@ -59,7 +59,7 @@ module Clock(
         text: {
             let seconds_dec = Text::Dec<8>(n: BCD2(bin: seconds.count).q).chars
             let minutes_dec = Text::Dec<8>(n: BCD2(bin: minutes.count).q).chars
-            let hours_dec = Text::Dec<8>(n: BCD2(bin: {1'b0, hours.count}).q).chars
+            let hours_dec = Text::Dec<8>(n: BCD2(bin: cat!(1'b0, hours.count)).q).chars
             [..hours_dec, ':', ..minutes_dec, ':', ..seconds_dec]
         },
         screen_x,
@@ -67,8 +67,8 @@ module Clock(
     )
 
     let color = match is_active_area and text.is_active {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 }
-        1'b1 => { r: 3'd1, g: 3'd6, b: 3'd3 }
+        1'b0 => (r: 3'd0, g: 3'd0, b: 3'd0)
+        1'b1 => (r: 3'd1, g: 3'd6, b: 3'd3)
     }
 
     vga_red = color.r

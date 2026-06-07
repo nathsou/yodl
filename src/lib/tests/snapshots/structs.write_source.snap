@@ -20,18 +20,18 @@ module RegAsyncReset<T: Type>(
 )
 @internal
 module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
-  read: { clk: clock, en: uint<1>, addr: uint<clog2!(Depth)> }[ReadPorts],
-  write: { clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T> }[WritePorts],
+  read: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>)[ReadPorts],
+  write: (clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T>)[WritePorts],
 ) -> (
   q: T[ReadPorts],
 )
-type Point = { x: uint<8>, y: uint<8> };
+type Point = (x: uint<8>, y: uint<8>);
 module Top(
   p: Point,
 ) -> (
   out: uint<16>,
   sum: uint<9>,
 ) {
-  out = {p.x, p.y};
+  out = cat!(p.x, p.y);
   sum = (p.x + p.y);
 }
