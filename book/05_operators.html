@@ -206,32 +206,32 @@
 <div class="table-wrapper"><table><thead><tr><th>Operator</th><th>Description</th><th>Example</th></tr></thead><tbody>
 <tr><td><code>==</code></td><td>Equal</td><td><code>a == b</code></td></tr>
 <tr><td><code>!=</code></td><td>Not Equal</td><td><code>a != b</code></td></tr>
-<tr><td><code>&lt;:</code></td><td>Less Than</td><td><code>a &lt;: b</code></td></tr>
-<tr><td><code>&gt;:</code></td><td>Greater Than</td><td><code>a &gt;: b</code></td></tr>
+<tr><td><code>&lt;</code></td><td>Less Than</td><td><code>a &lt; b</code></td></tr>
+<tr><td><code>&gt;</code></td><td>Greater Than</td><td><code>a &gt; b</code></td></tr>
 <tr><td><code>&lt;=</code></td><td>Less Than or Equal</td><td><code>a &lt;= b</code></td></tr>
 <tr><td><code>&gt;=</code></td><td>Greater Than or Equal</td><td><code>a &gt;= b</code></td></tr>
 </tbody></table>
 </div><div class="warning">
-    Note: The `<:` and `>:` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
+    Note: The `<` and `>` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
 </div>
 <h2 id="ternary-operator"><a class="header" href="#ternary-operator">Ternary Operator</a></h2>
 <p>The ternary operator is a concise way to express conditional expressions, generally spanning a single line.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(a: uint&lt;8&gt;, b: uint&lt;8&gt;) -&gt; () {
+<pre><code class="language-yodl"><span class="boring"> module Test(a: u8, b: u8) -&gt; () {
 </span>    let max = a &gt;= b ? a : b
 <span class="boring"> }
 </span></code></pre>
 <h2 id="concatenation"><a class="header" href="#concatenation">Concatenation</a></h2>
-<p>Integer concatenation can be performed by wrapping a list of values in curly braces:</p>
+<p>Integer concatenation is performed with the <code>cat!</code> built-in function:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let upper_nibble = 8'hAB
     let lower_nibble = 8'hCD
-    let word = {upper_nibble, lower_nibble}
+    let word = cat!(upper_nibble, lower_nibble)
     assert!(word == 16'hABCD)
 <span class="boring"> }
 </span></code></pre>
-<p>The concatenation operator also accepts Vectors of integers.</p>
+<p><code>cat!</code> also accepts Vectors of integers, which it flattens automatically.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let value = {[1'1, 1'0, 1'0, 1'0]} // 4'b1000
+</span>    let value = cat!([1'1, 1'0, 1'0, 1'0]) // 4'b1000
     assert!(value == 4'b1000)
 <span class="boring"> }
 </span></code></pre>
@@ -239,26 +239,30 @@
 <p>Elements of vectors and bits of integers can be accessed using the <code>[]</code> operator:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let bits = [..8'd233]
-    let first = bits[0]     // Access the first element
-    let nibble = bits[7:4] // Extract a range of bits (inclusive)
-    let byte = bits[7-:8]   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
+    let first = bits[0]      // Access the first element
+    let nibble = bits[7:4]   // Extract a range of bits (inclusive)
+    let byte_desc = bits[7-:8] // 8 bits ending at bit 7 (equivalent to bits[7:0])
+    let byte_asc = bits[0+:8]  // 8 bits starting at bit 0 (equivalent to bits[7:0])
 
     assert!(first == 1'b1)
     assert!(uint!(nibble) == 4'hE)
-    assert!(uint!(byte) == 8'hE9)
+    assert!(uint!(byte_desc) == 8'hE9)
+    assert!(uint!(byte_asc) == 8'hE9)
 <span class="boring"> }
 </span></code></pre>
-<p>There are two forms of bit slicing:</p>
+<p>There are three forms of bit slicing:</p>
 <ol>
 <li><code>[high:low]</code> - Extract bits from position <code>high</code> down to <code>low</code> (inclusive)</li>
-<li><code>[start-:width]</code> - Extract <code>width</code> bits starting from position <code>start</code></li>
+<li><code>[base-:width]</code> - Extract <code>width</code> bits ending at <code>base</code> (selects <code>[base : base - width + 1]</code>)</li>
+<li><code>[base+:width]</code> - Extract <code>width</code> bits starting at <code>base</code> (selects <code>[base + width - 1 : base]</code>)</li>
 </ol>
+<p>The <code>+:</code> and <code>-:</code> forms match SystemVerilog's <a href="https://www.systemverilog.io/sv-explained/operators#bit-slicing">indexed part-select</a>.</p>
 <p>Note:</p>
 <ul>
 <li>Integers are indexed from the least significant bit (LSB) to the most significant bit (MSB) (right to left).</li>
 <li>Vectors follow standard array-indexing conventions, with the first element at index 0 (left to right).</li>
 </ul>
-<p>When a bit vector (<code>bool[N]</code> i.e. <code>uint&lt;1&gt;[N]</code>) is used as the argument of the <code>uint</code> and <code>sint</code> built-in functions,
+<p>When a bit vector (<code>[N]bool</code> i.e. <code>[N]u1</code>) is used as the argument of the <code>uint</code> and <code>sint</code> built-in functions,
 the first element of the vector becomes the MSB of the resulting integer:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let n = uint!([1'b1, 1'b0, 1'b0])
@@ -266,15 +270,15 @@ the first element of the vector becomes the MSB of the resulting integer:</p>
 <span class="boring"> }
 </span></code></pre>
 <h2 id="replication"><a class="header" href="#replication">Replication</a></h2>
-<p>Replication expressions <code>&lt;uint&gt;*[&lt;expr-list&gt;]</code> and <code>&lt;uint&gt;*{&lt;expr-list&gt;}</code> create a vector by repeating a value multiple times:</p>
+<p>The <code>fill!(n, x)</code> built-in produces a vector <code>[n]T</code> of <code>n</code> copies of <code>x</code>:</p>
 <pre><code class="language-yodl"><span class="boring"> const a = 1'b1
 </span><span class="boring"> const b = 1'b0
 </span><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let zeros = 4*[1'b0]   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
-    let ones = 3*{1'b1} // Expands to {1'b, 1'b, 1'b1}
+</span>    let zeros = fill!(4, 1'b0)        // [1'b0, 1'b0, 1'b0, 1'b0]
+    let ones  = cat!(fill!(3, 1'b1))  // Concat-replicate: 3'b111
 
     assert!(uint!(zeros) == 4'd0)
-    assert!(uint!(ones) == 3'b111)
+    assert!(ones == 3'b111)
 <span class="boring"> }
 </span></code></pre>
 <p>The repeated expressions can contain any value, including instances:</p>
@@ -284,16 +288,16 @@ the first element of the vector becomes the MSB of the resulting integer:</p>
 </span>
 <span class="boring"> module Test(clk: clock, rst: bool) -&gt; () {
 </span>    // initialise a Rows by Cols grid of cells
-    let cells = Cols * [Rows * [Cell(clk, rst)]]
+    let cells = fill!(Cols, fill!(Rows, Cell(clk, rst)))
 <span class="boring"> }
 </span></code></pre>
 <h2 id="concatenation-1"><a class="header" href="#concatenation-1">Concatenation</a></h2>
-<p>Concatenation expressions <code>{&lt;expr-list&gt;}</code> create an integer from a list of smaller integers.
-The width of the resulting integer is the sum of the widths of the operands.</p>
+<p>The <code>cat!</code> built-in concatenates a list of integers (or integer vectors) into a single integer.
+The width of the result is the sum of the widths of the operands.</p>
 <p>If any operand is a signed integer (sint), then all operands are required to be signed.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let concat_args = {16'hBABA, 16'hFABE}
-    let concat_vec = {[16'hBABA, 16'hFABE]}
+</span>    let concat_args = cat!(16'hBABA, 16'hFABE)
+    let concat_vec  = cat!([16'hBABA, 16'hFABE])
 
     assert!(concat_args == 32'hBABAFABE)
     assert!(concat_vec == 32'hBABAFABE)
@@ -302,9 +306,9 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <h2 id="spread"><a class="header" href="#spread">Spread</a></h2>
 <p>The spread operator <code>..</code> can only appear inside a vector expression and is used to decompose a value into its individual elements.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let bits: uint&lt;1&gt;[4] = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
-    let chars: uint&lt;8&gt;[3] = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
-    let flat: uint&lt;2&gt;[3] = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
+</span>    let bits: [4]u1 = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
+    let chars: [3]u8 = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
+    let flat: [3]u2 = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
 
     assert!(bits[0] == 1'b0)
     assert!(bits[1] == 1'b0)
@@ -325,7 +329,7 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <li>Multiplication, division, modulo (<code>*</code>, <code>/</code>, <code>mod</code>)</li>
 <li>Addition, subtraction (<code>+</code>, <code>-</code>)</li>
 <li>Shift operations (<code>shl</code>, <code>shr</code>)</li>
-<li>Comparisons (<code>&lt;:</code>, <code>&gt;:</code>, <code>&lt;=</code>, <code>&gt;=</code>)</li>
+<li>Comparisons (<code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>)</li>
 <li>Equality operators (<code>==</code>, <code>!=</code>)</li>
 <li>Bitwise AND and NAND (<code>and</code>, <code>nand</code>)</li>
 <li>Bitwise XOR and XNOR (<code>xor</code>, <code>xnor</code>)</li>
@@ -345,8 +349,8 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <tr><td><code>/</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>sint&lt;A + 1&gt;</code></td></tr>
 <tr><td><code>mod</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;min(A, B)&gt;</code></td></tr>
 <tr><td><code>mod</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>sint&lt;min(A, B)&gt;</code></td></tr>
-<tr><td><code>==</code>, <code>!=</code>, <code>&lt;:</code>, <code>&gt;:</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;1&gt;</code></td></tr>
-<tr><td><code>==</code>, <code>!=</code>, <code>&lt;:</code>, <code>&gt;:</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>uint&lt;1&gt;</code></td></tr>
+<tr><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>u1</code></td></tr>
+<tr><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>u1</code></td></tr>
 <tr><td><code>and</code>, <code>nand</code>, <code>or</code>, <code>nor</code>, <code>xor</code>, <code>xnor</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;max(A, B)&gt;</code></td></tr>
 <tr><td><code>and</code>, <code>nand</code>, <code>or</code>, <code>nor</code>, <code>xor</code>, <code>xnor</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>uint&lt;max(A, B)&gt;</code></td></tr>
 </tbody></table>

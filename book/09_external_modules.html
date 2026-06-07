@@ -162,11 +162,11 @@
 <pre><code class="language-yodl">@external("module_name", "file.v")
 @parameters({ PARAM1: 0, PARAM2: "true" })
 declare module ExternalModule(
-    input1: uint&lt;8&gt;,
-    input2: bool[4],
+    input1: u8,
+    input2: [4]bool,
 ) -&gt; (
     output1: bool,
-    output2: uint&lt;16&gt;,
+    output2: u16,
 )
 
 <span class="boring"> module Top() -&gt; () {}

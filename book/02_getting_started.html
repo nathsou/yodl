@@ -189,9 +189,9 @@ $ moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"
   rst: bool,
 ) -&gt; (
   // outputs
-  leds: uint&lt;8&gt;,
+  leds: u8,
 ) {
-  let counter = Reg&lt;uint&lt;24&gt;&gt;(clk, rst)
+    let counter = Reg[u24](clk, rst)
   counter.d = counter.q + 1'd1
   leds = counter.q[23:16]
 }

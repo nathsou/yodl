@@ -160,8 +160,8 @@
 <h2 id="conditional-statements"><a class="header" href="#conditional-statements">Conditional Statements</a></h2>
 <h3 id="if-expressions"><a class="header" href="#if-expressions">If Expressions</a></h3>
 <p>If expressions evaluate a condition and execute one of two branches based on the result:</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(a: uint&lt;8&gt;, b: uint&lt;8&gt;) -&gt; () {
-</span>    let max = if a &gt;: b {
+<pre><code class="language-yodl"><span class="boring"> module Test(a: u8, b: u8) -&gt; () {
+</span>    let max = if a &gt; b {
         a
     } else {
         b
@@ -172,7 +172,7 @@
 <h3 id="match-expressions"><a class="header" href="#match-expressions">Match Expressions</a></h3>
 <p>Match expressions provide a compact way of handling multiple conditions based on a single value:</p>
 <pre><code class="language-yodl"><span class="boring"> module Cell(clk: clock) -&gt; () {
-</span><span class="boring">   let alive = Reg&lt;bool&gt;(clk);
+</span><span class="boring">   let alive = Reg[bool](clk);
 </span><span class="boring">   const count = 2
 </span>    // compute next state in the Game of Life
     alive.d = match count {
@@ -187,7 +187,7 @@
 <h3 id="for-loops"><a class="header" href="#for-loops">For Loops</a></h3>
 <p>The <code>for</code> loop duplicates its body a fixed number of times, substituting the loop variable with the current iteration index.</p>
 <pre><code class="language-yodl">// Simple parallel hexadecimal to character decoder
-module Hex&lt;Bits: Nat&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[cdiv!(Bits, 4)]) {
+module Hex[Bits: Nat](n: uint[Bits]) -&gt; (chars: [cdiv!(Bits, 4)]u8) {
     const Len = cdiv!(Bits, 4)
     for i in 0..&lt;Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {

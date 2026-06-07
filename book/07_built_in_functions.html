@@ -161,12 +161,12 @@
 <h3 id="uintx"><a class="header" href="#uintx"><code>uint!(x)</code></a></h3>
 <p>Reinterprets a value as an unsigned integer.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let a: sint&lt;8&gt; = -7'd11
-    let b: uint&lt;8&gt; = uint!(a) // 8'd11
+</span>    let a: s8 = -7'd11
+    let b: u8 = uint!(a) // 8'd11
 <span class="boring"> }
 </span></code></pre>
 <p>When applied to a vector of bits, it concatenates them into a single unsigned integer.</p>
-<p>Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the <code>{&lt;expr_list&gt;}</code> concatenation operator.</p>
+<p>Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the <code>cat!</code> built-in.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let bits = [true, false, true, true]
     assert!(uint!(bits) == 4'b1101)
@@ -175,13 +175,13 @@
 <h3 id="sintx"><a class="header" href="#sintx"><code>sint!(x)</code></a></h3>
 <p>Reinterprets a value as a signed integer.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let a: sint&lt;8&gt; = sint!(8'b10101010)
+</span>    let a: s8 = sint!(8'b10101010)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="clockx"><a class="header" href="#clockx"><code>clock!(x)</code></a></h3>
 <p>Converts a boolean signal to a clock signal.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let counter = Reg&lt;uint&lt;24&gt;&gt;(clk)
+</span>    let counter = Reg[u24](clk)
     counter.d = counter.q + 1
     let slow_clk = clock!(counter.q[23]) // Divide the clock by 2^23
 <span class="boring"> }
@@ -192,7 +192,7 @@
 <p>Often used to determine the minimum number of bits required to represent a value.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    const AddrWidth = clog2!(1024)
-    let addr: uint&lt;AddrWidth&gt; = 10'd0
+    let addr: uint[AddrWidth] = 10'd0
     assert!(AddrWidth == 10)
 <span class="boring"> }
 </span></code></pre>
@@ -221,6 +221,32 @@
 <span class="boring"> }
 </span></code></pre>
 <h2 id="vector-functions"><a class="header" href="#vector-functions">Vector Functions</a></h2>
+<h3 id="catargs"><a class="header" href="#catargs"><code>cat!(args...)</code></a></h3>
+<p>Concatenates one or more integers (or integer vectors) into a single integer.
+The width of the result is the sum of the widths of the arguments. Vectors of
+integers are flattened recursively.</p>
+<p>If any argument is a signed integer (<code>sint</code>), every argument must be signed.</p>
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
+</span>    let upper_nibble = 8'hAB
+    let lower_nibble = 8'hCD
+    let word = cat!(upper_nibble, lower_nibble)
+    assert!(word == 16'hABCD)
+
+    // Vectors are flattened
+    let from_vec = cat!([16'hBABA, 16'hFABE])
+    assert!(from_vec == 32'hBABAFABE)
+<span class="boring"> }
+</span></code></pre>
+<h3 id="filln-x"><a class="header" href="#filln-x"><code>fill!(n, x)</code></a></h3>
+<p>Produces a vector <code>T[n]</code> containing <code>n</code> copies of <code>x</code>. For bit-replication
+(SystemVerilog <code>{n{x}}</code>), combine with <code>cat!</code>:</p>
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
+</span>    let zeros: [4]bool = fill!(4, 1'b0)
+    let mask:  u4 = cat!(fill!(4, 1'b1))   // 4'b1111
+    assert!(uint!(zeros) == 4'd0)
+    assert!(mask == 4'b1111)
+<span class="boring"> }
+</span></code></pre>
 <h3 id="revvec"><a class="header" href="#revvec"><code>rev!(vec)</code></a></h3>
 <p>Reverses the order of elements in a vector.</p>
 <p>Particularly useful when constructing a bit vector from a list of bits from most to least significant
@@ -237,16 +263,16 @@ since vectors are indexed from least to most significant, i.e. <code>vec[0]</cod
 <p>Extends the bit-width of an integer <code>x</code> to <code>width</code> bits.
 If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is unsigned, it performs zero-extension:</p>
 <div class="table-wrapper"><table><thead><tr><th>type of <code>x</code></th><th>pad!(x, width)</th></tr></thead><tbody>
-<tr><td>sint<W></td><td>sign-extend</td></tr>
-<tr><td>uint<W></td><td>zero-extend</td></tr>
+<tr><td>sint[W]</td><td>sign-extend</td></tr>
+<tr><td>uint[W]</td><td>zero-extend</td></tr>
 </tbody></table>
 </div>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let a = -4'd3 // 5'b1101
-    let b: sint&lt;8&gt; = pad!(a, 8) // 8'b11111101 (sign-extended)
+    let b: s8 = pad!(a, 8) // 8'b11111101 (sign-extended)
     assert!(uint!(b) == 8'b11111101)
-    let c: uint&lt;4&gt; = 4'd3 // 4'b0011
-    let d: uint&lt;8&gt; = pad!(c, 8) // 8'b00000011 (zero-extended)
+    let c: u4 = 4'd3 // 4'b0011
+    let d: u8 = pad!(c, 8) // 8'b00000011 (zero-extended)
     assert!(d == 8'b00000011)
 <span class="boring"> }
 </span></code></pre>
@@ -254,14 +280,14 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 <p>Yodl provides familiar <a href="https://projectf.io/posts/initialize-memory-in-verilog/"><code>$readmemb</code> and <code>$readmemh</code></a> functions to initialize Memory instances from files.</p>
 <h3 id="readmembfile-memory"><a class="header" href="#readmembfile-memory"><code>readmemb!(file, memory)</code></a></h3>
 <p>Initializes a memory from a binary format file.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: uint&lt;8&gt;) -&gt; () {
-</span>    let rom = Memory&lt;
-        T: uint&lt;8&gt;,
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: u8) -&gt; () {
+</span>    let rom = Memory[
+        T: u8,
         Depth: 256,
         ReadPorts: 1,
         WritePorts: 0,
-    &gt;(
-        read: [{ clk: clk, en: true, addr: addr }],
+    ](
+        read: [(clk: clk, en: true, addr: addr)],
     )
 
     // Initialize memory from binary file
@@ -272,14 +298,14 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 </span></code></pre>
 <h3 id="readmemhfile-memory"><a class="header" href="#readmemhfile-memory"><code>readmemh!(file, memory)</code></a></h3>
 <p>Initializes a memory from a hexadecimal format file.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: uint&lt;8&gt;) -&gt; () {
-</span>    let rom = Memory&lt;
-        T: uint&lt;8&gt;,
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: u8) -&gt; () {
+</span>    let rom = Memory[
+        T: u8,
         Depth: 256,
         ReadPorts: 1,
         WritePorts: 0,
-    &gt;(
-        read: [{ clk: clk, en: true, addr: addr }],
+    ](
+        read: [(clk: clk, en: true, addr: addr)],
     )
 
     // Initialize memory from hex file
@@ -291,7 +317,7 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 <h2 id="debug-functions"><a class="header" href="#debug-functions">Debug Functions</a></h2>
 <h3 id="printfformat_string-args"><a class="header" href="#printfformat_string-args"><code>printf!(format_string, args..)</code></a></h3>
 <p>Prints formatted text during simulation. Similar to C's printf.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, data: uint&lt;8&gt;) -&gt; () {
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, data: u8) -&gt; () {
 </span>    printf!("Value of data: %d", data)
 <span class="boring"> }
 </span></code></pre>

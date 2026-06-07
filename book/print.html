@@ -208,9 +208,9 @@ $ moon run src/main examples/Hello.yodl "write_firrtl Hello.fir"
   rst: bool,
 ) -&gt; (
   // outputs
-  leds: uint&lt;8&gt;,
+  leds: u8,
 ) {
-  let counter = Reg&lt;uint&lt;24&gt;&gt;(clk, rst)
+    let counter = Reg[u24](clk, rst)
   counter.d = counter.q + 1'd1
   leds = counter.q[23:16]
 }
@@ -272,19 +272,24 @@ endmodule
 <div style="break-before: page; page-break-before: always;"></div><h1 id="data-types"><a class="header" href="#data-types">Data Types</a></h1>
 <h2 id="ground-types"><a class="header" href="#ground-types">Ground Types</a></h2>
 <h3 id="integer-types"><a class="header" href="#integer-types">Integer types</a></h3>
-<p>Yodl supports two integer types, which require a width specifier.</p>
+<p>Yodl supports two integer types, which require a width specifier:</p>
+<div class="table-wrapper"><table><thead><tr><th>Form</th><th>Example</th><th>When to use</th></tr></thead><tbody>
+<tr><td><code>uN</code> / <code>sN</code></td><td><code>u8</code>, <code>u32</code>, <code>s7</code></td><td>Width is a literal</td></tr>
+<tr><td><code>uint[expr]</code> / <code>sint[expr]</code></td><td><code>uint[clog2!(N)]</code>, <code>sint[W + 1]</code></td><td>Width is a compile-time expression</td></tr>
+</tbody></table>
+</div>
 <h4 id="unsigned-integers"><a class="header" href="#unsigned-integers">Unsigned Integers</a></h4>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    // a 16-bit unsigned integer
-    let a: uint&lt;16&gt;
+    let a: u16
     a = 16'd1721
 <span class="boring"> }
 </span></code></pre>
 <h4 id="signed-integers"><a class="header" href="#signed-integers">Signed Integers</a></h4>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    // a 7-bit signed ingeger
-    let b: sint&lt;7&gt; = -6'd8
-    let c: sint&lt;32&gt; = sint!(32'd11)
+    let b: s7 = -6'd8
+    let c: s32 = sint!(32'd11)
 <span class="boring"> }
 </span></code></pre>
 <p>Integer literals can be specified in decimal, binary, octal, or hexadecimal format.
@@ -298,7 +303,7 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 </tbody></table>
 </div>
 <h3 id="booleans"><a class="header" href="#booleans">Booleans</a></h3>
-<p>The <code>bool</code> type is an alias for the <code>uint&lt;1&gt;</code> type.</p>
+<p>The <code>bool</code> type is an alias for the <code>u1</code> type.</p>
 <p>For readability, the <code>true</code> and <code>false</code> keywords are supported and correspond to <code>1'b1</code> and <code>1'b0</code> respectively.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    let is_yodl_neat: bool = true
@@ -306,8 +311,8 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 </span></code></pre>
 <h3 id="clocks"><a class="header" href="#clocks">Clocks</a></h3>
 <p>The <code>clock</code> type is required for clock signals used in <code>Reg</code> and <code>Memory</code> module instances.</p>
-<pre><code class="language-yodl">module Counter(clk: clock) -&gt; (count: uint&lt;24&gt;) {
-    let counter = Reg&lt;uint&lt;24&gt;&gt;(clk)
+<pre><code class="language-yodl">module Counter(clk: clock) -&gt; (count: u24) {
+    let counter = Reg[u24](clk)
     counter.d = counter.q + 1'd1
     count = counter.q
 }
@@ -318,10 +323,10 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <p>Vectors are ordered and sized collections of elements.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    // a vector of eight booleans
-    let neighbours: bool[8] = [false, false, true, false, true, false, true, false]
+    let neighbours: [8]bool = [false, false, true, false, true, false, true, false]
 
     // a vector of four 16-bit unsigned integers
-    let ints: uint&lt;16&gt;[4] = [16'd1, 16'd12, 16'd3, 16'd4]
+    let ints: [4]u16 = [16'd1, 16'd12, 16'd3, 16'd4]
 <span class="boring"> }
 </span></code></pre>
 <blockquote>
@@ -331,16 +336,16 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
     clk: clock,
     rst: bool,
     write_enable: bool,
-    write_dest: uint&lt;3&gt;,
-    write_data: uint&lt;16&gt;,
-    read_src1: uint&lt;3&gt;,
-    read_src2: uint&lt;3&gt;,
+    write_dest: u3,
+    write_data: u16,
+    read_src1: u3,
+    read_src2: u3,
 ) -&gt; (
-    read_data1: uint&lt;16&gt;,
-    read_data2: uint&lt;16&gt;,
+    read_data1: u16,
+    read_data2: u16,
 ) {
     // A register storing a vector of eight 16-bit unsigned integers
-    let regs = Reg&lt;uint&lt;16&gt;[8]&gt;(clk, rst)
+    let regs = Reg[[8]u16](clk, rst)
 
     if write_enable {
         regs.d[write_dest] = write_data
@@ -353,7 +358,7 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <h2 id="characters-and-strings"><a class="header" href="#characters-and-strings">Characters and Strings</a></h2>
 <p>Characters use the ISO 8601 encoding (extended ASCII).</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let char: uint&lt;8&gt; = 'a'
+</span>    let char: u8 = 'a'
 <span class="boring"> }
 </span></code></pre>
 <h3 id="escape-sequences"><a class="header" href="#escape-sequences">Escape sequences</a></h3>
@@ -367,7 +372,7 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <h3 id="strings"><a class="header" href="#strings">Strings</a></h3>
 <p>Strings are fixed-length vectors of characters.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let message: uint&lt;8&gt;[9] = "Yo, Yodl!"
+</span>    let message: [9]u8 = "Yo, Yodl!"
 <span class="boring"> }
 </span></code></pre>
 <p>Individual characters can be accessed using the following syntax:</p>
@@ -376,27 +381,60 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
     assert!(first_char == 'Y')
 <span class="boring"> }
 </span></code></pre>
-<h2 id="tuples"><a class="header" href="#tuples">Tuples</a></h2>
-<p>Tuples group a fixed number of ordered values of potentially different types.</p>
+<h2 id="records"><a class="header" href="#records">Records</a></h2>
+<p>Records group a fixed number of values, accessed either by position or by name.
+They subsume what other languages call <em>tuples</em> (positional) and <em>structs</em> /
+<em>bundles</em> (named).</p>
+<h3 id="positional-records-tuples"><a class="header" href="#positional-records-tuples">Positional records (tuples)</a></h3>
+<p>Fields are accessed by their index (<code>.0</code>, <code>.1</code>, ...). A 1-element positional
+record requires a trailing comma to distinguish it from a parenthesised
+expression.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let pair: (bool, uint&lt;8&gt;) = (true, 8'hFF)
-    let triplet: ({ a: uint&lt;4&gt;[1], b: bool }, (bool, uint&lt;8&gt;), uint&lt;1&gt;) = ({ a: [4'd1], b: false }, pair, 1'b0)
-    
+</span>    let pair: (bool, u8) = (true, 8'hFF)
+    let single: (u8,) = (8'hFF,)
+    let nested: ((a: [1]u4, b: bool), (bool, u8), u1) =
+        ((a: [4'd1], b: false), pair, 1'b0)
+
     let first: bool = pair.0 // true
-    let second: uint&lt;8&gt; = pair.1 // 8'hFF
+    let second: u8 = pair.1 // 8'hFF
 <span class="boring"> }
 </span></code></pre>
-<h2 id="structs"><a class="header" href="#structs">Structs</a></h2>
-<p>Structures (also known as Bundles in Chisel/FIRRTL) group multiple named values under a single name.</p>
+<h3 id="named-records-structs--bundles"><a class="header" href="#named-records-structs--bundles">Named records (structs / bundles)</a></h3>
+<p>Fields are named. This is what other HDLs call a <em>bundle</em> (Chisel/FIRRTL) or
+<em>struct</em> (SystemVerilog).</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let colour: { r: uint&lt;8&gt;, g: uint&lt;8&gt;, b: uint&lt;8&gt; } = { r: 8'd17, g: 8'd128, b: 8'd211 }
-    let red = colour.r;
+</span>    let colour: (r: u8, g: u8, b: u8) = (r: 8'd17, g: 8'd128, b: 8'd211)
+    let red = colour.r
+<span class="boring"> }
+</span></code></pre>
+<p>A named record can be partially updated by spreading another record with <code>..base</code>
+followed by overriding fields. Spread is only allowed in named records.</p>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    let base = (r: 8'd17, g: 8'd128, b: 8'd211)
+    let darker = (..base, r: 8'd0)
+<span class="boring"> }
+</span></code></pre>
+<p>Mixing positional and named fields in a single record is not allowed: a record
+is either fully positional or fully named.</p>
+<h3 id="records-and-module-signatures"><a class="header" href="#records-and-module-signatures">Records and module signatures</a></h3>
+<p>Because a module's input and output port lists use the same <code>(name: type, ...)</code>
+syntax as named record types, a module signature is literally a function from a
+record of inputs to a record of outputs. Module instantiation passes a record of
+named ports:</p>
+<pre><code class="language-yodl"><span class="boring"> module Adder(a: u8, b: u8) -&gt; (sum: u9) {
+</span><span class="boring">     sum = a + b
+</span><span class="boring"> }
+</span><span class="boring"> module Test() -&gt; () {
+</span>    let r = Adder(a: 8'd1, b: 8'd2)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="instance-types"><a class="header" href="#instance-types">Instance Types</a></h3>
-<p>The type of a module instance is similar to a structure corresponding to the port signature of the module.</p>
-<p>Note: Instance types are not compatible with structure types because only the ports which are accessed on a particular instance are included in the resulting type.</p>
-<pre><code class="language-yodl">module Adder(a: uint&lt;8&gt;, b: uint&lt;8&gt;) -&gt; (sum: uint&lt;9&gt;) {
+<p>The type of a module instance behaves like a named record corresponding to the
+port signature of the module.</p>
+<p>Note: Instance types are not compatible with named record types because only the
+ports which are accessed on a particular instance are included in the resulting
+type.</p>
+<pre><code class="language-yodl">module Adder(a: u8, b: u8) -&gt; (sum: u9) {
     sum = a + b;
 }
 
@@ -410,14 +448,14 @@ module Top() -&gt; () {
 <h1 id="structural-typing"><a class="header" href="#structural-typing">Structural Typing</a></h1>
 <p>Yodl's type system is structural (except for instance types), which means that two types are compatible if they have the same shape.</p>
 <div class="table-wrapper"><table><thead><tr><th>Type A</th><th>Type B</th><th>Compatible?</th></tr></thead><tbody>
-<tr><td><code>uint&lt;8&gt;</code></td><td><code>uint&lt;8&gt;</code></td><td>Yes</td></tr>
-<tr><td><code>uint&lt;1&gt;</code></td><td><code>bool</code></td><td>Yes</td></tr>
-<tr><td><code>{ a: uint&lt;16&gt;, b: bool }</code></td><td><code>{ b: bool, a: uint&lt;16&gt; }</code></td><td>Yes</td></tr>
-<tr><td><code>{ a: uint&lt;16&gt;, b: bool }</code></td><td><code>{ a: uint&lt;16&gt; }</code></td><td>No</td></tr>
-<tr><td><code>{ a: uint&lt;16&gt;, b: bool }</code></td><td><code>{ a: uint&lt;16&gt;, b: bool, c: bool[7] }</code></td><td>No</td></tr>
-<tr><td><code>uint&lt;8&gt;[8][8]</code></td><td><code>uint&lt;8&gt;[64]</code></td><td>No</td></tr>
+<tr><td><code>u8</code></td><td><code>u8</code></td><td>Yes</td></tr>
+<tr><td><code>u1</code></td><td><code>bool</code></td><td>Yes</td></tr>
+<tr><td><code>(a: u16, b: bool)</code></td><td><code>(b: bool, a: u16)</code></td><td>Yes</td></tr>
+<tr><td><code>(a: u16, b: bool)</code></td><td><code>(a: u16)</code></td><td>No</td></tr>
+<tr><td><code>(a: u16, b: bool)</code></td><td><code>(a: u16, b: bool, c: [7]bool)</code></td><td>No</td></tr>
+<tr><td><code>[8][8]u8</code></td><td><code>[64]u8</code></td><td>No</td></tr>
 <tr><td><code>Adder</code></td><td><code>Adder</code></td><td>Yes</td></tr>
-<tr><td><code>Adder</code></td><td><code>{ a: uint&lt;8&gt;, b: uint&lt;8&gt;, sum: uint&lt;9&gt; }</code></td><td>No</td></tr>
+<tr><td><code>Adder</code></td><td><code>(a: u8, b: u8, sum: u9)</code></td><td>No</td></tr>
 </tbody></table>
 </div><div style="break-before: page; page-break-before: always;"></div><h1 id="language-constructs"><a class="header" href="#language-constructs">Language Constructs</a></h1>
 <h2 id="packages"><a class="header" href="#packages">Packages</a></h2>
@@ -431,8 +469,8 @@ module Top() -&gt; () {
     ) -&gt; (
         hsync: bool,
         vsync: bool,
-        row: uint&lt;clog2!(SCREEN_HEIGHT)&gt;,
-        col: uint&lt;clog2!(SCREEN_WIDTH)&gt;,
+        row: uint[clog2!(SCREEN_HEIGHT)],
+        col: uint[clog2!(SCREEN_WIDTH)],
     ) {
         // ...
 <span class="boring">       hsync = 1'b0
@@ -447,14 +485,14 @@ module Top(
 ) -&gt; (
     hsync: bool,
     vsync: bool,
-    vga_color: { r: uint&lt;8&gt;, g: uint&lt;8&gt;, b: uint&lt;8&gt; },
+    vga_color: (r: u8, g: u8, b: u8),
 ) {
     let pulses = VGA::SyncPulses(clk, hsync, vsync)
-    vga_color = {
+    vga_color = (
         r: pulses.row[7:0],
         g: pulses.col[7:0],
         b: 8'd127,
-    }
+    )
 }
 </code></pre>
 <ul>
@@ -474,16 +512,16 @@ const CYCLES_PER_BIT = CLOCK_FREQ / BAUD_RATE
 </span></code></pre>
 <h2 id="type-alias-declarations"><a class="header" href="#type-alias-declarations">Type Alias Declarations</a></h2>
 <p>Type aliases are used to give a name to a commonly used type.</p>
-<pre><code class="language-yodl">type U8 = uint&lt;8&gt;
-type RGB = { r: U8, g: U8, b: U8 }
+<pre><code class="language-yodl">type U8 = u8
+type RGB = (r: U8, g: U8, b: U8)
 <span class="boring"> module Top() -&gt; () {}
 </span></code></pre>
 <h3 id="parameterised-type-aliases"><a class="header" href="#parameterised-type-aliases">Parameterised type aliases</a></h3>
 <p>Type aliases can be parameterised by providing a list of type parameters.</p>
-<pre><code class="language-yodl">type Triplet&lt;T&gt; = (T, T, T)
+<pre><code class="language-yodl">type Triplet[T] = (T, T, T)
 
 module Top() -&gt; () {
-    let triplet: Triplet&lt;bool&gt; = (true, false, false)
+    let triplet: Triplet[bool] = (true, false, false)
 }
 </code></pre>
 <h2 id="module-declarations"><a class="header" href="#module-declarations">Module Declarations</a></h2>
@@ -511,18 +549,18 @@ module Top() -&gt; () {
 <span class="boring"> module Top() -&gt; () {}
 </span></code></pre>
 <h3 id="parameterised-modules"><a class="header" href="#parameterised-modules">Parameterised Modules</a></h3>
-<p>Modules can be parameterised by specifying a list of parameters surrounded by <code>&lt;</code> and <code>&gt;</code> after the module name.</p>
-<pre><code class="language-yodl">module Adder&lt;N: Nat&gt;(
-    a: uint&lt;N&gt;,
-    b: uint&lt;N&gt;,
+<p>Modules can be parameterised by specifying a list of parameters surrounded by <code>[</code> and <code>]</code> after the module name.</p>
+<pre><code class="language-yodl">module Adder[N: Nat](
+    a: uint[N],
+    b: uint[N],
     carry_in: bool,
 ) -&gt; (
-    sum: uint&lt;N&gt;,
+    sum: uint[N],
     carry_out: bool,
 ) {
-    let carry_chain: bool[N + 1]
+    let carry_chain: [N + 1]bool
     carry_chain[0] = carry_in
-    let bits: bool[N]
+    let bits: [N]bool
 
     for i in 0..&lt;N {
         FullAdder(
@@ -552,24 +590,24 @@ module Top() -&gt; () {
 <p>Parameter names can be omitted if the parameters are specified in the same order as the declaration.</p>
 </li>
 </ul>
-<pre><code class="language-yodl">module Adder&lt;N: Nat&gt;(
-    a: uint&lt;N&gt;,
-    b: uint&lt;N&gt;,
+<pre><code class="language-yodl">module Adder[N: Nat](
+    a: uint[N],
+    b: uint[N],
     carry_in: bool,
 ) -&gt; (
-    sum: uint&lt;N&gt;,
+    sum: uint[N],
     carry_out: bool,
 ) {
-    let total: uint&lt;N + 1&gt; = a + b + carry_in
+    let total: uint[N + 1] = a + b + carry_in
     sum = total[N - 1 : 0]
     carry_out = total[N]
 }
 
 module Top(clk: clock) -&gt; () {
-    let counter = Reg&lt;uint&lt;32&gt;&gt;(clk)
+    let counter = Reg[u32](clk)
     counter.d = counter.q + 1
     
-    let adder = Adder&lt;32&gt;( // or Adder&lt;N: 32&gt;(..)
+    let adder = Adder[32]( // or Adder[N: 32](..)
         a: counter.q,
         b: 32'1,
         carry_in: 1'0,
@@ -586,9 +624,9 @@ module Top(clk: clock) -&gt; () {
 </ul>
 <p>All three <code>Reg</code> instances in the following example are equivalent.</p>
 <pre><code class="language-yodl">module Top(clk: clock, rst: bool) -&gt; () {
-    let reg1 = Reg&lt;uint&lt;32&gt;&gt;(clk: clk, rst: rst)
-    let reg2 = Reg&lt;uint&lt;32&gt;&gt;(clk, rst)
-    let reg3 = Reg&lt;uint&lt;32&gt;&gt;()
+    let reg1 = Reg[u32](clk: clk, rst: rst)
+    let reg2 = Reg[u32](clk, rst)
+    let reg3 = Reg[u32]()
 
     reg3.clk = clk
     reg3.rst = rst
@@ -602,10 +640,10 @@ module Top(clk: clock) -&gt; () {
 otherwise, the type must be explicitly specified.</li>
 </ul>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let message1: uint&lt;8&gt;[3]
+</span>    let message1: [3]u8
     message1 = "Yo!"
     let message2 = "Hi!"
-    let message3: uint&lt;8&gt;[3] = "Hey"
+    let message3: [3]u8 = "Hey"
 <span class="boring"> }
 </span></code></pre>
 <h2 id="assignments"><a class="header" href="#assignments">Assignments</a></h2>
@@ -678,32 +716,32 @@ otherwise, the type must be explicitly specified.</li>
 <div class="table-wrapper"><table><thead><tr><th>Operator</th><th>Description</th><th>Example</th></tr></thead><tbody>
 <tr><td><code>==</code></td><td>Equal</td><td><code>a == b</code></td></tr>
 <tr><td><code>!=</code></td><td>Not Equal</td><td><code>a != b</code></td></tr>
-<tr><td><code>&lt;:</code></td><td>Less Than</td><td><code>a &lt;: b</code></td></tr>
-<tr><td><code>&gt;:</code></td><td>Greater Than</td><td><code>a &gt;: b</code></td></tr>
+<tr><td><code>&lt;</code></td><td>Less Than</td><td><code>a &lt; b</code></td></tr>
+<tr><td><code>&gt;</code></td><td>Greater Than</td><td><code>a &gt; b</code></td></tr>
 <tr><td><code>&lt;=</code></td><td>Less Than or Equal</td><td><code>a &lt;= b</code></td></tr>
 <tr><td><code>&gt;=</code></td><td>Greater Than or Equal</td><td><code>a &gt;= b</code></td></tr>
 </tbody></table>
 </div><div class="warning">
-    Note: The `<:` and `>:` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
+    Note: The `<` and `>` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
 </div>
 <h2 id="ternary-operator"><a class="header" href="#ternary-operator">Ternary Operator</a></h2>
 <p>The ternary operator is a concise way to express conditional expressions, generally spanning a single line.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(a: uint&lt;8&gt;, b: uint&lt;8&gt;) -&gt; () {
+<pre><code class="language-yodl"><span class="boring"> module Test(a: u8, b: u8) -&gt; () {
 </span>    let max = a &gt;= b ? a : b
 <span class="boring"> }
 </span></code></pre>
 <h2 id="concatenation"><a class="header" href="#concatenation">Concatenation</a></h2>
-<p>Integer concatenation can be performed by wrapping a list of values in curly braces:</p>
+<p>Integer concatenation is performed with the <code>cat!</code> built-in function:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let upper_nibble = 8'hAB
     let lower_nibble = 8'hCD
-    let word = {upper_nibble, lower_nibble}
+    let word = cat!(upper_nibble, lower_nibble)
     assert!(word == 16'hABCD)
 <span class="boring"> }
 </span></code></pre>
-<p>The concatenation operator also accepts Vectors of integers.</p>
+<p><code>cat!</code> also accepts Vectors of integers, which it flattens automatically.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let value = {[1'1, 1'0, 1'0, 1'0]} // 4'b1000
+</span>    let value = cat!([1'1, 1'0, 1'0, 1'0]) // 4'b1000
     assert!(value == 4'b1000)
 <span class="boring"> }
 </span></code></pre>
@@ -711,26 +749,30 @@ otherwise, the type must be explicitly specified.</li>
 <p>Elements of vectors and bits of integers can be accessed using the <code>[]</code> operator:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let bits = [..8'd233]
-    let first = bits[0]     // Access the first element
-    let nibble = bits[7:4] // Extract a range of bits (inclusive)
-    let byte = bits[7-:8]   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
+    let first = bits[0]      // Access the first element
+    let nibble = bits[7:4]   // Extract a range of bits (inclusive)
+    let byte_desc = bits[7-:8] // 8 bits ending at bit 7 (equivalent to bits[7:0])
+    let byte_asc = bits[0+:8]  // 8 bits starting at bit 0 (equivalent to bits[7:0])
 
     assert!(first == 1'b1)
     assert!(uint!(nibble) == 4'hE)
-    assert!(uint!(byte) == 8'hE9)
+    assert!(uint!(byte_desc) == 8'hE9)
+    assert!(uint!(byte_asc) == 8'hE9)
 <span class="boring"> }
 </span></code></pre>
-<p>There are two forms of bit slicing:</p>
+<p>There are three forms of bit slicing:</p>
 <ol>
 <li><code>[high:low]</code> - Extract bits from position <code>high</code> down to <code>low</code> (inclusive)</li>
-<li><code>[start-:width]</code> - Extract <code>width</code> bits starting from position <code>start</code></li>
+<li><code>[base-:width]</code> - Extract <code>width</code> bits ending at <code>base</code> (selects <code>[base : base - width + 1]</code>)</li>
+<li><code>[base+:width]</code> - Extract <code>width</code> bits starting at <code>base</code> (selects <code>[base + width - 1 : base]</code>)</li>
 </ol>
+<p>The <code>+:</code> and <code>-:</code> forms match SystemVerilog's <a href="https://www.systemverilog.io/sv-explained/operators#bit-slicing">indexed part-select</a>.</p>
 <p>Note:</p>
 <ul>
 <li>Integers are indexed from the least significant bit (LSB) to the most significant bit (MSB) (right to left).</li>
 <li>Vectors follow standard array-indexing conventions, with the first element at index 0 (left to right).</li>
 </ul>
-<p>When a bit vector (<code>bool[N]</code> i.e. <code>uint&lt;1&gt;[N]</code>) is used as the argument of the <code>uint</code> and <code>sint</code> built-in functions,
+<p>When a bit vector (<code>[N]bool</code> i.e. <code>[N]u1</code>) is used as the argument of the <code>uint</code> and <code>sint</code> built-in functions,
 the first element of the vector becomes the MSB of the resulting integer:</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let n = uint!([1'b1, 1'b0, 1'b0])
@@ -738,15 +780,15 @@ the first element of the vector becomes the MSB of the resulting integer:</p>
 <span class="boring"> }
 </span></code></pre>
 <h2 id="replication"><a class="header" href="#replication">Replication</a></h2>
-<p>Replication expressions <code>&lt;uint&gt;*[&lt;expr-list&gt;]</code> and <code>&lt;uint&gt;*{&lt;expr-list&gt;}</code> create a vector by repeating a value multiple times:</p>
+<p>The <code>fill!(n, x)</code> built-in produces a vector <code>[n]T</code> of <code>n</code> copies of <code>x</code>:</p>
 <pre><code class="language-yodl"><span class="boring"> const a = 1'b1
 </span><span class="boring"> const b = 1'b0
 </span><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let zeros = 4*[1'b0]   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
-    let ones = 3*{1'b1} // Expands to {1'b, 1'b, 1'b1}
+</span>    let zeros = fill!(4, 1'b0)        // [1'b0, 1'b0, 1'b0, 1'b0]
+    let ones  = cat!(fill!(3, 1'b1))  // Concat-replicate: 3'b111
 
     assert!(uint!(zeros) == 4'd0)
-    assert!(uint!(ones) == 3'b111)
+    assert!(ones == 3'b111)
 <span class="boring"> }
 </span></code></pre>
 <p>The repeated expressions can contain any value, including instances:</p>
@@ -756,16 +798,16 @@ the first element of the vector becomes the MSB of the resulting integer:</p>
 </span>
 <span class="boring"> module Test(clk: clock, rst: bool) -&gt; () {
 </span>    // initialise a Rows by Cols grid of cells
-    let cells = Cols * [Rows * [Cell(clk, rst)]]
+    let cells = fill!(Cols, fill!(Rows, Cell(clk, rst)))
 <span class="boring"> }
 </span></code></pre>
 <h2 id="concatenation-1"><a class="header" href="#concatenation-1">Concatenation</a></h2>
-<p>Concatenation expressions <code>{&lt;expr-list&gt;}</code> create an integer from a list of smaller integers.
-The width of the resulting integer is the sum of the widths of the operands.</p>
+<p>The <code>cat!</code> built-in concatenates a list of integers (or integer vectors) into a single integer.
+The width of the result is the sum of the widths of the operands.</p>
 <p>If any operand is a signed integer (sint), then all operands are required to be signed.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let concat_args = {16'hBABA, 16'hFABE}
-    let concat_vec = {[16'hBABA, 16'hFABE]}
+</span>    let concat_args = cat!(16'hBABA, 16'hFABE)
+    let concat_vec  = cat!([16'hBABA, 16'hFABE])
 
     assert!(concat_args == 32'hBABAFABE)
     assert!(concat_vec == 32'hBABAFABE)
@@ -774,9 +816,9 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <h2 id="spread"><a class="header" href="#spread">Spread</a></h2>
 <p>The spread operator <code>..</code> can only appear inside a vector expression and is used to decompose a value into its individual elements.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let bits: uint&lt;1&gt;[4] = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
-    let chars: uint&lt;8&gt;[3] = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
-    let flat: uint&lt;2&gt;[3] = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
+</span>    let bits: [4]u1 = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
+    let chars: [3]u8 = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
+    let flat: [3]u2 = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
 
     assert!(bits[0] == 1'b0)
     assert!(bits[1] == 1'b0)
@@ -797,7 +839,7 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <li>Multiplication, division, modulo (<code>*</code>, <code>/</code>, <code>mod</code>)</li>
 <li>Addition, subtraction (<code>+</code>, <code>-</code>)</li>
 <li>Shift operations (<code>shl</code>, <code>shr</code>)</li>
-<li>Comparisons (<code>&lt;:</code>, <code>&gt;:</code>, <code>&lt;=</code>, <code>&gt;=</code>)</li>
+<li>Comparisons (<code>&lt;</code>, <code>&gt;</code>, <code>&lt;=</code>, <code>&gt;=</code>)</li>
 <li>Equality operators (<code>==</code>, <code>!=</code>)</li>
 <li>Bitwise AND and NAND (<code>and</code>, <code>nand</code>)</li>
 <li>Bitwise XOR and XNOR (<code>xor</code>, <code>xnor</code>)</li>
@@ -817,8 +859,8 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <tr><td><code>/</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>sint&lt;A + 1&gt;</code></td></tr>
 <tr><td><code>mod</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;min(A, B)&gt;</code></td></tr>
 <tr><td><code>mod</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>sint&lt;min(A, B)&gt;</code></td></tr>
-<tr><td><code>==</code>, <code>!=</code>, <code>&lt;:</code>, <code>&gt;:</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;1&gt;</code></td></tr>
-<tr><td><code>==</code>, <code>!=</code>, <code>&lt;:</code>, <code>&gt;:</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>uint&lt;1&gt;</code></td></tr>
+<tr><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>u1</code></td></tr>
+<tr><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>u1</code></td></tr>
 <tr><td><code>and</code>, <code>nand</code>, <code>or</code>, <code>nor</code>, <code>xor</code>, <code>xnor</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;max(A, B)&gt;</code></td></tr>
 <tr><td><code>and</code>, <code>nand</code>, <code>or</code>, <code>nor</code>, <code>xor</code>, <code>xnor</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>uint&lt;max(A, B)&gt;</code></td></tr>
 </tbody></table>
@@ -844,8 +886,8 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <h2 id="conditional-statements"><a class="header" href="#conditional-statements">Conditional Statements</a></h2>
 <h3 id="if-expressions"><a class="header" href="#if-expressions">If Expressions</a></h3>
 <p>If expressions evaluate a condition and execute one of two branches based on the result:</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(a: uint&lt;8&gt;, b: uint&lt;8&gt;) -&gt; () {
-</span>    let max = if a &gt;: b {
+<pre><code class="language-yodl"><span class="boring"> module Test(a: u8, b: u8) -&gt; () {
+</span>    let max = if a &gt; b {
         a
     } else {
         b
@@ -856,7 +898,7 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <h3 id="match-expressions"><a class="header" href="#match-expressions">Match Expressions</a></h3>
 <p>Match expressions provide a compact way of handling multiple conditions based on a single value:</p>
 <pre><code class="language-yodl"><span class="boring"> module Cell(clk: clock) -&gt; () {
-</span><span class="boring">   let alive = Reg&lt;bool&gt;(clk);
+</span><span class="boring">   let alive = Reg[bool](clk);
 </span><span class="boring">   const count = 2
 </span>    // compute next state in the Game of Life
     alive.d = match count {
@@ -871,7 +913,7 @@ The width of the resulting integer is the sum of the widths of the operands.</p>
 <h3 id="for-loops"><a class="header" href="#for-loops">For Loops</a></h3>
 <p>The <code>for</code> loop duplicates its body a fixed number of times, substituting the loop variable with the current iteration index.</p>
 <pre><code class="language-yodl">// Simple parallel hexadecimal to character decoder
-module Hex&lt;Bits: Nat&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[cdiv!(Bits, 4)]) {
+module Hex[Bits: Nat](n: uint[Bits]) -&gt; (chars: [cdiv!(Bits, 4)]u8) {
     const Len = cdiv!(Bits, 4)
     for i in 0..&lt;Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
@@ -919,12 +961,12 @@ module Hex&lt;Bits: Nat&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[cdi
 <h3 id="uintx"><a class="header" href="#uintx"><code>uint!(x)</code></a></h3>
 <p>Reinterprets a value as an unsigned integer.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let a: sint&lt;8&gt; = -7'd11
-    let b: uint&lt;8&gt; = uint!(a) // 8'd11
+</span>    let a: s8 = -7'd11
+    let b: u8 = uint!(a) // 8'd11
 <span class="boring"> }
 </span></code></pre>
 <p>When applied to a vector of bits, it concatenates them into a single unsigned integer.</p>
-<p>Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the <code>{&lt;expr_list&gt;}</code> concatenation operator.</p>
+<p>Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the <code>cat!</code> built-in.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let bits = [true, false, true, true]
     assert!(uint!(bits) == 4'b1101)
@@ -933,13 +975,13 @@ module Hex&lt;Bits: Nat&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[cdi
 <h3 id="sintx"><a class="header" href="#sintx"><code>sint!(x)</code></a></h3>
 <p>Reinterprets a value as a signed integer.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let a: sint&lt;8&gt; = sint!(8'b10101010)
+</span>    let a: s8 = sint!(8'b10101010)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="clockx"><a class="header" href="#clockx"><code>clock!(x)</code></a></h3>
 <p>Converts a boolean signal to a clock signal.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let counter = Reg&lt;uint&lt;24&gt;&gt;(clk)
+</span>    let counter = Reg[u24](clk)
     counter.d = counter.q + 1
     let slow_clk = clock!(counter.q[23]) // Divide the clock by 2^23
 <span class="boring"> }
@@ -950,7 +992,7 @@ module Hex&lt;Bits: Nat&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[cdi
 <p>Often used to determine the minimum number of bits required to represent a value.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    const AddrWidth = clog2!(1024)
-    let addr: uint&lt;AddrWidth&gt; = 10'd0
+    let addr: uint[AddrWidth] = 10'd0
     assert!(AddrWidth == 10)
 <span class="boring"> }
 </span></code></pre>
@@ -979,6 +1021,32 @@ module Hex&lt;Bits: Nat&gt;(n: uint&lt;Bits&gt;) -&gt; (chars: uint&lt;8&gt;[cdi
 <span class="boring"> }
 </span></code></pre>
 <h2 id="vector-functions"><a class="header" href="#vector-functions">Vector Functions</a></h2>
+<h3 id="catargs"><a class="header" href="#catargs"><code>cat!(args...)</code></a></h3>
+<p>Concatenates one or more integers (or integer vectors) into a single integer.
+The width of the result is the sum of the widths of the arguments. Vectors of
+integers are flattened recursively.</p>
+<p>If any argument is a signed integer (<code>sint</code>), every argument must be signed.</p>
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
+</span>    let upper_nibble = 8'hAB
+    let lower_nibble = 8'hCD
+    let word = cat!(upper_nibble, lower_nibble)
+    assert!(word == 16'hABCD)
+
+    // Vectors are flattened
+    let from_vec = cat!([16'hBABA, 16'hFABE])
+    assert!(from_vec == 32'hBABAFABE)
+<span class="boring"> }
+</span></code></pre>
+<h3 id="filln-x"><a class="header" href="#filln-x"><code>fill!(n, x)</code></a></h3>
+<p>Produces a vector <code>T[n]</code> containing <code>n</code> copies of <code>x</code>. For bit-replication
+(SystemVerilog <code>{n{x}}</code>), combine with <code>cat!</code>:</p>
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
+</span>    let zeros: [4]bool = fill!(4, 1'b0)
+    let mask:  u4 = cat!(fill!(4, 1'b1))   // 4'b1111
+    assert!(uint!(zeros) == 4'd0)
+    assert!(mask == 4'b1111)
+<span class="boring"> }
+</span></code></pre>
 <h3 id="revvec"><a class="header" href="#revvec"><code>rev!(vec)</code></a></h3>
 <p>Reverses the order of elements in a vector.</p>
 <p>Particularly useful when constructing a bit vector from a list of bits from most to least significant
@@ -995,16 +1063,16 @@ since vectors are indexed from least to most significant, i.e. <code>vec[0]</cod
 <p>Extends the bit-width of an integer <code>x</code> to <code>width</code> bits.
 If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is unsigned, it performs zero-extension:</p>
 <div class="table-wrapper"><table><thead><tr><th>type of <code>x</code></th><th>pad!(x, width)</th></tr></thead><tbody>
-<tr><td>sint<W></td><td>sign-extend</td></tr>
-<tr><td>uint<W></td><td>zero-extend</td></tr>
+<tr><td>sint[W]</td><td>sign-extend</td></tr>
+<tr><td>uint[W]</td><td>zero-extend</td></tr>
 </tbody></table>
 </div>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
 </span>    let a = -4'd3 // 5'b1101
-    let b: sint&lt;8&gt; = pad!(a, 8) // 8'b11111101 (sign-extended)
+    let b: s8 = pad!(a, 8) // 8'b11111101 (sign-extended)
     assert!(uint!(b) == 8'b11111101)
-    let c: uint&lt;4&gt; = 4'd3 // 4'b0011
-    let d: uint&lt;8&gt; = pad!(c, 8) // 8'b00000011 (zero-extended)
+    let c: u4 = 4'd3 // 4'b0011
+    let d: u8 = pad!(c, 8) // 8'b00000011 (zero-extended)
     assert!(d == 8'b00000011)
 <span class="boring"> }
 </span></code></pre>
@@ -1012,14 +1080,14 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 <p>Yodl provides familiar <a href="https://projectf.io/posts/initialize-memory-in-verilog/"><code>$readmemb</code> and <code>$readmemh</code></a> functions to initialize Memory instances from files.</p>
 <h3 id="readmembfile-memory"><a class="header" href="#readmembfile-memory"><code>readmemb!(file, memory)</code></a></h3>
 <p>Initializes a memory from a binary format file.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: uint&lt;8&gt;) -&gt; () {
-</span>    let rom = Memory&lt;
-        T: uint&lt;8&gt;,
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: u8) -&gt; () {
+</span>    let rom = Memory[
+        T: u8,
         Depth: 256,
         ReadPorts: 1,
         WritePorts: 0,
-    &gt;(
-        read: [{ clk: clk, en: true, addr: addr }],
+    ](
+        read: [(clk: clk, en: true, addr: addr)],
     )
 
     // Initialize memory from binary file
@@ -1030,14 +1098,14 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 </span></code></pre>
 <h3 id="readmemhfile-memory"><a class="header" href="#readmemhfile-memory"><code>readmemh!(file, memory)</code></a></h3>
 <p>Initializes a memory from a hexadecimal format file.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: uint&lt;8&gt;) -&gt; () {
-</span>    let rom = Memory&lt;
-        T: uint&lt;8&gt;,
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, addr: u8) -&gt; () {
+</span>    let rom = Memory[
+        T: u8,
         Depth: 256,
         ReadPorts: 1,
         WritePorts: 0,
-    &gt;(
-        read: [{ clk: clk, en: true, addr: addr }],
+    ](
+        read: [(clk: clk, en: true, addr: addr)],
     )
 
     // Initialize memory from hex file
@@ -1049,7 +1117,7 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 <h2 id="debug-functions"><a class="header" href="#debug-functions">Debug Functions</a></h2>
 <h3 id="printfformat_string-args"><a class="header" href="#printfformat_string-args"><code>printf!(format_string, args..)</code></a></h3>
 <p>Prints formatted text during simulation. Similar to C's printf.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, data: uint&lt;8&gt;) -&gt; () {
+<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, data: u8) -&gt; () {
 </span>    printf!("Value of data: %d", data)
 <span class="boring"> }
 </span></code></pre>
@@ -1075,8 +1143,8 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 <h2 id="registers"><a class="header" href="#registers">Registers</a></h2>
 <p>Registers are fundamental storage elements in digital circuits. They store data between clock cycles.</p>
 <h3 id="basic-register"><a class="header" href="#basic-register">Basic Register</a></h3>
-<pre><code class="language-yodl">module Counter(clk: clock) -&gt; (value: uint&lt;8&gt;) {
-    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk)
+<pre><code class="language-yodl">module Counter(clk: clock) -&gt; (value: u8) {
+    let counter = Reg[u8](clk)
     counter.d = counter.q + 1'b1
     value = counter.q
 }
@@ -1096,31 +1164,31 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 </tbody></table>
 </div>
 <h3 id="register-with-reset"><a class="header" href="#register-with-reset">Register with Reset</a></h3>
-<pre><code class="language-yodl">module Counter(clk: clock, rst: bool) -&gt; (value: uint&lt;8&gt;) {
-    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk, rst)
+<pre><code class="language-yodl">module Counter(clk: clock, rst: bool) -&gt; (value: u8) {
+    let counter = Reg[u8](clk, rst)
     counter.d = counter.q + 1'b1
     value = counter.q
 }
 </code></pre>
 <p>When <code>rst</code> is asserted, the register's value is synchronously reset to 0.</p>
 <h3 id="register-with-enable"><a class="header" href="#register-with-enable">Register with Enable</a></h3>
-<pre><code class="language-yodl">module Counter(clk: clock, enable: bool) -&gt; (value: uint&lt;8&gt;) {
-    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk, en: enable)
+<pre><code class="language-yodl">module Counter(clk: clock, enable: bool) -&gt; (value: u8) {
+    let counter = Reg[u8](clk, en: enable)
     counter.d = counter.q + 1'b1
     value = counter.q
 }
 </code></pre>
 <p>The register only updates its value when <code>enable</code> is asserted.</p>
 <p>The same behaviour can be obtained using the <code>d</code> port only:</p>
-<pre><code class="language-yodl">module Counter(clk: clock, enable: bool) -&gt; (value: uint&lt;8&gt;) {
-    let counter = Reg&lt;uint&lt;8&gt;&gt;(clk)
+<pre><code class="language-yodl">module Counter(clk: clock, enable: bool) -&gt; (value: u8) {
+    let counter = Reg[u8](clk)
     counter.d = enable ? counter.q + 1'b1 : counter.q
     value = counter.q
 }
 </code></pre>
 <h3 id="register-with-asynchronous-reset"><a class="header" href="#register-with-asynchronous-reset">Register with Asynchronous Reset</a></h3>
 <pre><code class="language-yodl"><span class="boring"> module Test(clk: clock, rst: bool) -&gt; () {
-</span>    let state = RegAsyncReset&lt;uint&lt;2&gt;&gt;(clk, rst)
+</span>    let state = RegAsyncReset[u2](clk, rst)
 <span class="boring"> }
 </span></code></pre>
 <p>With <code>RegAsyncReset</code>, the reset signal is asynchronous and takes effect immediately.</p>
@@ -1139,30 +1207,30 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 </div>
 <h3 id="ports-1"><a class="header" href="#ports-1">Ports</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>Port</th><th>Direction</th><th>Type</th><th>Description</th></tr></thead><tbody>
-<tr><td><code>read</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;clog2!(Depth)&gt;</code>}[<code>ReadPorts</code>]</td><td>Read port(s)</td></tr>
-<tr><td><code>write</code></td><td>Input</td><td>{<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint&lt;clog2!(Depth)&gt;</code>, <code>data</code>: <code>T</code>, <code>mask</code>: <code>MemoryMask&lt;T&gt;</code>}[<code>WritePorts</code>]</td><td>Write port(s)</td></tr>
-<tr><td><code>q</code></td><td>Output</td><td><code>T</code>[<code>ReadPorts</code>]</td><td>Read data port(s)</td></tr>
+<tr><td><code>read</code></td><td>Input</td><td>[<code>ReadPorts</code>](<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint[clog2!(Depth)]</code>)</td><td>Read port(s)</td></tr>
+<tr><td><code>write</code></td><td>Input</td><td>[<code>WritePorts</code>](<code>clk</code>: <code>clock</code>, <code>en</code>: <code>bool</code>, <code>addr</code>: <code>uint[clog2!(Depth)]</code>, <code>data</code>: <code>T</code>, <code>mask</code>: <code>MemoryMask[T]</code>)</td><td>Write port(s)</td></tr>
+<tr><td><code>q</code></td><td>Output</td><td>[<code>ReadPorts</code>]<code>T</code></td><td>Read data port(s)</td></tr>
 </tbody></table>
 </div>
 <h3 id="basic-memory"><a class="header" href="#basic-memory">Basic Memory</a></h3>
 <pre><code class="language-yodl">module RAM(
     clk: clock,
-    addr: uint&lt;10&gt;,
-    write_data: uint&lt;8&gt;,
+    addr: u10,
+    write_data: u8,
     write_enable: bool,
 ) -&gt; (
-    read_data: uint&lt;8&gt;,
+    read_data: u8,
 ) {
-    let mem = Memory&lt;
-        T: uint&lt;8&gt;,           // Data type
+    let mem = Memory[
+        T: u8,           // Data type
         Depth: 1024,          // Number of entries
         ReadPorts: 1,         // Number of read ports
         WritePorts: 1,        // Number of write ports
         ReadLatency: 1,       // Cycles to read
         WriteLatency: 1,      // Cycles to write
-    &gt;(
-        read: [{ clk: clk, en: true, addr: addr }],
-        write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: true }],
+    ](
+        read: [(clk: clk, en: true, addr: addr)],
+        write: [(clk: clk, en: write_enable, addr: addr, data: write_data, mask: true)],
     )
     
     read_data = mem.q[0]
@@ -1172,37 +1240,37 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 <p>Write masking allows selective updates to parts of a memory word:</p>
 <pre><code class="language-yodl">module ByteAddressableRAM(
     clk: clock,
-    addr: uint&lt;10&gt;,
-    write_data: uint&lt;8&gt;[4],   // 32-bit word as 4 bytes
-    byte_mask: bool[4],       // Which bytes to write
+    addr: u10,
+    write_data: [4]u8,   // 32-bit word as 4 bytes
+    byte_mask: [4]bool,       // Which bytes to write
     write_enable: bool,
 ) -&gt; (
-    read_data: uint&lt;32&gt;,
+    read_data: u32,
 ) {
-    let mem = Memory&lt;
-        T: uint&lt;8&gt;[4],
+    let mem = Memory[
+        T: [4]u8,
         Depth: 1024,
         ReadPorts: 1,
         WritePorts: 1,
         ReadLatency: 1,
         WriteLatency: 1,
-    &gt;(
-        read: [{ clk: clk, en: true, addr: addr }],
-        write: [{ clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask }],
+    ](
+        read: [(clk: clk, en: true, addr: addr)],
+        write: [(clk: clk, en: write_enable, addr: addr, data: write_data, mask: byte_mask)],
     )
 
     read_data = uint!(mem.q[0])
 }
 </code></pre>
 <h4 id="mask-type"><a class="header" href="#mask-type">Mask Type</a></h4>
-<p>Intuitively, the mask type <code>MemoryMask&lt;T&gt;</code> of a data type <code>T</code> matches the structure of <code>T</code> with each ground type (e.g. <code>uint&lt;N&gt;</code>, <code>sint&lt;N&gt;</code>, ..) replaced with <code>bool</code>.</p>
+<p>Intuitively, the mask type <code>MemoryMask[T]</code> of a data type <code>T</code> matches the structure of <code>T</code> with each ground type (e.g. <code>uint[N]</code>, <code>sint[N]</code>, ..) replaced with <code>bool</code>.</p>
 <p>Examples:</p>
 <div class="table-wrapper"><table><thead><tr><th>Data Type</th><th>Mask Type</th></tr></thead><tbody>
 <tr><td><code>bool</code></td><td><code>bool</code></td></tr>
-<tr><td><code>uint&lt;8&gt;</code></td><td><code>bool</code></td></tr>
-<tr><td><code>uint&lt;32&gt;[4]</code></td><td><code>bool[4]</code></td></tr>
-<tr><td><code>{a: uint&lt;8&gt;, b: uint&lt;8&gt;}</code></td><td><code>{a: bool, b: bool}</code></td></tr>
-<tr><td><code>{a: {b: uint&lt;16&gt;[64], c: bool}}</code></td><td><code>{a: {b: bool[64], c: bool}}</code></td></tr>
+<tr><td><code>u8</code></td><td><code>bool</code></td></tr>
+<tr><td><code>[4]u32</code></td><td><code>[4]bool</code></td></tr>
+<tr><td><code>(a: u8, b: u8)</code></td><td><code>(a: bool, b: bool)</code></td></tr>
+<tr><td><code>(a: (b: [64]u16, c: bool))</code></td><td><code>(a: (b: [64]bool, c: bool))</code></td></tr>
 </tbody></table>
 </div><div class="warning">
     Portions of an integer cannot directly be masked in Yodl, just like in Chisel.
@@ -1216,11 +1284,11 @@ If <code>x</code> is signed, it performs sign-extension; if <code>x</code> is un
 <pre><code class="language-yodl">@external("module_name", "file.v")
 @parameters({ PARAM1: 0, PARAM2: "true" })
 declare module ExternalModule(
-    input1: uint&lt;8&gt;,
-    input2: bool[4],
+    input1: u8,
+    input2: [4]bool,
 ) -&gt; (
     output1: bool,
-    output2: uint&lt;16&gt;,
+    output2: u16,
 )
 
 <span class="boring"> module Top() -&gt; () {}

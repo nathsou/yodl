@@ -158,19 +158,24 @@
                         <h1 id="data-types"><a class="header" href="#data-types">Data Types</a></h1>
 <h2 id="ground-types"><a class="header" href="#ground-types">Ground Types</a></h2>
 <h3 id="integer-types"><a class="header" href="#integer-types">Integer types</a></h3>
-<p>Yodl supports two integer types, which require a width specifier.</p>
+<p>Yodl supports two integer types, which require a width specifier:</p>
+<div class="table-wrapper"><table><thead><tr><th>Form</th><th>Example</th><th>When to use</th></tr></thead><tbody>
+<tr><td><code>uN</code> / <code>sN</code></td><td><code>u8</code>, <code>u32</code>, <code>s7</code></td><td>Width is a literal</td></tr>
+<tr><td><code>uint[expr]</code> / <code>sint[expr]</code></td><td><code>uint[clog2!(N)]</code>, <code>sint[W + 1]</code></td><td>Width is a compile-time expression</td></tr>
+</tbody></table>
+</div>
 <h4 id="unsigned-integers"><a class="header" href="#unsigned-integers">Unsigned Integers</a></h4>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    // a 16-bit unsigned integer
-    let a: uint&lt;16&gt;
+    let a: u16
     a = 16'd1721
 <span class="boring"> }
 </span></code></pre>
 <h4 id="signed-integers"><a class="header" href="#signed-integers">Signed Integers</a></h4>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    // a 7-bit signed ingeger
-    let b: sint&lt;7&gt; = -6'd8
-    let c: sint&lt;32&gt; = sint!(32'd11)
+    let b: s7 = -6'd8
+    let c: s32 = sint!(32'd11)
 <span class="boring"> }
 </span></code></pre>
 <p>Integer literals can be specified in decimal, binary, octal, or hexadecimal format.
@@ -184,7 +189,7 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 </tbody></table>
 </div>
 <h3 id="booleans"><a class="header" href="#booleans">Booleans</a></h3>
-<p>The <code>bool</code> type is an alias for the <code>uint&lt;1&gt;</code> type.</p>
+<p>The <code>bool</code> type is an alias for the <code>u1</code> type.</p>
 <p>For readability, the <code>true</code> and <code>false</code> keywords are supported and correspond to <code>1'b1</code> and <code>1'b0</code> respectively.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    let is_yodl_neat: bool = true
@@ -192,8 +197,8 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 </span></code></pre>
 <h3 id="clocks"><a class="header" href="#clocks">Clocks</a></h3>
 <p>The <code>clock</code> type is required for clock signals used in <code>Reg</code> and <code>Memory</code> module instances.</p>
-<pre><code class="language-yodl">module Counter(clk: clock) -&gt; (count: uint&lt;24&gt;) {
-    let counter = Reg&lt;uint&lt;24&gt;&gt;(clk)
+<pre><code class="language-yodl">module Counter(clk: clock) -&gt; (count: u24) {
+    let counter = Reg[u24](clk)
     counter.d = counter.q + 1'd1
     count = counter.q
 }
@@ -204,10 +209,10 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <p>Vectors are ordered and sized collections of elements.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
 </span>    // a vector of eight booleans
-    let neighbours: bool[8] = [false, false, true, false, true, false, true, false]
+    let neighbours: [8]bool = [false, false, true, false, true, false, true, false]
 
     // a vector of four 16-bit unsigned integers
-    let ints: uint&lt;16&gt;[4] = [16'd1, 16'd12, 16'd3, 16'd4]
+    let ints: [4]u16 = [16'd1, 16'd12, 16'd3, 16'd4]
 <span class="boring"> }
 </span></code></pre>
 <blockquote>
@@ -217,16 +222,16 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
     clk: clock,
     rst: bool,
     write_enable: bool,
-    write_dest: uint&lt;3&gt;,
-    write_data: uint&lt;16&gt;,
-    read_src1: uint&lt;3&gt;,
-    read_src2: uint&lt;3&gt;,
+    write_dest: u3,
+    write_data: u16,
+    read_src1: u3,
+    read_src2: u3,
 ) -&gt; (
-    read_data1: uint&lt;16&gt;,
-    read_data2: uint&lt;16&gt;,
+    read_data1: u16,
+    read_data2: u16,
 ) {
     // A register storing a vector of eight 16-bit unsigned integers
-    let regs = Reg&lt;uint&lt;16&gt;[8]&gt;(clk, rst)
+    let regs = Reg[[8]u16](clk, rst)
 
     if write_enable {
         regs.d[write_dest] = write_data
@@ -239,7 +244,7 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <h2 id="characters-and-strings"><a class="header" href="#characters-and-strings">Characters and Strings</a></h2>
 <p>Characters use the ISO 8601 encoding (extended ASCII).</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let char: uint&lt;8&gt; = 'a'
+</span>    let char: u8 = 'a'
 <span class="boring"> }
 </span></code></pre>
 <h3 id="escape-sequences"><a class="header" href="#escape-sequences">Escape sequences</a></h3>
@@ -253,7 +258,7 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <h3 id="strings"><a class="header" href="#strings">Strings</a></h3>
 <p>Strings are fixed-length vectors of characters.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let message: uint&lt;8&gt;[9] = "Yo, Yodl!"
+</span>    let message: [9]u8 = "Yo, Yodl!"
 <span class="boring"> }
 </span></code></pre>
 <p>Individual characters can be accessed using the following syntax:</p>
@@ -262,27 +267,60 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
     assert!(first_char == 'Y')
 <span class="boring"> }
 </span></code></pre>
-<h2 id="tuples"><a class="header" href="#tuples">Tuples</a></h2>
-<p>Tuples group a fixed number of ordered values of potentially different types.</p>
+<h2 id="records"><a class="header" href="#records">Records</a></h2>
+<p>Records group a fixed number of values, accessed either by position or by name.
+They subsume what other languages call <em>tuples</em> (positional) and <em>structs</em> /
+<em>bundles</em> (named).</p>
+<h3 id="positional-records-tuples"><a class="header" href="#positional-records-tuples">Positional records (tuples)</a></h3>
+<p>Fields are accessed by their index (<code>.0</code>, <code>.1</code>, ...). A 1-element positional
+record requires a trailing comma to distinguish it from a parenthesised
+expression.</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let pair: (bool, uint&lt;8&gt;) = (true, 8'hFF)
-    let triplet: ({ a: uint&lt;4&gt;[1], b: bool }, (bool, uint&lt;8&gt;), uint&lt;1&gt;) = ({ a: [4'd1], b: false }, pair, 1'b0)
-    
+</span>    let pair: (bool, u8) = (true, 8'hFF)
+    let single: (u8,) = (8'hFF,)
+    let nested: ((a: [1]u4, b: bool), (bool, u8), u1) =
+        ((a: [4'd1], b: false), pair, 1'b0)
+
     let first: bool = pair.0 // true
-    let second: uint&lt;8&gt; = pair.1 // 8'hFF
+    let second: u8 = pair.1 // 8'hFF
 <span class="boring"> }
 </span></code></pre>
-<h2 id="structs"><a class="header" href="#structs">Structs</a></h2>
-<p>Structures (also known as Bundles in Chisel/FIRRTL) group multiple named values under a single name.</p>
+<h3 id="named-records-structs--bundles"><a class="header" href="#named-records-structs--bundles">Named records (structs / bundles)</a></h3>
+<p>Fields are named. This is what other HDLs call a <em>bundle</em> (Chisel/FIRRTL) or
+<em>struct</em> (SystemVerilog).</p>
 <pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let colour: { r: uint&lt;8&gt;, g: uint&lt;8&gt;, b: uint&lt;8&gt; } = { r: 8'd17, g: 8'd128, b: 8'd211 }
-    let red = colour.r;
+</span>    let colour: (r: u8, g: u8, b: u8) = (r: 8'd17, g: 8'd128, b: 8'd211)
+    let red = colour.r
+<span class="boring"> }
+</span></code></pre>
+<p>A named record can be partially updated by spreading another record with <code>..base</code>
+followed by overriding fields. Spread is only allowed in named records.</p>
+<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
+</span>    let base = (r: 8'd17, g: 8'd128, b: 8'd211)
+    let darker = (..base, r: 8'd0)
+<span class="boring"> }
+</span></code></pre>
+<p>Mixing positional and named fields in a single record is not allowed: a record
+is either fully positional or fully named.</p>
+<h3 id="records-and-module-signatures"><a class="header" href="#records-and-module-signatures">Records and module signatures</a></h3>
+<p>Because a module's input and output port lists use the same <code>(name: type, ...)</code>
+syntax as named record types, a module signature is literally a function from a
+record of inputs to a record of outputs. Module instantiation passes a record of
+named ports:</p>
+<pre><code class="language-yodl"><span class="boring"> module Adder(a: u8, b: u8) -&gt; (sum: u9) {
+</span><span class="boring">     sum = a + b
+</span><span class="boring"> }
+</span><span class="boring"> module Test() -&gt; () {
+</span>    let r = Adder(a: 8'd1, b: 8'd2)
 <span class="boring"> }
 </span></code></pre>
 <h3 id="instance-types"><a class="header" href="#instance-types">Instance Types</a></h3>
-<p>The type of a module instance is similar to a structure corresponding to the port signature of the module.</p>
-<p>Note: Instance types are not compatible with structure types because only the ports which are accessed on a particular instance are included in the resulting type.</p>
-<pre><code class="language-yodl">module Adder(a: uint&lt;8&gt;, b: uint&lt;8&gt;) -&gt; (sum: uint&lt;9&gt;) {
+<p>The type of a module instance behaves like a named record corresponding to the
+port signature of the module.</p>
+<p>Note: Instance types are not compatible with named record types because only the
+ports which are accessed on a particular instance are included in the resulting
+type.</p>
+<pre><code class="language-yodl">module Adder(a: u8, b: u8) -&gt; (sum: u9) {
     sum = a + b;
 }
 
@@ -296,14 +334,14 @@ module Top() -&gt; () {
 <h1 id="structural-typing"><a class="header" href="#structural-typing">Structural Typing</a></h1>
 <p>Yodl's type system is structural (except for instance types), which means that two types are compatible if they have the same shape.</p>
 <div class="table-wrapper"><table><thead><tr><th>Type A</th><th>Type B</th><th>Compatible?</th></tr></thead><tbody>
-<tr><td><code>uint&lt;8&gt;</code></td><td><code>uint&lt;8&gt;</code></td><td>Yes</td></tr>
-<tr><td><code>uint&lt;1&gt;</code></td><td><code>bool</code></td><td>Yes</td></tr>
-<tr><td><code>{ a: uint&lt;16&gt;, b: bool }</code></td><td><code>{ b: bool, a: uint&lt;16&gt; }</code></td><td>Yes</td></tr>
-<tr><td><code>{ a: uint&lt;16&gt;, b: bool }</code></td><td><code>{ a: uint&lt;16&gt; }</code></td><td>No</td></tr>
-<tr><td><code>{ a: uint&lt;16&gt;, b: bool }</code></td><td><code>{ a: uint&lt;16&gt;, b: bool, c: bool[7] }</code></td><td>No</td></tr>
-<tr><td><code>uint&lt;8&gt;[8][8]</code></td><td><code>uint&lt;8&gt;[64]</code></td><td>No</td></tr>
+<tr><td><code>u8</code></td><td><code>u8</code></td><td>Yes</td></tr>
+<tr><td><code>u1</code></td><td><code>bool</code></td><td>Yes</td></tr>
+<tr><td><code>(a: u16, b: bool)</code></td><td><code>(b: bool, a: u16)</code></td><td>Yes</td></tr>
+<tr><td><code>(a: u16, b: bool)</code></td><td><code>(a: u16)</code></td><td>No</td></tr>
+<tr><td><code>(a: u16, b: bool)</code></td><td><code>(a: u16, b: bool, c: [7]bool)</code></td><td>No</td></tr>
+<tr><td><code>[8][8]u8</code></td><td><code>[64]u8</code></td><td>No</td></tr>
 <tr><td><code>Adder</code></td><td><code>Adder</code></td><td>Yes</td></tr>
-<tr><td><code>Adder</code></td><td><code>{ a: uint&lt;8&gt;, b: uint&lt;8&gt;, sum: uint&lt;9&gt; }</code></td><td>No</td></tr>
+<tr><td><code>Adder</code></td><td><code>(a: u8, b: u8, sum: u9)</code></td><td>No</td></tr>
 </tbody></table>
 </div>
                     </main>
