@@ -737,6 +737,61 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 }
             }
         }
+        FunCall(name="cat", args~, span~, ..) => {
+            if args.is_empty() {
+                raise type_error("cat! requires at least one argument", span)
+            }
+
+            let mut len = 0
+            let mut is_signed: Bool? = None
+            let stack = @stack.new()
+
+            for elem in args {
+                let ty = self.check_expr(elem, env)
+                let elem_span = elem.span()
+                len += ty.width(elem_span)
+                stack.push((ty, elem_span))
+            }
+
+            while !stack.is_empty() {
+                let (ty, elem_span) = stack.unsafe_pop()
+
+                match ty {
+                    UInt(_) | SInt(_) | Nat(_) => {
+                        let is_elem_signed = ty is SInt(_)
+
+                        match is_signed {
+                            Some(is_signed) => {
+                                if is_signed != is_elem_signed {
+                                    raise type_error("Cannot mix unsigned and signed integers in cat!", elem_span)
+                                }
+                            }
+                            None => {
+                                is_signed = Some(is_elem_signed)
+                            }
+                        }
+                    }
+                    Vector(ty=elem_ty, len=_) => {
+                        stack.push((elem_ty, elem_span))
+                    }
+                    _ => raise type_error("Invalid element of type '\{ty}' in cat!", elem_span)
+                }
+            }
+
+            if is_signed is Some(true) {
+                Type::sint(len)
+            } else {
+                Type::uint(len)
+            }
+        }
+        FunCall(name="fill", args=[count, elem], span~, ..) => {
+            let count_ty = self.check_expr(count, env)
+            let _ = unify(count_ty, Nat({min_width: 0}), span~)
+            let elem_ty = self.check_expr(elem, env)
+            let count_val = eval_const_expr(count)
+
+            Vector(ty=elem_ty, len=Lit(count_val))
+        }
         FunCall(name="flip", args=[arg], span~, ..) => {
             let arg_ty = self.check_expr(arg, env)
 

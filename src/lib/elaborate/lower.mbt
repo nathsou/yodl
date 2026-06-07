@@ -1350,6 +1350,38 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
        Value::Expr(expr=concat_rev(bits), ty=UInt(width), span~)
     }
+    FunCall(name="cat", args~, span~, ty~) => {
+      let refs = Array::new(capacity=args.length())
+
+      fn flatten(value: Value) -> Unit raise {
+        match value.ty() {
+          UInt(_) | SInt(_) => {
+            refs.push(value.as_expr(self, scope~, binding=None))
+          }
+          Vec(elem_ty, len) => {
+            let vec_ref = value.as_ref(self, scope~, binding=None)
+
+            for i in 0..<len {
+              flatten(Expr(expr=mk_ref(mk_static_indexing(lhs=vec_ref, index=i)), ty=elem_ty, span=value.span()))
+            }
+          }
+          _ => raise ElaborationError::Unreachable(message="Cannot flatten value of type \{value.ty()}", span=value.span())
+        }
+      }
+
+      for elem in args {
+        flatten(self.lower_expr(elem, scope~, env~))
+      }
+
+      let ty = lower_type(unwrap_type(ty, span~), span~)
+      Expr(expr=concat_rev(refs.rev()), ty~, span~)
+    }
+    FunCall(name="fill", args=[count, elem], span~, ty~) => {
+      let count_val = self.lower_expr(count, scope~, env~).as_int().to_int()
+      let lowered_elem = self.lower_expr(elem, scope~, env~)
+      let ty = lower_type(unwrap_type(ty, span~), span~)
+      Value::Vector(elems=@utils.fill(count_val, lowered_elem), ty~, span~)
+    }
     Spread(_) | FunCall(_) => {
       raise ElaborationError(message="Unexpected expression encountered during elaboration", span=expr.span())
     }
