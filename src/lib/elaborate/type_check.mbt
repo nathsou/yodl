@@ -1,8 +1,8 @@
-using @utils { type Scope, min, max, pow2, zip, zip2, is_ascii, significant_bits, unreachable_code }
+using @utils { type Scope, min, max, pow2, zip, zip2, is_ascii, significant_bits }
 using @parse {
     type Type, type ModuleSignature, trait Spanned,
     type Expr, type Decl, type Stmt, type Attribute, type AttributeValue,
-    type AccessedPorts, type ConstDecl, type ResolvedParam, keep_and_check_resolved,
+    type AccessedPorts, type ConstDecl, type ResolvedParam,
 }
 
 struct TypeChecker {
@@ -189,7 +189,11 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
                         raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span)
                     }
 
-                    Instance(sig~, params=Map::from_iter(zip(sig.params.map(p => p.name), params)), accessed_ports=AccessedPorts::new())
+                    let resolved_params: Map[String, ResolvedParam] = Map::from_iter(
+                        zip(sig.params.map(p => p.name), params.map(ty => @parse.TypeParam(ty~, span~)))
+                    )
+
+                    Instance(sig~, params=resolved_params, accessed_ports=AccessedPorts::new())
                 }
                 None => raise UnknownModule(path~, span~)
             }
@@ -368,12 +372,10 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
         FieldAccess(expr~, field=port, span~, ..) => {
             match self.check_expr(expr, env) {
                 Instance(sig~, params~, accessed_ports~) => {
-                    let resolved_params = keep_and_check_resolved(params, span~)
-
                     match sig.get_port(port) {
                         Some(port_def) => {
                             accessed_ports.set(port, Read)
-                            port_def.ty.substitute(resolved_params, span~)
+                            port_def.ty.substitute(params, span~)
                         }
                         None => raise UnknownModulePort(module_path=sig.path, port_name=port, span~)
                     }
@@ -393,7 +395,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                     let subst: Map[String, UnificationParam] = {}
                     let params_env: Map[String, ResolvedParam] = {}
                     let accessed_ports = AccessedPorts::new()
-                    let params_map = params.as_map(names=sig.params.map(fn(p) { p.name }))
+                    let params_map = params.as_resolved_map(names=sig.params.map(p => p.name))
 
                     // check monomorphized (erased) parameters
                     for param in params.instantiated {
@@ -407,7 +409,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                         let param_sig = sig.get_param(name)
 
                         match (param, param_sig) {
-                            (Resolved(NatParam(value~, ..) as cnst_param), Some({ sort: NatSort, span: param_span, .. })) => {
+                            (NatParam(value~, ..) as cnst_param, Some({ sort: NatSort, span: param_span, .. })) => {
                                 let value_ty = self.check_expr(value.as_expr(), env)
                                 let _ = unify(value_ty, Nat({min_width: 0}), span=param_span, subst~)
 
@@ -420,17 +422,15 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
                                 params_env[name] = cnst_param
                             }
-                            (Resolved(TypeParam(ty~, span~)), Some({ sort: TypeSort, .. })) => {
+                            (TypeParam(ty~, span~), Some({ sort: TypeSort, .. })) => {
                                 let ty = self.resolve_ty(ty, span~)
                                 subst[name] = Type(ty)
                                 params_env[name] = TypeParam(ty~, span~)
                             }
-                            (Unresolved(_), _) => raise type_error("Unresolved parameter '\{name}'", span)
                             _ => {
                                 let ty = match param {
-                                    Unresolved(_) => unreachable_code()
-                                    Resolved(NatParam(value~, ..)) => self.check_expr(value.as_expr(), env)
-                                    Resolved(TypeParam(ty~, span~)) => self.resolve_ty(ty, span~)
+                                    NatParam(value~, ..) => self.check_expr(value.as_expr(), env)
+                                    TypeParam(ty~, span~) => self.resolve_ty(ty, span~)
                                 }
 
                                 let expected_ty = "[" + param_sig.iter().map(p => p.sort.to_string()).join(", ") + "]"

@@ -74,10 +74,14 @@ pub impl Hash for ResolvedParam with hash_combine(self, hasher) {
 pub impl Spanned for Param with span(self) -> Span {
   match self {
     Unresolved(param) => param.span
-    Resolved(param) => match param {
-      NatParam(span~, ..) => span
-      TypeParam(span~, ..) => span
-    }
+    Resolved(param) => param.span()
+  }
+}
+
+pub impl Spanned for ResolvedParam with span(self) -> Span {
+  match self {
+    NatParam(span~, ..) => span
+    TypeParam(span~, ..) => span
   }
 }
 
@@ -95,6 +99,20 @@ pub fn Param::as_int(self: Param) -> Int raise {
   }
 }
 
+pub fn ResolvedParam::as_type(self: ResolvedParam) -> Type raise {
+  match self {
+    TypeParam(ty~, ..) => ty
+    NatParam(span~, ..) => raise ExpectedTypeParameter(span~)
+  }
+}
+
+pub fn ResolvedParam::as_int(self: ResolvedParam) -> Int raise {
+  match self {
+    NatParam(value=Natural(value~, ..), span=_) => value.to_int()
+    NatParam(span~, ..) | TypeParam(span~, ..) => raise ExpectedIntParameter(span~)
+  }
+}
+
 pub fn ConstValue::as_expr(self: ConstValue) -> Expr {
   match self {
     Natural(value~, width~, base~, span~) => Natural(value~, width~, base~, span~, ty={ val: None })
@@ -107,21 +125,6 @@ pub fn ResolvedParam::as_expr(self: ResolvedParam) -> Expr raise {
     NatParam(value~, span=_) => value.as_expr()
     TypeParam(span~, ..) => raise TypeParamInsteadOfExpr(span~)
   }
-}
-
-pub fn keep_and_check_resolved(params: Map[String, Param], span~: Span) -> Map[String, ResolvedParam] raise AstError {
-  let resolved_params = Map([], capacity=params.length())
-
-  for name, param in params {
-    if param is Resolved(p) {
-      resolved_params[name] = p
-    } else {
-      
-      raise UnresolvedParameter(name~, span~)
-    }
-  }
-
-  resolved_params
 }
 
 // perform partial evaluation on the expression

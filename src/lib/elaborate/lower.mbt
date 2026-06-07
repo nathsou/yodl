@@ -1,5 +1,5 @@
 using @firrtl { type Id, type Annotation, type AnnotationTarget }
-using @parse { type Span, type Path, type CoreModuleDecl, type Param, type AstEmitter, type CoreExpr, type CoreStmt, type CoreDecl }
+using @parse { type Span, type Path, type CoreModuleDecl, type AstEmitter, type CoreExpr, type CoreStmt, type CoreDecl }
 
 type FExpr = @firrtl.UntypedExpr
 type FStmt = @firrtl.UntypedStmt
@@ -160,7 +160,6 @@ fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
     MemoryMask(ty) => lower_type(ty.mask(span~), span~)
     Instance(sig~, params~, accessed_ports~) => {
       let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.ports.length())
-      let resolved_params = keep_and_check_resolved(params, span~)
 
       for port, _ in accessed_ports.ports {
         let port_sig = sig.get_port(port).unwrap_or_error(ElaborationError::ElaborationError(
@@ -170,7 +169,7 @@ fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
 
         let field: @firrtl.BundleField = {
           id: Id::from(port),
-          ty: lower_type(port_sig.ty.substitute(resolved_params, span~), span~),
+          ty: lower_type(port_sig.ty.substitute(params, span~), span~),
           flip: port_sig.dir == Input,
         }
 
@@ -803,13 +802,13 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             }
           }
 
-          (ports_sig, {}, {})
+          let empty_params: Map[String, ResolvedParam] = {}
+          (ports_sig, empty_params, {})
         }
         None => match self.declared_modules.get(path) {
           Some(sig) => {
             let ports_sig = Map([], capacity=sig.ports.length())
-            let params_map = params.as_map(names=sig.params.map(fn(p) { p.name }))
-            let resolved_params = keep_and_check_resolved(params_map, span~)
+            let resolved_params = params.as_resolved_map(names=sig.params.map(fn(p) { p.name }))
 
             for port in sig.ports {
               let ty = lower_type(port.ty.substitute(resolved_params, span~), span~)
@@ -821,7 +820,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
               ports_sig[port.name] = port_sig
             }
 
-            (ports_sig, params_map, sig.attributes)
+            (ports_sig, resolved_params, sig.attributes)
           }
           None => raise ElaborationError(message="Module '\{path.to_string()}' is not declared", span~)
         }
@@ -898,7 +897,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       }
 
       if attributes.contains("internal") {
-        fn get_param(name: String) -> Param raise {
+        fn get_param(name: String) -> ResolvedParam raise {
           match params_map.get(name) {
             Some(param) => param
             None => raise ElaborationError(message="Unknown module parameter '\{name}'", span~)
@@ -908,7 +907,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         match path {
           { packages: [], elem: "Reg" | "RegAsyncReset" as internal_module_name } => {
             let reg_ty = match get_param("T") {
-              Resolved(TypeParam(ty~, ..)) => lower_type(ty, span~)
+              TypeParam(ty~, ..) => lower_type(ty, span~)
               _ => raise ElaborationError::Unreachable(message="non-type parameter in Reg instance", span~)
             }
 

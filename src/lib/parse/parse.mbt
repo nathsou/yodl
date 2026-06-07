@@ -896,12 +896,12 @@ fn Parser::parse_type(self: Parser) -> Type raise {
     Identifier(name) => {
       self.advance()
       let path = self.parse_path(name)
-      let params: Array[Param] = []
+      let params: Array[Type] = []
 
       if self.consumes(Lchevron) {
         while !self.matches(Rchevron) {
           let param = self.parse_type()
-          params.push(Resolved(TypeParam(ty=param, span=self.span(start_idx))))
+          params.push(param)
 
           if !self.consumes(Comma) {
             break
@@ -911,7 +911,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
         self.expect(Rchevron, start_idx)
       }
 
-      if path is { packages: [], elem: "MemoryMask" } && params is [Resolved(TypeParam(ty~, ..))] {
+      if path is { packages: [], elem: "MemoryMask" } && params is [ty] {
         Type::MemoryMask(ty)
       } else {
         Type::Name(path~, params~)

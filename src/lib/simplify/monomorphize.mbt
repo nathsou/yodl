@@ -165,12 +165,9 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
 
         let subst: Map[String, @parse.ResolvedParam] = {}
 
-        for static_param, param in @utils.zip2(type_alias.parameters, params) {
-          let name = static_param.name
-          match param {
-            Resolved(param) => subst[name] = param
-            Unresolved(_) => subst[name] = self.resolve_param(param~, env~, packages~, sort=TypeSort)
-          }
+        for static_param, ty in @utils.zip2(type_alias.parameters, params) {
+          let mono_ty = self.monomorphize_type(ty, env~, packages~, span~).ty
+          subst[static_param.name] = @parse.TypeParam(ty=mono_ty, span~)
         }
         
         { ty: type_alias.ty.substitute(subst, span~), is_type_alias: true }
@@ -350,8 +347,7 @@ fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv
               }
             }
           }
-          let mono_params = params.map(
-            map_expr=expr => { self.monomorphize_expr(expr, env~, packages~) },
+          let mono_params = params.map_raw(
             map_type=ty => { self.monomorphize_type(ty, env~, packages~, span~).ty },
           )
 
@@ -408,7 +404,9 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
           if !is_type_alias && params.length() > 0 {
             let _ = self.register_monomorphized_module(
               path~,
-              params=@parse.InstanceParams::new(@utils.map(params, fn(param) { (None, param) })),
+              params=@parse.InstanceParams::new(@utils.map(params, fn(ty) {
+                (None, @parse.Resolved(@parse.TypeParam(ty~, span~)))
+              })),
               env~,
               span~,
               packages~,
