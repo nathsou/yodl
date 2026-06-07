@@ -161,8 +161,8 @@ If `x` is signed, it performs sign-extension; if `x` is unsigned, it performs ze
 
 | type of `x` | pad!(x, width) |
 |-------------|----------------|
-| sint<W>     | sign-extend    |
-| uint<W>     | zero-extend    | 
+| sint[W]     | sign-extend    |
+| uint[W]     | zero-extend    | 
 
 ```yodl
 # module Test(clk: clock) -> () {

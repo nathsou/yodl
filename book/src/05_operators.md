@@ -135,7 +135,7 @@ Note:
 - Integers are indexed from the least significant bit (LSB) to the most significant bit (MSB) (right to left).
 - Vectors follow standard array-indexing conventions, with the first element at index 0 (left to right).
 
-When a bit vector (`bool[N]` i.e. `u1[N]`) is used as the argument of the `uint` and `sint` built-in functions,
+When a bit vector (`[N]bool` i.e. `[N]u1`) is used as the argument of the `uint` and `sint` built-in functions,
 the first element of the vector becomes the MSB of the resulting integer:
 
 ```yodl
@@ -147,7 +147,7 @@ the first element of the vector becomes the MSB of the resulting integer:
 
 ## Replication
 
-The `fill!(n, x)` built-in produces a vector `T[n]` of `n` copies of `x`:
+The `fill!(n, x)` built-in produces a vector `[n]T` of `n` copies of `x`:
 
 ```yodl
 # const a = 1'b1

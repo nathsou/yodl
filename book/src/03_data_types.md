@@ -9,7 +9,7 @@ Yodl supports two integer types, which require a width specifier:
 | Form           | Example            | When to use            |
 |----------------|--------------------|------------------------|
 | `uN` / `sN`    | `u8`, `u32`, `s7`  | Width is a literal     |
-| `uint<expr>` / `sint<expr>` | `uint<clog2!(N)>`, `sint<W + 1>` | Width is a compile-time expression |
+| `uint[expr]` / `sint[expr]` | `uint[clog2!(N)]`, `sint[W + 1]` | Width is a compile-time expression |
 
 #### Unsigned Integers
 
@@ -247,7 +247,7 @@ Yodl's type system is structural (except for instance types), which means that t
 | `u1` | `bool` | Yes | 
 | `(a: u16, b: bool)` | `(b: bool, a: u16)` | Yes |
 | `(a: u16, b: bool)` | `(a: u16)` | No |
-| `(a: u16, b: bool)` | `(a: u16, b: bool, c: bool[7])` | No |
-| `u8[8][8]` | `u8[64]` | No |
+| `(a: u16, b: bool)` | `(a: u16, b: bool, c: [7]bool)` | No |
+| `[8][8]u8` | `[64]u8` | No |
 | `Adder` | `Adder` | Yes |
 | `Adder` | `(a: u8, b: u8, sum: u9)` | No |

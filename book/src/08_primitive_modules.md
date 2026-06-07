@@ -97,8 +97,8 @@ Some configurations may be synthesised as block RAMs in FPGAs.
 
 | Port | Direction | Type | Description |
 |------|-----|------|-------------|
-| `read` | Input | [`ReadPorts`](`clk`: `clock`, `en`: `bool`, `addr`: `uint<clog2!(Depth)>`) | Read port(s) |
-| `write` | Input | [`WritePorts`](`clk`: `clock`, `en`: `bool`, `addr`: `uint<clog2!(Depth)>`, `data`: `T`, `mask`: `MemoryMask[T]`) | Write port(s) |
+| `read` | Input | [`ReadPorts`](`clk`: `clock`, `en`: `bool`, `addr`: `uint[clog2!(Depth)]`) | Read port(s) |
+| `write` | Input | [`WritePorts`](`clk`: `clock`, `en`: `bool`, `addr`: `uint[clog2!(Depth)]`, `data`: `T`, `mask`: `MemoryMask[T]`) | Write port(s) |
 | `q` | Output | [`ReadPorts`]`T` | Read data port(s) |
 
 ### Basic Memory
@@ -160,7 +160,7 @@ module ByteAddressableRAM(
 
 #### Mask Type
 
-Intuitively, the mask type `MemoryMask<T>` of a data type `T` matches the structure of `T` with each ground type (e.g. `uint<N>`, `sint<N>`, ..) replaced with `bool`.
+Intuitively, the mask type `MemoryMask[T]` of a data type `T` matches the structure of `T` with each ground type (e.g. `uint[N]`, `sint[N]`, ..) replaced with `bool`.
 
 Examples:
 
