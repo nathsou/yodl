@@ -1351,12 +1351,6 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       let ty = lower_type(unwrap_type(ty, span~), span~)
       Expr(expr=concat_rev(refs.rev()), ty~, span~)
     }
-    FunCall(name="fill", args=[count, elem], span~, ty~) => {
-      let count_val = self.lower_expr(count, scope~, env~).as_int().to_int()
-      let lowered_elem = self.lower_expr(elem, scope~, env~)
-      let ty = lower_type(unwrap_type(ty, span~), span~)
-      Value::Vector(elems=@utils.fill(count_val, lowered_elem), ty~, span~)
-    }
     Spread(_) | FunCall(_) => {
       raise ElaborationError(message="Unexpected expression encountered during elaboration", span=expr.span())
     }

@@ -257,6 +257,24 @@ pub fn Simplifier::simplify_expr(
       }
     }
 
+    // fill!(n, x) expands into a Vector of n elements at simplify-time so the
+    // elaborator calls lower_expr on each element independently. This is
+    // critical for instance-typed elements: lowering the same Instance N
+    // times produces N distinct hardware instances, whereas filling the
+    // Vector with N references to a single lowered Value would alias the
+    // hardware (one instance shared by all positions).
+    FunCall(name="fill", args=[count, elem], span~, ty~) => {
+      let count_simplified = simp(count)
+      let n = count_simplified.as_int()
+      let elems = Array::new(capacity=n)
+
+      for _ in 0..<n {
+        elems.push(simp(elem))
+      }
+
+      Vector(elems~, span~, ty=@parse.clone_ty(ty))
+    }
+
     FunCall(name~, args~, span~, ty~) =>
       FunCall(name~, args=args.map(simp), span~, ty=@parse.clone_ty(ty))
 
