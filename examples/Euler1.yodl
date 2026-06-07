@@ -1,11 +1,11 @@
 import Text
 
-module Euler1(clk: clock, rst: bool) -> (q: uint<18>, is_ready: bool) {
+module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
     const N = 1000
-    let counter = Reg<uint<clog2!(N)>>(clk, rst)
-    let is_active = counter.q <: N
+    let counter = Reg[uint[clog2!(N)]](clk, rst)
+    let is_active = counter.q < N
     counter.d = counter.q + is_active
-    let sum = Reg<uint<18>>(clk, en: is_active, rst, q)
+    let sum = Reg[u18](clk, en: is_active, rst, q)
     let is_divisible = counter.q % 3 == 0 or counter.q % 5 == 0
     sum.d = sum.q + (is_divisible ? counter.q : 0)
     is_ready = not is_active
@@ -13,14 +13,14 @@ module Euler1(clk: clock, rst: bool) -> (q: uint<18>, is_ready: bool) {
 
 module Top(
     clk: clock,
-    button: uint<4>,
+    button: u4,
 ) -> (
-    led: uint<4>,
+    led: u4,
     vga_hsync: bool,
     vga_vsync: bool,
-    vga_red: uint<3>,
-    vga_green: uint<3>,
-    vga_blue: uint<3>,
+    vga_red: u3,
+    vga_green: u3,
+    vga_blue: u3,
 ) {
     let rst = orr button
     let vga = VGA::SyncPulses(
@@ -30,20 +30,20 @@ module Top(
     )
 
     let euler1 = Euler1(clk, rst)
-    let hex = Text::Hex<20>(n: {2'0, euler1.q})
-    let text = Text::Text<Length: 40, X: 20, Y: 30>(
+    let hex = Text::Hex[20](n: cat!(2'0, euler1.q))
+    let text = Text::Text[Length: 40, X: 20, Y: 30](
         text: [.."The solution to Project Euler 1 is ", ..hex.chars],
         screen_x: vga.col,
         screen_y: vga.row,
     )
 
     let color = match vga.is_active_area and text.is_active {
-        1'b0 => { r: 3'd0, g: 3'd0, b: 3'd0 }
-        1'b1 => { r: 3'd1, g: 3'd5, b: 3'd6 }
+        1'b0 => (r: 3'd0, g: 3'd0, b: 3'd0)
+        1'b1 => (r: 3'd1, g: 3'd5, b: 3'd6)
     }
 
     vga_red = color.r
     vga_green = color.g
     vga_blue = color.b
-    led = uint!(4*{euler1.is_ready})
+    led = uint!(cat!(fill!(4, euler1.is_ready)))
 }

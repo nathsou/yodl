@@ -2,13 +2,13 @@
 //   - DynamicIndexing on RHS (rewrite_ref with DynamicIndexing -> mux-tree read)
 //   - DynamicIndexing on LHS (rewrite_connect_stmt -> mux-tree write)
 module Top(
-    a:      uint<8>[4],
-    rd_idx: uint<2>,
-    wr_idx: uint<2>,
-    wr_val: uint<8>,
+    a:      [4]u8,
+    rd_idx: u2,
+    wr_idx: u2,
+    wr_val: u8,
 ) -> (
-    out:    uint<8>[4],
-    rd_val: uint<8>,
+    out:    [4]u8,
+    rd_val: u8,
 ) {
     out      = a
     out[wr_idx] = wr_val

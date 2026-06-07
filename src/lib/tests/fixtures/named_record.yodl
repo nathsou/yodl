@@ -1,0 +1,8 @@
+type Color = (r: u3, g: u3, b: u3)
+
+module Top(rin: u3, gin: u3, bin: u3) -> (out: Color, copy: Color) {
+    let base = (r: rin, g: gin, b: bin)
+    out = base
+    // spread update: override only g
+    copy = (..base, g: 3'd0)
+}

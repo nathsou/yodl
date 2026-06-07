@@ -1,0 +1,9 @@
+module Top(b: bool, byte: u8) -> (
+    bools4: [4]bool,
+    bytes3: [3]u8,
+    bits4:  u4,
+) {
+    bools4 = fill!(4, b)
+    bytes3 = fill!(3, byte)
+    bits4  = cat!(fill!(4, b))
+}

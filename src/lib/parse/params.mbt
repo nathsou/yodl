@@ -384,6 +384,14 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Fixed(1),
     apply: (_, _) => None
   },
+  "cat": {
+    arity: Range(min=1, max=@int.MAX_VALUE),
+    apply: (_, _) => None
+  },
+  "fill": {
+    arity: Fixed(2),
+    apply: (_, _) => None
+  },
 }
 
 pub fn Expr::as_int(self: Expr) -> Int raise {

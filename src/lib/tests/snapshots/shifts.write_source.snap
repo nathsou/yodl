@@ -1,36 +1,36 @@
 const true = 1'b1;
 const false = 1'b0;
 @internal
-module Reg<T: Type>(
+module Reg[T: Type](
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
 @internal
-module RegAsyncReset<T: Type>(
+module RegAsyncReset[T: Type](
   clk: clock,
   d: T,
-  en?: uint<1>,
-  rst?: uint<1>,
+  en?: u1,
+  rst?: u1,
 ) -> (
   q: T,
 )
 @internal
-module Memory<T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat>(
-  read: { clk: clock, en: uint<1>, addr: uint<clog2!(Depth)> }[ReadPorts],
-  write: { clk: clock, en: uint<1>, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask<T> }[WritePorts],
+module Memory[T: Type, Depth: Nat, ReadPorts: Nat, WritePorts: Nat, ReadLatency: Nat, WriteLatency: Nat](
+  read: [ReadPorts](clk: clock, en: u1, addr: uint<clog2!(Depth)>),
+  write: [WritePorts](clk: clock, en: u1, addr: uint<clog2!(Depth)>, data: T, mask: MemoryMask[T]),
 ) -> (
-  q: T[ReadPorts],
+  q: [ReadPorts]T,
 )
 module Top(
-  a: uint<8>,
-  n: uint<3>,
+  a: u8,
+  n: u3,
 ) -> (
-  shifted_left: uint<8>,
-  shifted_right: uint<8>,
+  shifted_left: u8,
+  shifted_right: u8,
 ) {
   shifted_left = (a shl n);
   shifted_right = (a shr n);

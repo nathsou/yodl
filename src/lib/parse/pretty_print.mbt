@@ -46,8 +46,8 @@ pub impl Show for BinaryOp with output(op, logger) {
     Mod => "%"
     Equ => "=="
     Neq => "!="
-    Lss => "<:"
-    Gtr => ">:"
+    Lss => "<"
+    Gtr => ">"
     Leq => "<="
     Geq => ">="
     Shl => "shl"
@@ -171,7 +171,11 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.emit_expr(expr)
       self.write("[")
       self.emit_expr(msb)
-      self.write(match kind { Absolute => ":"; Width => "-:" })
+      self.write(match kind {
+        Absolute => ":"
+        WidthDescending => "-:"
+        WidthAscending => "+:"
+      })
       self.emit_expr(lsb)
       self.write("]")
     }
@@ -184,7 +188,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write(path.to_string())
 
       if params.params.length() > 0 {
-        self.write("<")
+        self.write("[")
 
         for i, entry in params.params {
           if i > 0 {
@@ -201,7 +205,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
           self.write(param.to_string())
         }
 
-        self.write(">")
+        self.write("]")
       }
 
       self.write("(")
@@ -255,23 +259,8 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write("]")
     }
     Spread(expr~, ..) => {
-      self.write("...")
+      self.write("..")
       self.emit_expr(expr)
-    }
-    Concat(elems~, ..) => {
-      self.write("{")
-      self.indent += 1
-
-      for i, elem in elems {
-        if i > 0 {
-          self.write(", ")
-        }
-
-        self.emit_expr(elem)
-      }
-
-      self.indent -= 1
-      self.write("}")
     }
     Ternary(cond~, then~, else_~, ..) => {
       self.write("(")
@@ -311,28 +300,6 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write_indent()
       self.write("}")
     }
-    Tuple(elems~, ..) => {
-      self.write("(")
-      self.indent += 1
-
-      for i, elem in elems {
-        if i > 0 {
-          self.write(", ")
-        }
-
-        self.emit_expr(elem)
-      }
-
-      self.indent -= 1
-      self.write(")")
-    }
-    Replicate(expr~, count~, concat~, ..) => {
-      self.emit_expr(count)
-      self.write("*")
-      self.write(if concat { "{" } else { "[" })
-      self.emit_expr(expr)
-      self.write(if concat { "}" } else { "]" })
-    }
     FunCall(name~, args~, ..) => {
       self.write(name)
       self.write("!(")
@@ -348,36 +315,54 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write(")")
     }
     Struct(fields~, ..) => {
-      let is_tuple = fields.contains("0") && fields.contains("1")
+      // Detect a positional record: keys are "0", "1", ..., "n-1" contiguously.
+      let n = fields.length()
+      let mut is_positional = n > 0
 
-      if is_tuple {
+      for i in 0..<n {
+        if !fields.contains(i.to_string()) {
+          is_positional = false
+          break
+        }
+      }
+
+      if n == 0 {
+        self.write("()")
+      } else if is_positional {
         self.write("(")
-
-        fields.values().eachi(fn(idx, elem) {
-          if idx > 0 {
+        for i in 0..<n {
+          if i > 0 {
             self.write(", ")
           }
-
-          self.emit_expr(elem)
-        })
-
+          self.emit_expr(fields.get(i.to_string()).unwrap())
+        }
+        if n == 1 {
+          self.write(",")
+        }
         self.write(")")
       } else {
-        self.write("{\n")
-        self.indent += 1
+        self.write("(")
+        let mut first = true
 
         for field in fields {
           let (name, expr) = field
-          self.write_indent()
-          self.write(name)
-          self.write(": ")
-          self.emit_expr(expr)
-          self.write(",\n")
+
+          if !first {
+            self.write(", ")
+          }
+
+          first = false
+
+          if name.has_prefix("..") {
+            self.emit_expr(expr)
+          } else {
+            self.write(name)
+            self.write(": ")
+            self.emit_expr(expr)
+          }
         }
 
-        self.indent -= 1
-        self.write_indent()
-        self.write("}")
+        self.write(")")
       }
     }
     Block(body~, last~, ..) => {
@@ -610,22 +595,28 @@ pub impl Show for IndexExpr with output(self, logger) {
 pub impl Show for Type with output(ty, logger) {
   match ty {
     Nat({min_width}) => {
-      logger.write_string("nat<\{min_width}>")
+      logger.write_string("nat[\{min_width}]")
     }
     UInt(width) => {
-      logger.write_string("uint<\{width}>")
+      match width {
+        Lit(n) => logger.write_string("u\{n}")
+        _ => logger.write_string("uint<\{width}>")
+      }
     }
     SInt(width) => {
-      logger.write_string("sint<\{width}>")
+      match width {
+        Lit(n) => logger.write_string("s\{n}")
+        _ => logger.write_string("sint<\{width}>")
+      }
     }
     Clock => {
       logger.write_string("clock")
     }
     Vector(ty~, len~) => {
-      logger.write_string(ty.to_string())
       logger.write_char('[')
       logger.write_object(len)
       logger.write_char(']')
+      logger.write_string(ty.to_string())
     }
     Instance(sig={ path, .. }, params~, accessed_ports~) => {
       logger.write_object(path)
@@ -633,9 +624,9 @@ pub impl Show for Type with output(ty, logger) {
       if params.length() > 0 {
         logger.write_iter(
           params.values(),
-          prefix="<",
+          prefix="[",
           sep=", ",
-          suffix=">",
+          suffix="]",
         )
       }
 
@@ -650,39 +641,54 @@ pub impl Show for Type with output(ty, logger) {
       if params.length() > 0 {
         logger.write_iter(
           params.iter(),
-          prefix="<",
+          prefix="[",
           sep=", ",
-          suffix=">",
+          suffix="]",
         )
       }
     }
     Struct(fields) => {
-      let is_tuple = fields.contains("0") && fields.contains("1")
+      let n = fields.length()
+      let mut is_positional = n > 0
 
-      if is_tuple {
-        logger.write_iter(
-          prefix="(",
-          fields.values(),
-          sep=", ",
-          suffix=")",
-        )
+      for i in 0..<n {
+        if !fields.contains(i.to_string()) {
+          is_positional = false
+          break
+        }
+      }
+
+      if n == 0 {
+        logger.write_string("()")
+      } else if is_positional {
+        logger.write_char('(')
+        for i in 0..<n {
+          if i > 0 {
+            logger.write_string(", ")
+          }
+          logger.write_object(fields.get(i.to_string()).unwrap())
+        }
+        if n == 1 {
+          logger.write_char(',')
+        }
+        logger.write_char(')')
       } else {
         logger.write_iter(
-          prefix="{ ",
+          prefix="(",
           fields.iter().map(fn(field) {
             let (name, ty) = field
             { name, ty }
           }),
           sep=", ",
-          suffix=" }",
+          suffix=")",
         )
       }
     }
     String(len~) => {
-      logger.write_string("string<\{len}>")
+      logger.write_string("string[\{len}]")
     }
     MemoryMask(ty) => {
-      logger.write_string("MemoryMask<\{ty}>")
+      logger.write_string("MemoryMask[\{ty}]")
     }
   }
 }
@@ -780,9 +786,9 @@ fn AstEmitter::emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
   self.write(sig.path.to_string())
 
   if sig.params.length() > 0 {
-    self.write("<")
+    self.write("[")
     self.write(sig.params.map(Show::to_string).join(", "))
-    self.write(">")
+    self.write("]")
   }
 
   self.emit_port_list(sig.inputs() + sig.inouts())
@@ -822,14 +828,14 @@ pub fn AstEmitter::emit_decl(self: AstEmitter, decl: Decl) -> Unit {
       self.write("type \{name}")
       
       if parameters.length() > 0 {
-        self.write("<")
+        self.write("[")
         self.write(parameters.map(fn(p) {
           match p.sort {
             NatSort => "\{p.name}: Nat"
             TypeSort => p.name
           }
         }).join(", "))
-        self.write(">")
+        self.write("]")
       }
 
       self.write(" = \{ty};")

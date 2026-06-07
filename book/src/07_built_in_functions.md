@@ -10,14 +10,14 @@ Reinterprets a value as an unsigned integer.
 
 ```yodl
 # module Test() -> () {
-    let a: sint<8> = -7'd11
-    let b: uint<8> = uint!(a) // 8'd11
+    let a: s8 = -7'd11
+    let b: u8 = uint!(a) // 8'd11
 # }
 ```
 
 When applied to a vector of bits, it concatenates them into a single unsigned integer.
 
-Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the `{<expr_list>}` concatenation operator. 
+Note that the first element of the vector becomes the least significant bit (LSB) of the resulting integer. If you would like the order to be preserved, use the `cat!` built-in.
 
 ```yodl
 # module Test(clk: clock) -> () {
@@ -32,7 +32,7 @@ Reinterprets a value as a signed integer.
 
 ```yodl
 # module Test() -> () {
-    let a: sint<8> = sint!(8'b10101010)
+    let a: s8 = sint!(8'b10101010)
 # }
 ```
 
@@ -42,7 +42,7 @@ Converts a boolean signal to a clock signal.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let counter = Reg<uint<24>>(clk)
+    let counter = Reg[u24](clk)
     counter.d = counter.q + 1
     let slow_clk = clock!(counter.q[23]) // Divide the clock by 2^23
 # }
@@ -59,7 +59,7 @@ Often used to determine the minimum number of bits required to represent a value
 ```yodl
 # module Test(clk: clock) -> () {
     const AddrWidth = clog2!(1024)
-    let addr: uint<AddrWidth> = 10'd0
+    let addr: uint[AddrWidth] = 10'd0
     assert!(AddrWidth == 10)
 # }
 ```
@@ -103,6 +103,41 @@ Reverses the bit order of `x`.
 
 ## Vector Functions
 
+### `cat!(args...)`
+
+Concatenates one or more integers (or integer vectors) into a single integer.
+The width of the result is the sum of the widths of the arguments. Vectors of
+integers are flattened recursively.
+
+If any argument is a signed integer (`sint`), every argument must be signed.
+
+```yodl
+# module Test(clk: clock) -> () {
+    let upper_nibble = 8'hAB
+    let lower_nibble = 8'hCD
+    let word = cat!(upper_nibble, lower_nibble)
+    assert!(word == 16'hABCD)
+
+    // Vectors are flattened
+    let from_vec = cat!([16'hBABA, 16'hFABE])
+    assert!(from_vec == 32'hBABAFABE)
+# }
+```
+
+### `fill!(n, x)`
+
+Produces a vector `T[n]` containing `n` copies of `x`. For bit-replication
+(SystemVerilog `{n{x}}`), combine with `cat!`:
+
+```yodl
+# module Test(clk: clock) -> () {
+    let zeros: [4]bool = fill!(4, 1'b0)
+    let mask:  u4 = cat!(fill!(4, 1'b1))   // 4'b1111
+    assert!(uint!(zeros) == 4'd0)
+    assert!(mask == 4'b1111)
+# }
+```
+
 ### `rev!(vec)`
 
 Reverses the order of elements in a vector.
@@ -126,16 +161,16 @@ If `x` is signed, it performs sign-extension; if `x` is unsigned, it performs ze
 
 | type of `x` | pad!(x, width) |
 |-------------|----------------|
-| sint<W>     | sign-extend    |
-| uint<W>     | zero-extend    | 
+| sint[W]     | sign-extend    |
+| uint[W]     | zero-extend    | 
 
 ```yodl
 # module Test(clk: clock) -> () {
     let a = -4'd3 // 5'b1101
-    let b: sint<8> = pad!(a, 8) // 8'b11111101 (sign-extended)
+    let b: s8 = pad!(a, 8) // 8'b11111101 (sign-extended)
     assert!(uint!(b) == 8'b11111101)
-    let c: uint<4> = 4'd3 // 4'b0011
-    let d: uint<8> = pad!(c, 8) // 8'b00000011 (zero-extended)
+    let c: u4 = 4'd3 // 4'b0011
+    let d: u8 = pad!(c, 8) // 8'b00000011 (zero-extended)
     assert!(d == 8'b00000011)
 # }
 ```
@@ -149,14 +184,14 @@ Yodl provides familiar [`$readmemb` and `$readmemh`](https://projectf.io/posts/i
 Initializes a memory from a binary format file.
 
 ```yodl
-# module Test(clk: clock, addr: uint<8>) -> () {
-    let rom = Memory<
-        T: uint<8>,
+# module Test(clk: clock, addr: u8) -> () {
+    let rom = Memory[
+        T: u8,
         Depth: 256,
         ReadPorts: 1,
         WritePorts: 0,
-    >(
-        read: [{ clk: clk, en: true, addr: addr }],
+    ](
+        read: [(clk: clk, en: true, addr: addr)],
     )
 
     // Initialize memory from binary file
@@ -171,14 +206,14 @@ Initializes a memory from a binary format file.
 Initializes a memory from a hexadecimal format file.
 
 ```yodl
-# module Test(clk: clock, addr: uint<8>) -> () {
-    let rom = Memory<
-        T: uint<8>,
+# module Test(clk: clock, addr: u8) -> () {
+    let rom = Memory[
+        T: u8,
         Depth: 256,
         ReadPorts: 1,
         WritePorts: 0,
-    >(
-        read: [{ clk: clk, en: true, addr: addr }],
+    ](
+        read: [(clk: clk, en: true, addr: addr)],
     )
 
     // Initialize memory from hex file
@@ -195,7 +230,7 @@ Initializes a memory from a hexadecimal format file.
 Prints formatted text during simulation. Similar to C's printf.
 
 ```yodl
-# module Test(clk: clock, data: uint<8>) -> () {
+# module Test(clk: clock, data: u8) -> () {
     printf!("Value of data: %d", data)
 # }
 ```

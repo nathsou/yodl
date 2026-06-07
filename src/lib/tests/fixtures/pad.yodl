@@ -1,0 +1,20 @@
+// pad!(x, n) extends x to n bits.
+// - For UInt: zero-extension
+// - For SInt: sign-extension (the FIRRTL `pad` primop)
+//
+// To sign-extend a UInt, cast through SInt: uint!(pad!(sint!(x), n))
+module Top(
+    uval: u4,
+    sval: s4,
+) -> (
+    zext:      u8,
+    sext_sint: s8,
+    sext_uint: u8,
+) {
+    // zero-extend a UInt
+    zext = pad!(uval, 8)
+    // sign-extend a SInt
+    sext_sint = pad!(sval, 8)
+    // sign-extend a UInt by casting through SInt
+    sext_uint = uint!(pad!(sint!(uval), 8))
+}

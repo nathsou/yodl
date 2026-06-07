@@ -53,9 +53,9 @@ module Top(
   rst: bool,
 ) -> (
   // outputs
-  leds: uint<8>,
+  leds: u8,
 ) {
-  let counter = Reg<uint<24>>(clk, rst)
+    let counter = Reg[u24](clk, rst)
   counter.d = counter.q + 1'd1
   leds = counter.q[23:16]
 }

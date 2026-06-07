@@ -10,11 +10,11 @@ External modules are declared using the `@external` attribute followed by a modu
 @external("module_name", "file.v")
 @parameters({ PARAM1: 0, PARAM2: "true" })
 declare module ExternalModule(
-    input1: uint<8>,
-    input2: bool[4],
+    input1: u8,
+    input2: [4]bool,
 ) -> (
     output1: bool,
-    output2: uint<16>,
+    output2: u16,
 )
 
 # module Top() -> () {}

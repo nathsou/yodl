@@ -1,4 +1,4 @@
-module Top(sel: uint<2>, a: uint<8>, b: uint<8>, c: uint<8>) -> (out: uint<8>) {
+module Top(sel: u2, a: u8, b: u8, c: u8) -> (out: u8) {
     out = match sel {
         2'd0 => a
         2'd1 => b

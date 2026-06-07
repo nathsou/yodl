@@ -12,17 +12,17 @@ module FullAdder(
     carry_out = (carry_in and xor1) or (a and b)
 }
 
-module Adder<N: Nat>(
-    a: uint<N>,
-    b: uint<N>,
+module Adder[N: Nat](
+    a: uint[N],
+    b: uint[N],
     carry_in: bool,
 ) -> (
-    sum: uint<N>,
+    sum: uint[N],
     carry_out: bool,
 ) {
-    let carry_chain: bool[N + 1]
+    let carry_chain: [N + 1]bool
     carry_chain[0] = carry_in
-    let bits: bool[N]
+    let bits: [N]bool
 
     for i in 0..<N {
         FullAdder(
@@ -41,10 +41,10 @@ module Adder<N: Nat>(
 module Top(
     clk: clock,
 ) -> (
-    led: uint<16>,
+    led: u16,
 ) {
-    let counter = Reg<uint<32>>(clk)
-    let adder = Adder<32>(
+    let counter = Reg[u32](clk)
+    let adder = Adder[32](
         a: counter.q,
         b: 32'1,
         carry_in: 1'0,

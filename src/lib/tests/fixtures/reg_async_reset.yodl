@@ -2,8 +2,8 @@
 // Emits a RegReset stmt (scope[reg] = Some(reg) self-init) followed by
 // a no-else When { cond: en, body: [reg = d] }.
 // Merge: Mux(en, d, reg_q). Also covers the RegReset stmt path in process_block.
-module Top(clk: clock, rst: bool, en: bool, d: uint<8>) -> (q: uint<8>) {
-    let reg = RegAsyncReset<uint<8>>(clk, rst: rst, en: en)
+module Top(clk: clock, rst: bool, en: bool, d: u8) -> (q: u8) {
+    let reg = RegAsyncReset[u8](clk, rst: rst, en: en)
     reg.d = d
     q = reg.q
 }

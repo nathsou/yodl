@@ -1,8 +1,8 @@
 
-module PowerOnReset<ClockCycles: Nat>(clk: clock) -> (rst: bool) {
-    let counter = Reg<uint<clog2!(ClockCycles)>>(clk)
+module PowerOnReset[ClockCycles: Nat](clk: clock) -> (rst: bool) {
+    let counter = Reg[uint[clog2!(ClockCycles)]](clk)
 
-    if counter.q <: ClockCycles - 1 {
+    if counter.q < ClockCycles - 1 {
         counter.d = counter.q + 1'b1
         rst = true
     } else {

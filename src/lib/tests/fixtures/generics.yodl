@@ -1,10 +1,10 @@
-module Identity<N: Nat>(a: uint<N>) -> (out: uint<N>) {
+module Identity[N: Nat](a: uint[N]) -> (out: uint[N]) {
     out = a
 }
 
-module Top(a: uint<8>, b: uint<16>) -> (x: uint<8>, y: uint<16>) {
-    let ix = Identity<8>(a: a)
-    let iy = Identity<16>(a: b)
+module Top(a: u8, b: u16) -> (x: u8, y: u16) {
+    let ix = Identity[8](a: a)
+    let iy = Identity[16](a: b)
     x = ix.out
     y = iy.out
 }

@@ -2,9 +2,9 @@ import VGA
 import LFSR
 import Timing
 
-type Char = uint<8>
+type Char = u8
 
-module AsciiTable(char: Char) -> (q: uint<64>) {
+module AsciiTable(char: Char) -> (q: u64) {
     q = match char[6:0] {
         7'h21 => 64'h000C000C0C1E1E0C
         7'h22 => 64'h0000000000363636
@@ -105,9 +105,9 @@ module AsciiTable(char: Char) -> (q: uint<64>) {
     }
 }
 
-module CharAt<Length: Nat, IndexWidth: Nat>(
-    str: Char[Length],
-    index: uint<IndexWidth>,
+module CharAt[Length: Nat, IndexWidth: Nat](
+    str: [Length]Char,
+    index: uint[IndexWidth],
 ) -> (
     char: Char,
     is_out_of_bounds: bool,
@@ -119,10 +119,10 @@ module CharAt<Length: Nat, IndexWidth: Nat>(
 const Rows = VGA::V_ACTIVE / 8
 const Cols = VGA::H_ACTIVE / 8
 
-module Text<Length: Nat, X: Nat, Y: Nat>(
-    text: Char[Length],
-    screen_x: uint<10>,
-    screen_y: uint<10>,
+module Text[Length: Nat, X: Nat, Y: Nat](
+    text: [Length]Char,
+    screen_x: u10,
+    screen_y: u10,
 ) -> (
     is_active: bool,
 ) {
@@ -131,20 +131,20 @@ module Text<Length: Nat, X: Nat, Y: Nat>(
     let y_div = screen_y[9:3]
     let x = screen_x[2:0]
     let y = screen_y[2:0]
-    let cell_idx: uint<13> = y_div * Cols + x_div
-    let diff: uint<13> = cell_idx - StartIdx
-    let char = cell_idx >= StartIdx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : ' '
+    let cell_idx: u13 = y_div * Cols + x_div
+    let diff: u13 = cell_idx - StartIdx
+    let char = cell_idx >= StartIdx ? CharAt[Length: Length, IndexWidth: 13](str: text, index: diff).char : ' '
     let bitmap = AsciiTable(char).q
-    let pixel_idx: uint<6> = y * 8 + x
+    let pixel_idx: u6 = y * 8 + x
     is_active = (bitmap shr pixel_idx)[0]
 }
 
-module TextDynamicPosition<Length: Nat>(
-    text: Char[Length],
-    x_offset: uint<clog2!(Cols)>,
-    y_offset: uint<clog2!(Rows)>,
-    screen_x: uint<10>,
-    screen_y: uint<10>,
+module TextDynamicPosition[Length: Nat](
+    text: [Length]Char,
+    x_offset: uint[clog2!(Cols)],
+    y_offset: uint[clog2!(Rows)],
+    screen_x: u10,
+    screen_y: u10,
 ) -> (
     is_active: bool,
 ) {
@@ -152,16 +152,16 @@ module TextDynamicPosition<Length: Nat>(
     let y_div = screen_y[9:3]
     let x = screen_x[2:0]
     let y = screen_y[2:0]
-    let start_idx: uint<13> = y_offset * Cols + x_offset
-    let cell_idx: uint<13> = y_div * Cols + x_div
-    let diff: uint<13> = cell_idx - start_idx
-    let char = cell_idx >= start_idx ? CharAt<Length: Length, IndexWidth: 13>(str: text, index: diff).char : ' '
+    let start_idx: u13 = y_offset * Cols + x_offset
+    let cell_idx: u13 = y_div * Cols + x_div
+    let diff: u13 = cell_idx - start_idx
+    let char = cell_idx >= start_idx ? CharAt[Length: Length, IndexWidth: 13](str: text, index: diff).char : ' '
     let bitmap = AsciiTable(char).q
-    let pixel_idx: uint<6> = y * 8 + x
+    let pixel_idx: u6 = y * 8 + x
     is_active = (bitmap shr pixel_idx)[0]
 }
 
-module Hex<Bits: Nat>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
+module Hex[Bits: Nat](n: uint[Bits]) -> (chars: [cdiv!(Bits, 4)]Char) {
     const Len = cdiv!(Bits, 4)
     for i in 0..<Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
@@ -185,7 +185,7 @@ module Hex<Bits: Nat>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
     }
 }
 
-module Dec<Bits: Nat>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
+module Dec[Bits: Nat](n: uint[Bits]) -> (chars: [cdiv!(Bits, 4)]Char) {
     const Len = cdiv!(Bits, 4)
     for i in 0..<Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {
@@ -203,7 +203,7 @@ module Dec<Bits: Nat>(n: uint<Bits>) -> (chars: Char[cdiv!(Bits, 4)]) {
     }
 }
 
-module Bin<Bits: Nat>(n: uint<Bits>) -> (chars: Char[Bits]) {
+module Bin[Bits: Nat](n: uint[Bits]) -> (chars: [Bits]Char) {
     for i in 0..<Bits {
         chars[Bits - 1 - i] = n[i] ? '1' : '0'
     }

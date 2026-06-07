@@ -1,4 +1,4 @@
-module Top(a: uint<8>, b: uint<8>) -> (sum: uint<9>, diff: uint<9>, prod: uint<16>) {
+module Top(a: u8, b: u8) -> (sum: u9, diff: u9, prod: u16) {
     sum = a + b
     diff = a - b
     prod = a * b

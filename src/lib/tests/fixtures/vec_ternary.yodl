@@ -1,6 +1,6 @@
 // Exercises ExpandConnectsPass rewrite_mux_expr for Vec types:
 // a ternary where the entire Vec is selected exercises the Vec branch
 // of rewrite_mux_expr which emits element-by-element mux wires.
-module Top(sel: bool, a: uint<8>[4], b: uint<8>[4]) -> (out: uint<8>[4]) {
+module Top(sel: bool, a: [4]u8, b: [4]u8) -> (out: [4]u8) {
     out = sel ? a : b
 }

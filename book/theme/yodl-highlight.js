@@ -37,6 +37,11 @@ hljs.registerLanguage('yodl', function (hljs) {
           { begin: '\\b\\d+(?:_\\d+)*\\b' } // Regular numbers with optional underscore separators
         ]
       },
+      // Sized integer types: u8, s7, u32, ...
+      {
+        className: 'type',
+        begin: /\b[us]\d+\b/
+      },
       // Built-in function calls: identifiers ending with '!'
       {
         className: 'function',
@@ -50,12 +55,12 @@ hljs.registerLanguage('yodl', function (hljs) {
       // Operators
       {
         className: 'operator',
-        begin: /\b(?:and|or|not|xor|nand|nor|xnor|shl|shr|andr|orr|xorr)\b|==|!=|<=|>=|<:|>:|\+|-|\*|\/|%|\.{3}|=>|\?|:|\./
+        begin: /\b(?:and|or|not|xor|nand|nor|xnor|shl|shr|andr|orr|xorr)\b|==|!=|<=|>=|<:|>:|\+:|-:|\.\.<|\.\.=|\.\.|=>|->|::|\+|-|\*|\/|%|\?|\./
       },
-      // Punctuation: commas, parentheses, semicolons, colons
+      // Punctuation: commas, parentheses, semicolons, colons, braces, brackets
       {
         className: 'punctuation',
-        begin: /[(),;:]/
+        begin: /[(){}\[\],;:]/
       },
     ]
   };

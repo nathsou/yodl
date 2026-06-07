@@ -62,13 +62,13 @@ Note 2: The `and`, `or`, `xor`, `nand`, `nor`, and `xnor` operators are used bot
 |----------|-------------|---------|
 | `==` | Equal | `a == b` |
 | `!=` | Not Equal | `a != b` |
-| `<:` | Less Than | `a <: b` |
-| `>:` | Greater Than | `a >: b` |
+| `<` | Less Than | `a < b` |
+| `>` | Greater Than | `a > b` |
 | `<=` | Less Than or Equal | `a <= b` |
 | `>=` | Greater Than or Equal | `a >= b` |
 
 <div class="warning">
-    Note: The `<:` and `>:` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
+    Note: The `<` and `>` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
 </div>
 
 ## Ternary Operator
@@ -76,29 +76,29 @@ Note 2: The `and`, `or`, `xor`, `nand`, `nor`, and `xnor` operators are used bot
 The ternary operator is a concise way to express conditional expressions, generally spanning a single line.
 
 ```yodl
-# module Test(a: uint<8>, b: uint<8>) -> () {
+# module Test(a: u8, b: u8) -> () {
     let max = a >= b ? a : b
 # }
 ```
 
 ## Concatenation
 
-Integer concatenation can be performed by wrapping a list of values in curly braces:
+Integer concatenation is performed with the `cat!` built-in function:
 
 ```yodl
 # module Test(clk: clock) -> () {
     let upper_nibble = 8'hAB
     let lower_nibble = 8'hCD
-    let word = {upper_nibble, lower_nibble}
+    let word = cat!(upper_nibble, lower_nibble)
     assert!(word == 16'hABCD)
 # }
 ```
 
-The concatenation operator also accepts Vectors of integers.
+`cat!` also accepts Vectors of integers, which it flattens automatically.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let value = {[1'1, 1'0, 1'0, 1'0]} // 4'b1000
+    let value = cat!([1'1, 1'0, 1'0, 1'0]) // 4'b1000
     assert!(value == 4'b1000)
 # }
 ```
@@ -110,19 +110,24 @@ Elements of vectors and bits of integers can be accessed using the `[]` operator
 ```yodl
 # module Test(clk: clock) -> () {
     let bits = [..8'd233]
-    let first = bits[0]     // Access the first element
-    let nibble = bits[7:4] // Extract a range of bits (inclusive)
-    let byte = bits[7-:8]   // Extract 8 bits starting from bit 7 (equivalent to data[7:0])
+    let first = bits[0]      // Access the first element
+    let nibble = bits[7:4]   // Extract a range of bits (inclusive)
+    let byte_desc = bits[7-:8] // 8 bits ending at bit 7 (equivalent to bits[7:0])
+    let byte_asc = bits[0+:8]  // 8 bits starting at bit 0 (equivalent to bits[7:0])
 
     assert!(first == 1'b1)
     assert!(uint!(nibble) == 4'hE)
-    assert!(uint!(byte) == 8'hE9)
+    assert!(uint!(byte_desc) == 8'hE9)
+    assert!(uint!(byte_asc) == 8'hE9)
 # }
 ```
 
-There are two forms of bit slicing:
+There are three forms of bit slicing:
 1. `[high:low]` - Extract bits from position `high` down to `low` (inclusive)
-2. `[start-:width]` - Extract `width` bits starting from position `start`
+2. `[base-:width]` - Extract `width` bits ending at `base` (selects `[base : base - width + 1]`)
+3. `[base+:width]` - Extract `width` bits starting at `base` (selects `[base + width - 1 : base]`)
+
+The `+:` and `-:` forms match SystemVerilog's [indexed part-select](https://www.systemverilog.io/sv-explained/operators#bit-slicing).
 
 
 Note:
@@ -130,7 +135,7 @@ Note:
 - Integers are indexed from the least significant bit (LSB) to the most significant bit (MSB) (right to left).
 - Vectors follow standard array-indexing conventions, with the first element at index 0 (left to right).
 
-When a bit vector (`bool[N]` i.e. `uint<1>[N]`) is used as the argument of the `uint` and `sint` built-in functions,
+When a bit vector (`[N]bool` i.e. `[N]u1`) is used as the argument of the `uint` and `sint` built-in functions,
 the first element of the vector becomes the MSB of the resulting integer:
 
 ```yodl
@@ -142,17 +147,17 @@ the first element of the vector becomes the MSB of the resulting integer:
 
 ## Replication
 
-Replication expressions `<uint>*[<expr-list>]` and `<uint>*{<expr-list>}` create a vector by repeating a value multiple times:
+The `fill!(n, x)` built-in produces a vector `[n]T` of `n` copies of `x`:
 
 ```yodl
 # const a = 1'b1
 # const b = 1'b0
 # module Test(clk: clock) -> () {
-    let zeros = 4*[1'b0]   // Expands to [1'b0, 1'b0, 1'b0, 1'b0]
-    let ones = 3*{1'b1} // Expands to {1'b, 1'b, 1'b1}
+    let zeros = fill!(4, 1'b0)        // [1'b0, 1'b0, 1'b0, 1'b0]
+    let ones  = cat!(fill!(3, 1'b1))  // Concat-replicate: 3'b111
 
     assert!(uint!(zeros) == 4'd0)
-    assert!(uint!(ones) == 3'b111)
+    assert!(ones == 3'b111)
 # }
 ```
 
@@ -165,21 +170,21 @@ The repeated expressions can contain any value, including instances:
 
 # module Test(clk: clock, rst: bool) -> () {
     // initialise a Rows by Cols grid of cells
-    let cells = Cols * [Rows * [Cell(clk, rst)]]
+    let cells = fill!(Cols, fill!(Rows, Cell(clk, rst)))
 # }
 ```
 
 ## Concatenation
 
-Concatenation expressions `{<expr-list>}` create an integer from a list of smaller integers.
-The width of the resulting integer is the sum of the widths of the operands.
+The `cat!` built-in concatenates a list of integers (or integer vectors) into a single integer.
+The width of the result is the sum of the widths of the operands.
 
 If any operand is a signed integer (sint), then all operands are required to be signed.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let concat_args = {16'hBABA, 16'hFABE}
-    let concat_vec = {[16'hBABA, 16'hFABE]}
+    let concat_args = cat!(16'hBABA, 16'hFABE)
+    let concat_vec  = cat!([16'hBABA, 16'hFABE])
 
     assert!(concat_args == 32'hBABAFABE)
     assert!(concat_vec == 32'hBABAFABE)
@@ -192,9 +197,9 @@ The spread operator `..` can only appear inside a vector expression and is used 
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let bits: uint<1>[4] = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
-    let chars: uint<8>[3] = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
-    let flat: uint<2>[3] = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
+    let bits: [4]u1 = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
+    let chars: [3]u8 = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
+    let flat: [3]u2 = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
 
     assert!(bits[0] == 1'b0)
     assert!(bits[1] == 1'b0)
@@ -217,7 +222,7 @@ Operators are evaluated in the following order (from highest to lowest precedenc
 2. Multiplication, division, modulo (`*`, `/`, `mod`)
 3. Addition, subtraction (`+`, `-`)
 4. Shift operations (`shl`, `shr`)
-5. Comparisons (`<:`, `>:`, `<=`, `>=`)
+5. Comparisons (`<`, `>`, `<=`, `>=`)
 6. Equality operators (`==`, `!=`)
 7. Bitwise AND and NAND (`and`, `nand`)
 8. Bitwise XOR and XNOR (`xor`, `xnor`)
@@ -243,8 +248,8 @@ The following table summarises the resulting type for each operation:
 | `/` | `sint<A>` | `sint<B>` | `sint<A + 1>` |
 | `mod` | `uint<A>` | `uint<B>` | `uint<min(A, B)>` |
 | `mod` | `sint<A>` | `sint<B>` | `sint<min(A, B)>` |
-| `==`, `!=`, `<:`, `>:` | `uint<A>` | `uint<B>` | `uint<1>` |
-| `==`, `!=`, `<:`, `>:` | `sint<A>` | `sint<B>` | `uint<1>` |
+| `==`, `!=`, `<`, `>` | `uint<A>` | `uint<B>` | `u1` |
+| `==`, `!=`, `<`, `>` | `sint<A>` | `sint<B>` | `u1` |
 | `and`, `nand`, `or`, `nor`, `xor`, `xnor` | `uint<A>` | `uint<B>` | `uint<max(A, B)>` |
 | `and`, `nand`, `or`, `nor`, `xor`, `xnor` | `sint<A>` | `sint<B>` | `uint<max(A, B)>` |
 
@@ -267,4 +272,3 @@ When the shift amount is not known at compile time, the output type is determine
 | `shl` | `sint<A>` | `uint<B>` | `sint<A + 2^B - 1>` |
 | `shr` | `uint<A>` | `uint<B>` | `uint<A>` |
 | `shr` | `sint<A>` | `uint<B>` | `sint<A>` |
-

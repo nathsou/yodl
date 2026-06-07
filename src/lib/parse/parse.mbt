@@ -16,7 +16,6 @@ pub suberror ParserError {
   MultipleDefaultCases(span~: Span)
   InvalidPortOrTupleAccess(span~: Span)
   DuplicateStructField(name~: String, span~: Span)
-  DidYouMean(received~: TokenType, suggestion~: String, span~: Span)
 } derive(Debug)
 
 pub impl Show for ParserError with output(self, logger) {
@@ -35,8 +34,6 @@ pub impl Show for ParserError with output(self, logger) {
       logger.write_string("Expected a declaration, got '\{received}' at \{span}\n\{span.context()}")
     ExpectedRangeOperator(received~, span~) =>
       logger.write_string("Expected a range operator ('..' or '..='), got '\{received}' at \{span}\n\{span.context()}")
-    DidYouMean(received~, suggestion~, span~) =>
-      logger.write_string("Unexpected '\{received}' at \{span}: \{suggestion}\n\{span.context()}")
     MultipleDefaultCases(span~) =>
       logger.write_string("Multiple default cases in match at \{span}\n\{span.context()}")
     InvalidPortOrTupleAccess(span~) =>
@@ -60,6 +57,31 @@ fn Parser::peek(self: Parser) -> TokenType {
 
 fn Parser::lookahead(self: Parser, n: Int) -> Token {
   self.tokens[self.index + n]
+}
+
+// Assuming the current token is an opening bracket of kind `open`, scan
+// forward counting matching open/close brackets and return the token that
+// immediately follows the matching closing bracket. Returns Semicolon if
+// there are no more tokens (acts as a benign sentinel for callers).
+fn Parser::peek_after_matching(self: Parser, open: TokenType, close: TokenType) -> TokenType {
+  let mut depth = 1
+  let mut i = self.index + 1
+
+  while i < self.tokens.length() && depth > 0 {
+    let k = self.tokens[i].kind
+    if k == open {
+      depth += 1
+    } else if k == close {
+      depth -= 1
+    }
+    i += 1
+  }
+
+  if i < self.tokens.length() {
+    self.tokens[i].kind
+  } else {
+    Semicolon
+  }
 }
 
 fn Parser::advance(self: Parser) -> Unit {
@@ -153,28 +175,46 @@ fn Parser::precedence_climbing(self: Parser, min_precedence: Int) -> Expr raise 
 
 fn Parser::parse_indexing_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
-  let mut lhs = self.parse_replication_expr()
+  let mut lhs = self.parse_primary_expr()
 
   while true {
-    if self.consumes(Lbracket) {
-      let index = self.parse_expr()
-
-      match self.peek() {
-        Colon | MinusColon as op => {
-          self.advance()
-          
-          let kind = match op {
-            Colon => PartSelect::Absolute
-            _ => PartSelect::Width
+    if self.matches(Lbracket) {
+      // `e[...]` could be:
+      //   - vector indexing / slicing                 → produce Indexing or Slicing
+      //   - parameter application (followed by `(`)    → promote to Instance
+      // We peek past the matching `]`: if `(` follows, it's a parameter list.
+      if self.peek_after_matching(Lbracket, Rbracket) == Lparen {
+        // Reinterpret lhs as a path. Only bare Identifier references can be
+        // instantiated with parameters; anything else is a parse error.
+        match lhs {
+          Identifier(path~, ..) => {
+            lhs = self.parse_instance_expr(path~)
           }
-
-          let lsb = self.parse_expr()
-          self.expect(Rbracket, start_idx)
-          lhs = Slicing(expr=lhs, hi=index, lo=lsb, kind~, span=self.span(start_idx), ty={ val: None })
+          _ => raise ExpectedExpr(received=self.peek(), span=self.span(start_idx))
         }
-        _ => {
-          self.expect(Rbracket, start_idx)
-          lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
+      } else {
+        self.advance() // consume `[`
+        let index = self.parse_expr()
+
+        match self.peek() {
+          Colon | MinusColon | PlusColon as op => {
+            self.advance()
+
+            let kind = match op {
+              Colon => PartSelect::Absolute
+              MinusColon => PartSelect::WidthDescending
+              PlusColon => PartSelect::WidthAscending
+              _ => @utils.unreachable_code()
+            }
+
+            let lsb = self.parse_expr()
+            self.expect(Rbracket, start_idx)
+            lhs = Slicing(expr=lhs, hi=index, lo=lsb, kind~, span=self.span(start_idx), ty={ val: None })
+          }
+          _ => {
+            self.expect(Rbracket, start_idx)
+            lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
+          }
         }
       }
     } else if self.consumes(Dot) {
@@ -262,7 +302,11 @@ fn Parser::parse_primary_expr(self: Parser) -> Expr raise {
       self.advance()
       let path = self.parse_path(name)
 
-      if self.matches(Lparen) || self.matches(Lchevron) {
+      // Instantiation with `(...)` (no static parameters) is handled here.
+      // Bracketed instantiation `Reg[T](...)` is handled by parse_indexing_expr,
+      // which can disambiguate between indexing `arr[i]` and parameter
+      // application `Reg[T](...)` by peeking the token after the matching `]`.
+      if self.matches(Lparen) {
         self.parse_instance_expr(path~)
       } else {
         Identifier(path~, span=self.span(start_idx), ty={ val: None })
@@ -296,15 +340,13 @@ fn Parser::parse_primary_expr(self: Parser) -> Expr raise {
 
       Unary(op=unop, expr~, span=self.span(start_idx), ty={ val: None })
     }
-    Lparen => self.parse_tuple_or_paren_expr()
+    Lparen => self.parse_paren_or_record_expr()
     Lbracket => self.parse_vector_expr()
-    Lbrace => self.parse_struct_or_concat_or_block_expr()
+    Lbrace => self.parse_block_expr()
     Match => self.parse_match_expr()
     If => self.parse_if_expr()
     DotDot => self.parse_spread_expr()
     BuiltinFunction(name) => { self.advance(); self.parse_function_call_expr(name) }
-    Lchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '<', did you mean '<:' (less than operator) instead?")
-    Rchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '>', did you mean '>:' (greater than operator) instead?")
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
 }
@@ -335,67 +377,113 @@ fn Parser::parse_function_call_expr(self: Parser, name: String) -> Expr raise {
   FunCall(name~, args~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn Parser::parse_replication_expr(self: Parser) -> Expr raise {
-  let start_idx = self.index
-  let lhs = self.parse_primary_expr()
-
-  if self.consumes(X) {
-    let mut concat = true
-
-    if !self.consumes(Lbrace) {
-      concat = false
-      self.expect(Lbracket, start_idx) 
-    }
-
-    let expr = self.parse_expr()
-    self.expect(if concat { Rbrace } else { Rbracket }, start_idx)
-
-    Replicate(expr~, count=lhs, concat~, span=self.span(start_idx), ty={ val: None })
-  } else {
-    lhs
-  }
-} 
-
-fn Parser::parse_tuple_or_paren_expr(self: Parser) -> Expr raise {
+// Parse `( ... )` which can be:
+//   ()                   -> empty record (Struct with no fields)
+//   (x)                  -> grouping (returns inner expression)
+//   (x,)                 -> 1-element positional record (Struct {"0": x})
+//   (a, b, ...)          -> positional record (Struct {"0": a, "1": b, ...})
+//   (name: e, ...)       -> named record (Struct {name: e, ...})
+//   (..base, name: e)    -> named record with spread (only valid in named mode)
+//
+// Mixed positional + named is disallowed (Q1: all-or-nothing).
+// Spread is allowed only in named records (Q6).
+fn Parser::parse_paren_or_record_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   self.expect(Lparen, start_idx)
-  let elems = []
 
-  while !self.matches(Rparen) {
-    let elem = self.parse_expr()
-    elems.push(elem)
-
-    if !self.consumes(Comma) {
-      break
-    }
+  // empty record
+  if self.consumes(Rparen) {
+    return Struct(fields=Map([]), span=self.span(start_idx), ty={ val: None })
   }
 
-  self.expect(Rparen, start_idx)
+  // Look at the first element: is it `..` (spread) or `name :` (named)?
+  let first_is_spread = self.matches(DotDot)
+  let first_is_named = !first_is_spread &&
+    (self.lookahead(0).kind is Identifier(_) && self.lookahead(1).kind is Colon)
 
-  if elems.length() == 1 {
-    elems[0]
-  } else {
-    Tuple(elems~, span=self.span(start_idx), ty={ val: None })
-  }
-}
-
-fn Parser::parse_concat_expr(self: Parser, first_expr: Expr, start_idx~: Int) -> Expr raise {
-  let elems = [first_expr]
-
-  if self.consumes(Comma) {
-    while !self.matches(Rbrace) {
-      let expr = self.parse_expr()
-      elems.push(expr)
+  if first_is_named || first_is_spread {
+    // named record (with optional leading spread)
+    let fields: Map[String, Expr] = {}
+    while !self.matches(Rparen) {
+      if self.matches(DotDot) {
+        // spread element
+        let spread_start = self.index
+        self.advance()
+        let base = self.parse_expr()
+        let spread_span = self.span(spread_start)
+        // Use a synthetic field name "..n" to preserve order;
+        // simplifier/type-checker can expand spreads.
+        let mut idx = 0
+        let mut key = "..\{idx}"
+        while fields.contains(key) {
+          idx += 1
+          key = "..\{idx}"
+        }
+        fields[key] = Spread(expr=base, span=spread_span, ty={ val: None })
+      } else {
+        let name = self.parse_identifier()
+        self.expect(Colon, start_idx)
+        let value = self.parse_expr()
+        if fields.contains(name) {
+          raise DuplicateStructField(name~, span=self.span(start_idx))
+        }
+        fields[name] = value
+      }
 
       if !self.consumes(Comma) {
         break
       }
     }
+
+    self.expect(Rparen, start_idx)
+    return Struct(fields~, span=self.span(start_idx), ty={ val: None })
+  } else {
+    // positional list or grouping
+    let elems = [self.parse_expr()]
+    let mut had_trailing_comma = false
+
+    while self.consumes(Comma) {
+      if self.matches(Rparen) {
+        had_trailing_comma = true
+        break
+      }
+      // disallow named entries in positional mode
+      if self.lookahead(0).kind is Identifier(_) && self.lookahead(1).kind is Colon {
+        raise ExpectedExpr(received=self.peek(), span=self.span(start_idx))
+      }
+      let elem = self.parse_expr()
+      elems.push(elem)
+    }
+
+    self.expect(Rparen, start_idx)
+
+    if elems.length() == 1 && !had_trailing_comma {
+      // grouping
+      elems[0]
+    } else {
+      // positional record: integer-keyed Struct
+      let fields = Map([], capacity=elems.length())
+      for idx, elem in elems {
+        fields[idx.to_string()] = elem
+      }
+      Struct(fields~, span=self.span(start_idx), ty={ val: None })
+    }
+  }
+}
+
+// Parse a block expression `{ stmt; stmt; ...; last_expr }`.
+fn Parser::parse_block_expr(self: Parser) -> Expr raise {
+  let start_idx = self.index
+  self.expect(Lbrace, start_idx)
+  let body = []
+
+  while !self.matches(Rbrace) {
+    let stmt = self.parse_stmt()
+    body.push(stmt)
   }
 
   self.expect(Rbrace, start_idx)
-
-  Concat(elems~, span=self.span(start_idx), ty={ val: None })
+  stmt_list_to_block(body, span=self.span(start_idx))
 }
 
 fn stmt_list_to_block(body: Array[Stmt], span~: Span) -> Expr {
@@ -408,72 +496,6 @@ fn stmt_list_to_block(body: Array[Stmt], span~: Span) -> Expr {
     }
 
   Block(body~, last~, span~, ty={ val: None })
-}
-
-fn Parser::parse_struct_or_concat_or_block_expr(self: Parser) -> Expr raise {
-  let start_idx = self.index
-  self.expect(Lbrace, start_idx)
-
-  if self.consumes(Rbrace) {
-    return Vector(elems=[], span=self.span(start_idx), ty={ val: None })
-  }
-
-  // first try to parse a block expr containing at least one stmt
-  // singleton concat expressions are equivalent to blocks containing a single expr
-  let backtracking_index = self.index
-
-  try self.parse_stmt() catch {
-    _ => {
-      // if we failed to parse a block, backtrack and try to parse a struct or concat expression
-      self.index = backtracking_index
-
-      match self.parse_expr() {
-        Identifier(path={ packages: [], elem }, ..) as first_expr => {
-          if self.consumes(Colon) {
-            let fields = {}
-            fields[elem] = self.parse_expr()
-            
-            if self.consumes(Comma) {
-              while !self.matches(Rbrace) {
-                let name = self.parse_identifier()
-                self.expect(Colon, start_idx)
-                let expr = self.parse_expr()
-              
-                if fields.contains(name) {
-                  raise DuplicateStructField(name~, span=self.span(start_idx))
-                }
-
-                fields[name] = expr
-
-                if !self.consumes(Comma) {
-                  break
-                }
-              }
-            }
-
-            self.expect(Rbrace, start_idx)
-
-            Struct(fields~, span=self.span(start_idx), ty={ val: None })
-          } else {
-            self.parse_concat_expr(first_expr, start_idx~)
-          }
-        }
-        first_expr => self.parse_concat_expr(first_expr, start_idx~)
-      }
-    }
-  } noraise {
-    stmt => {
-      let body = [stmt]
-
-      while !self.matches(Rbrace) {
-        let stmt = self.parse_stmt()
-        body.push(stmt)
-      }
-
-      self.expect(Rbrace, start_idx)
-      stmt_list_to_block(body, span=self.span(start_idx))
-    }
-  }
 }
 
 fn Parser::parse_vector_expr(self: Parser) -> Expr raise {
@@ -504,8 +526,8 @@ fn Parser::parse_instance_parameter(self: Parser) -> Param {
     let token = self.tokens[self.index]
 
     match token.kind {
-      Lchevron => open_brackets += 1
-      Rchevron => {
+      Lbracket => open_brackets += 1
+      Rbracket => {
         open_brackets -= 1
         if open_brackets == 0 {
           break
@@ -653,10 +675,12 @@ fn Parser::parse_stmt(self: Parser) -> Stmt raise {
 
       let start = self.parse_expr()
 
-      let inclusive = if self.consumes(DotDotLeftChevron) {
-        false
-      } else if self.consumes(DotDotEqual) {
+      let inclusive = if self.consumes(DotDotEqual) {
         true
+      } else if self.consumes(DotDot) {
+        // exclusive range: `..<` is now two tokens (`..` then `<`)
+        self.expect(Lchevron, start_idx)
+        false
       } else {
         raise ExpectedRangeOperator(received=self.peek(), span=self.span(start_idx))
       }
@@ -825,8 +849,8 @@ fn Parser::parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
   let name = self.parse_identifier()
   let parameters: Array[StaticParam] = []
   
-  if self.consumes(Lchevron) {
-    while !self.matches(Rchevron) {
+  if self.consumes(Lbracket) {
+    while !self.matches(Rbracket) {
       let param_start = self.index
       let param_name = self.parse_identifier()
       let sort = if self.consumes(Colon) {
@@ -841,7 +865,7 @@ fn Parser::parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
       }
     }
 
-    self.expect(Rchevron, start_idx)
+    self.expect(Rbracket, start_idx)
   }
 
   self.expect(Equal, start_idx)
@@ -867,16 +891,24 @@ fn Parser::parse_path(self: Parser, first: String) -> Path raise {
 fn Parser::parse_type(self: Parser) -> Type raise {
   let start_idx = self.index
 
-  let mut base_ty: Type = match self.peek() {
+  // Prefix vector type: [N]T means "vector of N elements of type T"
+  if self.consumes(Lbracket) {
+    let len = self.parse_index_expr()
+    self.expect(Rbracket, start_idx)
+    let elem = self.parse_type()
+    return Vector(ty=elem, len~)
+  }
+
+  match self.peek() {
     Bool => {
       self.advance()
       UInt(Lit(1))
     }
     UInt => {
       self.advance()
-      if self.consumes(Lchevron) {
+      if self.consumes(Lbracket) {
         let width = self.parse_index_expr()
-        self.expect(Rchevron, start_idx)
+        self.expect(Rbracket, start_idx)
         UInt(width)
       } else {
         Nat({min_width: 0})
@@ -884,10 +916,18 @@ fn Parser::parse_type(self: Parser) -> Type raise {
     }
     SInt => {
       self.advance()
-      self.expect(Lchevron, start_idx)
+      self.expect(Lbracket, start_idx)
       let width = self.parse_index_expr()
-      self.expect(Rchevron, start_idx)
+      self.expect(Rbracket, start_idx)
       SInt(width)
+    }
+    UIntType(width) => {
+      self.advance()
+      UInt(Lit(width))
+    }
+    SIntType(width) => {
+      self.advance()
+      SInt(Lit(width))
     }
     Clock => {
       self.advance()
@@ -898,8 +938,8 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       let path = self.parse_path(name)
       let params: Array[Type] = []
 
-      if self.consumes(Lchevron) {
-        while !self.matches(Rchevron) {
+      if self.consumes(Lbracket) {
+        while !self.matches(Rbracket) {
           let param = self.parse_type()
           params.push(param)
 
@@ -908,7 +948,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
           }
         }
 
-        self.expect(Rchevron, start_idx)
+        self.expect(Rbracket, start_idx)
       }
 
       if path is { packages: [], elem: "MemoryMask" } && params is [ty] {
@@ -919,22 +959,55 @@ fn Parser::parse_type(self: Parser) -> Type raise {
     }
     Lparen => {
       self.advance()
-      let elems = []
 
-      while !self.matches(Rparen) {
-        let elem = self.parse_type()
-        elems.push(elem)
-
-        if !self.consumes(Comma) {
-          break
-        }
+      // empty record
+      if self.consumes(Rparen) {
+        return Struct(Map([]))
       }
 
-      self.expect(Rparen, start_idx)
+      // Look ahead: if first token is Identifier followed by Colon, this is a named struct type.
+      let is_named = self.lookahead(0).kind is Identifier(_) && self.lookahead(1).kind is Colon
 
-      match elems {
-        [elem] => elem
-        _ => {
+      if is_named {
+        let fields = {}
+
+        while !self.matches(Rparen) {
+          let name = self.parse_identifier()
+          self.expect(Colon, start_idx)
+          let ty = self.parse_type()
+
+          if fields.contains(name) {
+            raise DuplicateStructField(name~, span=self.span(start_idx))
+          }
+
+          fields[name] = ty
+
+          if !self.consumes(Comma) {
+            break
+          }
+        }
+
+        self.expect(Rparen, start_idx)
+        Struct(fields)
+      } else {
+        // positional / grouping
+        let elems = [self.parse_type()]
+        let mut had_trailing_comma = false
+
+        while self.consumes(Comma) {
+          if self.matches(Rparen) {
+            had_trailing_comma = true
+            break
+          }
+          let elem = self.parse_type()
+          elems.push(elem)
+        }
+
+        self.expect(Rparen, start_idx)
+
+        if elems.length() == 1 && !had_trailing_comma {
+          elems[0]
+        } else {
           let fields = Map([], capacity=elems.length())
 
           for idx, elem in elems {
@@ -945,40 +1018,8 @@ fn Parser::parse_type(self: Parser) -> Type raise {
         }
       }
     }
-    Lbrace => {
-      self.advance()
-      let fields = {}
-
-      while !self.matches(Rbrace) {
-        let name = self.parse_identifier()
-        self.expect(Colon, start_idx)
-        let ty = self.parse_type()
-        
-        if fields.contains(name) {
-          raise DuplicateStructField(name~, span=self.span(start_idx))
-        }
-
-        fields[name] = ty
-
-        if !self.consumes(Comma) {
-          break
-        }
-      }
-
-      self.expect(Rbrace, start_idx)
-
-      Struct(fields)
-    }
     _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
   }
-
-  while self.consumes(Lbracket) {
-    let len = self.parse_index_expr()
-    self.expect(Rbracket, start_idx)
-    base_ty = Vector(ty=base_ty, len~)
-  }
-
-  base_ty
 }
 
 fn Parser::parse_port(self: Parser, dir~: PortDir) -> Port raise {
@@ -1019,11 +1060,11 @@ fn Parser::parse_port_list(self: Parser, dir~: PortDir) -> Array[Port] raise {
 }
 
 fn[T] Parser::parse_module_parameters(self: Parser, parse_elem: () -> T raise) -> Array[T] raise {
-  if self.consumes(Lchevron) {
+  if self.consumes(Lbracket) {
     let start_idx = self.index
     let params = []
 
-    while !self.matches(Rchevron) {
+    while !self.matches(Rbracket) {
       let param = parse_elem()
       params.push(param)
 
@@ -1032,7 +1073,7 @@ fn[T] Parser::parse_module_parameters(self: Parser, parse_elem: () -> T raise) -
       }
     }
 
-    self.expect(Rchevron, start_idx)
+    self.expect(Rbracket, start_idx)
 
     params
   } else {

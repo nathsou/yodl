@@ -65,15 +65,6 @@ pub fn rewrite_expr(expr: Expr, rewriter: Rewriter) -> Expr raise {
       let expr = rewrite_expr(expr, rewriter)
       Spread(expr~, span~, ty=clone_ty(ty))
     }
-    Concat(elems~, span~, ty~) => {
-      let new_elems = Array::new(capacity=elems.length())
-
-      for elem in elems {
-        new_elems.push(rewrite_expr(elem, rewriter))
-      }
-
-      Concat(elems=new_elems, span~, ty=clone_ty(ty))
-    }
     Ternary(cond~, then~, else_~, span~, ty~) => {
       let cond = rewrite_expr(cond, rewriter)
       let then = rewrite_expr(then, rewriter)
@@ -97,20 +88,6 @@ pub fn rewrite_expr(expr: Expr, rewriter: Rewriter) -> Expr raise {
       }
 
       Match(subject=new_subject, cases=new_cases, default=new_default, span~, ty=clone_ty(ty))
-    }
-    Tuple(elems~, span~, ty~) => {
-      let new_elems = Array::new(capacity=elems.length())
-
-      for elem in elems {
-        new_elems.push(rewrite_expr(elem, rewriter))
-      }
-
-      Tuple(elems=new_elems, span~, ty=clone_ty(ty))
-    }
-    Replicate(expr~, count~, concat~, span~, ty~) => {
-      let expr = rewrite_expr(expr, rewriter)
-      let count = rewrite_expr(count, rewriter)
-      Replicate(expr~, count~, concat~, span~, ty=clone_ty(ty))
     }
     FunCall(name~, args~, span~, ty~) => {
       let new_args = Array::new(capacity=args.length())

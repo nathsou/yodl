@@ -1,4 +1,4 @@
-module Top(a: bool, b: uint<8>, c: sint<4>) -> (x: bool, y: uint<8>, z: sint<4>) {
+module Top(a: bool, b: u8, c: s4) -> (x: bool, y: u8, z: s4) {
     x = a
     y = b
     z = c

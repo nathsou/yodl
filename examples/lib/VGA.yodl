@@ -7,8 +7,8 @@ module SyncPulses(
 ) -> (
     hsync: bool,
     vsync: bool,
-    col: uint<10>,
-    row: uint<10>,
+    col: u10,
+    row: u10,
     is_active_area: bool,
     new_pixel: bool,
 ) {
@@ -22,8 +22,8 @@ module SyncPulses(
     const V_BACK_PORCH = 33
     const V_TOTAL = V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE + V_BACK_PORCH
 
-    let col_reg = Reg<uint<10>>(clk: pixel_clk, q: col)
-    let row_reg = Reg<uint<10>>(clk: pixel_clk, q: row)
+    let col_reg = Reg[u10](clk: pixel_clk, q: col)
+    let row_reg = Reg[u10](clk: pixel_clk, q: row)
 
     let last_col = col_reg.q == H_TOTAL - 1
     let last_row = row_reg.q == V_TOTAL - 1
@@ -32,7 +32,7 @@ module SyncPulses(
     row_reg.d = last_col ? (last_row ? 10'd0 : row_reg.q + 1'1) : row_reg.q
     new_pixel = last_col nand last_row
 
-    hsync = (col_reg.q >= (H_ACTIVE + H_FRONT_PORCH)) and (col_reg.q <: (H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE))
-    vsync = (row_reg.q >= (V_ACTIVE + V_FRONT_PORCH)) and (row_reg.q <: (V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE))
-    is_active_area = col_reg.q <: H_ACTIVE and row_reg.q <: V_ACTIVE
+    hsync = (col_reg.q >= (H_ACTIVE + H_FRONT_PORCH)) and (col_reg.q < (H_ACTIVE + H_FRONT_PORCH + H_SYNC_PULSE))
+    vsync = (row_reg.q >= (V_ACTIVE + V_FRONT_PORCH)) and (row_reg.q < (V_ACTIVE + V_FRONT_PORCH + V_SYNC_PULSE))
+    is_active_area = col_reg.q < H_ACTIVE and row_reg.q < V_ACTIVE
 }
