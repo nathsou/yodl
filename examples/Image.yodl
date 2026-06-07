@@ -2,8 +2,6 @@ import VGA
 import LFSR
 import Timing
 
-type u3 = u3
-
 module Top(
     clk: clock,
     button: u4,
