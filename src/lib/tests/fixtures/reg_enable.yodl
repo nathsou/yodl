@@ -3,7 +3,7 @@
 // Since reg is pre-initialized to itself (scope[reg] = Some(reg)),
 // the merge yields Mux(en, d, reg_q) — the enable-hold pattern.
 module Top(clk: clock, en: bool, d: u8) -> (q: u8) {
-    let reg = Reg<u8>(clk, en: en)
+    let reg = Reg[u8](clk, en: en)
     reg.d = d
     q = reg.q
 }

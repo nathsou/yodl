@@ -61,7 +61,7 @@ The `clock` type is required for clock signals used in `Reg` and `Memory` module
 
 ```yodl
 module Counter(clk: clock) -> (count: u24) {
-    let counter = Reg<u24>(clk)
+    let counter = Reg[u24](clk)
     counter.d = counter.q + 1'd1
     count = counter.q
 }
@@ -78,10 +78,10 @@ Vectors are ordered and sized collections of elements.
 ```yodl
 # module Test() -> () {
     // a vector of eight booleans
-    let neighbours: bool[8] = [false, false, true, false, true, false, true, false]
+    let neighbours: [8]bool = [false, false, true, false, true, false, true, false]
 
     // a vector of four 16-bit unsigned integers
-    let ints: u16[4] = [16'd1, 16'd12, 16'd3, 16'd4]
+    let ints: [4]u16 = [16'd1, 16'd12, 16'd3, 16'd4]
 # }
 ```
 
@@ -101,7 +101,7 @@ module RegisterFile(
     read_data2: u16,
 ) {
     // A register storing a vector of eight 16-bit unsigned integers
-    let regs = Reg<u16[8]>(clk, rst)
+    let regs = Reg[[8]u16](clk, rst)
 
     if write_enable {
         regs.d[write_dest] = write_data
@@ -137,7 +137,7 @@ Strings are fixed-length vectors of characters.
 
 ```yodl
 # module Test() -> () {
-    let message: u8[9] = "Yo, Yodl!"
+    let message: [9]u8 = "Yo, Yodl!"
 # }
 ```
 
@@ -166,7 +166,7 @@ expression.
 # module Test() -> () {
     let pair: (bool, u8) = (true, 8'hFF)
     let single: (u8,) = (8'hFF,)
-    let nested: ((a: u4[1], b: bool), (bool, u8), u1) =
+    let nested: ((a: [1]u4, b: bool), (bool, u8), u1) =
         ((a: [4'd1], b: false), pair, 1'b0)
 
     let first: bool = pair.0 // true
@@ -251,4 +251,3 @@ Yodl's type system is structural (except for instance types), which means that t
 | `u8[8][8]` | `u8[64]` | No |
 | `Adder` | `Adder` | Yes |
 | `Adder` | `(a: u8, b: u8, sum: u9)` | No |
-

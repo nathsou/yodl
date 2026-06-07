@@ -3,11 +3,10 @@ enum TokenType {
   // symbols
   Lparen; Rparen; Lbrace; Rbrace; Comma; Semicolon; Colon
   Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang; SingleQuote
-  LchevronColon; RchevronColon
   Plus; Minus; Star; Slash
   Equal; EqualEqual; BangEqual; RightThinArrow; RightThickArrow
   LchevronEqual; RchevronEqual
-  DotDotLeftChevron; DotDotEqual; DotDot
+  DotDotEqual; DotDot
   Percent; QuestionMark; At; Underscore
   ColonColon; MinusColon; PlusColon
   // keywords
@@ -53,13 +52,10 @@ pub impl Show for TokenType with output(self, logger) {
     QuestionMark => logger.write_string("?")
     Percent => logger.write_string("%")
     DotDot => logger.write_string("..")
-    DotDotLeftChevron => logger.write_string("..<")
     DotDotEqual => logger.write_string("..=")
     ColonColon => logger.write_string("::")
     MinusColon => logger.write_string("-:")
     PlusColon => logger.write_string("+:")
-    LchevronColon => logger.write_string("<:")
-    RchevronColon => logger.write_string(">:")
     LchevronEqual => logger.write_string("<=")
     RchevronEqual => logger.write_string(">=")
     Module => logger.write_string("module")
@@ -266,10 +262,10 @@ fn TokenType::to_binop(self: Self) -> BinaryOp? {
     Percent => Some(Mod)
     EqualEqual => Some(Equ)
     BangEqual => Some(Neq)
-    LchevronColon => Some(Lss)
-    RchevronColon => Some(Gtr)
     LchevronEqual => Some(Leq)
     RchevronEqual => Some(Geq)
+    Lchevron => Some(Lss)
+    Rchevron => Some(Gtr)
     Shl => Some(Shl)
     Shr => Some(Shr)
     QuestionMark => Some(Ternary)

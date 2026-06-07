@@ -292,8 +292,6 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
 
       if self.consumes('=') {
         Ok(LchevronEqual)
-      } else if self.consumes(':') {
-        Ok(LchevronColon)
       } else {
         Ok(Lchevron)
       }
@@ -303,8 +301,6 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
 
       if self.consumes('=') {
         Ok(RchevronEqual)
-      } else if self.consumes(':') {
-        Ok(RchevronColon)
       } else {
         Ok(Rchevron)
       }
@@ -343,9 +339,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
       self.advance()
       
       if self.consumes('.') {
-        if self.consumes('<') {
-          Ok(DotDotLeftChevron)
-        } else if self.consumes('=') {
+        if self.consumes('=') {
           Ok(DotDotEqual)
         } else {
           Ok(DotDot)

@@ -21,8 +21,8 @@ module BCD2(bin: u6) -> (q: u8) {
     q = cat!(1'b0, t[3], u[3], v, f)
 }
 
-module TicTac<Max: Nat>(clk: clock, en: bool, rst: bool) -> (tick: bool, count: uint<clog2!(Max)>) {
-    let counter = Reg<uint<clog2!(Max)>>(clk, en, rst: rst or tick, q: count)
+module TicTac[Max: Nat](clk: clock, en: bool, rst: bool) -> (tick: bool, count: uint[clog2!(Max)]) {
+    let counter = Reg[uint[clog2!(Max)]](clk, en, rst: rst or tick, q: count)
     counter.d = counter.q + 1
     tick = counter.q == Max
 }
@@ -50,16 +50,16 @@ module Clock(
         is_active_area,
     )
 
-    let ticks = TicTac<CLOCK_FREQ>(clk, en: 1'b1, rst)
-    let seconds = TicTac<60>(clk, en: ticks.tick, rst)
-    let minutes = TicTac<60>(clk, en: seconds.tick, rst)
-    let hours = TicTac<24>(clk, en: minutes.tick, rst)
+    let ticks = TicTac[CLOCK_FREQ](clk, en: 1'b1, rst)
+    let seconds = TicTac[60](clk, en: ticks.tick, rst)
+    let minutes = TicTac[60](clk, en: seconds.tick, rst)
+    let hours = TicTac[24](clk, en: minutes.tick, rst)
 
-    let text = Text::Text<Length: 8, X: 36, Y: 30>(
+    let text = Text::Text[Length: 8, X: 36, Y: 30](
         text: {
-            let seconds_dec = Text::Dec<8>(n: BCD2(bin: seconds.count).q).chars
-            let minutes_dec = Text::Dec<8>(n: BCD2(bin: minutes.count).q).chars
-            let hours_dec = Text::Dec<8>(n: BCD2(bin: cat!(1'b0, hours.count)).q).chars
+            let seconds_dec = Text::Dec[8](n: BCD2(bin: seconds.count).q).chars
+            let minutes_dec = Text::Dec[8](n: BCD2(bin: minutes.count).q).chars
+            let hours_dec = Text::Dec[8](n: BCD2(bin: cat!(1'b0, hours.count)).q).chars
             [..hours_dec, ':', ..minutes_dec, ':', ..seconds_dec]
         },
         screen_x,

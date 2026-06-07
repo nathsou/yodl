@@ -5,13 +5,13 @@ module Cell(
     clk: clock,
     rst: bool,
     enable: bool,
-    neighbors: bool[8],
+    neighbors: [8]bool,
     write_enable: bool,
     write_state: bool,
 ) -> (
     state: bool,
 ) {
-    let alive = Reg<bool>(clk, rst, en: enable, q: state)
+    let alive = Reg[bool](clk, rst, en: enable, q: state)
     let count: u3 = neighbors[0] + neighbors[1] + neighbors[2] + neighbors[3] +
                          neighbors[4] + neighbors[5] + neighbors[6] + neighbors[7]
 
@@ -26,15 +26,15 @@ module Cell(
     }
 }
 
-module Grid<Rows: Nat, Cols: Nat>(
+module Grid[Rows: Nat, Cols: Nat](
     clk: clock,
     rst: bool,
-    read_row: uint<clog2!(Rows)>,
-    read_col: uint<clog2!(Cols)>,
+    read_row: uint[clog2!(Rows)],
+    read_col: uint[clog2!(Cols)],
     write_enable: bool,
     write_state: bool,
-    write_row: uint<clog2!(Rows)>,
-    write_col: uint<clog2!(Cols)>,
+    write_row: uint[clog2!(Rows)],
+    write_col: uint[clog2!(Cols)],
 ) -> (
     read_state: bool,
 ) {
@@ -69,28 +69,28 @@ module Grid<Rows: Nat, Cols: Nat>(
     read_state = cells[read_col][read_row].state
 }
 
-module GridInit<Rows: Nat, Cols: Nat>(
+module GridInit[Rows: Nat, Cols: Nat](
     clk: clock,
     rst: bool,
-    read_row: uint<clog2!(Rows)>,
-    read_col: uint<clog2!(Cols)>,
-    pattern: bool[Cols][Rows],
+    read_row: uint[clog2!(Rows)],
+    read_col: uint[clog2!(Cols)],
+    pattern: [Rows][Cols]bool,
 ) -> (
     read_state: bool,
     ready: bool,
 ) {
-    let grid = Grid<Rows, Cols>(clk, rst, read_row, read_col, read_state)
+    let grid = Grid[Rows, Cols](clk, rst, read_row, read_col, read_state)
     const PatternLen = Rows * Cols
-    let counter = Reg<uint<clog2!(PatternLen)>>(clk, rst)
-    let row = Reg<uint<clog2!(Rows)>>(clk, rst)
-    let col = Reg<uint<clog2!(Cols)>>(clk, rst)
+    let counter = Reg[uint[clog2!(PatternLen)]](clk, rst)
+    let row = Reg[uint[clog2!(Rows)]](clk, rst)
+    let col = Reg[uint[clog2!(Cols)]](clk, rst)
     let state = pattern[row.q][col.q]
 
     col.d = col.q
     row.d = row.q
     counter.d = counter.q
 
-    if counter.q <: PatternLen {
+    if counter.q < PatternLen {
         grid.write_enable = 1'1
         grid.write_state = state
         grid.write_row = row.q
@@ -131,7 +131,7 @@ module Life(
     let y = row[8:4]
 
     // Gosper glider gun and a glider eater
-    let pattern: bool[Cols][Rows] = [
+    let pattern: [Rows][Cols]bool = [
         rev!([..40'b0000000000000000000000000000000000000000]),
         rev!([..40'b0000000000000000000000000000000000000000]),
         rev!([..40'b0000000000000000000000000000000000000000]),
@@ -164,7 +164,7 @@ module Life(
         rev!([..40'b0000000000000000000000000000000000000000]),
     ]
 
-    let grid = GridInit<Rows, Cols>(
+    let grid = GridInit[Rows, Cols](
         rst,
         read_col: x,
         read_row: y,

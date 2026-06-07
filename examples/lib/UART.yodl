@@ -1,6 +1,6 @@
 
 // https://gist.github.com/olofk/e91fba2572396f55525f8814f05fb33d
-module Transmitter<ClockFreq: Nat, BaudRate: Nat>(
+module Transmitter[ClockFreq: Nat, BaudRate: Nat](
     clk: clock,
     rst: bool,
     data_in: u8,
@@ -11,9 +11,9 @@ module Transmitter<ClockFreq: Nat, BaudRate: Nat>(
 ) {
     const START_VALUE = ClockFreq / BaudRate
     const WIDTH = clog2!(START_VALUE)
-    let counter = Reg<uint<WIDTH + 1>>(clk, rst)
-    let data = Reg<u10>(clk, rst)
-    let ready_reg = Reg<bool>(clk, rst, q: ready)
+    let counter = Reg[uint[WIDTH + 1]](clk, rst)
+    let data = Reg[u10](clk, rst)
+    let ready_reg = Reg[bool](clk, rst, q: ready)
 
     if counter.q[WIDTH] and data.q == 0 {
         ready_reg.d = true

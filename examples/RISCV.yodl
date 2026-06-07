@@ -33,14 +33,14 @@ module RegisterFile(
     rs1: u32,
     rs2: u32,
 ) {
-    let regs = Memory<
+    let regs = Memory[
         T: u32,
         Depth: 32,
         ReadPorts: 2,
         WritePorts: 1,
         ReadLatency: 0,
         WriteLatency: 1,
-    >(
+    ](
         read: [
             (clk: clk, en: true, addr: rs1_addr),
             (clk: clk, en: true, addr: rs2_addr),
@@ -63,11 +63,11 @@ module CPU(
 ) -> (
     mem_addr: u32,
     mem_read_enable: bool,
-    mem_write_data: u8[4],
-    mem_write_mask: bool[4],
+    mem_write_data: [4]u8,
+    mem_write_mask: [4]bool,
     status: u24,
 ) {
-    let inst = Reg<u32>(clk, rst)
+    let inst = Reg[u32](clk, rst)
     let opcode = inst.q[6:0]
     let is_alu_reg = opcode == Inst::ALU_REG
     let is_alu_imm = opcode == Inst::ALU_IMM
@@ -86,7 +86,7 @@ module CPU(
     let imm_b = uint!(pad!(sint!(cat!(inst.q[31], inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0)), 32))
     let imm_j = uint!(pad!(sint!(cat!(inst.q[31], inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0)), 32))
 
-    let stage = Reg<u3>(clk, rst)
+    let stage = Reg[u3](clk, rst)
     let rs1_addr = inst.q[19:15]
     let rs2_addr = inst.q[24:20]
     let rd_addr = inst.q[11:7]
@@ -94,9 +94,9 @@ module CPU(
     let funct3 = inst.q[14:12]
     let funct7 = inst.q[31:25]
     
-    let pc = Reg<u32>(clk, rst)
-    let rs1 = Reg<u32>(clk, rst)
-    let rs2 = Reg<u32>(clk, rst)
+    let pc = Reg[u32](clk, rst)
+    let rs1 = Reg[u32](clk, rst)
+    let rs2 = Reg[u32](clk, rst)
     let regs = RegisterFile(clk, rs1_addr, rs2_addr, rd_addr)
 
     let alu_in1 = rs1.q

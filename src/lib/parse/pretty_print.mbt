@@ -46,8 +46,8 @@ pub impl Show for BinaryOp with output(op, logger) {
     Mod => "%"
     Equ => "=="
     Neq => "!="
-    Lss => "<:"
-    Gtr => ">:"
+    Lss => "<"
+    Gtr => ">"
     Leq => "<="
     Geq => ">="
     Shl => "shl"
@@ -188,7 +188,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write(path.to_string())
 
       if params.params.length() > 0 {
-        self.write("<")
+        self.write("[")
 
         for i, entry in params.params {
           if i > 0 {
@@ -205,7 +205,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
           self.write(param.to_string())
         }
 
-        self.write(">")
+        self.write("]")
       }
 
       self.write("(")
@@ -595,7 +595,7 @@ pub impl Show for IndexExpr with output(self, logger) {
 pub impl Show for Type with output(ty, logger) {
   match ty {
     Nat({min_width}) => {
-      logger.write_string("nat<\{min_width}>")
+      logger.write_string("nat[\{min_width}]")
     }
     UInt(width) => {
       match width {
@@ -613,10 +613,10 @@ pub impl Show for Type with output(ty, logger) {
       logger.write_string("clock")
     }
     Vector(ty~, len~) => {
-      logger.write_string(ty.to_string())
       logger.write_char('[')
       logger.write_object(len)
       logger.write_char(']')
+      logger.write_string(ty.to_string())
     }
     Instance(sig={ path, .. }, params~, accessed_ports~) => {
       logger.write_object(path)
@@ -624,9 +624,9 @@ pub impl Show for Type with output(ty, logger) {
       if params.length() > 0 {
         logger.write_iter(
           params.values(),
-          prefix="<",
+          prefix="[",
           sep=", ",
-          suffix=">",
+          suffix="]",
         )
       }
 
@@ -641,9 +641,9 @@ pub impl Show for Type with output(ty, logger) {
       if params.length() > 0 {
         logger.write_iter(
           params.iter(),
-          prefix="<",
+          prefix="[",
           sep=", ",
-          suffix=">",
+          suffix="]",
         )
       }
     }
@@ -685,10 +685,10 @@ pub impl Show for Type with output(ty, logger) {
       }
     }
     String(len~) => {
-      logger.write_string("string<\{len}>")
+      logger.write_string("string[\{len}]")
     }
     MemoryMask(ty) => {
-      logger.write_string("MemoryMask<\{ty}>")
+      logger.write_string("MemoryMask[\{ty}]")
     }
   }
 }
@@ -786,9 +786,9 @@ fn AstEmitter::emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
   self.write(sig.path.to_string())
 
   if sig.params.length() > 0 {
-    self.write("<")
+    self.write("[")
     self.write(sig.params.map(Show::to_string).join(", "))
-    self.write(">")
+    self.write("]")
   }
 
   self.emit_port_list(sig.inputs() + sig.inouts())
@@ -828,14 +828,14 @@ pub fn AstEmitter::emit_decl(self: AstEmitter, decl: Decl) -> Unit {
       self.write("type \{name}")
       
       if parameters.length() > 0 {
-        self.write("<")
+        self.write("[")
         self.write(parameters.map(fn(p) {
           match p.sort {
             NatSort => "\{p.name}: Nat"
             TypeSort => p.name
           }
         }).join(", "))
-        self.write(">")
+        self.write("]")
       }
 
       self.write(" = \{ty};")

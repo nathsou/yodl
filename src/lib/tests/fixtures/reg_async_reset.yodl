@@ -3,7 +3,7 @@
 // a no-else When { cond: en, body: [reg = d] }.
 // Merge: Mux(en, d, reg_q). Also covers the RegReset stmt path in process_block.
 module Top(clk: clock, rst: bool, en: bool, d: u8) -> (q: u8) {
-    let reg = RegAsyncReset<u8>(clk, rst: rst, en: en)
+    let reg = RegAsyncReset[u8](clk, rst: rst, en: en)
     reg.d = d
     q = reg.q
 }

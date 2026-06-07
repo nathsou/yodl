@@ -1,4 +1,4 @@
 module Top(a: s8, b: s8) -> (sum: s9, gt: bool) {
     sum = a + b
-    gt  = a >: b
+    gt  = a > b
 }

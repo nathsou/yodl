@@ -16,17 +16,17 @@ module Top(
     let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync)
     let div = (x: vga.col[9:2], y: vga.row[9:2])
     let cell_idx: u15 = div.y * 160 + div.x
-    let timer = Timing::Timer<100_000>(clk)
-    let rand_cell = LFSR::LFSR<15>(clk, enable: timer.q).q
-    let rand_color = LFSR::LFSR<3>(clk, enable: timer.q).q
+    let timer = Timing::Timer[100_000](clk)
+    let rand_cell = LFSR::LFSR[15](clk, enable: timer.q).q
+    let rand_color = LFSR::LFSR[3](clk, enable: timer.q).q
     let add_noise = orr button
 
-    let mem = Memory<
+    let mem = Memory[
         T: u3,
         Depth: (VGA::H_ACTIVE / 4) * (VGA::V_ACTIVE / 4),
         ReadPorts: 1,
         WritePorts: 1,
-    >(
+    ](
         read: [(clk: clk, en: vga.is_active_area, addr: cell_idx)],
         write: [(clk: clk, en: add_noise and timer.q, addr: rand_cell, data: rand_color, mask: true)],
     )

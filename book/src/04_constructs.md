@@ -15,8 +15,8 @@ package VGA {
     ) -> (
         hsync: bool,
         vsync: bool,
-        row: uint<clog2!(SCREEN_HEIGHT)>,
-        col: uint<clog2!(SCREEN_WIDTH)>,
+        row: uint[clog2!(SCREEN_HEIGHT)],
+        col: uint[clog2!(SCREEN_WIDTH)],
     ) {
         // ...
 #       hsync = 1'b0
@@ -72,10 +72,10 @@ type RGB = (r: U8, g: U8, b: U8)
 Type aliases can be parameterised by providing a list of type parameters.
 
 ```yodl
-type Triplet<T> = (T, T, T)
+type Triplet[T] = (T, T, T)
 
 module Top() -> () {
-    let triplet: Triplet<bool> = (true, false, false)
+    let triplet: Triplet[bool] = (true, false, false)
 }
 ```
 
@@ -104,20 +104,20 @@ module FullAdder(
 
 ### Parameterised Modules
 
-Modules can be parameterised by specifying a list of parameters surrounded by `<` and `>` after the module name.
+Modules can be parameterised by specifying a list of parameters surrounded by `[` and `]` after the module name.
 
 ```yodl
-module Adder<N: Nat>(
-    a: uint<N>,
-    b: uint<N>,
+module Adder[N: Nat](
+    a: uint[N],
+    b: uint[N],
     carry_in: bool,
 ) -> (
-    sum: uint<N>,
+    sum: uint[N],
     carry_out: bool,
 ) {
-    let carry_chain: bool[N + 1]
+    let carry_chain: [N + 1]bool
     carry_chain[0] = carry_in
-    let bits: bool[N]
+    let bits: [N]bool
 
     for i in 0..<N {
         FullAdder(
@@ -145,24 +145,24 @@ module Adder<N: Nat>(
 - Parameter names can be omitted if the parameters are specified in the same order as the declaration.
 
 ```yodl
-module Adder<N: Nat>(
-    a: uint<N>,
-    b: uint<N>,
+module Adder[N: Nat](
+    a: uint[N],
+    b: uint[N],
     carry_in: bool,
 ) -> (
-    sum: uint<N>,
+    sum: uint[N],
     carry_out: bool,
 ) {
-    let total: uint<N + 1> = a + b + carry_in
+    let total: uint[N + 1] = a + b + carry_in
     sum = total[N - 1 : 0]
     carry_out = total[N]
 }
 
 module Top(clk: clock) -> () {
-    let counter = Reg<u32>(clk)
+    let counter = Reg[u32](clk)
     counter.d = counter.q + 1
     
-    let adder = Adder<32>( // or Adder<N: 32>(..)
+    let adder = Adder[32]( // or Adder[N: 32](..)
         a: counter.q,
         b: 32'1,
         carry_in: 1'0,
@@ -178,9 +178,9 @@ All three `Reg` instances in the following example are equivalent.
 
 ```yodl
 module Top(clk: clock, rst: bool) -> () {
-    let reg1 = Reg<u32>(clk: clk, rst: rst)
-    let reg2 = Reg<u32>(clk, rst)
-    let reg3 = Reg<u32>()
+    let reg1 = Reg[u32](clk: clk, rst: rst)
+    let reg2 = Reg[u32](clk, rst)
+    let reg3 = Reg[u32]()
 
     reg3.clk = clk
     reg3.rst = rst
@@ -196,10 +196,10 @@ module Top(clk: clock, rst: bool) -> () {
 
 ```yodl
 # module Test() -> () {
-    let message1: u8[3]
+    let message1: [3]u8
     message1 = "Yo!"
     let message2 = "Hi!"
-    let message3: u8[3] = "Hey"
+    let message3: [3]u8 = "Hey"
 # }
 ```
 

@@ -62,7 +62,7 @@ pub fn AstEmitter::emit_core_expr(self: AstEmitter, expr: CoreExpr, indent~: Boo
       self.write(path.to_string())
 
       if params.params.length() > 0 {
-        self.write("<")
+        self.write("[")
 
         for i, entry in params.params {
           if i > 0 {
@@ -79,7 +79,7 @@ pub fn AstEmitter::emit_core_expr(self: AstEmitter, expr: CoreExpr, indent~: Boo
           self.write(param.to_string())
         }
 
-        self.write(">")
+        self.write("]")
       }
 
       self.write("(")

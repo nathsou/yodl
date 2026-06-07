@@ -16,7 +16,6 @@ pub suberror ParserError {
   MultipleDefaultCases(span~: Span)
   InvalidPortOrTupleAccess(span~: Span)
   DuplicateStructField(name~: String, span~: Span)
-  DidYouMean(received~: TokenType, suggestion~: String, span~: Span)
 } derive(Debug)
 
 pub impl Show for ParserError with output(self, logger) {
@@ -35,8 +34,6 @@ pub impl Show for ParserError with output(self, logger) {
       logger.write_string("Expected a declaration, got '\{received}' at \{span}\n\{span.context()}")
     ExpectedRangeOperator(received~, span~) =>
       logger.write_string("Expected a range operator ('..' or '..='), got '\{received}' at \{span}\n\{span.context()}")
-    DidYouMean(received~, suggestion~, span~) =>
-      logger.write_string("Unexpected '\{received}' at \{span}: \{suggestion}\n\{span.context()}")
     MultipleDefaultCases(span~) =>
       logger.write_string("Multiple default cases in match at \{span}\n\{span.context()}")
     InvalidPortOrTupleAccess(span~) =>
@@ -60,6 +57,31 @@ fn Parser::peek(self: Parser) -> TokenType {
 
 fn Parser::lookahead(self: Parser, n: Int) -> Token {
   self.tokens[self.index + n]
+}
+
+// Assuming the current token is an opening bracket of kind `open`, scan
+// forward counting matching open/close brackets and return the token that
+// immediately follows the matching closing bracket. Returns Semicolon if
+// there are no more tokens (acts as a benign sentinel for callers).
+fn Parser::peek_after_matching(self: Parser, open: TokenType, close: TokenType) -> TokenType {
+  let mut depth = 1
+  let mut i = self.index + 1
+
+  while i < self.tokens.length() && depth > 0 {
+    let k = self.tokens[i].kind
+    if k == open {
+      depth += 1
+    } else if k == close {
+      depth -= 1
+    }
+    i += 1
+  }
+
+  if i < self.tokens.length() {
+    self.tokens[i].kind
+  } else {
+    Semicolon
+  }
 }
 
 fn Parser::advance(self: Parser) -> Unit {
@@ -156,27 +178,43 @@ fn Parser::parse_indexing_expr(self: Parser) -> Expr raise {
   let mut lhs = self.parse_primary_expr()
 
   while true {
-    if self.consumes(Lbracket) {
-      let index = self.parse_expr()
-
-      match self.peek() {
-        Colon | MinusColon | PlusColon as op => {
-          self.advance()
-          
-          let kind = match op {
-            Colon => PartSelect::Absolute
-            MinusColon => PartSelect::WidthDescending
-            PlusColon => PartSelect::WidthAscending
-            _ => @utils.unreachable_code()
+    if self.matches(Lbracket) {
+      // `e[...]` could be:
+      //   - vector indexing / slicing                 → produce Indexing or Slicing
+      //   - parameter application (followed by `(`)    → promote to Instance
+      // We peek past the matching `]`: if `(` follows, it's a parameter list.
+      if self.peek_after_matching(Lbracket, Rbracket) == Lparen {
+        // Reinterpret lhs as a path. Only bare Identifier references can be
+        // instantiated with parameters; anything else is a parse error.
+        match lhs {
+          Identifier(path~, ..) => {
+            lhs = self.parse_instance_expr(path~)
           }
-
-          let lsb = self.parse_expr()
-          self.expect(Rbracket, start_idx)
-          lhs = Slicing(expr=lhs, hi=index, lo=lsb, kind~, span=self.span(start_idx), ty={ val: None })
+          _ => raise ExpectedExpr(received=self.peek(), span=self.span(start_idx))
         }
-        _ => {
-          self.expect(Rbracket, start_idx)
-          lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
+      } else {
+        self.advance() // consume `[`
+        let index = self.parse_expr()
+
+        match self.peek() {
+          Colon | MinusColon | PlusColon as op => {
+            self.advance()
+
+            let kind = match op {
+              Colon => PartSelect::Absolute
+              MinusColon => PartSelect::WidthDescending
+              PlusColon => PartSelect::WidthAscending
+              _ => @utils.unreachable_code()
+            }
+
+            let lsb = self.parse_expr()
+            self.expect(Rbracket, start_idx)
+            lhs = Slicing(expr=lhs, hi=index, lo=lsb, kind~, span=self.span(start_idx), ty={ val: None })
+          }
+          _ => {
+            self.expect(Rbracket, start_idx)
+            lhs = Indexing(expr=lhs, index~, span=self.span(start_idx), ty={ val: None })
+          }
         }
       }
     } else if self.consumes(Dot) {
@@ -264,7 +302,11 @@ fn Parser::parse_primary_expr(self: Parser) -> Expr raise {
       self.advance()
       let path = self.parse_path(name)
 
-      if self.matches(Lparen) || self.matches(Lchevron) {
+      // Instantiation with `(...)` (no static parameters) is handled here.
+      // Bracketed instantiation `Reg[T](...)` is handled by parse_indexing_expr,
+      // which can disambiguate between indexing `arr[i]` and parameter
+      // application `Reg[T](...)` by peeking the token after the matching `]`.
+      if self.matches(Lparen) {
         self.parse_instance_expr(path~)
       } else {
         Identifier(path~, span=self.span(start_idx), ty={ val: None })
@@ -305,8 +347,6 @@ fn Parser::parse_primary_expr(self: Parser) -> Expr raise {
     If => self.parse_if_expr()
     DotDot => self.parse_spread_expr()
     BuiltinFunction(name) => { self.advance(); self.parse_function_call_expr(name) }
-    Lchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '<', did you mean '<:' (less than operator) instead?")
-    Rchevron => raise DidYouMean(received=token, span=self.span(start_idx), suggestion="Expected expression but got '>', did you mean '>:' (greater than operator) instead?")
     _ => raise ExpectedExpr(received=token, span=self.span(start_idx))
   }
 }
@@ -486,8 +526,8 @@ fn Parser::parse_instance_parameter(self: Parser) -> Param {
     let token = self.tokens[self.index]
 
     match token.kind {
-      Lchevron => open_brackets += 1
-      Rchevron => {
+      Lbracket => open_brackets += 1
+      Rbracket => {
         open_brackets -= 1
         if open_brackets == 0 {
           break
@@ -635,10 +675,12 @@ fn Parser::parse_stmt(self: Parser) -> Stmt raise {
 
       let start = self.parse_expr()
 
-      let inclusive = if self.consumes(DotDotLeftChevron) {
-        false
-      } else if self.consumes(DotDotEqual) {
+      let inclusive = if self.consumes(DotDotEqual) {
         true
+      } else if self.consumes(DotDot) {
+        // exclusive range: `..<` is now two tokens (`..` then `<`)
+        self.expect(Lchevron, start_idx)
+        false
       } else {
         raise ExpectedRangeOperator(received=self.peek(), span=self.span(start_idx))
       }
@@ -807,8 +849,8 @@ fn Parser::parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
   let name = self.parse_identifier()
   let parameters: Array[StaticParam] = []
   
-  if self.consumes(Lchevron) {
-    while !self.matches(Rchevron) {
+  if self.consumes(Lbracket) {
+    while !self.matches(Rbracket) {
       let param_start = self.index
       let param_name = self.parse_identifier()
       let sort = if self.consumes(Colon) {
@@ -823,7 +865,7 @@ fn Parser::parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
       }
     }
 
-    self.expect(Rchevron, start_idx)
+    self.expect(Rbracket, start_idx)
   }
 
   self.expect(Equal, start_idx)
@@ -849,16 +891,24 @@ fn Parser::parse_path(self: Parser, first: String) -> Path raise {
 fn Parser::parse_type(self: Parser) -> Type raise {
   let start_idx = self.index
 
-  let mut base_ty: Type = match self.peek() {
+  // Prefix vector type: [N]T means "vector of N elements of type T"
+  if self.consumes(Lbracket) {
+    let len = self.parse_index_expr()
+    self.expect(Rbracket, start_idx)
+    let elem = self.parse_type()
+    return Vector(ty=elem, len~)
+  }
+
+  match self.peek() {
     Bool => {
       self.advance()
       UInt(Lit(1))
     }
     UInt => {
       self.advance()
-      if self.consumes(Lchevron) {
+      if self.consumes(Lbracket) {
         let width = self.parse_index_expr()
-        self.expect(Rchevron, start_idx)
+        self.expect(Rbracket, start_idx)
         UInt(width)
       } else {
         Nat({min_width: 0})
@@ -866,9 +916,9 @@ fn Parser::parse_type(self: Parser) -> Type raise {
     }
     SInt => {
       self.advance()
-      self.expect(Lchevron, start_idx)
+      self.expect(Lbracket, start_idx)
       let width = self.parse_index_expr()
-      self.expect(Rchevron, start_idx)
+      self.expect(Rbracket, start_idx)
       SInt(width)
     }
     UIntType(width) => {
@@ -888,8 +938,8 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       let path = self.parse_path(name)
       let params: Array[Type] = []
 
-      if self.consumes(Lchevron) {
-        while !self.matches(Rchevron) {
+      if self.consumes(Lbracket) {
+        while !self.matches(Rbracket) {
           let param = self.parse_type()
           params.push(param)
 
@@ -898,7 +948,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
           }
         }
 
-        self.expect(Rchevron, start_idx)
+        self.expect(Rbracket, start_idx)
       }
 
       if path is { packages: [], elem: "MemoryMask" } && params is [ty] {
@@ -970,14 +1020,6 @@ fn Parser::parse_type(self: Parser) -> Type raise {
     }
     _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
   }
-
-  while self.consumes(Lbracket) {
-    let len = self.parse_index_expr()
-    self.expect(Rbracket, start_idx)
-    base_ty = Vector(ty=base_ty, len~)
-  }
-
-  base_ty
 }
 
 fn Parser::parse_port(self: Parser, dir~: PortDir) -> Port raise {
@@ -1018,11 +1060,11 @@ fn Parser::parse_port_list(self: Parser, dir~: PortDir) -> Array[Port] raise {
 }
 
 fn[T] Parser::parse_module_parameters(self: Parser, parse_elem: () -> T raise) -> Array[T] raise {
-  if self.consumes(Lchevron) {
+  if self.consumes(Lbracket) {
     let start_idx = self.index
     let params = []
 
-    while !self.matches(Rchevron) {
+    while !self.matches(Rbracket) {
       let param = parse_elem()
       params.push(param)
 
@@ -1031,7 +1073,7 @@ fn[T] Parser::parse_module_parameters(self: Parser, parse_elem: () -> T raise) -
       }
     }
 
-    self.expect(Rchevron, start_idx)
+    self.expect(Rbracket, start_idx)
 
     params
   } else {

@@ -3,13 +3,13 @@
 @external("ttl_7474", "7474.v")
 @parameters({ BLOCKS: 4, DELAY_RISE: 0, DELAY_FALL: 0 })
 declare module U74x74(
-    Preset_bar: bool[2],
-    Clear_bar: bool[2],
-    D: bool[2],
-    clk: clock[2],
+    Preset_bar: [2]bool,
+    Clear_bar: [2]bool,
+    D: [2]bool,
+    clk: [2]clock,
 ) -> (
-    Q: bool[2],
-    Q_bar: bool[2],
+    Q: [2]bool,
+    Q_bar: [2]bool,
 )
 
 module Top(

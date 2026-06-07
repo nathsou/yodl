@@ -1,6 +1,6 @@
 module Top(b: bool, byte: u8) -> (
-    bools4: bool[4],
-    bytes3: u8[3],
+    bools4: [4]bool,
+    bytes3: [3]u8,
     bits4:  u4,
 ) {
     bools4 = fill!(4, b)

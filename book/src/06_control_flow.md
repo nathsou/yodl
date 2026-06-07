@@ -10,7 +10,7 @@ If expressions evaluate a condition and execute one of two branches based on the
 
 ```yodl
 # module Test(a: u8, b: u8) -> () {
-    let max = if a >: b {
+    let max = if a > b {
         a
     } else {
         b
@@ -26,7 +26,7 @@ Match expressions provide a compact way of handling multiple conditions based on
 
 ```yodl
 # module Cell(clk: clock) -> () {
-#   let alive = Reg<bool>(clk);
+#   let alive = Reg[bool](clk);
 #   const count = 2
     // compute next state in the Game of Life
     alive.d = match count {
@@ -47,7 +47,7 @@ The `for` loop duplicates its body a fixed number of times, substituting the loo
 
 ```yodl
 // Simple parallel hexadecimal to character decoder
-module Hex<Bits: Nat>(n: uint<Bits>) -> (chars: u8[cdiv!(Bits, 4)]) {
+module Hex[Bits: Nat](n: uint[Bits]) -> (chars: [cdiv!(Bits, 4)]u8) {
     const Len = cdiv!(Bits, 4)
     for i in 0..<Len {
         chars[Len - 1 - i] = match n[(i + 1) * 4 - 1 -: 4] {

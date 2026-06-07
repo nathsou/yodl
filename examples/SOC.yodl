@@ -6,17 +6,17 @@ module RAM(
     clk: clock,
     addr: u32,
     read_enable: bool,
-    write_data: u8[4],
-    mask: bool[4],
+    write_data: [4]u8,
+    mask: [4]bool,
 ) -> (
     q: u32,
 ) {
-    let mem = Memory<
-        T: u8[4],
+    let mem = Memory[
+        T: [4]u8,
         Depth: (6 * 1024) / 4, // 6KB
         ReadPorts: 1,
         WritePorts: 1,
-    >(
+    ](
         read: [(clk: clk, en: read_enable, addr: addr[10:0])],
         write: [(clk: clk, en: true, addr: addr[10:0], data: write_data, mask: mask)],
     )
@@ -44,11 +44,11 @@ module Top(
     io_led: u24,
 ) {
     // wait 125 ms for the FPGA to configure
-    let power_reset = Reset::PowerOnReset<CLOCK_FREQ / 8>(clk)
+    let power_reset = Reset::PowerOnReset[CLOCK_FREQ / 8](clk)
     let rst = power_reset.rst or (not rst_n)
     
     let slow_clk = {
-        let counter = Reg<u2>(clk, rst)
+        let counter = Reg[u2](clk, rst)
         counter.d = counter.q + 1'b1
         clock!(counter.q[1])
     }
@@ -73,13 +73,13 @@ module Top(
     let write_enable = orr uint!(cpu.mem_write_mask)
 
     // devices
-    let leds = Reg<u32>(clk: slow_clk, rst)
+    let leds = Reg[u32](clk: slow_clk, rst)
     let uart_valid = is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA]
 
-    let uart_transmitter = UART::Transmitter<
+    let uart_transmitter = UART::Transmitter[
         ClockFreq: CLOCK_FREQ,
         BaudRate: 921600,
-    >(
+    ](
         clk,
         rst,
         tx: usb_tx,

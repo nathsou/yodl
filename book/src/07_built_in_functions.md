@@ -42,7 +42,7 @@ Converts a boolean signal to a clock signal.
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let counter = Reg<u24>(clk)
+    let counter = Reg[u24](clk)
     counter.d = counter.q + 1
     let slow_clk = clock!(counter.q[23]) // Divide the clock by 2^23
 # }
@@ -59,7 +59,7 @@ Often used to determine the minimum number of bits required to represent a value
 ```yodl
 # module Test(clk: clock) -> () {
     const AddrWidth = clog2!(1024)
-    let addr: uint<AddrWidth> = 10'd0
+    let addr: uint[AddrWidth] = 10'd0
     assert!(AddrWidth == 10)
 # }
 ```
@@ -131,7 +131,7 @@ Produces a vector `T[n]` containing `n` copies of `x`. For bit-replication
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let zeros: bool[4] = fill!(4, 1'b0)
+    let zeros: [4]bool = fill!(4, 1'b0)
     let mask:  u4 = cat!(fill!(4, 1'b1))   // 4'b1111
     assert!(uint!(zeros) == 4'd0)
     assert!(mask == 4'b1111)
@@ -185,12 +185,12 @@ Initializes a memory from a binary format file.
 
 ```yodl
 # module Test(clk: clock, addr: u8) -> () {
-    let rom = Memory<
+    let rom = Memory[
         T: u8,
         Depth: 256,
         ReadPorts: 1,
         WritePorts: 0,
-    >(
+    ](
         read: [(clk: clk, en: true, addr: addr)],
     )
 
@@ -207,12 +207,12 @@ Initializes a memory from a hexadecimal format file.
 
 ```yodl
 # module Test(clk: clock, addr: u8) -> () {
-    let rom = Memory<
+    let rom = Memory[
         T: u8,
         Depth: 256,
         ReadPorts: 1,
         WritePorts: 0,
-    >(
+    ](
         read: [(clk: clk, en: true, addr: addr)],
     )
 

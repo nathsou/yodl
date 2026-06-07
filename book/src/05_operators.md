@@ -62,13 +62,13 @@ Note 2: The `and`, `or`, `xor`, `nand`, `nor`, and `xnor` operators are used bot
 |----------|-------------|---------|
 | `==` | Equal | `a == b` |
 | `!=` | Not Equal | `a != b` |
-| `<:` | Less Than | `a <: b` |
-| `>:` | Greater Than | `a >: b` |
+| `<` | Less Than | `a < b` |
+| `>` | Greater Than | `a > b` |
 | `<=` | Less Than or Equal | `a <= b` |
 | `>=` | Greater Than or Equal | `a >= b` |
 
 <div class="warning">
-    Note: The `<:` and `>:` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
+    Note: The `<` and `>` operators are used for comparison instead of `<` and `>` to avoid confusion with type parameter delimiters during parsing.
 </div>
 
 ## Ternary Operator
@@ -197,9 +197,9 @@ The spread operator `..` can only appear inside a vector expression and is used 
 
 ```yodl
 # module Test(clk: clock) -> () {
-    let bits: u1[4] = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
-    let chars: u8[3] = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
-    let flat: u2[3] = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
+    let bits: [4]u1 = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
+    let chars: [3]u8 = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
+    let flat: [3]u2 = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
 
     assert!(bits[0] == 1'b0)
     assert!(bits[1] == 1'b0)
@@ -222,7 +222,7 @@ Operators are evaluated in the following order (from highest to lowest precedenc
 2. Multiplication, division, modulo (`*`, `/`, `mod`)
 3. Addition, subtraction (`+`, `-`)
 4. Shift operations (`shl`, `shr`)
-5. Comparisons (`<:`, `>:`, `<=`, `>=`)
+5. Comparisons (`<`, `>`, `<=`, `>=`)
 6. Equality operators (`==`, `!=`)
 7. Bitwise AND and NAND (`and`, `nand`)
 8. Bitwise XOR and XNOR (`xor`, `xnor`)
@@ -248,8 +248,8 @@ The following table summarises the resulting type for each operation:
 | `/` | `sint<A>` | `sint<B>` | `sint<A + 1>` |
 | `mod` | `uint<A>` | `uint<B>` | `uint<min(A, B)>` |
 | `mod` | `sint<A>` | `sint<B>` | `sint<min(A, B)>` |
-| `==`, `!=`, `<:`, `>:` | `uint<A>` | `uint<B>` | `u1` |
-| `==`, `!=`, `<:`, `>:` | `sint<A>` | `sint<B>` | `u1` |
+| `==`, `!=`, `<`, `>` | `uint<A>` | `uint<B>` | `u1` |
+| `==`, `!=`, `<`, `>` | `sint<A>` | `sint<B>` | `u1` |
 | `and`, `nand`, `or`, `nor`, `xor`, `xnor` | `uint<A>` | `uint<B>` | `uint<max(A, B)>` |
 | `and`, `nand`, `or`, `nor`, `xor`, `xnor` | `sint<A>` | `sint<B>` | `uint<max(A, B)>` |
 
@@ -272,4 +272,3 @@ When the shift amount is not known at compile time, the output type is determine
 | `shl` | `sint<A>` | `uint<B>` | `sint<A + 2^B - 1>` |
 | `shr` | `uint<A>` | `uint<B>` | `uint<A>` |
 | `shr` | `sint<A>` | `uint<B>` | `sint<A>` |
-
