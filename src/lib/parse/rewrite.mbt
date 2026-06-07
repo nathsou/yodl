@@ -43,7 +43,7 @@ pub fn rewrite_expr(expr: Expr, rewriter: Rewriter) -> Expr raise {
       FieldAccess(expr~, field=port, span~, ty=clone_ty(ty))
     }
     Instance(path~, params~, ports~, span~, ty~) => {
-      let new_params = params.map(map_expr=expr => { rewrite_expr(expr, rewriter) }, map_type=ty => ty.clone())
+      let new_params = params.map_raw(map_type=ty => ty.clone())
       let new_ports = Map([], capacity=ports.length())
 
       for port, expr in ports {

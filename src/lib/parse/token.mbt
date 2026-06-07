@@ -103,93 +103,148 @@ pub impl Show for TokenType with output(self, logger) {
   }
 }
 
+pub(all) struct SourceLoc {
+  index: Int
+  line: Int
+  column: Int
+} derive(Eq, Debug, Hash)
+
 pub(all) struct Span {
   file: String
-  file_content: String
-  start: (Int, Int)
-  end: (Int, Int)
+  file_content: StringView
+  start: SourceLoc
+  end: SourceLoc
 } derive(Debug)
 
 pub impl Eq for Span with equal(self, other) {
   self.file == other.file && self.start == other.start && self.end == other.end
 }
 
+pub fn Span::text(self: Span) -> StringView {
+  let len = self.file_content.length()
+  let start = @utils.clamp(self.start.index, min=0, max=len)
+  let end = @utils.clamp(self.end.index, min=start, max=len)
+  self.file_content[start:end]
+}
+
 pub impl Show for Span with output(self, logger) {
   logger.write_string(self.file)
   logger.write_char(':')
-  logger.write_string("\{self.start.0}.\{self.start.1}-\{self.end.0}.\{self.end.1}")
+  logger.write_string("\{self.start.line}.\{self.start.column}-\{self.end.line}.\{self.end.column}")
 }
 
 pub fn Span::context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool = false) -> String {
+  let content = self.file_content
+  let content_len = content.length()
   let window = StringBuilder::new(size_hint=window_size * 2)
-  let max_line_number_digits = (self.end.0 + 1).to_string().length()
+  let max_line_number_digits = (self.end.line + 1).to_string().length()
 
-  self.file_content.split("\n").eachi(fn(index, line) {
-    if index >= self.start.0 - window_size && index <= self.end.0 + window_size {
-      let line_nb = "\{index + 1}".pad_end(max_line_number_digits, ' ')
-      let is_inside_span = index >= (self.start.0 - 1) && index < self.end.0
+  // Walk backward from start.index counting window_size newlines to find the
+  // character index and 1-based line number of the first line to render
+  let mut window_start_char = self.start.index
+  let mut newlines_seen = 0
 
-      window.write_string(line_nb)
-      window.write_char(' ')
-      window.write_string(line.to_owned())
+  while window_start_char > 0 {
+    window_start_char -= 1
 
-      if is_inside_span {
-        let line_start = if index == self.start.0 - 1 { self.start.1 } else { 0 }
-        let line_end = if index == self.end.0 - 1 { self.end.1 } else { line.length() }
-        let is_blank = line.iter().all(@utils.is_whitespace)
+    if content[window_start_char:window_start_char + 1] == "\n" {
+      newlines_seen += 1
 
-        if !is_blank {
-          window.write_char('\n')
+      if newlines_seen == window_size {
+        window_start_char += 1 // step past the newline to the start of the line
+        break
+      }
+    }
+  }
 
-          for _ in 0..<line_nb.length() {
-            window.write_char(' ')
-          }
+  let first_line_number = self.start.line - newlines_seen // 1-based
 
-          let first_non_whitespace_col = {
-            let mut col = 0
+  // Walk forward from window_start_char, rendering lines until we are past
+  // end.line + window_size
+  let last_line_to_render = self.end.line + window_size
+  let mut i = window_start_char
+  let mut current_line = first_line_number // 1-based
 
-            for idx, char in line {
-              if !@utils.is_whitespace(char) {
-                col = idx
-                break
-              }
+  while i <= content_len && current_line <= last_line_to_render {
+    // collect one line [i, line_end)
+    let line_start = i
+
+    while i < content_len && content[i:i + 1] != "\n" {
+      i += 1
+    }
+
+    let line = content[line_start:i]
+
+    // advance past the newline
+    if i < content_len {
+      i += 1
+    }
+
+    let line_nb = "\{current_line}".pad_end(max_line_number_digits, ' ')
+    let is_inside_span = current_line >= self.start.line && current_line <= self.end.line
+
+    window.write_string(line_nb)
+    window.write_char(' ')
+    window.write(line)
+
+    if is_inside_span {
+      let line_start_col = if current_line == self.start.line { self.start.column } else { 0 }
+      let line_end_col = if current_line == self.end.line { self.end.column } else { line.length() }
+      let is_blank = line.iter().all(@utils.is_whitespace)
+
+      if !is_blank {
+        window.write_char('\n')
+
+        for _ in 0..<line_nb.length() {
+          window.write_char(' ')
+        }
+
+        let first_non_whitespace_col = {
+          let mut col = 0
+
+          for idx, char in line {
+            if !@utils.is_whitespace(char) {
+              col = idx
+              break
             }
-
-            @utils.max(col + 1, line_start)
           }
 
-          for _ in 0..<first_non_whitespace_col {
-            window.write_char(' ')
-          }
+          @utils.max(col + 1, line_start_col)
+        }
 
-          let last_non_whitespace_col = {
-            let mut col = 0
-            for idx, char in line {
-              if !@utils.is_whitespace(char) {
-                col = idx
-              }
+        for _ in 0..<first_non_whitespace_col {
+          window.write_char(' ')
+        }
+
+        let last_non_whitespace_col = {
+          let mut col = 0
+
+          for idx, char in line {
+            if !@utils.is_whitespace(char) {
+              col = idx
             }
-
-            @utils.min(col + 1, line_end)
           }
 
-          if use_ansi_colors {
-            window.write_string("\u001b[31m")
-          }
+          @utils.min(col + 1, line_end_col)
+        }
 
-          for _ in 0..=(last_non_whitespace_col - first_non_whitespace_col) {
-            window.write_char('^')
-          }
+        if use_ansi_colors {
+          window.write_string("\u001b[31m")
+        }
 
-          if use_ansi_colors {
-            window.write_string("\u001b[0m")
-          }
+        for _ in 0..=(last_non_whitespace_col - first_non_whitespace_col) {
+          window.write_char('^')
+        }
+
+        if use_ansi_colors {
+          window.write_string("\u001b[0m")
         }
       }
-
-      window.write_char('\n')
     }
-  })
+
+    window.write_char('\n')
+    current_line += 1
+  }
 
   window.to_string()
 }

@@ -130,8 +130,8 @@ priv struct ParsedInteger {
   base: Int
 }
 
-fn Lexer::span(self: Lexer, start: (Int, Int)) -> Span {
-  { start, end: (self.line, self.column), file: self.file, file_content: self.file_content }
+fn Lexer::span(self: Lexer, start: SourceLoc) -> Span {
+  { start, end: SourceLoc::{ index: self.index, line: self.line, column: self.column }, file: self.file, file_content: self.file_content[:] }
 } 
 
 fn Lexer::parse_integer(self: Lexer) -> ParsedInteger {
@@ -199,7 +199,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
 
   let char = self.peek()
 
-  let start = (self.line, self.column)
+  let start = SourceLoc::{ index: self.index, line: self.line, column: self.column }
 
   let val = match char {
     '(' => {
@@ -454,13 +454,13 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
     }
   }
 
-  let end = (self.line, self.column)
+  let end = SourceLoc::{ index: self.index, line: self.line, column: self.column }
 
   match val {
     Ok(token) => {
       let token = {
         kind: token,
-        span: { file: self.file, file_content: self.file_content, start, end },
+        span: { file: self.file, file_content: self.file_content[:], start, end },
       }
 
       self.tokens.push(token)

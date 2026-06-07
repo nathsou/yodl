@@ -75,7 +75,7 @@ pub impl Show for ConstValue with output(value, logger) {
 
 pub impl Show for ResolvedParam with output(param, logger) {
   match param {
-    ConstParam(value~, span=_) => {
+    NatParam(value~, span=_) => {
       logger.write_string(value.to_string())
     }
     TypeParam(ty~, span=_) => {
@@ -85,19 +85,7 @@ pub impl Show for ResolvedParam with output(param, logger) {
 }
 
 pub impl Show for UnresolvedParam with output(param, logger) {
-  match param {
-    PathParam(path~, span=_) => {
-      logger.write_string(path.to_string())
-    }
-    ExprParam(expr) => {
-      let emitter = AstEmitter::new()
-      emitter.emit_expr(expr)
-      logger.write_string(emitter.to_string())
-    }
-    TypeParam(ty~, span=_) => {
-      logger.write_string(ty.to_string())
-    }
-  }
+  logger.write(param.text)
 }
 
 pub impl Show for Param with output(param, logger) {

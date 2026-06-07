@@ -48,8 +48,8 @@ pub(all) enum Type {
   SInt(IndexExpr)
   Clock
   Vector(ty~: Type, len~: IndexExpr)
-  Instance(sig~: ModuleSignature, params~: Map[String, Param], accessed_ports~: AccessedPorts)
-  Name(path~: Path, params~: Array[Param])
+  Instance(sig~: ModuleSignature, params~: Map[String, ResolvedParam], accessed_ports~: AccessedPorts)
+  Name(path~: Path, params~: Array[Type])
   Struct(Map[String, Type])
   String(len~: Int)
   MemoryMask(Type)
@@ -132,24 +132,16 @@ pub fn InstanceParams::new(params: Array[(String?, Param)]) -> InstanceParams {
 }
 
 
-pub fn[E: Error] InstanceParams::map(self: Self, map_expr~: (Expr) -> Expr raise E, map_type~: (Type) -> Type raise E) -> Self raise E {
+pub fn[E: Error] InstanceParams::map_raw(self: Self, map_type~: (Type) -> Type raise E) -> Self raise E {
   let new_list = Array::new(capacity=self.params.length())
 
   for param in self.params {
     let name = param.0
     match param.1 {
+      Unresolved(unresolved) => {
+        new_list.push((name, Unresolved(unresolved)))
+      }
       Resolved(TypeParam(ty~, span~)) => {
-        let new_ty = map_type(ty)
-        new_list.push((name, Resolved(TypeParam(ty=new_ty, span~))))
-      }
-      Unresolved(PathParam(path~, span~)) => {
-        new_list.push((name, Unresolved(PathParam(path~, span~))))
-      }
-      Unresolved(ExprParam(expr)) => {
-        let new_expr = map_expr(expr)
-        new_list.push((name, Unresolved(ExprParam(new_expr))))
-      }
-      Unresolved(TypeParam(ty~, span~)) => {
         let new_ty = map_type(ty)
         new_list.push((name, Resolved(TypeParam(ty=new_ty, span~))))
       }
@@ -163,6 +155,41 @@ pub fn[E: Error] InstanceParams::map(self: Self, map_expr~: (Expr) -> Expr raise
     params: new_list,
     instantiated: self.instantiated,
   }
+}
+
+/// Returns the parameter list as `(name?, ResolvedParam)` pairs, raising if any
+/// parameter is still `Unresolved`. Intended for use after monomorphization,
+/// where all parameters must have been resolved.
+pub fn InstanceParams::unwrap_resolved(self: Self) -> Array[(String?, ResolvedParam)] raise AstError {
+  let out = Array::new(capacity=self.params.length())
+
+  for entry in self.params {
+    let (name, param) = entry
+    match param {
+      Resolved(p) => out.push((name, p))
+      Unresolved(_) => raise UnresolvedParameter(name=name.unwrap_or(""), span=param.span())
+    }
+  }
+
+  out
+}
+
+/// Like `as_map`, but ensures every value is a `ResolvedParam`, raising
+/// otherwise. Intended for post-monomorphization consumers (type checker,
+/// lowering) where unresolved parameters indicate an internal invariant
+/// violation.
+pub fn InstanceParams::as_resolved_map(self: Self, names~: Array[String]) -> Map[String, ResolvedParam] raise AstError {
+  let params = self.as_map(names~)
+  let out = Map([], capacity=params.length())
+
+  for name, param in params {
+    match param {
+      Resolved(p) => out[name] = p
+      Unresolved(_) => raise UnresolvedParameter(name~, span=param.span())
+    }
+  }
+
+  out
 }
 
 pub(all) enum UnaryOp {
@@ -531,11 +558,10 @@ pub fn Type::width(self: Type, span: Span) -> Int raise AstError {
     Vector(ty~, len~) => ty.width(span) * len.expect_lit(span)
     Instance(sig~, params~, accessed_ports~) => {
       let mut width = 0
-      let resolved_params = keep_and_check_resolved(params, span~)
 
       for port in sig.ports {
         if accessed_ports.contains(port.name) {
-          width += port.ty.substitute(resolved_params, span~).width(span)
+          width += port.ty.substitute(params, span~).width(span)
         }
       }
 
@@ -574,7 +600,7 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
 
       for name, value in params {
         new_params[name] = match params_env.get(name) {
-          Some(new_value) => Resolved(new_value)
+          Some(new_value) => new_value
           None => value
         }
       }
@@ -584,23 +610,14 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
     Name(path~, params~) => {
       let new_params = Array::new(capacity=params.length())
 
-      for param in params {
-        match param {
-          Unresolved(PathParam(path~, span~)) => {
-            new_params.push(Unresolved(PathParam(path~, span~)))
-          }
-          Resolved(TypeParam(ty~, span~)) | Unresolved(TypeParam(ty~, span~)) => {
-            let new_ty = ty.substitute(params_env, span~)
-            new_params.push(Resolved(TypeParam(ty=new_ty, span~)))
-          }
-          _ => new_params.push(param)
-        }
+      for ty in params {
+        new_params.push(ty.substitute(params_env, span~))
       }
 
       match path.packages {
         [] => match params_env.get(path.elem) {
           Some(TypeParam(ty~, ..)) => ty.substitute(params_env, span~)
-          None | Some(ConstParam(_)) => Name(path~, params=new_params)
+          None | Some(NatParam(_)) => Name(path~, params=new_params)
         }
         _ => Name(path~, params=new_params)
       }

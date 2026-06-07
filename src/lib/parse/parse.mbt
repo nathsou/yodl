@@ -2,7 +2,7 @@ pub struct Parser {
   tokens: Array[Token]
   mut index: Int
   file: String
-  file_content: String
+  file_content: StringView
 }
 
 pub suberror ParserError {
@@ -17,7 +17,6 @@ pub suberror ParserError {
   InvalidPortOrTupleAccess(span~: Span)
   DuplicateStructField(name~: String, span~: Span)
   DidYouMean(received~: TokenType, suggestion~: String, span~: Span)
-  ExpectedExprOrType(received~: TokenType, span~: Span)
 } derive(Debug)
 
 pub impl Show for ParserError with output(self, logger) {
@@ -36,8 +35,6 @@ pub impl Show for ParserError with output(self, logger) {
       logger.write_string("Expected a declaration, got '\{received}' at \{span}\n\{span.context()}")
     ExpectedRangeOperator(received~, span~) =>
       logger.write_string("Expected a range operator ('..' or '..='), got '\{received}' at \{span}\n\{span.context()}")
-    ExpectedExprOrType(received~, span~) =>
-      logger.write_string("Expected an expression or type, got '\{received}' at \{span}\n\{span.context()}")
     DidYouMean(received~, suggestion~, span~) =>
       logger.write_string("Unexpected '\{received}' at \{span}: \{suggestion}\n\{span.context()}")
     MultipleDefaultCases(span~) =>
@@ -49,7 +46,7 @@ pub impl Show for ParserError with output(self, logger) {
   }
 }
 
-pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: String) -> Parser {
+pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: StringView) -> Parser {
   { tokens, index: 0, file, file_content }
 }
 
@@ -498,21 +495,39 @@ fn Parser::parse_vector_expr(self: Parser) -> Expr raise {
   Vector(elems~, span=self.span(start_idx), ty={ val: None })
 }
 
-fn Parser::parse_instance_parameter(self: Parser) -> Param raise {
+fn Parser::parse_instance_parameter(self: Parser) -> Param {
   let start_idx = self.index
-  try self.parse_expr() catch {
-    _ => {
-      self.index = start_idx
-      try self.parse_type() catch {
-        _ => raise ExpectedExprOrType(received=self.peek(), span=self.span(start_idx))
-      } noraise {
-        ty => Unresolved(TypeParam(ty~, span=self.span(start_idx)))
+  let mut open_brackets = 1
+  let tokens: Array[Token] = []
+
+  while self.index < self.tokens.length() {
+    let token = self.tokens[self.index]
+
+    match token.kind {
+      Lchevron => open_brackets += 1
+      Rchevron => {
+        open_brackets -= 1
+        if open_brackets == 0 {
+          break
+        }
       }
+      Comma if open_brackets == 1 => break
+      _ => ()
     }
-  } noraise {
-    Identifier(path~, span~, ..) => Unresolved(PathParam(path~, span~))
-    expr => Unresolved(ExprParam(expr))
+
+    tokens.push(token)
+    self.advance()
   }
+
+  let span = self.span(start_idx)
+  let text = span.text()
+
+  Param::Unresolved({
+    tokens,
+    text: text[:],
+    file: self.file,
+    span,
+  })
 }
 
 fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
@@ -851,7 +866,6 @@ fn Parser::parse_path(self: Parser, first: String) -> Path raise {
 
 fn Parser::parse_type(self: Parser) -> Type raise {
   let start_idx = self.index
-  let params: Array[Param] = []
 
   let mut base_ty: Type = match self.peek() {
     Bool => {
@@ -882,12 +896,12 @@ fn Parser::parse_type(self: Parser) -> Type raise {
     Identifier(name) => {
       self.advance()
       let path = self.parse_path(name)
-      let params: Array[Param] = []
+      let params: Array[Type] = []
 
       if self.consumes(Lchevron) {
         while !self.matches(Rchevron) {
           let param = self.parse_type()
-          params.push(Unresolved(TypeParam(ty=param, span=self.span(start_idx))))
+          params.push(param)
 
           if !self.consumes(Comma) {
             break
@@ -897,7 +911,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
         self.expect(Rchevron, start_idx)
       }
 
-      if path is { packages: [], elem: "MemoryMask" } && params is [Unresolved(TypeParam(ty~, ..))] {
+      if path is { packages: [], elem: "MemoryMask" } && params is [ty] {
         Type::MemoryMask(ty)
       } else {
         Type::Name(path~, params~)
@@ -956,23 +970,6 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       Struct(fields)
     }
     _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
-  }
-
-  if self.consumes(Lchevron) {
-    while !self.matches(Rchevron) {
-      params.push(Unresolved(ExprParam(self.parse_expr())))
-
-      if !self.consumes(Comma) {
-        break
-      }
-    }
-
-    self.expect(Rchevron, start_idx)
-
-    base_ty = match base_ty {
-      Type::Name(path~, params=_) => Type::Name(path~, params~)
-      _ => raise ExpectedType(received=self.peek(), span=self.span(start_idx))
-    }
   }
 
   while self.consumes(Lbracket) {

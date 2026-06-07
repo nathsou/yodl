@@ -64,7 +64,7 @@ pub fn IndexExpr::substitute(self: IndexExpr, params_env: Map[String, ResolvedPa
   match self {
     Lit(_) => self
     Var(name) => match params_env.get(name) {
-      Some(ConstParam(value=Natural(value~, ..), ..)) => Lit(value.to_int())
+      Some(NatParam(value=Natural(value~, ..), ..)) => Lit(value.to_int())
       _ => self
     }
     Add(a, b) => match (a.substitute(params_env), b.substitute(params_env)) {
