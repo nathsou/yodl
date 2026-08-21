@@ -51,7 +51,7 @@ pub impl Show for SimplifierError with output(self, logger) {
     }
   }
 
-  logger.write_string(self.show_context(use_ansi_colors=false))
+  logger.write_string(@parse.Spanned::show_context(self, use_ansi_colors=false))
 }
 
 pub impl @parse.Spanned for SimplifierError with span(self) -> @parse.Span {
@@ -86,7 +86,7 @@ pub fn Simplifier::simplify_expr(
         Some(Const(core_expr)) => core_expr
         Some(Name(unique_name)) =>
           Identifier(
-            path=@parse.Path::new(path.packages, unique_name.to_string()),
+            path=@parse.Path::new(path.packages, Show::to_string(unique_name)),
             span~,
             ty=@parse.clone_ty(ty),
           )
@@ -343,7 +343,7 @@ pub fn Simplifier::simplify_stmt(
       let unique_name = self.declare_unique(name)
       env.declare_shadowing(@parse.Path::new([], name), Name(unique_name))
       Iter::singleton(@parse.CoreStmt::Let(
-        name=unique_name.to_string(),
+        name=Show::to_string(unique_name),
         ty~,
         expr=simplified_expr,
         span~,

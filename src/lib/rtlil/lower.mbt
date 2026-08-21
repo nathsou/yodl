@@ -110,7 +110,7 @@ fn RTLILLowering::lower_stmt(
         kind=PubId(of.inner()),
         parameters={},
         connections={
-          let conns = {}
+          let conns = Map([])
           for port_name, port_sig in sig.ports.iter2() {
             let wire_name = lower_id("\{inst_id.inner()}.\{port_name}")
             let wire = self.mod.add_wire(
@@ -305,25 +305,18 @@ fn RTLILLowering::lower_mem(self : Self, mem : @firrtl.Mem) -> Unit raise {
     if ann is MemoryFileInlineAnnotation(target~, filename~, is_hex~) &&
       target == mem_target {
       let content = (self.fs.read_file_to_string)(filename)
-      try
-        @parse.parse_mem_file(
-          content,
-          base=if is_hex { 16 } else { 2 },
-          start=0,
-          end=None,
+      let bits = @parse.parse_mem_file(
+        content,
+        base=if is_hex { 16 } else { 2 },
+        start=0,
+        end=None,
+      )
+      if bits.length() != mem.depth * data_width {
+        raise Failure::Failure(
+          "Inconsistent memory initialization width: expected \{mem.depth * data_width} bits, got \{bits.length()} bits",
         )
-      catch {
-        err => raise err
-      } noraise {
-        bits => {
-          if bits.length() != mem.depth * data_width {
-            raise Failure::Failure(
-              "Inconsistent memory initialization width: expected \{mem.depth * data_width} bits, got \{bits.length()} bits",
-            )
-          }
-          init = Some(ConstValue(width=bits.length(), bits~))
-        }
       }
+      init = Some(ConstValue(width=bits.length(), bits~))
     }
   }
   let rtlil_mem = self.mod.add_memory(
@@ -331,7 +324,7 @@ fn RTLILLowering::lower_mem(self : Self, mem : @firrtl.Mem) -> Unit raise {
     width=data_width,
     size=mem.depth,
   )
-  let mem_id = ConstString(rtlil_mem.id.to_string())
+  let mem_id = ConstString(Show::to_string(rtlil_mem.id))
   if init is Some(init_const) {
     self.mk_cell(
       id=GenId("\{mem.id.inner()}_init"),

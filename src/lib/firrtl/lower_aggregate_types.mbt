@@ -49,7 +49,7 @@ fn lookup_target(module_tables: Map[Id, LoweringTable], target: AnnotationTarget
 
 fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> TypedCircuit raise {
   let new_decls = Array::new(capacity=circuit.decls.length())
-  let module_tables: Map[Id, LoweringTable] = {}
+  let module_tables: Map[Id, LoweringTable] = Map([])
 
   for decl in circuit.decls {
     let module_table = LoweringTable::new()

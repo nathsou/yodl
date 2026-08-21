@@ -216,7 +216,13 @@ test "bin" {
   inspect(bin_str(BigInt::from_int64(473483), 24), content="000001110011100110001011")
   inspect(bin_str(BigInt::from_int64(473483), 20), content="01110011100110001011")
   inspect(bin_str(BigInt::from_int64(473483), 19), content="1110011100110001011")
-  inspect((try? bin_str(BigInt::from_int64(473483), 18)) is Err(_), content="true")
+  let raises = try {
+    let _ = bin_str(BigInt::from_int64(473483), 18)
+    false
+  } catch {
+    _ => true
+  }
+  inspect(raises, content="true")
   inspect(bin_str(BigInt::from_int64(-1), 8), content="11111111")
   inspect(bin_str(BigInt::from_int64(-473483), 24), content="111110001100011001110101")
   inspect(bin_str(BigInt::from_int64(0x3E676F7B73633E), 64), content="0000000000111110011001110110111101111011011100110110001100111110")

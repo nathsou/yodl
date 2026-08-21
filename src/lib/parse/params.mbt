@@ -67,14 +67,14 @@ pub impl Hash for ResolvedParam with hash_combine(self, hasher) {
         String(value~, span=_) => hasher.combine(value)
       }
     }
-    TypeParam(ty~, ..) => hasher.combine(ty.to_string())
+    TypeParam(ty~, ..) => hasher.combine(Show::to_string(ty))
   }
 }
 
 pub impl Spanned for Param with span(self) -> Span {
   match self {
     Unresolved(param) => param.span
-    Resolved(param) => param.span()
+    Resolved(param) => Spanned::span(param)
   }
 }
 
@@ -88,14 +88,14 @@ pub impl Spanned for ResolvedParam with span(self) -> Span {
 pub fn Param::as_type(self: Param) -> Type raise {
   match self {
     Resolved(TypeParam(ty~, ..)) => ty
-    _ => raise ExpectedTypeParameter(span=self.span())
+    _ => raise ExpectedTypeParameter(span=Spanned::span(self))
   }
 }
 
 pub fn Param::as_int(self: Param) -> Int raise {
   match self {
     Resolved(NatParam(value=Natural(value~, ..), span=_)) => value.to_int()
-    _ => raise ExpectedIntParameter(span=self.span())
+    _ => raise ExpectedIntParameter(span=Spanned::span(self))
   }
 }
 
@@ -137,7 +137,7 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
             Some(value.as_expr())
           }
           Some(TypeParam(_)) => {
-            raise TypeParamInsteadOfExpr(span=expr.span())
+            raise TypeParamInsteadOfExpr(span=Spanned::span(expr))
           }
           None => None
         }
@@ -167,12 +167,20 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
         }
       }
       Binary(op~, lhs~, rhs~, output_width=_, span~, ty~) => {
-        let lhs_value = try? lhs.as_bigint()
-        let rhs_value = try? rhs.as_bigint()
+        let lhs_value = try lhs.as_bigint() catch {
+          _ => None
+        } noraise {
+          value => Some(value)
+        }
+        let rhs_value = try rhs.as_bigint() catch {
+          _ => None
+        } noraise {
+          value => Some(value)
+        }
         let is_single_bit = lhs is Natural(width=Some(1), ..) || rhs is Natural(width=Some(1), ..)
         
         match (lhs_value, rhs_value, lhs, rhs, op) {
-          (Ok(lhs), Ok(rhs), _, _, _) => {
+          (Some(lhs), Some(rhs), _, _, _) => {
             let value = match op {
               Add => lhs + rhs
               Sub => lhs - rhs
@@ -196,7 +204,7 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
 
             Some(Natural(value~, width=None, base=10, span~, ty~))
           }
-          ((Ok(0), _, _, b, op) | (_, Ok(0), b, _, op)) if is_single_bit => {
+          ((Some(0), _, _, b, op) | (_, Some(0), b, _, op)) if is_single_bit => {
             match op {
               And => Some(Expr::nat(0, span~))
               Or | Xor => Some(b)
@@ -205,7 +213,7 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
               _ => None
             }
           }
-          ((Ok(1), _, _, b, op) | (_, Ok(1), b, _, op)) if is_single_bit => {
+          ((Some(1), _, _, b, op) | (_, Some(1), b, _, op)) if is_single_bit => {
             match op {
               And | Xnor => Some(b)
               Or => Some(Expr::nat(1, span~))
@@ -398,7 +406,7 @@ pub fn Expr::as_int(self: Expr) -> Int raise {
   match self {
     Natural(value~, ..) => value.to_int()
     _ => {
-      raise ExpectedIntegerExpression(expr=self, span=self.span())
+      raise ExpectedIntegerExpression(expr=self, span=Spanned::span(self))
     }
   }
 }
@@ -406,13 +414,13 @@ pub fn Expr::as_int(self: Expr) -> Int raise {
 pub fn Expr::as_bigint(self: Expr) -> BigInt raise {
   match self {
     Natural(value~, ..) => value
-    _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
+    _ => raise ExpectedIntegerExpression(expr=self, span=Spanned::span(self))
   }
 }
 
 pub fn Expr::as_string(self: Expr) -> String raise {
   match self {
     String(value=str, ..) => str
-    _ => raise ExpectedStringExpression(expr=self, span=self.span())
+    _ => raise ExpectedStringExpression(expr=self, span=Spanned::span(self))
   }
 }

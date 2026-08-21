@@ -76,10 +76,10 @@ pub impl Show for ConstValue with output(value, logger) {
 pub impl Show for ResolvedParam with output(param, logger) {
   match param {
     NatParam(value~, span=_) => {
-      logger.write_string(value.to_string())
+      logger.write_string(Show::to_string(value))
     }
     TypeParam(ty~, span=_) => {
-      logger.write_string(ty.to_string())
+      logger.write_string(Show::to_string(ty))
     }
   }
 }
@@ -91,10 +91,10 @@ pub impl Show for UnresolvedParam with output(param, logger) {
 pub impl Show for Param with output(param, logger) {
   match param {
     Unresolved(param) => {
-      logger.write_string(param.to_string())
+      logger.write_string(Show::to_string(param))
     }
     Resolved(param) => {
-      logger.write_string(param.to_string())
+      logger.write_string(Show::to_string(param))
     }
   }
 }
@@ -138,7 +138,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write(show_natural(value~, base~, width~))
     }
     Identifier(path~, ..) => {
-      self.write(path.to_string())
+      self.write(Show::to_string(path))
     }
     String(value=str, ..) => {
       self.write("\"")
@@ -147,7 +147,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
     }
     Unary(op~, expr~, ..) => {
       self.write("(")
-      self.write(op.to_string())
+      self.write(Show::to_string(op))
       self.write(" ")
       self.emit_expr(expr)
       self.write(")")
@@ -156,7 +156,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write("(")
       self.emit_expr(lhs)
       self.write(" ")
-      self.write(op.to_string())
+      self.write(Show::to_string(op))
       self.write(" ")
       self.emit_expr(rhs)
       self.write(")")
@@ -185,7 +185,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
       self.write(port)
     }
     Instance(path~, params~, ports~, ..) => {
-      self.write(path.to_string())
+      self.write(Show::to_string(path))
 
       if params.params.length() > 0 {
         self.write("[")
@@ -202,7 +202,7 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
             self.write(": ")
           }
 
-          self.write(param.to_string())
+          self.write(Show::to_string(param))
         }
 
         self.write("]")
@@ -415,12 +415,12 @@ pub fn AstEmitter::emit_expr(self: AstEmitter, expr: Expr, indent~: Bool = false
 
 fn AstEmitter::emit_const_decl(self: AstEmitter, decl: ConstDecl) -> Unit {
   self.write("const ")
-  self.write(decl.path.to_string())
+  self.write(Show::to_string(decl.path))
 
   match decl.ty {
     Some(ty) => {
       self.write(": ")
-      self.write(ty.to_string())
+      self.write(Show::to_string(ty))
     }
     None => ()
   }
@@ -459,7 +459,7 @@ pub fn AstEmitter::emit_stmt(self: AstEmitter, stmt: Stmt) -> Unit {
       match ty.val {
         Some(ty) => {
           self.write(": ")
-          self.write(ty.to_string())
+          self.write(Show::to_string(ty))
         }
         None => ()
       }
@@ -533,7 +533,7 @@ priv struct StructField {
 impl Show for StructField with output(field, logger) {
   logger.write_string(field.name)
   logger.write_string(": ")
-  logger.write_string(field.ty.to_string())
+  logger.write_string(Show::to_string(field.ty))
 }
 
 fn index_expr_prec(expr: IndexExpr) -> Int {
@@ -616,7 +616,7 @@ pub impl Show for Type with output(ty, logger) {
       logger.write_char('[')
       logger.write_object(len)
       logger.write_char(']')
-      logger.write_string(ty.to_string())
+      logger.write_string(Show::to_string(ty))
     }
     Instance(sig={ path, .. }, params~, accessed_ports~) => {
       logger.write_object(path)
@@ -703,11 +703,11 @@ pub impl Show for Port with output(port, logger) {
   logger.write_string(": ")
 
   for attr in port.attributes.values() {
-    logger.write_string(attr.to_string())
+    logger.write_string(Show::to_string(attr))
     logger.write_char(' ')
   }
 
-  logger.write_string(port.ty.to_string())
+  logger.write_string(Show::to_string(port.ty))
 }
 
 fn AstEmitter::emit_port_list(self: AstEmitter, ports: Iter[Port]) -> Unit {
@@ -716,7 +716,7 @@ fn AstEmitter::emit_port_list(self: AstEmitter, ports: Iter[Port]) -> Unit {
 
   for port in ports {
     self.write_indent()
-    self.write(port.to_string())
+    self.write(Show::to_string(port))
     self.write(",\n")
   }
 
@@ -747,7 +747,7 @@ pub impl Show for AttributeValue with output(val, logger) {
 
         logger.write_string(key)
         logger.write_string(": ")
-        logger.write_string(value.to_string())
+        logger.write_string(Show::to_string(value))
       }
 
       logger.write_char('}')
@@ -777,13 +777,13 @@ pub impl Show for ModuleParameter with output(param, logger) {
 fn AstEmitter::emit_module_sig(self: AstEmitter, sig: ModuleSignature) -> Unit {
   if sig.attributes.length() > 0 {
     for attr in sig.attributes.values() {
-      self.emit(attr.to_string())
+      self.emit(Show::to_string(attr))
       self.write("\n")
     }
   }
 
   self.emit("module ")
-  self.write(sig.path.to_string())
+  self.write(Show::to_string(sig.path))
 
   if sig.params.length() > 0 {
     self.write("[")

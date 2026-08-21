@@ -65,7 +65,7 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     }
   }
 
-  logger.write_string(self.show_context(use_ansi_colors=false))
+  logger.write_string(@parse.Spanned::show_context(self, use_ansi_colors=false))
 }
 
 pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
@@ -144,7 +144,7 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
       @parse.Type::Vector(ty=mono_ty, len~)
     }
     Struct(fields) => {
-      let mono_fields = {}
+      let mono_fields = Map([])
 
       for name, ty in fields {
         mono_fields[name] = self.monomorphize_type(ty, env~, packages~, span~).ty
@@ -163,7 +163,7 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
           )
         }
 
-        let subst: Map[String, @parse.ResolvedParam] = {}
+        let subst: Map[String, @parse.ResolvedParam] = Map([])
 
         for static_param, ty in @utils.zip2(type_alias.parameters, params) {
           let mono_ty = self.monomorphize_type(ty, env~, packages~, span~).ty
@@ -242,7 +242,7 @@ fn Monomorphizer::register_monomorphized_module(
   let monomorphized = match self.monomorphized.get(path) {
     Some(modules) => modules
     None => {
-      let modules = {}
+      let modules = Map([])
       self.monomorphized[path] = modules
       modules
     }

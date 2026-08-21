@@ -57,8 +57,8 @@ pub fn run(
   let checker = @elaborate.TypeChecker::new()
 
   for decl in mono_decls {
-    if (try? checker.check_decl(decl)) is Err(err) {
-      raise Failure::Failure(err.to_string())
+    try checker.check_decl(decl) catch {
+      err => raise Failure::Failure(err.to_string())
     }
   }
 
@@ -128,8 +128,8 @@ pub fn run(
   let firrtl = {
     let low = @elaborate.Elaborator::new(top)
 
-    if (try? low.lower(simplified_decls.iter())) is Err(err) {
-      raise Failure::Failure(err.to_string())
+    try low.lower(simplified_decls.iter()) catch {
+      err => raise Failure::Failure(err.to_string())
     }
 
     low

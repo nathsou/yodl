@@ -15,14 +15,14 @@ pub fn Serializer::new(design: Design) -> Serializer {
 }
 
 pub impl Show for Value with output(self, logger) {
-  let bits = self.bits.map(BinaryDigit::to_string).join("")
+  let bits = self.bits.map(Show::to_string).join("")
   logger.write_string("\{self.width}'\{bits}")
 }
 
 pub impl Show for Constant with output(self, logger) {
   match self {
     ConstValue(width~, bits~) => {
-      let bits = bits.map(BinaryDigit::to_string).join("").pad_start(width, '0')
+      let bits = bits.map(Show::to_string).join("").pad_start(width, '0')
       logger.write_string("\{width}'\{bits}")
     }
     ConstInteger(n) => logger.write_string(n.to_string())
@@ -61,8 +61,8 @@ fn Serializer::write_wire(self: Self, wire: Wire) -> Unit {
 
 pub impl Show for Signal with output(self, logger) {
   match self {
-    SigConst(c) => logger.write_string(c.to_string())
-    SigWire(w) => logger.write_string(w.name.to_string())
+    SigConst(c) => logger.write_string(Show::to_string(c))
+    SigWire(w) => logger.write_string(Show::to_string(w.name))
     SigChunk(signal~, offset~, width~) => {
       if width == 1 {
         logger.write_string("\{signal} [\{offset}]")

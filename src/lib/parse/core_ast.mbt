@@ -158,14 +158,14 @@ pub fn CoreExpr::contains_statements(self: CoreExpr) -> Bool {
 pub fn CoreExpr::as_int(self: CoreExpr) -> Int raise {
   match self {
     Natural(value~, ..) => value.to_int()
-    _ => raise ExpectedIntegerExpression(expr=self, span=self.span())
+    _ => raise ExpectedIntegerExpression(expr=self, span=Spanned::span(self))
   }
 }
 
 pub fn CoreExpr::as_string(self: CoreExpr) -> String raise {
   match self {
     String(value=str, ..) => str
-    _ => raise ExpectedStringExpression(expr=self, span=self.span())
+    _ => raise ExpectedStringExpression(expr=self, span=Spanned::span(self))
   }
 }
 

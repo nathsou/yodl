@@ -16,7 +16,7 @@ pub fn AstEmitter::emit_core_expr(self: AstEmitter, expr: CoreExpr, indent~: Boo
       self.write(show_natural(value~, base~, width~))
     }
     Identifier(path~, ..) => {
-      self.write(path.to_string())
+      self.write(Show::to_string(path))
     }
     String(value=str, ..) => {
       self.write("\"")
@@ -25,7 +25,7 @@ pub fn AstEmitter::emit_core_expr(self: AstEmitter, expr: CoreExpr, indent~: Boo
     }
     Unary(op~, expr~, ..) => {
       self.write("(")
-      self.write(op.to_string())
+      self.write(Show::to_string(op))
       self.write(" ")
       self.emit_core_expr(expr)
       self.write(")")
@@ -34,7 +34,7 @@ pub fn AstEmitter::emit_core_expr(self: AstEmitter, expr: CoreExpr, indent~: Boo
       self.write("(")
       self.emit_core_expr(lhs)
       self.write(" ")
-      self.write(op.to_string())
+      self.write(Show::to_string(op))
       self.write(" ")
       self.emit_core_expr(rhs)
       self.write(")")
@@ -59,7 +59,7 @@ pub fn AstEmitter::emit_core_expr(self: AstEmitter, expr: CoreExpr, indent~: Boo
       self.write(port)
     }
     Instance(path~, params~, ports~, ..) => {
-      self.write(path.to_string())
+      self.write(Show::to_string(path))
 
       if params.params.length() > 0 {
         self.write("[")
@@ -76,7 +76,7 @@ pub fn AstEmitter::emit_core_expr(self: AstEmitter, expr: CoreExpr, indent~: Boo
             self.write(": ")
           }
 
-          self.write(param.to_string())
+          self.write(Show::to_string(param))
         }
 
         self.write("]")
@@ -275,7 +275,7 @@ pub fn AstEmitter::emit_core_stmt(self: AstEmitter, stmt: CoreStmt) -> Unit {
       match ty.val {
         Some(ty) => {
           self.write(": ")
-          self.write(ty.to_string())
+          self.write(Show::to_string(ty))
         }
         None => ()
       }

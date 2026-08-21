@@ -21,7 +21,7 @@ pub impl FIRRTLPass for ExpandWhensPass with run(self, circuit) -> TypedCircuit 
 
 fn ExpandWhensPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule raise {
   // Track last connection to each destination
-  let module_scope: DriverMap = {}
+  let module_scope: DriverMap = Map([])
 
   for port in mod.ports {
     if port.dir is (Output | InOut) {
@@ -49,7 +49,7 @@ fn ExpandWhensPass::rewrite_module(self: Self, mod: TypedModule) -> TypedModule 
   }
 
   if not_fully_init.length() > 0 {
-    let not_fully_init_str = not_fully_init.iter().map(r => r.to_string()).join(", ")
+    let not_fully_init_str = not_fully_init.iter().map(r => Show::to_string(r)).join(", ")
     raise Failure::Failure("The following wires are not fully initialised: [\{not_fully_init_str}]")
   }
 
@@ -168,7 +168,7 @@ fn ExpandWhensPass::expand_whens(
 ) -> Unit raise {
   // Move non-connect statements to parent
   let then_cond = outer_condition.anded_with(when.cond)
-  let then_scope: DriverMap = {}
+  let then_scope: DriverMap = Map([])
   self.scopes.push(then_scope)
   let then_stmts = self.process_block(block=when.body, condition=then_cond)
   self.scopes.pop()
@@ -181,7 +181,7 @@ fn ExpandWhensPass::expand_whens(
   }
 
   // Process else block if present
-  let else_scope: DriverMap = {}
+  let else_scope: DriverMap = Map([])
 
   if when.otherwise is Some(else_body) {
     let else_cond = outer_condition.anded_with(PrimOp(op=Not, args=[when.cond], ty=Type::bool()))

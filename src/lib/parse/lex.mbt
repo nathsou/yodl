@@ -20,7 +20,7 @@ pub impl Show for LexerError with output(self, logger) -> Unit {
     }
   }
 
-  logger.write_string(self.show_context(use_ansi_colors=false))
+  logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
 }
 
 pub impl Spanned for LexerError with span(self: LexerError) -> Span {

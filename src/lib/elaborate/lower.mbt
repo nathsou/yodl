@@ -116,7 +116,7 @@ impl Show for ElaborationError with output(self, logger) {
     }
   }
 
-  logger.write_string(self.show_context(use_ansi_colors=false))
+  logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
 }
 
 priv trait ScopeLike {
@@ -314,7 +314,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: CoreModuleDecl) -> Unit raise
 }
 
 fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> Unit raise {
-  guard sig.attributes.get("external") is Some({args: [String(defname), String(verilog_path)], ..})
+  guard! sig.attributes.get("external") is Some({args: [String(defname), String(verilog_path)], ..})
   let id = id_of_path(sig.path)
   let ports = Array::new(capacity=sig.ports.length())
   let parameters = []
@@ -455,7 +455,7 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
 fn Value::as_int(self: Value) -> BigInt raise {
   match self {
     Expr(expr=Literal(UInt(value~, ..) | SInt(value~, ..), ty=_), ..) => value
-    _ => raise ElaborationError(message="Expected integer literal", span=self.span())
+    _ => raise ElaborationError(message="Expected integer literal", span=Spanned::span(self))
   }
 }
 
@@ -464,7 +464,7 @@ fn concat_rev(exprs: Array[FExpr]) -> FExpr raise {
       return mk_lit(UInt(width=0, radix=Some(2), value=BigInt::from_int(0)))
     }
 
-    let list = @list.from_array(exprs)
+    let list = @list.List(exprs)
 
     fn go(lst: @list.List[FExpr], acc: FExpr) -> FExpr raise {
       match lst.head() {
@@ -574,7 +574,12 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
     Binary(op~, lhs~, rhs~, output_width~, span~, ty=bin_ty) => {
       let fir_lhs = self.lower_expr(lhs, scope~, env~).as_expr(self, scope~)
       let fir_rhs = self.lower_expr(rhs, scope~, env~).as_expr(self, scope~)
-      let is_rhs_int = (try? rhs.as_int()) is Ok(_)
+      let is_rhs_int = try {
+        let _ = rhs.as_int()
+        true
+      } catch {
+        _ => false
+      }
       let mut negate = false
       let primop: @firrtl.PrimOp = match op {
         Add => Add
@@ -659,7 +664,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         // Require both cases to be simple expressions without statements
         !cases.iter().any(case => case.1.contains_statements()) {
         // Rewrite 1-bit match with two cases as a mux
-        let cases_map: Map[Int, FExpr] = {}
+        let cases_map: Map[Int, FExpr] = Map([])
 
         for case in cases {
           let int_val = case.0.as_int()
@@ -696,7 +701,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             let case_scope = StmtContainer::new()
             let fir_rhs = self.lower_expr(rhs, scope=case_scope, env~).as_expr(self, scope=case_scope)
             if has_value {
-              case_scope.add_stmt(Connect(mk_id(res_id.unwrap()), fir_rhs))
+              ScopeLike::add_stmt(case_scope, Connect(mk_id(res_id.unwrap()), fir_rhs))
             }
 
             case_scope.0
@@ -730,7 +735,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
               let case_scope = StmtContainer::new()
               let fir_rhs = self.lower_expr(expr, scope=case_scope, env~).as_expr(self, scope=case_scope)
               if has_value {
-                case_scope.add_stmt(Connect(mk_id(res_id.unwrap()), fir_rhs))
+                ScopeLike::add_stmt(case_scope, Connect(mk_id(res_id.unwrap()), fir_rhs))
               }
 
               last_when.otherwise = Some(case_scope.0)
@@ -768,7 +773,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
       let (ports_sig, params_map, attributes) = match self.modules.get(path) {
         Some(inst_mod) => {
-          let ports_sig: Map[String, @firrtl.PortSignature] = {}
+          let ports_sig: Map[String, @firrtl.PortSignature] = Map([])
 
           for port in inst_mod.ports {
             ports_sig[port.id.inner()] = {
@@ -777,7 +782,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             }
           }
 
-          let empty_params: Map[String, ResolvedParam] = {}
+          let empty_params: Map[String, ResolvedParam] = Map([])
           (ports_sig, empty_params, {})
         }
         None => match self.declared_modules.get(path) {
@@ -801,8 +806,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         }
       }
 
-      let inline_connections: Map[String, FExpr] = {}
-      let connections: Map[String, FExpr] = {}
+      let inline_connections: Map[String, FExpr] = Map([])
+      let connections: Map[String, FExpr] = Map([])
       let accessed_ports = match inst_ty.val {
         Some(Instance(sig=_, params=_, accessed_ports~)) => accessed_ports
         _ => raise ElaborationError::Unreachable(message="Untyped instance", span~)
@@ -1337,10 +1342,10 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             let vec_ref = value.as_ref(self, scope~, binding=None)
 
             for i in 0..<len {
-              flatten(Expr(expr=mk_ref(mk_static_indexing(lhs=vec_ref, index=i)), ty=elem_ty, span=value.span()))
+              flatten(Expr(expr=mk_ref(mk_static_indexing(lhs=vec_ref, index=i)), ty=elem_ty, span=Spanned::span(value)))
             }
           }
-          _ => raise ElaborationError::Unreachable(message="Cannot flatten value of type \{value.ty()}", span=value.span())
+          _ => raise ElaborationError::Unreachable(message="Cannot flatten value of type \{value.ty()}", span=Spanned::span(value))
         }
       }
 

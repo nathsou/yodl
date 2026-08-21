@@ -8,7 +8,7 @@ pub fn FlattenMemoriesPass::new() -> Self {
   { ref_mappings: @stack.new() }
 }
 
-impl FIRRTLRewriter for FlattenMemoriesPass
+extend FlattenMemoriesPass with FIRRTLRewriter::{rewrite_circuit, rewrite_expr, rewrite_ref}
 
 pub impl FIRRTLPass for FlattenMemoriesPass with run(self, circuit) -> TypedCircuit raise {
   self.rewrite_circuit(circuit)

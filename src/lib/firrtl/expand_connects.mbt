@@ -3,7 +3,7 @@ pub struct ExpandConnectsPass {
   mut next_ref_id: Int
 }
 
-impl FIRRTLRewriter for ExpandConnectsPass
+extend ExpandConnectsPass with FIRRTLRewriter::{rewrite_circuit, rewrite_expr, rewrite_ref}
 
 pub fn ExpandConnectsPass::new() -> Self {
   { next_ref_id: 0 }

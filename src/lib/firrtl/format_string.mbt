@@ -6,7 +6,7 @@ pub enum FormatStringPart {
   DecimalPlaceholder
   HexadecimalPlaceholder
   EscapedChar(Char)
-} derive(Eq)
+} derive(Eq, Debug)
 
 pub impl Show for FormatStringPart with output(self, logger) {
   match self {

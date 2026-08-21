@@ -403,7 +403,7 @@ fn Parser::parse_paren_or_record_expr(self: Parser) -> Expr raise {
 
   if first_is_named || first_is_spread {
     // named record (with optional leading spread)
-    let fields: Map[String, Expr] = {}
+    let fields: Map[String, Expr] = Map([])
     while !self.matches(Rparen) {
       if self.matches(DotDot) {
         // spread element
@@ -570,7 +570,7 @@ fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
   })
 
   self.expect(Lparen, start_idx)
-  let ports = {}
+  let ports = Map([])
 
   while !self.matches(Rparen) {
     self.ignore(Semicolon) // skip auto-inserted semicolons from newlines
@@ -969,7 +969,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       let is_named = self.lookahead(0).kind is Identifier(_) && self.lookahead(1).kind is Colon
 
       if is_named {
-        let fields = {}
+        let fields = Map([])
 
         while !self.matches(Rparen) {
           let name = self.parse_identifier()
@@ -1096,7 +1096,7 @@ fn Parser::parse_attribute_value(self: Parser) -> AttributeValue raise {
     }
     Lbrace => {
       self.advance()
-      let dict: Map[String, AttributeValue] = {}
+      let dict: Map[String, AttributeValue] = Map([])
 
       while !self.matches(Rbracket) {
         let key = match self.peek() {
@@ -1157,7 +1157,7 @@ fn Parser::parse_attribute(self: Parser) -> Attribute raise {
 }
 
 fn Parser::parse_attributes(self: Parser) -> Map[String, Attribute] raise {
-  let attrs = {}
+  let attrs = Map([])
 
   while self.matches(At) {
     let attr = self.parse_attribute()

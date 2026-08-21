@@ -61,7 +61,7 @@ pub fn[T] FIRRTLEmitter::emit_circuit(self: Self, circuit: Circuit[T]) -> Unit {
   if circuit.annotations.length() > 0 {
     self.0.emit("%[[")
     self.0.indent += 1
-    self.0.write(circuit.annotations.map(ann => ann.to_json().stringify(indent=4)).join(",\n"))
+    self.0.write(circuit.annotations.map(ann => ToJson::to_json(ann).stringify(indent=4)).join(",\n"))
     self.0.write("\n")
     self.0.emit("]]")
   }
@@ -160,19 +160,19 @@ pub impl[T] Show for Reference[T] with output(self, logger) {
   match self {
     Id(id, ty=_) => logger.write_string(id.value())
     StaticIndexing(lhs~, index~, ty=_) => {
-      lhs.output(logger)
+      Show::output(lhs, logger)
       logger.write_char('[')
       logger.write_string(index.to_string())
       logger.write_char(']')
     }
     DynamicIndexing(lhs~, index~, ty=_) => {
-      lhs.output(logger)
+      Show::output(lhs, logger)
       logger.write_char('[')
       logger.write_object(index)
       logger.write_char(']')
     }
     FieldAccess(lhs~, field~, ty=_) => {
-      lhs.output(logger)
+      Show::output(lhs, logger)
       logger.write_char('.')
       logger.write_string(field.value())
     }
@@ -180,7 +180,7 @@ pub impl[T] Show for Reference[T] with output(self, logger) {
 }
 
 pub impl[T] @debug.Debug for Reference[T] with to_repr(self) {
-  @debug.Repr::literal(self.to_string())
+  @debug.Repr::literal(Show::to_string(self))
 }
 
 pub fn[T] FIRRTLEmitter::emit_stmt(self: Self, stmt: Stmt[T], glued~: Bool = false) -> Unit {

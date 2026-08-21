@@ -78,7 +78,7 @@ pub impl Show for Bits with output(self, logger) {
     Some(value) => logger.write_string(value.to_string())
     None => {
       for bit in self.bits {
-        logger.write_string(bit.to_string())
+        logger.write_string(Show::to_string(bit))
       }
     }
   }

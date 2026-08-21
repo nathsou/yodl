@@ -81,7 +81,7 @@ impl Show for TypeCheckerError with output(self, logger) {
         }
     }
 
-    logger.write_string(self.show_context(use_ansi_colors=false))
+    logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
 }
 
 fn type_error(message: String, span: Span) -> TypeCheckerError {
@@ -401,8 +401,8 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
         Instance(path~, params~, ports~, span~, ..) => {
             match self.modules.get(path) {
                 Some(sig) => {
-                    let subst: Map[String, UnificationParam] = {}
-                    let params_env: Map[String, ResolvedParam] = {}
+                    let subst: Map[String, UnificationParam] = Map([])
+                    let params_env: Map[String, ResolvedParam] = Map([])
                     let accessed_ports = AccessedPorts::new()
                     let params_map = params.as_resolved_map(names=sig.params.map(p => p.name))
 
@@ -482,7 +482,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
             let mut elem_ty = None
             let mut len = 0
-            let subst = {}
+            let subst = Map([])
 
             fn check_elem_ty(ty: Type) -> Unit raise TypeCheckerError {
                 match elem_ty {
@@ -549,7 +549,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             }
 
             let mut ret_ty = None
-            let subst = {}
+            let subst = Map([])
 
             fn check_ret_ty(ty: Type) -> Unit raise TypeCheckerError {
                 match ret_ty {
@@ -943,7 +943,7 @@ let module_attribute_signatures: Map[String, Array[AttributeValueType]] = {
     // "alias": [Str],
 }
 
-let port_attribute_signatures: Map[String, Array[AttributeValueType]] = {}
+let port_attribute_signatures: Map[String, Array[AttributeValueType]] = Map([])
 
 fn check_attribute(attr: Attribute, signatures~: Map[String, Array[AttributeValueType]]) -> Unit raise TypeCheckerError {
     match signatures.get(attr.name) {

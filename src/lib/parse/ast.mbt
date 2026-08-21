@@ -164,7 +164,7 @@ pub fn InstanceParams::unwrap_resolved(self: Self) -> Array[(String?, ResolvedPa
     let (name, param) = entry
     match param {
       Resolved(p) => out.push((name, p))
-      Unresolved(_) => raise UnresolvedParameter(name=name.unwrap_or(""), span=param.span())
+      Unresolved(_) => raise UnresolvedParameter(name=name.unwrap_or(""), span=Spanned::span(param))
     }
   }
 
@@ -182,7 +182,7 @@ pub fn InstanceParams::as_resolved_map(self: Self, names~: Array[String]) -> Map
   for name, param in params {
     match param {
       Resolved(p) => out[name] = p
-      Unresolved(_) => raise UnresolvedParameter(name~, span=param.span())
+      Unresolved(_) => raise UnresolvedParameter(name~, span=Spanned::span(param))
     }
   }
 
@@ -311,7 +311,7 @@ pub impl Show for AstError with output(self, logger) {
     NonStorableType(ty~, ..) => logger.write_string("Type '\{ty}' is not storable")
   }
 
-  logger.write_string(self.show_context(use_ansi_colors=false))
+  logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
 }
 
 pub impl Spanned for AstError with span(self) -> Span {
@@ -658,11 +658,11 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
 
   fn checked_set(name: String, param: Param) -> Unit raise AstError {
     if !names.contains(name) {
-      raise UnknownModuleParameter(name~, span=param.span())
+      raise UnknownModuleParameter(name~, span=Spanned::span(param))
     }
 
     if map.contains(name) {
-      raise ConflictingInstanceParameterValue(name~, span=param.span())
+      raise ConflictingInstanceParameterValue(name~, span=Spanned::span(param))
     } else {
       map[name] = param
     }
@@ -682,7 +682,7 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
       _ => {
         ordered = true
         if idx >= names.length() {
-          raise UnknownModuleParameter(name=idx.to_string(), span=param.span())
+          raise UnknownModuleParameter(name=idx.to_string(), span=Spanned::span(param))
         }
 
         checked_set(names[idx], param)
@@ -690,7 +690,7 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
     }
 
     if ordered && named {
-      raise CannotMixNamedAndOrderedModuleParameters(span=param.span())
+      raise CannotMixNamedAndOrderedModuleParameters(span=Spanned::span(param))
     }
   }
   map

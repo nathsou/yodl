@@ -73,7 +73,7 @@ pub impl ToJson for Annotation with to_json(self) -> Json {
     MemoryFileInlineAnnotation(target~, filename~, is_hex~) => {
       {
         "class": "firrtl.annotations.MemoryFileInlineAnnotation",
-        "target": target.to_string(),
+        "target": Show::to_string(target),
         "filename": filename,
         "hexOrBinary": if is_hex { "h" } else { "b" },
         "originalMemoryNameOpt": target.leaf.unwrap().value(),
@@ -82,19 +82,19 @@ pub impl ToJson for Annotation with to_json(self) -> Json {
     InlineAnnotation(target~) => {
       {
         "class": "firrtl.passes.InlineAnnotation",
-        "target": target.to_string(),
+        "target": Show::to_string(target),
       }
     }
     FlattenAnnotation(target~) => {
       {
         "class": "firrtl.transforms.FlattenAnnotation",
-        "target": target.to_string(),
+        "target": Show::to_string(target),
       }
     }
     BlackBoxPathAnnotation(target~, path~) => {
       {
         "class": "firrtl.transforms.BlackBoxPathAnno",
-        "target": target.to_string(),
+        "target": Show::to_string(target),
         "path": path,
       }
     }
@@ -269,7 +269,7 @@ pub fn[T] Expr::build_mux_tree(cases: Array[(Expr[T], Expr[T])], default: Expr[T
     }
   }
 
-  aux(@list.List::from_array({ cases.rev_in_place(); cases }), default)
+  aux(@list.List({ cases.rev_in_place(); cases }), default)
 }
 
 pub fn[T] Expr::build_when_tree(cases: Array[(Expr[T], Array[Stmt[T]])], default~: Array[Stmt[T]]? = None) -> Array[Stmt[T]] {
@@ -291,7 +291,7 @@ pub fn[T] Expr::build_when_tree(cases: Array[(Expr[T], Array[Stmt[T]])], default
     }
   }
 
-  aux(@list.List::from_array({ cases.rev_in_place(); cases }), default)
+  aux(@list.List({ cases.rev_in_place(); cases }), default)
 }
 
 pub(all) enum ReadUnderWrite { Undefined; Old; New }
@@ -381,17 +381,17 @@ pub(all) enum Reference[T] {
 // Supporting arbitrary dynamic indexing would make initialisation analysis undecidable
 impl[T] Hash for Reference[T] with hash_combine(self, hasher) {
   match self {
-    Id(id, ty=_) => id.hash_combine(hasher)
+    Id(id, ty=_) => Hash::hash_combine(id, hasher)
     StaticIndexing(lhs~, index~, ty=_) => {
-      lhs.hash_combine(hasher)
+      Hash::hash_combine(lhs, hasher)
       hasher.combine_int(index)
     }
     DynamicIndexing(..) => {
       @utils.fail("Dynamic indexing is not supported in hashing")
     }
     FieldAccess(lhs~, field~, ty=_) => {
-      lhs.hash_combine(hasher)
-      field.hash_combine(hasher)
+      Hash::hash_combine(lhs, hasher)
+      Hash::hash_combine(field, hasher)
     }
   }
 }
