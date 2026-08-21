@@ -11,6 +11,8 @@ pub struct Lexer {
 
 pub suberror LexerError {
   UnexepectedChar(char~: Char, span~: Span)
+  UnterminatedStringLiteral(span~: Span)
+  UnterminatedCharacterLiteral(span~: Span)
 }
 
 pub impl Show for LexerError with output(self, logger) -> Unit {
@@ -18,6 +20,8 @@ pub impl Show for LexerError with output(self, logger) -> Unit {
     UnexepectedChar(char~, ..) => {
       logger.write_string("Unexpected character '\{char}'")
     }
+    UnterminatedStringLiteral(..) => logger.write_string("Unterminated string literal")
+    UnterminatedCharacterLiteral(..) => logger.write_string("Unterminated character literal")
   }
 
   logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
@@ -26,6 +30,7 @@ pub impl Show for LexerError with output(self, logger) -> Unit {
 pub impl Spanned for LexerError with span(self: LexerError) -> Span {
   match self {
     UnexepectedChar(span~, ..) => span
+    UnterminatedStringLiteral(span~) | UnterminatedCharacterLiteral(span~) => span
   }
 }
 
@@ -45,7 +50,7 @@ fn should_insert_semicolon(last_token: Token) -> Bool {
   match last_token.kind {
     Natural(_) | StringLiteral(_) | CharacterLiteral(_) => true
     Identifier(_) => true
-    Bool | UInt | SInt => true
+    Bool | UInt | SInt | Clock => true
     UIntType(_) | SIntType(_) => true
     Rparen | Rbracket | Rbrace | Rchevron => true
     _ => false
@@ -86,7 +91,7 @@ fn sized_int_type(identifier: String) -> TokenType? {
 }
 
 fn Lexer::matches(self: Lexer, char: Char) -> Bool {
-  self.peek() == char
+  self.index < self.input.length() && self.peek() == char
 }
 
 fn Lexer::consumes(self: Lexer, char: Char) -> Bool {
@@ -209,7 +214,23 @@ fn Lexer::advance(self: Lexer) -> Unit {
 }
 
 fn Lexer::next(self: Lexer) -> Bool raise LexerError {
-  self.skip_whitespaces()
+  while true {
+    self.skip_whitespaces()
+
+    if self.index >= self.input.length() {
+      return false
+    }
+
+    if self.peek() == '/' && self.index + 1 < self.input.length() && self.lookahead(1) == '/' {
+      self.advance()
+      self.advance()
+      while self.index < self.input.length() && self.peek() != '\n' {
+        self.advance()
+      }
+    } else {
+      break
+    }
+  }
 
   if self.index >= self.input.length() {
     return false
@@ -276,16 +297,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
     }
     '/' => {
       self.advance()
-      // skip comments
-      if self.consumes('/') {
-        while self.peek() != '\n' {
-          self.advance()
-        }
-        
-        return self.next()
-      } else {
-        Ok(Slash)
-      }
+      Ok(Slash)
     }
     '<' => {
       self.advance()
@@ -363,8 +375,16 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
     '\'' => {
       self.advance()
 
+      if self.index >= self.input.length() {
+        raise UnterminatedCharacterLiteral(span=self.span(start))
+      }
+
       if self.peek() == '\\' {
         self.advance()
+        if self.index >= self.input.length() {
+          raise UnterminatedCharacterLiteral(span=self.span(start))
+        }
+
         let escaped = match self.peek() {
           'n' => '\n'
           'r' => '\r'
@@ -375,26 +395,35 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
         }
         
         self.advance()
+        if self.index >= self.input.length() || self.peek() != '\'' {
+          raise UnterminatedCharacterLiteral(span=self.span(start))
+        }
+
+        self.advance()
         Ok(CharacterLiteral(escaped))
-      } else if self.lookahead(1) == '\'' {
+      } else if self.index + 1 < self.input.length() && self.lookahead(1) == '\'' {
         let char = self.peek()
         self.advance()
         self.advance()
         Ok(CharacterLiteral(char))
       } else {
-        Ok(SingleQuote)
+        raise UnterminatedCharacterLiteral(span=self.span(start))
       }
     }
     '"' => {
       let builder = StringBuilder::new()
       self.advance()
 
-      while self.peek() != '"' {
+      while self.index < self.input.length() && self.peek() != '"' {
         let char = self.peek()
 
         match char {
           '\\' => {
             self.advance()
+            if self.index >= self.input.length() {
+              raise UnterminatedStringLiteral(span=self.span(start))
+            }
+
             let escaped = self.peek()
 
             match escaped {
@@ -412,6 +441,10 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
         }
 
         self.advance()
+      }
+
+      if self.index >= self.input.length() {
+        raise UnterminatedStringLiteral(span=self.span(start))
       }
 
       self.advance()
@@ -447,6 +480,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
               "import" => Import
               "and" => And
               "or" => Or
+              "mod" => Percent
               "not" => Not
               "xor" => Xor
               "nand" => Nand
