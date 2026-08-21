@@ -1,6 +1,7 @@
 pub struct Parser {
   tokens: Array[Token]
   mut index: Int
+  matching_brackets: Map[Int, Int]
   file: String
   file_content: StringView
 }
@@ -44,7 +45,7 @@ pub impl Show for ParserError with output(self, logger) {
 }
 
 pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: StringView) -> Parser {
-  { tokens, index: 0, file, file_content }
+  { tokens, index: 0, matching_brackets: Map([]), file, file_content }
 }
 
 fn Parser::peek(self: Parser) -> TokenType {
@@ -55,8 +56,18 @@ fn Parser::peek(self: Parser) -> TokenType {
   }
 }
 
-fn Parser::lookahead(self: Parser, n: Int) -> Token {
-  self.tokens[self.index + n]
+fn Parser::lookahead(self: Parser, n: Int) -> TokenType? {
+  match self.tokens.get(self.index + n) {
+    Some(token) => Some(token.kind)
+    None => None
+  }
+}
+
+fn Parser::lookahead_is_named_field(self: Parser) -> Bool {
+  match (self.lookahead(0), self.lookahead(1)) {
+    (Some(Identifier(_)), Some(Colon)) => true
+    _ => false
+  }
 }
 
 // Assuming the current token is an opening bracket of kind `open`, scan
@@ -64,24 +75,40 @@ fn Parser::lookahead(self: Parser, n: Int) -> Token {
 // immediately follows the matching closing bracket. Returns Semicolon if
 // there are no more tokens (acts as a benign sentinel for callers).
 fn Parser::peek_after_matching(self: Parser, open: TokenType, close: TokenType) -> TokenType {
-  let mut depth = 1
+  match self.matching_brackets.get(self.index) {
+    Some(close_idx) => {
+      if close_idx + 1 < self.tokens.length() {
+        return self.tokens[close_idx + 1].kind
+      }
+
+      return Semicolon
+    }
+    None => ()
+  }
+
+  let stack: Array[Int] = [self.index]
   let mut i = self.index + 1
 
-  while i < self.tokens.length() && depth > 0 {
+  while i < self.tokens.length() && !stack.is_empty() {
     let k = self.tokens[i].kind
     if k == open {
-      depth += 1
-    } else if k == close {
-      depth -= 1
+      stack.push(i)
+    } else if k == close && !stack.is_empty() {
+      let open_idx = stack.unsafe_pop()
+      self.matching_brackets[open_idx] = i
+
+      if open_idx == self.index {
+        if i + 1 < self.tokens.length() {
+          return self.tokens[i + 1].kind
+        }
+
+        return Semicolon
+      }
     }
     i += 1
   }
 
-  if i < self.tokens.length() {
-    self.tokens[i].kind
-  } else {
-    Semicolon
-  }
+  Semicolon
 }
 
 fn Parser::advance(self: Parser) -> Unit {
@@ -131,9 +158,36 @@ fn Parser::parse_identifier(self: Parser) -> String raise {
 }
 
 pub fn Parser::span(self: Parser, start_idx: Int) -> Span {
-  let start = self.tokens[start_idx].span.start
-  let end = self.tokens[@utils.clamp(self.index - 1, min=0, max=self.tokens.length() - 1)].span.end
+  let fallback = match self.tokens.last() {
+    Some(token) => token.span.end
+    None => { index: self.file_content.length(), line: 1, column: 1 }
+  }
+
+  let start = match self.tokens.get(start_idx) {
+    Some(token) => token.span.start
+    None => fallback
+  }
+
+  let end = if self.index > 0 {
+    match self.tokens.get(self.index - 1) {
+      Some(token) => token.span.end
+      None => fallback
+    }
+  } else {
+    start
+  }
+
   { file: self.file, file_content: self.file_content, start, end }
+}
+
+fn Parser::expect_end(self: Parser) -> Unit raise ParserError {
+  if self.index < self.tokens.length() {
+    raise UnexpectedToken(
+      expected=Semicolon,
+      received=self.peek(),
+      span=self.span(self.index),
+    )
+  }
 }
 
 fn Parser::precedence_climbing(self: Parser, min_precedence: Int) -> Expr raise {
@@ -399,7 +453,7 @@ fn Parser::parse_paren_or_record_expr(self: Parser) -> Expr raise {
   // Look at the first element: is it `..` (spread) or `name :` (named)?
   let first_is_spread = self.matches(DotDot)
   let first_is_named = !first_is_spread &&
-    (self.lookahead(0).kind is Identifier(_) && self.lookahead(1).kind is Colon)
+    self.lookahead_is_named_field()
 
   if first_is_named || first_is_spread {
     // named record (with optional leading spread)
@@ -448,7 +502,7 @@ fn Parser::parse_paren_or_record_expr(self: Parser) -> Expr raise {
         break
       }
       // disallow named entries in positional mode
-      if self.lookahead(0).kind is Identifier(_) && self.lookahead(1).kind is Colon {
+      if self.lookahead_is_named_field() {
         raise ExpectedExpr(received=self.peek(), span=self.span(start_idx))
       }
       let elem = self.parse_expr()
@@ -519,21 +573,26 @@ fn Parser::parse_vector_expr(self: Parser) -> Expr raise {
 
 fn Parser::parse_instance_parameter(self: Parser) -> Param {
   let start_idx = self.index
-  let mut open_brackets = 1
+  let delimiters: Array[TokenType] = [Rbracket]
   let tokens: Array[Token] = []
 
   while self.index < self.tokens.length() {
     let token = self.tokens[self.index]
 
     match token.kind {
-      Lbracket => open_brackets += 1
-      Rbracket => {
-        open_brackets -= 1
-        if open_brackets == 0 {
-          break
+      Lparen => delimiters.push(Rparen)
+      Lbracket => delimiters.push(Rbracket)
+      Lbrace => delimiters.push(Rbrace)
+      Rparen | Rbracket | Rbrace => {
+        if delimiters.last() is Some(expected) && expected == token.kind {
+          if delimiters.length() == 1 {
+            break
+          }
+
+          let _ = delimiters.unsafe_pop()
         }
       }
-      Comma if open_brackets == 1 => break
+      Comma if delimiters.length() == 1 => break
       _ => ()
     }
 
@@ -555,13 +614,11 @@ fn Parser::parse_instance_parameter(self: Parser) -> Param {
 fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
   let start_idx = self.index
   let params: Array[(String?, Param)] = self.parse_module_parameters(() => {
-    match self.lookahead(0).kind {
-      Identifier(name) => {
-        if self.lookahead(1).kind == Colon {
-          self.advance()
-          self.advance()
-          return (Some(name), self.parse_instance_parameter())
-        }
+    match (self.lookahead(0), self.lookahead(1)) {
+      (Some(Identifier(name)), Some(Colon)) => {
+        self.advance()
+        self.advance()
+        return (Some(name), self.parse_instance_parameter())
       }
       _ => ()
     }
@@ -966,7 +1023,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
       }
 
       // Look ahead: if first token is Identifier followed by Colon, this is a named struct type.
-      let is_named = self.lookahead(0).kind is Identifier(_) && self.lookahead(1).kind is Colon
+      let is_named = self.lookahead_is_named_field()
 
       if is_named {
         let fields = Map([])
@@ -1098,7 +1155,7 @@ fn Parser::parse_attribute_value(self: Parser) -> AttributeValue raise {
       self.advance()
       let dict: Map[String, AttributeValue] = Map([])
 
-      while !self.matches(Rbracket) {
+      while !self.matches(Rbrace) {
         let key = match self.peek() {
           StringLiteral(str) => {
             self.advance()
