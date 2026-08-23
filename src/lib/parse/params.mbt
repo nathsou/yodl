@@ -281,6 +281,14 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) 
   rewrite_expr(self, { rewr_expr, rewr_stmt: stmt => Iter::singleton(stmt) })
 }
 
+fn as_bigint_or_none(expr: Expr) -> BigInt? {
+  try expr.as_bigint() catch {
+    _ => None
+  } noraise {
+    value => Some(value)
+  }
+}
+
 enum Arity {
   Fixed(Int)
   Range(min~: Int, max~: Int)
@@ -309,32 +317,37 @@ let builtin_functions: Map[String, BuiltinFunction] = {
   "clog2": {
     arity: Fixed(1),
     apply: (args, span) => {
-      let arg = args[0].as_bigint()
-      let value = @utils.clog2(arg)
-      Some(Expr::bignat(value, width=None, span~))
+      match as_bigint_or_none(args[0]) {
+        Some(arg) => Some(Expr::bignat(@utils.clog2(arg), width=None, span~))
+        None => None
+      }
     }
   },
   "pow": {
     arity: Fixed(2),
     apply: (args, span) => {
-      let base = args[0].as_bigint()
-      let exp = args[1].as_bigint()
-      Some(Expr::bignat(@utils.pow(base, exp), span~))
+      match (as_bigint_or_none(args[0]), as_bigint_or_none(args[1])) {
+        (Some(base), Some(exp)) => Some(Expr::bignat(@utils.pow(base, exp), span~))
+        _ => None
+      }
     }
   },
   "cdiv": {
     arity: Fixed(2),
     apply: (args, span) => {
-      let dividend = args[0].as_bigint()
-      let divisor = args[1].as_bigint()
-      Some(Expr::bignat(@utils.cdiv(dividend, divisor), span~))
+      match (as_bigint_or_none(args[0]), as_bigint_or_none(args[1])) {
+        (Some(dividend), Some(divisor)) => Some(Expr::bignat(@utils.cdiv(dividend, divisor), span~))
+        _ => None
+      }
     }
   },
   "csqrt": {
     arity: Fixed(1),
     apply: (args, span) => {
-      let arg = args[0].as_bigint()
-      Some(Expr::bignat(@utils.csqrt(arg), span~))
+      match as_bigint_or_none(args[0]) {
+        Some(arg) => Some(Expr::bignat(@utils.csqrt(arg), span~))
+        None => None
+      }
     }
   },
   "rev": {

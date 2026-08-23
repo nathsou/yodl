@@ -117,7 +117,7 @@ fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, sort~: @parse.
   match param {
     Unresolved(unresolved) => match unresolved.parse(sort) {
       ExprParam(expr~, span~) => {
-        let mono_expr = self.monomorphize_expr(expr.partial_eval(), env~, packages~)
+        let mono_expr = self.monomorphize_expr(expr, env~, packages~)
         let value = match @parse.ConstValue::from(mono_expr) {
           Some(val) => val
           _ => raise InvalidParameter(sort~, span~)
