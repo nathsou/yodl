@@ -2,7 +2,7 @@
 enum TokenType {
   // symbols
   Lparen; Rparen; Lbrace; Rbrace; Comma; Semicolon; Colon
-  Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang; SingleQuote
+  Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang
   Plus; Minus; Star; Slash
   Equal; EqualEqual; BangEqual; RightThinArrow; RightThickArrow
   LchevronEqual; RchevronEqual
@@ -47,7 +47,6 @@ pub impl Show for TokenType with output(self, logger) {
     RightThickArrow => logger.write_string("=>")
     Dot => logger.write_string(".")
     Bang => logger.write_string("!")
-    SingleQuote => logger.write_string("'")
     Underscore => logger.write_string("_")
     QuestionMark => logger.write_string("?")
     Percent => logger.write_string("%")

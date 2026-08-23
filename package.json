@@ -4,7 +4,7 @@
     "main": "_build/js/release/build/main/main.min.js",
     "types": "_build/js/release/build/main/main.d.ts",
     "description": "Modern Hardware Description Language",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "files": [
         "_build/js/release/build/main/main.min.js",
         "_build/js/release/build/main/main.d.ts",

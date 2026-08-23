@@ -195,7 +195,7 @@ fn lower_firrtl(firrtl : @elaborate.Elaborator, passes~ : Array[&@firrtl.FIRRTLP
 }
 
 
-const VERSION: String = "0.2.2"
+const VERSION: String = "0.3.1"
 
 pub fn cli(ext: @utils.Externals) -> Unit {
   match (ext.get_args)() {
