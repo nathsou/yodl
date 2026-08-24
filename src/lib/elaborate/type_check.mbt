@@ -158,6 +158,14 @@ fn merge_inferred_types(lhs: Type, rhs: Type) -> Type {
         (Vector(ty=lhs_ty, len~), Vector(ty=rhs_ty, len=rhs_len)) if len == rhs_len => {
             Vector(ty=merge_inferred_types(lhs_ty, rhs_ty), len~)
         }
+        (Struct(lhs_fields), Struct(rhs_fields)) if lhs_fields.length() == rhs_fields.length() &&
+            lhs_fields.keys().all(name => rhs_fields.contains(name)) => {
+            let fields = Map([], capacity=lhs_fields.length())
+            for name, lhs_ty in lhs_fields {
+                fields[name] = merge_inferred_types(lhs_ty, rhs_fields.get(name).unwrap())
+            }
+            Struct(fields)
+        }
         (
             Instance(sig~, params~, ids=lhs_ids),
             Instance(sig=rhs_sig, params=rhs_params, ids=rhs_ids),
@@ -501,8 +509,9 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                     for port_name, port_expr in ports {
                         match sig.get_port(port_name) {
                             Some(port_def) => {
-                                let expr_ty = self.check_expr(port_expr, env).substitute(params_env, span~)
-                                let _ = unify(port_def.ty.substitute(params_env, span~), expr_ty, span=port_expr.span(), subst~)
+                                let port_ty = port_def.ty.substitute(params_env, span~)
+                                let expr_ty = self.check_expr(port_expr, env, expected_ty=Some(port_ty))
+                                let _ = unify(port_ty, expr_ty, span=port_expr.span(), subst~)
 
                                 if port_def.dir != Input && !is_valid_assignment_target(port_expr) {
                                     raise InvalidAssignmentTarget(span=port_expr.span())
@@ -524,16 +533,23 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
         }
         Vector(elems~, span~, ..) => {
             if elems.is_empty() {
-                return Type::empty()
-            }
-
-            let mut elem_ty = None
-            let mut len = 0
-            let subst = Map([])
-            let expected_elem_ty = match expected_ty {
-                Some(Vector(ty~, ..)) => Some(ty)
-                _ => None
-            }
+                match expected_ty {
+                    Some(Vector(ty~, len=Lit(0))) => Vector(ty~, len=Lit(0))
+                    Some(expected) => {
+                        raise type_error("Empty vector literal is incompatible with contextual type '\{expected}'", span)
+                    }
+                    None => {
+                        raise type_error("Empty vector literal requires a contextual [0]T type", span)
+                    }
+                }
+            } else {
+                let mut elem_ty = None
+                let mut len = 0
+                let subst = Map([])
+                let expected_elem_ty = match expected_ty {
+                    Some(Vector(ty~, ..)) => Some(ty)
+                    _ => None
+                }
 
             fn check_elem_ty(ty: Type) -> Unit raise TypeCheckerError {
                 match elem_ty {
@@ -578,14 +594,15 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 }
             }
 
-            let vector_ty = Type::Vector(ty=elem_ty.unwrap(), len=Lit(len))
-            match expected_ty {
-                Some(expected) => {
-                    let _ = unify(vector_ty, expected, span~)
+                let vector_ty = Type::Vector(ty=elem_ty.unwrap(), len=Lit(len))
+                match expected_ty {
+                    Some(expected) => {
+                        let _ = unify(vector_ty, expected, span~)
+                    }
+                    None => ()
                 }
-                None => ()
+                vector_ty
             }
-            vector_ty
         }
         Spread(span~, ..) => {
             raise type_error("Spread outside vector", span)
@@ -869,7 +886,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 Some(else_) => {
                     let else_ty = self.check_expr(else_, env, expected_ty~)
                     let _ = unify(then_ty, else_ty, span~)
-                    then_ty
+                    merge_inferred_types(then_ty, else_ty)
                 }
                 None => {
                     let _ = unify(then_ty, Type::empty(), span~)
@@ -900,6 +917,8 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Un
                     declare_name(env~, path~, ty~, span~)
                     let expr_ty = self.check_expr(expr, env, expected_ty=Some(ty))
                     let _ = unify(ty, expr_ty, span~)
+                    let ty = merge_inferred_types(ty, expr_ty)
+                    env.declare_shadowing(path, ty)
 
                     ty
                 }

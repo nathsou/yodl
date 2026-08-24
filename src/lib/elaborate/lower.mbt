@@ -551,7 +551,10 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
     Natural(value~, width~, base~, span~, ty=_) => {
       let width = match width {
         Some(width) => width
-        None => @utils.significant_bits(value, is_signed=false)
+        None => match core_ty {
+          UInt(width) | SInt(width) => width
+          _ => @utils.significant_bits(value, is_signed=false)
+        }
       }
       
       let literal = match ty {

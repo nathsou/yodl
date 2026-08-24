@@ -74,58 +74,126 @@ test "contextual literals report overflow at the literal span" {
 }
 
 ///|
-test "operator signedness rules have positive and negative coverage" {
-  let accepted = [
-    (
-      #|module Top(a: u8, b: u8) -> (out: u9) { out = a + b; }
-    ),
-    (
-      #|module Top(a: s8, b: s8) -> (out: s9) { out = a - b; }
-    ),
-    (
-      #|module Top(a: u8, n: u3) -> (out: u8) { out = a shl n; }
-    ),
+test "contextual signed literals retain their frozen FIRRTL width" {
+  let source =
+    #|module Top() -> (out: s4) {
+    #|  out = 7
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("SInt<4>(7)"))
+}
+
+///|
+test "empty vectors adopt only a contextual zero-length vector type" {
+  let accepted =
+    #|module Top() -> (out: [0]u8) {
+    #|  out = []
+    #|}
+  let _ = compile_stage(accepted, "write_simplified")
+
+  let ambiguous =
+    #|module Top() -> () {
+    #|  let ambiguous = []
+    #|}
+  let diagnostic = compile_error(ambiguous)
+  assert_true(
+    diagnostic.contains("Empty vector literal requires a contextual [0]T type"),
+  )
+}
+
+///|
+test "every binary operator has positive and negative coverage" {
+  let unsigned_rules = [
+    ("+", "u9"), ("-", "u9"), ("*", "u16"), ("/", "u8"),
+    ("%", "u8"), ("==", "bool"), ("!=", "bool"), ("<", "bool"),
+    (">", "bool"), ("<=", "bool"), (">=", "bool"), ("and", "u8"),
+    ("or", "u8"), ("xor", "u8"), ("nand", "u8"), ("nor", "u8"),
+    ("xnor", "u8"),
   ]
-  for source in accepted {
+  for rule in unsigned_rules {
+    let (op, out_ty) = rule
+    let source =
+      "module Top(a: u8, b: u8) -> (out: \{out_ty}) { out = a \{op} b; }"
     let _ = compile_stage(source, "write_low_firrtl")
   }
 
-  let rejected = [
-    (
-      #|module Top(a: u8, b: s8) -> (out: u9) { out = a + b; }
-    ),
-    (
-      #|module Top(a: s8, b: s8) -> (out: u9) { out = a - b; }
-    ),
-    (
-      #|module Top(a: u8, n: s3) -> (out: u8) { out = a shl n; }
-    ),
+  let signed_rules = [
+    ("+", "s9"), ("-", "s9"), ("*", "s16"), ("/", "s9"),
+    ("%", "s8"), ("==", "bool"), ("!=", "bool"), ("<", "bool"),
+    (">", "bool"), ("<=", "bool"), (">=", "bool"), ("and", "u8"),
+    ("or", "u8"), ("xor", "u8"), ("nand", "u8"), ("nor", "u8"),
+    ("xnor", "u8"),
   ]
-  for source in rejected {
+  for rule in signed_rules {
+    let (op, out_ty) = rule
+    let source =
+      "module Top(a: s8, b: s8) -> (out: \{out_ty}) { out = a \{op} b; }"
+    let _ = compile_stage(source, "write_low_firrtl")
+  }
+
+  let shifts = [
+    "module Top(a: u8) -> (out: u10) { out = a shl 2; }",
+    "module Top(a: s8) -> (out: s10) { out = a shl 2; }",
+    "module Top(a: u8) -> (out: u6) { out = a shr 2; }",
+    "module Top(a: s8) -> (out: s6) { out = a shr 2; }",
+    "module Top(a: u8, n: u3) -> (out: u15) { out = a shl n; }",
+    "module Top(a: s8, n: u3) -> (out: s15) { out = a shl n; }",
+    "module Top(a: u8, n: u3) -> (out: u8) { out = a shr n; }",
+    "module Top(a: s8, n: u3) -> (out: s8) { out = a shr n; }",
+  ]
+  for source in shifts {
+    let _ = compile_stage(source, "write_low_firrtl")
+  }
+
+  for rule in unsigned_rules {
+    let (op, _) = rule
+    let source =
+      "module Top(a: u8, b: s8) -> (out: u16) { out = a \{op} b; }"
     let diagnostic = compile_error(source)
     assert_true(
       diagnostic.contains("Invalid operands") ||
       diagnostic.contains("Incompatible types"),
     )
   }
+
+  for op in ["shl", "shr"] {
+    let source =
+      "module Top(a: u8, n: s3) -> (out: u16) { out = a \{op} n; }"
+    assert_true(compile_error(source).contains("Invalid operands"))
+  }
+
+  let ternary =
+    #|module Top(select: bool, a: u8, b: u8) -> (out: u8) {
+    #|  out = select ? a : b
+    #|}
+  let _ = compile_stage(ternary, "write_low_firrtl")
+  let invalid_ternary =
+    #|module Top(select: bool, a: u8, b: s8) -> (out: u8) {
+    #|  out = select ? a : b
+    #|}
+  assert_true(compile_error(invalid_ternary).contains("Incompatible types"))
 }
 
 ///|
-test "unary operators retain intrinsic result kinds" {
+test "every unary operator has positive and negative coverage" {
   let accepted =
-    #|module Top(a: u8, b: s8) -> (inv: u8, neg: s9, red: bool) {
+    #|module Top(a: u8, b: s8) -> (inv: u8, neg: s9, and_red: bool, or_red: bool, xor_red: bool) {
     #|  inv = not a
     #|  neg = -b
-    #|  red = xorr a
+    #|  and_red = andr a
+    #|  or_red = orr a
+    #|  xor_red = xorr a
     #|}
   let _ = compile_stage(accepted, "write_low_firrtl")
 
-  let rejected =
-    #|module Top(clk: clock) -> (out: u1) {
-    #|  out = not clk
-    #|}
-  let diagnostic = compile_error(rejected)
-  assert_true(diagnostic.contains("Invalid operand type 'clock' for unary operator"))
+  for op in ["not", "-", "andr", "orr", "xorr"] {
+    let source =
+      "module Top(clk: clock) -> (out: u1) { out = \{op} clk; }"
+    let diagnostic = compile_error(source)
+    assert_true(
+      diagnostic.contains("Invalid operand type 'clock' for unary operator"),
+    )
+  }
 }
 
 ///|
@@ -163,6 +231,24 @@ test "instance aliases preserve identity while port usage stays outside types" {
 }
 
 ///|
+test "explicitly typed instance aliases retain identity" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u8) -> (result: u8) {
+    #|  let child = Child()
+    #|  let alias: Child = child
+    #|  alias.input = value
+    #|  result = alias.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("wire child_input: UInt<8>"))
+  assert_true(firrtl.contains("wire child_output: UInt<8>"))
+}
+
+///|
 test "instance branches union actual port demand deterministically" {
   let source =
     #|module Child(value: u8) -> (output: u8) {
@@ -178,6 +264,48 @@ test "instance branches union actual port demand deterministically" {
   let firrtl = compile_stage(source, "write_low_firrtl")
   assert_true(firrtl.contains("wire left_output: UInt<8>"))
   assert_true(firrtl.contains("wire right_output: UInt<8>"))
+}
+
+///|
+test "if branches and nested records union instance identities" {
+  let source =
+    #|module Child(value: u8) -> (output: u8) {
+    #|  output = value
+    #|}
+    #|
+    #|module Top(select: bool, left_value: u8, right_value: u8) -> (direct: u8, nested: u8) {
+    #|  let if_left = Child(value: left_value)
+    #|  let if_right = Child(value: right_value)
+    #|  let record_left = Child(value: left_value)
+    #|  let record_right = Child(value: right_value)
+    #|  let left_wrapped = (child: record_left)
+    #|  let right_wrapped = (child: record_right)
+    #|  let selected = if select { if_left; } else { if_right; }
+    #|  let wrapped = [left_wrapped, right_wrapped][select]
+    #|  direct = selected.output
+    #|  nested = wrapped.child.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("wire if_left_output: UInt<8>"))
+  assert_true(firrtl.contains("wire if_right_output: UInt<8>"))
+  assert_true(firrtl.contains("wire record_left_output: UInt<8>"))
+  assert_true(firrtl.contains("wire record_right_output: UInt<8>"))
+}
+
+///|
+test "instance constructor ports receive contextual literal and aggregate types" {
+  let source =
+    #|module Child(signed: s4, values: [2]s5) -> (output: s4) {
+    #|  output = signed
+    #|}
+    #|
+    #|module Top() -> (result: s4) {
+    #|  let child = Child(signed: 7, values: [4, 7])
+    #|  result = child.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("SInt<4>(7)"))
+  assert_true(firrtl.contains("SInt<5>(4)"))
 }
 
 ///|
