@@ -33,6 +33,34 @@ test "annotated vector and record literals accept unsized elements" {
 }
 
 ///|
+test "aggregate compatibility rejects shape errors and normalizes strings" {
+  let accepted =
+    #|module Top() -> (text: [2]u8, nested: (x: [2]u4)) {
+    #|  text = "yo"
+    #|  nested = (x: [1, 2])
+    #|}
+  let _ = compile_stage(accepted, "write_low_firrtl")
+
+  let rejected = [
+    (
+      #|module Top() -> (out: [2]u8) { out = [1]; }
+    ),
+    (
+      #|module Top() -> (out: (x: u8, y: u8)) { out = (x: 1); }
+    ),
+    (
+      #|module Top() -> (out: (x: u8)) { out = (x: 1, y: 2); }
+    ),
+    (
+      #|module Top() -> (out: [2](x: u8)) { out = [(x: 1), (y: 2)]; }
+    ),
+  ]
+  for source in rejected {
+    assert_true(compile_error(source).contains("Incompatible types"))
+  }
+}
+
+///|
 test "contextual literals report overflow at the literal span" {
   let source =
     #|module Top() -> (out: [2]u3) {
@@ -80,6 +108,36 @@ test "operator signedness rules have positive and negative coverage" {
       diagnostic.contains("Incompatible types"),
     )
   }
+}
+
+///|
+test "unary operators retain intrinsic result kinds" {
+  let accepted =
+    #|module Top(a: u8, b: s8) -> (inv: u8, neg: s9, red: bool) {
+    #|  inv = not a
+    #|  neg = -b
+    #|  red = xorr a
+    #|}
+  let _ = compile_stage(accepted, "write_low_firrtl")
+
+  let rejected =
+    #|module Top(clk: clock) -> (out: u1) {
+    #|  out = not clk
+    #|}
+  let diagnostic = compile_error(rejected)
+  assert_true(diagnostic.contains("Invalid operand type 'clock' for unary operator"))
+}
+
+///|
+test "literal width inference is traversal-order independent" {
+  let source =
+    #|module Top() -> () {
+    #|  let ascending = [1, 255]
+    #|  let descending = [255, 1]
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("let ascending: [2]u8"))
+  assert_true(simplified.contains("let descending: [2]u8"))
 }
 
 ///|
