@@ -513,23 +513,32 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: CoreStmt, scope~: &ScopeLike, 
     }
     Let(name~, ty~, expr~, span~) => {
       let path = Path::new([], name)
-      let ty = lower_type(unwrap_type(ty, span~), span~, port_usage=self.port_usage)
-      let id = Id::from(name)
-      scope.add_stmt(Wire(id~, ty~))
-      let variable = mk_id(id)
-      let val = match expr {
-        Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(variable)))
-        None => None
-      }
-
-      match val {
-        Some(val) => {
-          self.connect(lhs=variable, value=val, scope~)
+      let core_ty = unwrap_type(ty, span~)
+      if core_ty == CoreType::Unit {
+        let value = match expr {
+          Some(expr) => self.lower_expr(expr, scope~, env~, binding=None)
+          None => Empty(span~)
         }
-        None => ()
-      }
+        env.declare_(path, value)
+      } else {
+        let ty = lower_type(core_ty, span~, port_usage=self.port_usage)
+        let id = Id::from(name)
+        scope.add_stmt(Wire(id~, ty~))
+        let variable = mk_id(id)
+        let val = match expr {
+          Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(variable)))
+          None => None
+        }
 
-      env.declare_(path, Expr(expr=mk_ref(variable), ty~, span~))
+        match val {
+          Some(val) => {
+            self.connect(lhs=variable, value=val, scope~)
+          }
+          None => ()
+        }
+
+        env.declare_(path, Expr(expr=mk_ref(variable), ty~, span~))
+      }
     }
     Assign(lhs~, rhs~, span=_) => {
       let fir_lhs = self.lower_expr(lhs, scope~, env~, binding=None).as_ref(self, scope~, binding=None)
@@ -568,6 +577,15 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         Some(val) => val
         None => raise UnresolvedIdentifier(path~, span~)
       }
+    }
+    Unary(op=Neg, expr=Natural(value~, base~, ..), span~, ty=_) => {
+      let width = match core_ty {
+        SInt(width) => width
+        _ => raise Unreachable(message="Negative literal must have a signed Core type", span~)
+      }
+      let value = BigInt::from_int(0) - value
+      let literal = mk_lit(@firrtl.Literal::SInt(width~, radix=Some(base), value~))
+      Expr(expr=literal, ty~, span~)
     }
     Unary(op~, expr~, span~, ty=_) => {
       let fir_expr = self.lower_expr(expr, scope~, env~).as_expr(self, scope~)
@@ -781,6 +799,11 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         raise ElaborationError(message="Cannot elaborate parametric instance of module '\{path.to_string()}'", span~)
       }
 
+      let (typed_params, instance_ids) = match inst_ty.val {
+        Some(Instance(sig=_, params~, ids~)) => (params, ids)
+        _ => raise ElaborationError::Unreachable(message="Untyped instance", span~)
+      }
+
       let (ports_sig, params_map, attributes) = match self.modules.get(path) {
         Some(inst_mod) => {
           let ports_sig: Map[String, @firrtl.PortSignature] = Map([])
@@ -798,10 +821,9 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         None => match self.declared_modules.get(path) {
           Some(sig) => {
             let ports_sig = Map([], capacity=sig.ports.length())
-            let resolved_params = params.as_resolved_map(names=sig.params.map(fn(p) { p.name }))
 
             for port in sig.ports {
-              let ty = lower_resolved_type(port.ty.substitute(resolved_params, span~), span~, port_usage=self.port_usage)
+              let ty = lower_resolved_type(port.ty.substitute(typed_params, span~), span~, port_usage=self.port_usage)
               let port_sig: @firrtl.PortSignature = {
                 dir: port.dir,
                 ty,
@@ -810,7 +832,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
               ports_sig[port.name] = port_sig
             }
 
-            (ports_sig, resolved_params, sig.attributes)
+            (ports_sig, typed_params, sig.attributes)
           }
           None => raise ElaborationError(message="Module '\{path.to_string()}' is not declared", span~)
         }
@@ -818,10 +840,6 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
       let inline_connections: Map[String, FExpr] = Map([])
       let connections: Map[String, FExpr] = Map([])
-      let instance_ids = match inst_ty.val {
-        Some(Instance(sig=_, params=_, ids~)) => ids
-        _ => raise ElaborationError::Unreachable(message="Untyped instance", span~)
-      }
       let accessed_ports = self.port_usage.for_instances(instance_ids)
 
       let extra_ports: Array[String] = []

@@ -84,6 +84,26 @@ test "contextual signed literals retain their frozen FIRRTL width" {
 }
 
 ///|
+test "contextual negative literals check the signed value as a whole" {
+  for value in ["-7", "-8"] {
+    let source =
+      "module Top() -> (out: s4) { out = \{value}; }"
+    let firrtl = compile_stage(source, "write_low_firrtl")
+    assert_true(firrtl.contains("SInt<4>(\{value})"))
+  }
+
+  let overflow =
+    #|module Top() -> (out: s4) {
+    #|  out = -9
+    #|}
+  assert_true(
+    compile_error(overflow).contains(
+      "Negative literal does not fit in contextual type s4",
+    ),
+  )
+}
+
+///|
 test "empty vectors adopt only a contextual zero-length vector type" {
   let accepted =
     #|module Top() -> (out: [0]u8) {
@@ -249,6 +269,27 @@ test "explicitly typed instance aliases retain identity" {
 }
 
 ///|
+test "instance aliases assigned after declaration retain identity" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u8) -> (result: u8) {
+    #|  let child = Child()
+    #|  let alias: Child
+    #|  alias = child
+    #|  alias.input = value
+    #|  result = alias.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("wire child_input: UInt<8>"))
+  assert_true(firrtl.contains("wire child_output: UInt<8>"))
+  assert_true(firrtl.contains("wire alias_input: UInt<8>"))
+  assert_true(firrtl.contains("wire alias_output: UInt<8>"))
+}
+
+///|
 test "instance branches union actual port demand deterministically" {
   let source =
     #|module Child(value: u8) -> (output: u8) {
@@ -306,6 +347,40 @@ test "instance constructor ports receive contextual literal and aggregate types"
   let firrtl = compile_stage(source, "write_low_firrtl")
   assert_true(firrtl.contains("SInt<4>(7)"))
   assert_true(firrtl.contains("SInt<5>(4)"))
+}
+
+///|
+test "instance static type arguments are resolved before Core" {
+  let source =
+    #|module Top(clk: clock, mask: bool) -> (result: bool) {
+    #|  let reg = Reg[T: MemoryMask[u8]](clk, d: mask)
+    #|  result = reg.q
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("wire reg_d: UInt<1>"))
+  assert_true(firrtl.contains("wire reg_q: UInt<1>"))
+}
+
+///|
+test "Unit-valued let bindings lower their effects without hardware wires" {
+  let source =
+    #|module Top(clk: clock, pred: bool) -> () {
+    #|  let ignored = assert!(pred)
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("assert("))
+  assert_false(firrtl.contains("wire ignored"))
+}
+
+///|
+test "negative hardware dimensions are rejected at the Core boundary" {
+  let invalid = [
+    "module Top() -> (out: uint[1 - 2]) {}",
+    "module Top() -> (out: [1 - 2]u8) {}",
+  ]
+  for source in invalid {
+    assert_true(compile_error(source).contains("Invalid negative"))
+  }
 }
 
 ///|

@@ -62,11 +62,11 @@ pub impl Show for CoreType with output(self, logger) {
 
 pub fn CoreType::from_type(ty: Type, span~: Span) -> CoreType raise AstError {
   match ty {
-    Nat({ min_width }) => UInt(min_width)
-    Type::UInt(Lit(width)) => UInt(width)
-    Type::SInt(Lit(width)) => SInt(width)
+    Nat({ min_width }) if min_width >= 0 => UInt(min_width)
+    Type::UInt(Lit(width)) if width >= 0 => UInt(width)
+    Type::SInt(Lit(width)) if width >= 0 => SInt(width)
     Type::Clock => Clock
-    Type::Vector(ty~, len=Lit(len)) => Vector(ty=CoreType::from_type(ty, span~), len~)
+    Type::Vector(ty~, len=Lit(len)) if len >= 0 => Vector(ty=CoreType::from_type(ty, span~), len~)
     Type::Instance(sig~, params~, ids~) => Instance(sig~, params~, ids=Array::copy(ids))
     Type::Struct(fields) => {
       let core_fields = Map([], capacity=fields.length())
@@ -74,6 +74,11 @@ pub fn CoreType::from_type(ty: Type, span~: Span) -> CoreType raise AstError {
       Struct(core_fields)
     }
     Type::Unit => Unit
+    Nat({ min_width }) => raise InvalidCoreDimension(kind="literal width", value=min_width, span~)
+    Type::UInt(Lit(width)) | Type::SInt(Lit(width)) =>
+      raise InvalidCoreDimension(kind="integer width", value=width, span~)
+    Type::Vector(len=Lit(len), ..) =>
+      raise InvalidCoreDimension(kind="vector length", value=len, span~)
     _ => raise InvalidCoreType(ty~, span~)
   }
 }

@@ -38,6 +38,7 @@ pub suberror AstError {
   ExpectedIntParameter(span~ : Span)
   NonStorableType(ty~ : Type, span~ : Span)
   InvalidCoreType(ty~ : Type, span~ : Span)
+  InvalidCoreDimension(kind~ : String, value~ : Int, span~ : Span)
 }
 pub impl Show for AstError
 pub impl Spanned for AstError
@@ -554,4 +555,3 @@ pub(open) trait Spanned {
   fn span(Self) -> Span
   fn show_context(Self, use_ansi_colors~ : Bool) -> String = _
 }
-

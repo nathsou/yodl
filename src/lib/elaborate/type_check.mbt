@@ -7,7 +7,7 @@ using @parse {
 
 struct TypeChecker {
     modules: Map[Path, ModuleSignature]
-    top_env: Scope[Path, Type]
+    top_env: Scope[Path, Ref[Type?]]
     port_usage: PortUsage
     mut next_instance_id: Int
 }
@@ -186,8 +186,16 @@ fn unify(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, UnificationParam
     unify_aux([(ty1, ty2)], span~, subst~)
 }
 
-fn declare_name(env~: Scope[Path, Type], path~: Path, ty~: Type, span~: Span) -> Unit raise TypeCheckerError {
-    try env.declare_(path, ty) catch {
+fn declare_name(
+    env~: Scope[Path, Ref[Type?]],
+    path~: Path,
+    ty~: Type,
+    span~: Span,
+    binding~: Ref[Type?]? = None,
+) -> Unit raise TypeCheckerError {
+    let binding = binding.unwrap_or({ val: Some(ty) })
+    binding.val = Some(ty)
+    try env.declare_(path, binding) catch {
         MemberAlreadyDeclared(_) => {
             raise type_error("Variable '\{path}' redeclared", span)
         }
@@ -250,11 +258,12 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span, type_params~: Set[
     }
 }
 
-fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expected_ty~: Type? = None) -> Type raise {
+fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Ref[Type?]], expected_ty~: Type? = None) -> Type raise {
     let ty = match expr {
         Identifier(path~, span~, ..) => {
             match env.resolve(path) {
-                Some(ty) => ty
+                Some({ val: Some(ty) }) => ty
+                Some(_) => raise type_error("Binding '\{path}' has no resolved type", span)
                 None => {
                     raise type_error("Unbound variable '\{path}'", span)
                 }
@@ -290,16 +299,27 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             Type::Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(str.length()))
         }
         Unary(op~, expr~, span~, ..) => {
-            let ty = self.check_expr(expr, env, expected_ty~)
+            match (op, expr, expected_ty) {
+                (Neg, (Natural(value~, width=None, ..) as operand), Some(SInt(Lit(width)))) => {
+                    if width <= 0 || value > pow2(width - 1) {
+                        raise type_error("Negative literal does not fit in contextual type s\{width}", span)
+                    }
+                    let _ = self.check_expr(operand, env)
+                    Type::sint(width)
+                }
+                _ => {
+                    let ty = self.check_expr(expr, env, expected_ty~)
  
-            if !ty.is_numerical() {
-                raise type_error("Invalid operand type '\{ty}' for unary operator '\{op}, expected uint or sint", span)
-            }
+                    if !ty.is_numerical() {
+                        raise type_error("Invalid operand type '\{ty}' for unary operator '\{op}, expected uint or sint", span)
+                    }
 
-            match op {
-                Not => ty
-                Neg => SInt(Lit(ty.width(span) + 1))
-                Andr | Orr | Xorr => Type::uint(1)
+                    match op {
+                        Not => ty
+                        Neg => SInt(Lit(ty.width(span) + 1))
+                        Andr | Orr | Xorr => Type::uint(1)
+                    }
+                }
             }
         }
         Binary(op~, lhs~, rhs~, output_width~, span~, ..) => {
@@ -487,9 +507,9 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                                 params_env[name] = cnst_param
                             }
                             (TypeParam(ty~, span~), Some({ sort: TypeSort, .. })) => {
-                                let ty = self.resolve_ty(ty, span~)
-                                subst[name] = Type(ty)
-                                params_env[name] = TypeParam(ty~, span~)
+                                let resolved_ty = self.resolve_ty(ty, span~)
+                                subst[name] = Type(resolved_ty)
+                                params_env[name] = TypeParam(ty=resolved_ty, span~)
                             }
                             _ => {
                                 let ty = match param {
@@ -526,7 +546,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                         self.port_usage.record_read([instance_id], "q")
                     }
 
-                    Type::Instance(sig~, params=params_map, ids=[instance_id])
+                    Type::Instance(sig~, params=params_env, ids=[instance_id])
                 }
                 None => raise UnknownModule(path~, span~)
             }
@@ -903,33 +923,32 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
     ty
 }
 
-fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Unit raise {
+fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]]) -> Unit raise {
     match stmt {
         Expr(expr~, ..) => {
             let _ = self.check_expr(expr, env)
         }
         Let(name~, ty~, expr~, span~) => {
             let path = Path::new([], name)
+            let binding = ty
 
-            ty.val = Some(match (ty.val, expr) {
+            binding.val = Some(match (binding.val, expr) {
                 (Some(ty), Some(expr)) => {
                     let ty = self.resolve_ty(ty, span~)
-                    declare_name(env~, path~, ty~, span~)
+                    declare_name(env~, path~, ty~, span~, binding=Some(binding))
                     let expr_ty = self.check_expr(expr, env, expected_ty=Some(ty))
                     let _ = unify(ty, expr_ty, span~)
                     let ty = merge_inferred_types(ty, expr_ty)
-                    env.declare_shadowing(path, ty)
-
                     ty
                 }
                 (Some(ty), None) => {
                     let ty = self.resolve_ty(ty, span~)
-                    declare_name(env~, path~, ty~, span~)
+                    declare_name(env~, path~, ty~, span~, binding=Some(binding))
                     ty
                 }
                 (None, Some(expr)) => {
                     let ty = self.check_expr(expr, env)
-                    declare_name(env~, path~, ty~, span~)
+                    declare_name(env~, path~, ty~, span~, binding=Some(binding))
 
                     ty
                 }
@@ -957,6 +976,14 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Un
 
             let rhs_ty = self.check_expr(rhs, env, expected_ty=Some(lhs_ty))
             let _ = unify(lhs_ty, rhs_ty, span~)
+            if lhs is Identifier(path~, ..) {
+                let merged_ty = merge_inferred_types(lhs_ty, rhs_ty)
+                match env.resolve(path) {
+                    Some(binding) => binding.val = Some(merged_ty)
+                    None => ()
+                }
+                lhs.set_ty(merged_ty)
+            }
         }
         Scope(body~, ..) => {
             let new_env = env.child()
@@ -975,7 +1002,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Un
             }
 
             let body_env = env.child()
-            body_env.declare_(Path::new([], variable), end_ty)
+            body_env.declare_(Path::new([], variable), { val: Some(end_ty) })
 
             for stmt in body {
                 self.check_stmt(stmt, body_env)
@@ -991,7 +1018,7 @@ fn TypeChecker::check_format_string(
     self: Self,
     format_str~: Expr,
     args~: ArrayView[Expr],
-    env~: Scope[Path, Type],
+    env~: Scope[Path, Ref[Type?]],
     span~: Span,
 ) -> Unit raise {
     let format_str_ty = self.check_expr(format_str, env)
@@ -1063,7 +1090,7 @@ fn check_attributes(attrs: Map[String, Attribute], signatures~: Map[String, Arra
     }
 }
 
-fn TypeChecker::check_const_decl(self: Self, decl: ConstDecl, env: Scope[Path, Type]) -> Unit raise {
+fn TypeChecker::check_const_decl(self: Self, decl: ConstDecl, env: Scope[Path, Ref[Type?]]) -> Unit raise {
     if !decl.expr.is_constant_expr() {
         raise ExpectedConstantExpr(span=decl.expr.span())
     }

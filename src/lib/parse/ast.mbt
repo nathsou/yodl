@@ -303,6 +303,7 @@ pub suberror AstError {
   ExpectedIntParameter(span~: Span)
   NonStorableType(ty~: Type, span~: Span)
   InvalidCoreType(ty~: Type, span~: Span)
+  InvalidCoreDimension(kind~: String, value~: Int, span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -328,6 +329,7 @@ pub impl Show for AstError with output(self, logger) {
     ExpectedIntParameter(_) => logger.write_string("Expected an integer parameter")
     NonStorableType(ty~, ..) => logger.write_string("Type '\{ty}' is not storable")
     InvalidCoreType(ty~, ..) => logger.write_string("Surface-only or symbolic type '\{ty}' reached Core construction")
+    InvalidCoreDimension(kind~, value~, ..) => logger.write_string("Invalid negative \{kind} \{value} at Core construction")
   }
 
   logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
@@ -350,6 +352,7 @@ pub impl Spanned for AstError with span(self) -> Span {
     ExpectedIntParameter(span~) => span
     NonStorableType(span~, ..) => span
     InvalidCoreType(span~, ..) => span
+    InvalidCoreDimension(span~, ..) => span
   }
 }
 
