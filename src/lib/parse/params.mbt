@@ -21,7 +21,8 @@ pub fn UnresolvedParam::parse(self: UnresolvedParam, sort: ParamSort) -> ParsedP
   param
 }
 
-pub(all) enum ResolvedParam {
+/// A resolved static argument whose constructor records its `Nat`/`Type` sort.
+pub(all) enum StaticArg {
   NatParam(value~: ConstValue, span~: Span)
   TypeParam(ty~: Type, span~: Span)
 }
@@ -41,10 +42,10 @@ pub fn ConstValue::from(expr: Expr) -> ConstValue? {
 
 pub(all) enum Param {
   Unresolved(UnresolvedParam)
-  Resolved(ResolvedParam)
+  Resolved(StaticArg)
 } derive(Eq)
 
-pub impl Eq for ResolvedParam with equal(self, other) {
+pub impl Eq for StaticArg with equal(self, other) {
   match (self, other) {
     (NatParam(value=a, ..), NatParam(value=b, ..)) => a == b
     (TypeParam(ty=a, ..), TypeParam(ty=b, ..)) => a == b
@@ -56,7 +57,7 @@ pub impl Eq for UnresolvedParam with equal(self, other) {
   self.span == other.span
 }
 
-pub impl Hash for ResolvedParam with hash_combine(self, hasher) {
+pub impl Hash for StaticArg with hash_combine(self, hasher) {
   match self {
     NatParam(value~, ..) => {
       match value {
@@ -81,7 +82,7 @@ pub impl Spanned for Param with span(self) -> Span {
   }
 }
 
-pub impl Spanned for ResolvedParam with span(self) -> Span {
+pub impl Spanned for StaticArg with span(self) -> Span {
   match self {
     NatParam(span~, ..) => span
     TypeParam(span~, ..) => span
@@ -102,14 +103,14 @@ pub fn Param::as_int(self: Param) -> Int raise {
   }
 }
 
-pub fn ResolvedParam::as_type(self: ResolvedParam) -> Type raise {
+pub fn StaticArg::as_type(self: StaticArg) -> Type raise {
   match self {
     TypeParam(ty~, ..) => ty
     NatParam(span~, ..) => raise ExpectedTypeParameter(span~)
   }
 }
 
-pub fn ResolvedParam::as_int(self: ResolvedParam) -> Int raise {
+pub fn StaticArg::as_int(self: StaticArg) -> Int raise {
   match self {
     NatParam(value=Natural(value~, ..), span=_) => value.to_int()
     NatParam(span~, ..) | TypeParam(span~, ..) => raise ExpectedIntParameter(span~)
@@ -123,7 +124,7 @@ pub fn ConstValue::as_expr(self: ConstValue) -> Expr {
   }
 }
 
-pub fn ResolvedParam::as_expr(self: ResolvedParam) -> Expr raise {
+pub fn StaticArg::as_expr(self: StaticArg) -> Expr raise {
   match self {
     NatParam(value~, span=_) => value.as_expr()
     TypeParam(span~, ..) => raise TypeParamInsteadOfExpr(span~)
@@ -131,7 +132,7 @@ pub fn ResolvedParam::as_expr(self: ResolvedParam) -> Expr raise {
 }
 
 // perform partial evaluation on the expression
-pub fn Expr::partial_eval(self: Expr, params~: Map[String, ResolvedParam] = {}) -> Expr raise {
+pub fn Expr::partial_eval(self: Expr, params~: Map[String, StaticArg] = {}) -> Expr raise {
   fn rewr_expr(expr: Expr) -> Expr? raise {
     match expr {
       Identifier(path={ packages: [], elem }, ..) => {

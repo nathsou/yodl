@@ -55,18 +55,20 @@ pub fn run(
   }
 
   let checker = @elaborate.TypeChecker::new()
+  let resolved_decls = Array::new(capacity=mono_decls.length())
 
   for decl in mono_decls {
-    try checker.check_decl(decl) catch {
+    let resolved = try checker.check_decl(decl) catch {
       err => raise Failure::Failure(err.to_string())
     }
+    resolved_decls.push(resolved)
   }
 
   for cmd in commands {
     if cmd is WriteTyped(path~) {
       let emitter = @parse.AstEmitter::new(show_expr_types=true)
 
-      for decl in mono_decls {
+      for decl in resolved_decls {
         emitter.emit_decl(decl)
         emitter.emit("\n")
       }
@@ -78,7 +80,7 @@ pub fn run(
     }
   }
 
-  let simplified_decls = @simplify.simplify_decls(mono_decls)
+  let simplified_decls = @simplify.simplify_decls(resolved_decls)
 
   for cmd in commands {
     if cmd is WriteSimplified(path~) {
@@ -126,7 +128,7 @@ pub fn run(
   }
 
   let firrtl = {
-    let low = @elaborate.Elaborator::new(top)
+    let low = @elaborate.Elaborator::new(top, port_usage=checker.port_usage())
 
     try low.lower(simplified_decls.iter()) catch {
       err => raise Failure::Failure(err.to_string())

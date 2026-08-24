@@ -44,7 +44,7 @@ pub impl @parse.Spanned for SimplifierError
 
 // Types and methods
 pub enum MonoEnvEntry {
-  Param(@parse.ResolvedParam)
+  Param(@parse.StaticArg)
   Const(@parse.ConstDecl)
   Type(@parse.TypeAliasDecl)
   Name(packages~ : Array[String])

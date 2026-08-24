@@ -82,7 +82,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
 }
 
 pub enum MonoEnvEntry {
-  Param(@parse.ResolvedParam)
+  Param(@parse.StaticArg)
   Const(@parse.ConstDecl)
   Type(@parse.TypeAliasDecl)
   Name(packages~: Array[String])
@@ -113,7 +113,7 @@ priv struct TypeInfo {
   is_type_alias: Bool 
 }
 
-fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, sort~: @parse.ParamSort, env~: MonoEnv, packages~: Array[String]) -> @parse.ResolvedParam raise {
+fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, sort~: @parse.ParamSort, env~: MonoEnv, packages~: Array[String]) -> @parse.StaticArg raise {
   match param {
     Unresolved(unresolved) => match unresolved.parse(sort) {
       ExprParam(expr~, span~) => {
@@ -163,7 +163,7 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
           )
         }
 
-        let subst: Map[String, @parse.ResolvedParam] = Map([])
+        let subst: Map[String, @parse.StaticArg] = Map([])
 
         for static_param, ty in @utils.zip2(type_alias.parameters, params) {
           let mono_ty = self.monomorphize_type(ty, env~, packages~, span~).ty
@@ -179,14 +179,14 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
 
       ty
     }
-    Clock | Nat(_) | Instance(_) | String(_) => ty
+    Clock | Nat(_) | Instance(_) | String(_) | Unit => ty
     MemoryMask(ty) => @parse.Type::MemoryMask(self.monomorphize_type(ty, env~, packages~, span~).ty)
   }
 
   { ty: mono_ty, is_type_alias: false }
 }
 
-fn hash_params(params: Iter[@parse.ResolvedParam]) -> UInt {
+fn hash_params(params: Iter[@parse.StaticArg]) -> UInt {
   let hasher = Hasher()
 
   for param in params {
@@ -219,7 +219,7 @@ fn Monomorphizer::register_monomorphized_module(
   let mod_sig = mod_decl.signature()
 
   let params_map = {
-    let map: Map[String, @parse.ResolvedParam] = Map([], capacity=params.params.length())
+    let map: Map[String, @parse.StaticArg] = Map([], capacity=params.params.length())
 
     for name, param in params.as_map(names=mod_decl.params.map(fn(param) { param.name })) {
       let param_sig = mod_sig.get_param(name).unwrap()
@@ -480,7 +480,7 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
 fn Monomorphizer::monomorphize_module(
   self: Self,
   mod~: @parse.ModuleDecl,
-  params~: Map[String, @parse.ResolvedParam],
+  params~: Map[String, @parse.StaticArg],
   path~: @parse.Path,
   packages~: Array[String],
 ) -> @parse.ModuleDecl raise {

@@ -304,7 +304,7 @@ pub fn AstEmitter::emit_core_module_decl(self: AstEmitter, mod: CoreModuleDecl) 
     path: mod.path,
     params: [],
     attributes: mod.attributes,
-    ports: mod.ports,
+    ports: mod.ports.map(CorePort::to_port),
     span: mod.span,
   }
 

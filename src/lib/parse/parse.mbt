@@ -17,6 +17,7 @@ pub suberror ParserError {
   MultipleDefaultCases(span~: Span)
   InvalidPortOrTupleAccess(span~: Span)
   DuplicateStructField(name~: String, span~: Span)
+  NatTypeAliasParametersUnsupported(name~: String, span~: Span)
 } derive(Debug)
 
 pub impl Show for ParserError with output(self, logger) {
@@ -41,6 +42,8 @@ pub impl Show for ParserError with output(self, logger) {
       logger.write_string("Invalid port or tuple access at \{span}\n\{span.context()}")
     DuplicateStructField(name~, span~) =>
       logger.write_string("Duplicate struct field '\{name}' at \{span}\n\{span.context()}")
+    NatTypeAliasParametersUnsupported(name~, span~) =>
+      logger.write_string("Type alias '\{name}' declares a Nat parameter, which is not supported yet at \{span}\n\{span.context()}")
   }
 }
 
@@ -923,6 +926,10 @@ fn Parser::parse_type_alias_decl(self: Parser) -> TypeAliasDecl raise {
     }
 
     self.expect(Rbracket, start_idx)
+  }
+
+  if parameters.iter().any(param => param.sort == NatSort) {
+    raise NatTypeAliasParametersUnsupported(name~, span=self.span(start_idx))
   }
 
   self.expect(Equal, start_idx)

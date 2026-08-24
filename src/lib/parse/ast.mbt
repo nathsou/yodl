@@ -39,28 +39,45 @@ pub(all) enum Decl {
 
 pub const BITS_PER_CHAR = 8
 
+/// Surface and checker type representation. Surface-only variants (`Name`,
+/// `String`, and `MemoryMask`) are eliminated by the resolver before a
+/// declaration enters expression checking. Core construction validates that
+/// only concrete lowerable variants remain.
 pub(all) enum Type {
   Nat(MinWidth)
   UInt(IndexExpr)
   SInt(IndexExpr)
   Clock
   Vector(ty~: Type, len~: IndexExpr)
-  Instance(sig~: ModuleSignature, params~: Map[String, ResolvedParam], accessed_ports~: AccessedPorts)
+  Instance(sig~: ModuleSignature, params~: Map[String, StaticArg], ids~: Array[InstanceId])
   Name(path~: Path, params~: Array[Type])
   Struct(Map[String, Type])
   String(len~: Int)
   MemoryMask(Type)
-} derive(Eq)
+  Unit
+}
 
-pub(all) struct MinWidth {
-  mut min_width: Int
-} derive(Eq)
-
-pub fn MinWidth::update(self: Self, width: Int) -> Unit {
-  if width > self.min_width {
-    self.min_width = width
+/// Type equality is semantic and intentionally ignores instance identity.
+/// Identity belongs to usage analysis; nominal module identity and static
+/// arguments form the instance type.
+pub impl Eq for Type with equal(self, other) {
+  match (self, other) {
+    (Nat(a), Nat(b)) => a == b
+    (UInt(a), UInt(b)) | (SInt(a), SInt(b)) => a == b
+    (Clock, Clock) | (Unit, Unit) => true
+    (Vector(ty=a, len=al), Vector(ty=b, len=bl)) => a == b && al == bl
+    (Instance(sig=a, params=ap, ..), Instance(sig=b, params=bp, ..)) => a == b && ap == bp
+    (Name(path=a, params=ap), Name(path=b, params=bp)) => a == b && ap == bp
+    (Struct(a), Struct(b)) => a == b
+    (String(len=a), String(len=b)) => a == b
+    (MemoryMask(a), MemoryMask(b)) => a == b
+    _ => false
   }
 }
+
+pub(all) struct MinWidth {
+  min_width: Int
+} derive(Eq)
 
 pub fn Type::bool() -> Type {
   UInt(Lit(1))
@@ -75,7 +92,7 @@ pub fn Type::sint(width: Int) -> Type {
 }
 
 pub fn Type::empty() -> Type {
-  UInt(Lit(0))
+  Unit
 }
 
 pub fn Type::is_ground(self: Type) -> Bool {
@@ -115,7 +132,7 @@ pub fn Type::mask(self: Type, span~: Span) -> Type raise AstError {
 
       new_fields
     })
-    MemoryMask(_) | Instance(_) | Name(_) => raise NonStorableType(ty=self, span~)
+    MemoryMask(_) | Instance(_) | Name(_) | Unit => raise NonStorableType(ty=self, span~)
   }
 }
 
@@ -154,10 +171,10 @@ pub fn[E: Error] InstanceParams::map_raw(self: Self, map_type~: (Type) -> Type r
   }
 }
 
-/// Returns the parameter list as `(name?, ResolvedParam)` pairs, raising if any
+/// Returns the parameter list as `(name?, StaticArg)` pairs, raising if any
 /// parameter is still `Unresolved`. Intended for use after monomorphization,
 /// where all parameters must have been resolved.
-pub fn InstanceParams::unwrap_resolved(self: Self) -> Array[(String?, ResolvedParam)] raise AstError {
+pub fn InstanceParams::unwrap_resolved(self: Self) -> Array[(String?, StaticArg)] raise AstError {
   let out = Array::new(capacity=self.params.length())
 
   for entry in self.params {
@@ -171,11 +188,11 @@ pub fn InstanceParams::unwrap_resolved(self: Self) -> Array[(String?, ResolvedPa
   out
 }
 
-/// Like `as_map`, but ensures every value is a `ResolvedParam`, raising
+/// Like `as_map`, but ensures every value is a `StaticArg`, raising
 /// otherwise. Intended for post-monomorphization consumers (type checker,
 /// lowering) where unresolved parameters indicate an internal invariant
 /// violation.
-pub fn InstanceParams::as_resolved_map(self: Self, names~: Array[String]) -> Map[String, ResolvedParam] raise AstError {
+pub fn InstanceParams::as_resolved_map(self: Self, names~: Array[String]) -> Map[String, StaticArg] raise AstError {
   let params = self.as_map(names~)
   let out = Map([], capacity=params.length())
 
@@ -285,6 +302,7 @@ pub suberror AstError {
   ExpectedTypeParameter(span~: Span)
   ExpectedIntParameter(span~: Span)
   NonStorableType(ty~: Type, span~: Span)
+  InvalidCoreType(ty~: Type, span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -309,6 +327,7 @@ pub impl Show for AstError with output(self, logger) {
     ExpectedTypeParameter(_) => logger.write_string("Expected a type parameter")
     ExpectedIntParameter(_) => logger.write_string("Expected an integer parameter")
     NonStorableType(ty~, ..) => logger.write_string("Type '\{ty}' is not storable")
+    InvalidCoreType(ty~, ..) => logger.write_string("Surface-only or symbolic type '\{ty}' reached Core construction")
   }
 
   logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
@@ -330,6 +349,7 @@ pub impl Spanned for AstError with span(self) -> Span {
     ExpectedTypeParameter(span~) => span
     ExpectedIntParameter(span~) => span
     NonStorableType(span~, ..) => span
+    InvalidCoreType(span~, ..) => span
   }
 }
 
@@ -537,17 +557,7 @@ pub fn Type::width(self: Type, span: Span) -> Int raise AstError {
     SInt(idx) => idx.expect_lit(span)
     Clock => 1
     Vector(ty~, len~) => ty.width(span) * len.expect_lit(span)
-    Instance(sig~, params~, accessed_ports~) => {
-      let mut width = 0
-
-      for port in sig.ports {
-        if accessed_ports.contains(port.name) {
-          width += port.ty.substitute(params, span~).width(span)
-        }
-      }
-
-      width
-    }
+    Instance(_) => raise NonStorableType(ty=self, span~)
     Name(_) => raise CannotGetWidthOfUnresolvedNamedType(span~)
     Struct(fields) => {
       let mut width = 0
@@ -560,12 +570,13 @@ pub fn Type::width(self: Type, span: Span) -> Int raise AstError {
     }
     String(len~) => len * BITS_PER_CHAR // ascii encoding
     MemoryMask(ty) => ty.mask(span~).width(span)
+    Unit => 0
   }
 }
 
-pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span~: Span) -> Type raise AstError {
+pub fn Type::substitute(self: Type, params_env: Map[String, StaticArg], span~: Span) -> Type raise AstError {
   match self {
-    Nat(_) | String(_) => self
+    Nat(_) | String(_) | Unit => self
     UInt(idx) => UInt(idx.substitute(params_env))
     SInt(idx) => SInt(idx.substitute(params_env))
     Clock => Clock
@@ -576,7 +587,7 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
         _ => MemoryMask(ty)
       }
     }
-    Instance(sig~, params~, accessed_ports~) => {
+    Instance(sig~, params~, ids~) => {
       let new_params = Map([], capacity=params.length()) 
 
       for name, value in params {
@@ -586,7 +597,7 @@ pub fn Type::substitute(self: Type, params_env: Map[String, ResolvedParam], span
         }
       }
 
-      Instance(sig~, params=new_params, accessed_ports~)
+      Instance(sig~, params=new_params, ids~)
     }
     Name(path~, params~) => {
       let new_params = Array::new(capacity=params.length())
@@ -637,6 +648,7 @@ pub fn Type::has_zero_width(self: Type) -> Bool {
     Struct(fields) => fields.values().all(Type::has_zero_width)
     String(len~) => len == 0
     MemoryMask(ty) => ty.has_zero_width()
+    Unit => true
   }
 }
 
@@ -702,11 +714,12 @@ pub fn Type::clone(self: Type) -> Type {
     UInt(width) => UInt(width)
     SInt(width) => SInt(width)
     Vector(ty~, len~) => Vector(ty=ty.clone(), len~)
-    Instance(sig~, params~, accessed_ports~) => Instance(sig~, params~, accessed_ports~)
+    Instance(sig~, params~, ids~) => Instance(sig~, params~, ids=Array::copy(ids))
     Name(path~, params~) => Name(path~, params~)
     Struct(fields) => Struct(@utils.map_values(fields, Type::clone))
     String(len~) => String(len~)
     Clock => Clock
     MemoryMask(ty) => MemoryMask(ty.clone())
+    Unit => Unit
   }
 }
