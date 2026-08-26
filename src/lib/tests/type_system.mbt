@@ -135,6 +135,17 @@ test "constant assertions fold through explicit coercions" {
 }
 
 ///|
+test "inferred Nat bindings cannot acquire signedness from context" {
+  let source =
+    #|module Top() -> () {
+    #|  let n = 1
+    #|  let s: s8 = n
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Incompatible types 's8' and 'nat[1]'"))
+}
+
+///|
 test "contextual signed literals retain their frozen FIRRTL width" {
   let source =
     #|module Top() -> (out: s4) {

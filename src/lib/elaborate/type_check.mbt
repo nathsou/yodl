@@ -331,7 +331,7 @@ fn check_assignment_compatibility(expected: Type, actual: Type, span~: Span) -> 
 
     match (expected, actual) {
         (UInt(Lit(_)), UInt(Lit(_))) | (SInt(Lit(_)), SInt(Lit(_))) => ()
-        (UInt(Lit(width)) | SInt(Lit(width)), Nat({ min_width })) if width >= min_width => ()
+        (UInt(Lit(width)), Nat({ min_width })) if width >= min_width => ()
         _ => raise IncompatibleTypes(ty1=expected, ty2=actual, span~)
     }
 }
