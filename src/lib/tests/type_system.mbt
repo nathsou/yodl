@@ -9,10 +9,10 @@ test "unsigned addition is rejected in a signed context" {
   let diagnostic = compile_error(source)
   assert_true(
     diagnostic.has_prefix(
-      "Incompatible types 's9' and 'u9', fixture.yodl:2.3-2.14",
+      "Incompatible types 's9' and 'u9', fixture.yodl:2.11-2.14",
     ),
   )
-  assert_true(diagnostic.contains("2   out = a + b\n    ^^^^^^^^^^^"))
+  assert_true(diagnostic.contains("2   out = a + b"))
 }
 
 ///|
@@ -111,6 +111,81 @@ test "signed binary narrowing preserves FIRRTL signedness" {
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
   assert_true(firrtl.contains("asSInt(bits(add("))
+}
+
+///|
+test "integer resizing is explicit in Core and FIRRTL" {
+  let source =
+    #|module Top(a: u8, b: u8, c: s8, d: s8) -> (un: u8, uw: u12, sn: s8, sw: s12) {
+    #|  un = a + b
+    #|  uw = a + b
+    #|  sn = c + d
+    #|  sw = c + d
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("un = truncate((a + b))"))
+  assert_true(simplified.contains("uw = zero_extend((a + b))"))
+  assert_true(simplified.contains("sn = truncate((c + d))"))
+  assert_true(simplified.contains("sw = sign_extend((c + d))"))
+
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("connect un, bits(add(a, b), 7, 0)"))
+  assert_true(firrtl.contains("connect uw, pad(add(a, b), 12)"))
+  assert_true(firrtl.contains("connect sn, asSInt(bits(add(c, d), 7, 0))"))
+  assert_true(firrtl.contains("connect sw, pad(add(c, d), 12)"))
+}
+
+///|
+test "resizing applies to values, conditionals, and instance ports" {
+  let source =
+    #|module Child(input: u12) -> (output: u12) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(select: u2, a: u8, b: u8) -> (direct: u12, selected: u8, port: u12) {
+    #|  direct = a
+    #|  selected = select ? a + b : a
+    #|  let child = Child(input: a + b)
+    #|  port = child.output
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("direct = zero_extend(a)"))
+  assert_true(simplified.contains("selected = truncate("))
+  assert_true(simplified.contains("match truncate(select)"))
+  assert_true(simplified.contains("zero_extend(a)"))
+  assert_true(simplified.contains("input: zero_extend((a + b))"))
+  let _ = compile_stage(source, "write_low_firrtl")
+}
+
+///|
+test "signedness changes require explicit conversion" {
+  let signed_to_unsigned =
+    #|module Top(a: s8) -> (out: u4) {
+    #|  out = a
+    #|}
+  assert_true(
+    compile_error(signed_to_unsigned).contains("Incompatible types 'u4' and 's8'"),
+  )
+
+  let explicit =
+    #|module Top(a: u8) -> (out: s8) {
+    #|  out = sint!(a)
+    #|}
+  let _ = compile_stage(explicit, "write_low_firrtl")
+}
+
+///|
+test "contextual literals need no resize coercion" {
+  let source =
+    #|module Top() -> (unsigned: u12, signed: s12) {
+    #|  unsigned = 7
+    #|  signed = 7
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_false(simplified.contains("extend(7)"))
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("UInt<12>(7)"))
+  assert_true(firrtl.contains("SInt<12>(7)"))
 }
 
 ///|

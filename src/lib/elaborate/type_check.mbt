@@ -182,6 +182,17 @@ fn merge_inferred_types(lhs: Type, rhs: Type) -> Type {
     }
 }
 
+fn merge_expression_types(lhs: Type, rhs: Type, span~: Span) -> Type raise TypeCheckerError {
+    match (lhs, rhs) {
+        (UInt(Lit(lhs_width)), UInt(Lit(rhs_width))) => Type::uint(max(lhs_width, rhs_width))
+        (SInt(Lit(lhs_width)), SInt(Lit(rhs_width))) => Type::sint(max(lhs_width, rhs_width))
+        _ => {
+            let _ = unify(lhs, rhs, span~)
+            merge_inferred_types(lhs, rhs)
+        }
+    }
+}
+
 fn merge_assignment_target(
     lhs: Expr,
     rhs_ty: Type,
@@ -249,6 +260,22 @@ fn assigned_instance_port(lhs: Expr) -> (ModuleSignature, Array[InstanceId], Str
 
 fn unify(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
     unify_aux([(ty1, ty2)], span~, subst~)
+}
+
+/// Directional compatibility for expression contexts. Unlike equality and
+/// unification, this permits an integer value to be resized only when its
+/// signedness is unchanged. The simplifier records every such resize as an
+/// explicit Core coercion before lowering.
+fn check_assignment_compatibility(expected: Type, actual: Type, span~: Span) -> Unit raise TypeCheckerError {
+    if expected == actual {
+        return
+    }
+
+    match (expected, actual) {
+        (UInt(Lit(_)), UInt(Lit(_))) | (SInt(Lit(_)), SInt(Lit(_))) => ()
+        (UInt(Lit(width)) | SInt(Lit(width)), Nat({ min_width })) if width >= min_width => ()
+        _ => raise IncompatibleTypes(ty1=expected, ty2=actual, span~)
+    }
 }
 
 fn declare_name(
@@ -340,7 +367,26 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span, type_params~: Set[
     }
 }
 
+fn TypeChecker::synth_expr(
+    self: Self,
+    expr: Expr,
+    env: Scope[Path, Ref[Type?]],
+    record_port_reads~: Bool = true,
+) -> Type raise {
+    self.check_expr_in_context(expr, env, record_port_reads~)
+}
+
 fn TypeChecker::check_expr(
+    self: Self,
+    expr: Expr,
+    env: Scope[Path, Ref[Type?]],
+    expected_ty~: Type,
+    record_port_reads~: Bool = true,
+) -> Type raise {
+    self.check_expr_in_context(expr, env, expected_ty=Some(expected_ty), record_port_reads~)
+}
+
+fn TypeChecker::check_expr_in_context(
     self: Self,
     expr: Expr,
     env: Scope[Path, Ref[Type?]],
@@ -392,11 +438,11 @@ fn TypeChecker::check_expr(
                     if width <= 0 || value > pow2(width - 1) {
                         raise type_error("Negative literal does not fit in contextual type s\{width}", span)
                     }
-                    let _ = self.check_expr(operand, env)
+                    let _ = self.synth_expr(operand, env)
                     Type::sint(width)
                 }
                 _ => {
-                    let ty = self.check_expr(expr, env, expected_ty~)
+                    let ty = self.synth_expr(expr, env)
  
                     if !ty.is_numerical() {
                         raise type_error("Invalid operand type '\{ty}' for unary operator '\{op}, expected uint or sint", span)
@@ -410,9 +456,9 @@ fn TypeChecker::check_expr(
                 }
             }
         }
-        Binary(op~, lhs~, rhs~, output_width~, span~, ..) => {
-            let lhs_ty = self.check_expr(lhs, env)
-            let rhs_ty = self.check_expr(rhs, env)
+        Binary(op~, lhs~, rhs~, span~, ..) => {
+            let lhs_ty = self.synth_expr(lhs, env)
+            let rhs_ty = self.synth_expr(rhs, env)
             let wa = lhs_ty.width(lhs.span())
             let wb = rhs_ty.width(rhs.span())
 
@@ -472,18 +518,11 @@ fn TypeChecker::check_expr(
                 _ => raise type_error("Invalid operands '\{lhs_ty}' and '\{rhs_ty}' for binary operator '\{op}'", span)
             }
 
-            let wy = out_ty.width(span)
-            output_width.val = Some(wy)
-
-            match (out_ty, expected_ty) {
-                (UInt(_), Some(UInt(_))) | (SInt(_), Some(SInt(_))) => expected_ty.unwrap()
-                (SInt(Lit(actual)), Some(UInt(Lit(expected)))) if expected < actual => expected_ty.unwrap()
-                _ => out_ty
-            }
+            out_ty
         }
         Indexing(expr~, index~, span~, ..) => {
-            let ty = self.check_expr(expr, env, record_port_reads~)
-            let index_ty = self.check_expr(index, env)
+            let ty = self.synth_expr(expr, env, record_port_reads~)
+            let index_ty = self.synth_expr(index, env)
 
             if !index_ty.is_numerical() {
                 raise type_error("Index must be an integer", index.span())
@@ -497,9 +536,9 @@ fn TypeChecker::check_expr(
             }
         }
         Slicing(expr~, hi~, lo~, kind~, span~, ..) => {
-            let ty = self.check_expr(expr, env, record_port_reads~)
-            let start_ty = self.check_expr(hi, env)
-            let end_ty = self.check_expr(lo, env)
+            let ty = self.synth_expr(expr, env, record_port_reads~)
+            let start_ty = self.synth_expr(hi, env)
+            let end_ty = self.synth_expr(lo, env)
 
             match (start_ty, end_ty) {
                 (Nat(_), Nat(_)) => ()
@@ -542,7 +581,7 @@ fn TypeChecker::check_expr(
             }
         }
         FieldAccess(expr~, field=port, span~, ..) => {
-            match self.check_expr(expr, env, record_port_reads~) {
+            match self.synth_expr(expr, env, record_port_reads~) {
                 Instance(sig~, params~, ids~) => {
                     match sig.get_port(port) {
                         Some(port_def) => {
@@ -574,7 +613,7 @@ fn TypeChecker::check_expr(
                     // check monomorphized (erased) parameters
                     for param in params.instantiated {
                         let (expr, ann, span) = param
-                        let expr_ty = self.check_expr(expr, env)
+                        let expr_ty = self.synth_expr(expr, env)
                         let expr_ty = self.resolve_ty(expr_ty, span~)
                         let _ = unify(expr_ty, ann, span=span, subst~)
                     }
@@ -584,7 +623,7 @@ fn TypeChecker::check_expr(
 
                         match (param, param_sig) {
                             (NatParam(value~, ..) as cnst_param, Some({ sort: NatSort, span: param_span, .. })) => {
-                                let value_ty = self.check_expr(value.as_expr(), env)
+                                let value_ty = self.synth_expr(value.as_expr(), env)
                                 let _ = unify(value_ty, Nat({min_width: 0}), span=param_span, subst~)
 
                                 match value {
@@ -603,7 +642,7 @@ fn TypeChecker::check_expr(
                             }
                             _ => {
                                 let ty = match param {
-                                    NatParam(value~, ..) => self.check_expr(value.as_expr(), env)
+                                    NatParam(value~, ..) => self.synth_expr(value.as_expr(), env)
                                     TypeParam(ty~, span~) => self.resolve_ty(ty, span~)
                                 }
 
@@ -620,11 +659,14 @@ fn TypeChecker::check_expr(
                         match sig.get_port(port_name) {
                             Some(port_def) => {
                                 let port_ty = port_def.ty.substitute(params_env, span~)
-                                let expr_ty = self.check_expr(port_expr, env, expected_ty=Some(port_ty))
-                                let _ = unify(port_ty, expr_ty, span=port_expr.span(), subst~)
-
-                                if port_def.dir != Input && !is_valid_assignment_target(port_expr) {
-                                    raise InvalidAssignmentTarget(span=port_expr.span())
+                                if port_def.dir == Input {
+                                    let _ = self.check_expr(port_expr, env, expected_ty=port_ty)
+                                } else {
+                                    let expr_ty = self.synth_expr(port_expr, env)
+                                    let _ = unify(port_ty, expr_ty, span=port_expr.span())
+                                    if !is_valid_assignment_target(port_expr) {
+                                        raise InvalidAssignmentTarget(span=port_expr.span())
+                                    }
                                 }
                             }
                             None => raise UnknownModulePort(module_path=path, port_name=port_name, span~)
@@ -655,7 +697,6 @@ fn TypeChecker::check_expr(
             } else {
                 let mut elem_ty = None
                 let mut len = 0
-                let subst = Map([])
                 let expected_elem_ty = match expected_ty {
                     Some(Vector(ty~, ..)) => Some(ty)
                     _ => None
@@ -664,8 +705,7 @@ fn TypeChecker::check_expr(
             fn check_elem_ty(ty: Type) -> Unit raise TypeCheckerError {
                 match elem_ty {
                     Some(ty2) => {
-                        let _ = unify(ty, ty2, span~, subst~)
-                        elem_ty = Some(merge_inferred_types(ty2, ty))
+                        elem_ty = Some(merge_expression_types(ty2, ty, span~))
                     }
                     None => {
                         elem_ty = Some(ty)
@@ -676,7 +716,7 @@ fn TypeChecker::check_expr(
             for elem in elems {
                 match elem {
                     Spread(expr=spread_expr, ..) => {
-                        let spread_ty = self.check_expr(spread_expr, env)
+                        let spread_ty = self.synth_expr(spread_expr, env)
                         elem.set_ty(spread_ty)
                         match spread_ty {
                             Vector(ty=spread_ty_inner, len=Lit(spread_len)) => {
@@ -698,19 +738,13 @@ fn TypeChecker::check_expr(
                         }
                     }
                     _ => {
-                        check_elem_ty(self.check_expr(elem, env, expected_ty=expected_elem_ty))
+                        check_elem_ty(self.check_expr_in_context(elem, env, expected_ty=expected_elem_ty))
                         len += 1
                     }
                 }
             }
 
                 let vector_ty = Type::Vector(ty=elem_ty.unwrap(), len=Lit(len))
-                match expected_ty {
-                    Some(expected) => {
-                        let _ = unify(vector_ty, expected, span~)
-                    }
-                    None => ()
-                }
                 vector_ty
             }
         }
@@ -718,18 +752,14 @@ fn TypeChecker::check_expr(
             raise type_error("Spread outside vector", span)
         }
         Ternary(cond~, then~, else_~, span~, ..) => {
-            let cond_ty = self.check_expr(cond, env, expected_ty=Some(Type::uint(1)))
-            let then_ty = self.check_expr(then, env, expected_ty~)
-            let else_ty = self.check_expr(else_, env, expected_ty~)
+            let _ = self.check_expr(cond, env, expected_ty=Type::uint(1))
+            let then_ty = self.check_expr_in_context(then, env, expected_ty~)
+            let else_ty = self.check_expr_in_context(else_, env, expected_ty~)
 
-            let _ = unify(cond_ty, Type::uint(1), span~)
-            let ty = self.resolve_ty(then_ty, span~)
-            let _ = unify(ty, else_ty, span~)
-
-            merge_inferred_types(ty, else_ty)
+            merge_expression_types(self.resolve_ty(then_ty, span~), else_ty, span~)
         }
         Match(subject~, cases~, default~, span~, ..) => {
-            let subject_ty = self.check_expr(subject, env)
+            let subject_ty = self.synth_expr(subject, env)
             
             if cases.is_empty() && default is None {
                 raise type_error("Empty match expression", span)
@@ -741,8 +771,7 @@ fn TypeChecker::check_expr(
             fn check_ret_ty(ty: Type) -> Unit raise TypeCheckerError {
                 match ret_ty {
                     Some(ty2) => {
-                        let _ = unify(ty, ty2, span~, subst~)
-                        ret_ty = Some(merge_inferred_types(ty2, ty))
+                        ret_ty = Some(merge_expression_types(ty2, ty, span~))
                     }
                     None => {
                         ret_ty = Some(ty)
@@ -752,15 +781,15 @@ fn TypeChecker::check_expr(
 
             for case in cases {
                 let (pat, expr) = case
-                let pat_ty = self.check_expr(pat, env)
-                let expr_ty = self.check_expr(expr, env, expected_ty~)
+                let pat_ty = self.synth_expr(pat, env)
+                let expr_ty = self.check_expr_in_context(expr, env, expected_ty~)
                 let _ = unify(subject_ty, pat_ty, subst~, span~)
                 check_ret_ty(expr_ty)
             }
 
             match default {
                 Some(expr) => {
-                    let expr_ty = self.check_expr(expr, env, expected_ty~)
+                    let expr_ty = self.check_expr_in_context(expr, env, expected_ty~)
                     check_ret_ty(expr_ty)
                 }
                 None => ()
@@ -769,22 +798,22 @@ fn TypeChecker::check_expr(
             ret_ty.unwrap()
         }
         FunCall(name="uint", args=[arg], ..) => {
-            let arg_ty = self.check_expr(arg, env)
+            let arg_ty = self.synth_expr(arg, env)
             let width = arg_ty.width(arg.span())
             Type::uint(width)
         }
         FunCall(name="sint", args=[arg], ..) => {
-            let arg_ty = self.check_expr(arg, env)
+            let arg_ty = self.synth_expr(arg, env)
             let width = arg_ty.width(arg.span())
             Type::sint(width)
         }
         FunCall(name="clock", args=[arg], ..) => {
-            let _ = self.check_expr(arg, env, expected_ty=Some(Type::uint(1)))
+            let _ = self.check_expr(arg, env, expected_ty=Type::uint(1))
             Type::Clock
         }
         FunCall(name="pad", args=[arg, width], span~, ..) => {
-            let arg_ty = self.check_expr(arg, env)
-            let width_ty = self.check_expr(width, env)
+            let arg_ty = self.synth_expr(arg, env)
+            let width_ty = self.synth_expr(width, env)
             let _ = unify(width_ty, Nat({min_width: 0}), span=width.span())
             let width = eval_const_expr(width)
             let required_width = arg_ty.width(arg.span())
@@ -803,8 +832,8 @@ fn TypeChecker::check_expr(
             }
         }
         FunCall(name="readmemb" | "readmemh", args=[path, mem], span~, ..) => {
-            let _ = self.check_expr(path, env)
-            let mem_ty = self.check_expr(mem, env)
+            let _ = self.synth_expr(path, env)
+            let mem_ty = self.synth_expr(mem, env)
 
             match mem_ty {
                 Instance(sig={
@@ -824,7 +853,7 @@ fn TypeChecker::check_expr(
             Type::empty()
         }
         FunCall(name="assert", args=[pred,..rest], span~, ..) => {
-            let _ = self.check_expr(pred, env, expected_ty=Some(Type::bool()))
+            let _ = self.check_expr(pred, env, expected_ty=Type::bool())
 
             if rest is [format_str, ..args] {
                 self.check_format_string(format_str~, args~, env~, span~)
@@ -836,7 +865,7 @@ fn TypeChecker::check_expr(
             match args {
                 [] => ()
                 [exit_code] => {
-                    let exit_code_ty = self.check_expr(exit_code, env)
+                    let exit_code_ty = self.synth_expr(exit_code, env)
 
                     if !exit_code_ty.is_numerical() {
                         raise type_error(
@@ -853,7 +882,7 @@ fn TypeChecker::check_expr(
             Type::empty()
         }
         FunCall(name="rev", args=[arg], span~, ..) => {
-            let arg_ty = self.check_expr(arg, env)
+            let arg_ty = self.synth_expr(arg, env)
 
             match arg_ty {
                 Vector(_) => arg_ty
@@ -872,7 +901,7 @@ fn TypeChecker::check_expr(
             let stack = @stack.new()
 
             for elem in args {
-                let ty = self.check_expr(elem, env)
+                let ty = self.synth_expr(elem, env)
                 let elem_span = elem.span()
                 len += ty.width(elem_span)
                 stack.push((ty, elem_span))
@@ -910,15 +939,15 @@ fn TypeChecker::check_expr(
             }
         }
         FunCall(name="fill", args=[count, elem], span~, ..) => {
-            let count_ty = self.check_expr(count, env)
+            let count_ty = self.synth_expr(count, env)
             let _ = unify(count_ty, Nat({min_width: 0}), span~)
-            let elem_ty = self.check_expr(elem, env)
+            let elem_ty = self.synth_expr(elem, env)
             let count_val = eval_const_expr(count)
 
             Vector(ty=elem_ty, len=Lit(count_val))
         }
         FunCall(name="flip", args=[arg], span~, ..) => {
-            let arg_ty = self.check_expr(arg, env)
+            let arg_ty = self.synth_expr(arg, env)
 
             match arg_ty {
                 UInt(_) => ()
@@ -947,7 +976,7 @@ fn TypeChecker::check_expr(
                         Spread(expr~, ..) => expr
                         _ => raise type_error("Internal: spread field is not a Spread expression", span)
                     }
-                    let inner_ty = self.check_expr(inner, env)
+                    let inner_ty = self.synth_expr(inner, env)
                     match inner_ty {
                         Type::Struct(spread_fields) => {
                             for spread_name, spread_ty in spread_fields {
@@ -962,17 +991,11 @@ fn TypeChecker::check_expr(
             for name, ty in fields {
                 if !name.has_prefix("..") {
                     let field_expected = expected_fields.bind(fields => fields.get(name))
-                    field_tys[name] = self.check_expr(ty, env, expected_ty=field_expected)
+                    field_tys[name] = self.check_expr_in_context(ty, env, expected_ty=field_expected)
                 }
             }
 
             let struct_ty = Type::Struct(field_tys)
-            match expected_ty {
-                Some(expected) => {
-                    let _ = unify(struct_ty, expected, span~)
-                }
-                None => ()
-            }
             struct_ty
         }
         Block(body~, last~, span=_, ty=_) => {
@@ -984,19 +1007,18 @@ fn TypeChecker::check_expr(
 
             match last {
                 Some(last) => {
-                    self.check_expr(last, new_env, expected_ty~)
+                    self.check_expr_in_context(last, new_env, expected_ty~)
                 }
                 _ => Type::empty()
             }
         }
         If(cond~, then~, else_~, span~, ..) => {
-            let _ = self.check_expr(cond, env, expected_ty=Some(Type::uint(1)))
-            let then_ty = self.check_expr(then, env, expected_ty~)
+            let _ = self.check_expr(cond, env, expected_ty=Type::uint(1))
+            let then_ty = self.check_expr_in_context(then, env, expected_ty~)
             let if_ty = match else_ {
                 Some(else_) => {
-                    let else_ty = self.check_expr(else_, env, expected_ty~)
-                    let _ = unify(then_ty, else_ty, span~)
-                    merge_inferred_types(then_ty, else_ty)
+                    let else_ty = self.check_expr_in_context(else_, env, expected_ty~)
+                    merge_expression_types(then_ty, else_ty, span~)
                 }
                 None => {
                     let _ = unify(then_ty, Type::empty(), span~)
@@ -1008,6 +1030,11 @@ fn TypeChecker::check_expr(
         }
     }
 
+    match expected_ty {
+        Some(expected) => check_assignment_compatibility(expected, ty, span=expr.span())
+        None => ()
+    }
+
     expr.set_ty(ty)
 
     ty
@@ -1016,7 +1043,7 @@ fn TypeChecker::check_expr(
 fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]]) -> Unit raise {
     match stmt {
         Expr(expr~, ..) => {
-            let _ = self.check_expr(expr, env)
+            let _ = self.synth_expr(expr, env)
         }
         Let(name~, ty~, expr~, span~) => {
             let path = Path::new([], name)
@@ -1026,8 +1053,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
                 (Some(ty), Some(expr)) => {
                     let ty = self.resolve_ty(ty, span~)
                     declare_name(env~, path~, ty~, span~, binding=Some(binding))
-                    let expr_ty = self.check_expr(expr, env, expected_ty=Some(ty))
-                    let _ = unify(ty, expr_ty, span~)
+                    let expr_ty = self.check_expr(expr, env, expected_ty=ty)
                     let ty = merge_inferred_types(ty, expr_ty)
                     ty
                 }
@@ -1037,7 +1063,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
                     ty
                 }
                 (None, Some(expr)) => {
-                    let ty = self.check_expr(expr, env)
+                    let ty = self.synth_expr(expr, env)
                     declare_name(env~, path~, ty~, span~, binding=Some(binding))
 
                     ty
@@ -1048,7 +1074,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
             })
         }
         Assign(lhs~, rhs~, span~) => {
-            let lhs_ty = self.check_expr(lhs, env, record_port_reads=false)
+            let lhs_ty = self.synth_expr(lhs, env, record_port_reads=false)
             let valid_lhs = is_valid_assignment_target(lhs)
 
             if !valid_lhs {
@@ -1065,8 +1091,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
                 self.port_usage.record_write(ids, field)
             }
 
-            let rhs_ty = self.check_expr(rhs, env, expected_ty=Some(lhs_ty))
-            let _ = unify(lhs_ty, rhs_ty, span~)
+            let rhs_ty = self.check_expr(rhs, env, expected_ty=lhs_ty)
             merge_assignment_target(lhs, rhs_ty, env)
         }
         Scope(body~, ..) => {
@@ -1077,8 +1102,8 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
             }
         }
         For(variable~, range~, body~, span~) => {
-            let start_ty = self.check_expr(range.start, env)
-            let end_ty = self.check_expr(range.end, env)
+            let start_ty = self.synth_expr(range.start, env)
+            let end_ty = self.synth_expr(range.end, env)
 
             match (start_ty, end_ty) {
                 (Nat(_), Nat(_)) => ()
@@ -1105,14 +1130,14 @@ fn TypeChecker::check_format_string(
     env~: Scope[Path, Ref[Type?]],
     span~: Span,
 ) -> Unit raise {
-    let format_str_ty = self.check_expr(format_str, env)
+    let format_str_ty = self.synth_expr(format_str, env)
 
     if !format_str_ty.is_string() {
         raise type_error("Invalid format string", span)
     }
 
     for index, arg in args {
-        let arg_ty = self.check_expr(arg, env)
+        let arg_ty = self.synth_expr(arg, env)
 
         if !arg_ty.is_ground() {
             raise type_error("Invalid format string argument at index \{index + 1}", span)
@@ -1182,11 +1207,10 @@ fn TypeChecker::check_const_decl(self: Self, decl: ConstDecl, env: Scope[Path, R
     let ty = match decl.ty {
         Some(expected_ty) => {
             let expected_ty = self.resolve_ty(expected_ty, span=decl.expr.span())
-            let actual_ty = self.check_expr(decl.expr, env, expected_ty=Some(expected_ty))
-            let _ = unify(expected_ty, actual_ty, span=decl.expr.span())
+            let _ = self.check_expr(decl.expr, env, expected_ty=expected_ty)
             expected_ty
         }
-        None => self.check_expr(decl.expr, env)
+        None => self.synth_expr(decl.expr, env)
     }
 
     declare_name(env~, path=decl.path, ty~, span=decl.span)
