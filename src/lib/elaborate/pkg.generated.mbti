@@ -27,13 +27,15 @@ pub struct Elaborator {
   mut current_target : @firrtl.AnnotationTarget
   memories : Map[String, @firrtl.Id]
   mut current_clock : @firrtl.Expr[Unit]?
+  port_usage : @parse.PortUsage
 }
 pub fn Elaborator::lower(Self, Iter[@parse.CoreDecl]) -> Unit raise
-pub fn Elaborator::new(String) -> Self
+pub fn Elaborator::new(String, port_usage~ : @parse.PortUsage) -> Self
 
 type TypeChecker
-pub fn TypeChecker::check_decl(Self, @parse.Decl) -> Unit raise
+pub fn TypeChecker::check_decl(Self, @parse.Decl) -> @parse.Decl raise
 pub fn TypeChecker::new() -> Self
+pub fn TypeChecker::port_usage(Self) -> @parse.PortUsage
 
 // Type aliases
 

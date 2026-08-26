@@ -29,6 +29,13 @@ pub fn Simplifier::new() -> Simplifier {
   { name_counts: {} }
 }
 
+fn freeze_ty(ty: Ref[@parse.Type?], span: @parse.Span) -> Ref[@parse.CoreType?] raise {
+  { val: match ty.val {
+    Some(ty) => Some(@parse.CoreType::from_type(ty, span~))
+    None => raise Failure::Failure("Expression is untyped at Core construction: \{span}")
+  } }
+}
+
 pub fn Simplifier::declare_unique(self: Self, name: String) -> UniqueName {
   let count = match self.name_counts.get(name) {
     Some(count) => count
@@ -79,7 +86,7 @@ pub fn Simplifier::simplify_expr(
 
   match expr {
     Natural(value~, width~, base~, span~, ty~) =>
-      Natural(value~, width~, base~, span~, ty=@parse.clone_ty(ty))
+      Natural(value~, width~, base~, span~, ty=freeze_ty(ty, span))
 
     Identifier(path~, span~, ty~) =>
       match env.resolve(path) {
@@ -88,15 +95,15 @@ pub fn Simplifier::simplify_expr(
           Identifier(
             path=@parse.Path::new(path.packages, Show::to_string(unique_name)),
             span~,
-            ty=@parse.clone_ty(ty),
+            ty=freeze_ty(ty, span),
           )
-        None => Identifier(path~, span~, ty=@parse.clone_ty(ty))
+        None => Identifier(path~, span~, ty=freeze_ty(ty, span))
       }
 
-    String(value~, span~, ty~) => String(value~, span~, ty=@parse.clone_ty(ty))
+    String(value~, span~, ty~) => String(value~, span~, ty=freeze_ty(ty, span))
 
     Unary(op~, expr~, span~, ty~) =>
-      Unary(op~, expr=simp(expr), span~, ty=@parse.clone_ty(ty))
+      Unary(op~, expr=simp(expr), span~, ty=freeze_ty(ty, span))
 
     Binary(op=Nand, lhs~, rhs~, output_width~, span~, ty~) =>
       Unary(
@@ -107,10 +114,10 @@ pub fn Simplifier::simplify_expr(
           rhs=simp(rhs),
           output_width=@ref.new(output_width.val),
           span~,
-          ty=@parse.clone_ty(ty),
+          ty=freeze_ty(ty, span),
         ),
         span~,
-        ty=@parse.clone_ty(ty),
+        ty=freeze_ty(ty, span),
       )
 
     Binary(op~, lhs~, rhs~, output_width~, span~, ty~) =>
@@ -120,11 +127,11 @@ pub fn Simplifier::simplify_expr(
         rhs=simp(rhs),
         output_width=@ref.new(output_width.val),
         span~,
-        ty=@parse.clone_ty(ty),
+        ty=freeze_ty(ty, span),
       )
 
     Indexing(expr~, index~, span~, ty~) =>
-      Indexing(expr=simp(expr), index=simp(index), span~, ty=@parse.clone_ty(ty))
+      Indexing(expr=simp(expr), index=simp(index), span~, ty=freeze_ty(ty, span))
 
     Slicing(expr~, hi=msb, lo=lsb, kind=Absolute, span~, ty~) =>
       Slicing(
@@ -132,7 +139,7 @@ pub fn Simplifier::simplify_expr(
         hi=simp(msb),
         lo=simp(lsb),
         span~,
-        ty=@parse.clone_ty(ty),
+        ty=freeze_ty(ty, span),
       )
 
     Slicing(expr~, hi=msb, lo=width, kind=WidthDescending, span~, ty~) => {
@@ -145,7 +152,7 @@ pub fn Simplifier::simplify_expr(
         hi=msb_simplified,
         lo=@parse.CoreExpr::nat(lsb, span=width.span()),
         span~,
-        ty=@parse.clone_ty(ty),
+        ty=freeze_ty(ty, span),
       )
     }
 
@@ -161,41 +168,42 @@ pub fn Simplifier::simplify_expr(
         hi=@parse.CoreExpr::nat(new_msb, span=base.span()),
         lo=@parse.CoreExpr::nat(base_val, span=base.span()),
         span~,
-        ty=@parse.clone_ty(ty),
+        ty=freeze_ty(ty, span),
       )
     }
 
     FieldAccess(expr~, field=port, span=port_acc_span, ty=port_acc_ty) => {
       let simplified_expr = simp(expr)
+      let core_port_ty = freeze_ty(port_acc_ty, port_acc_span)
       // Push field access inside match cases
       match simplified_expr {
         Match(subject~, cases~, default~, span~, ty=_) => {
           let new_cases = cases.map(case => {
             let (pat, e) = case
-            (pat, @parse.CoreExpr::FieldAccess(expr=e, field=port, span=port_acc_span, ty=port_acc_ty))
+            (pat, @parse.CoreExpr::FieldAccess(expr=e, field=port, span=port_acc_span, ty=core_port_ty))
           })
           let new_default = default.map(e => {
-            @parse.CoreExpr::FieldAccess(expr=e, field=port, span=port_acc_span, ty=port_acc_ty)
+            @parse.CoreExpr::FieldAccess(expr=e, field=port, span=port_acc_span, ty=core_port_ty)
           })
-          Match(subject~, cases=new_cases, default=new_default, span~, ty=port_acc_ty)
+          Match(subject~, cases=new_cases, default=new_default, span~, ty=core_port_ty)
         }
-        _ => FieldAccess(expr=simplified_expr, field=port, span=port_acc_span, ty=port_acc_ty)
+        _ => FieldAccess(expr=simplified_expr, field=port, span=port_acc_span, ty=core_port_ty)
       }
     }
 
-    Instance(path~, params~, ports~, span~, ty~) => {
+    Instance(path~, params=_, ports~, span~, ty~) => {
       let core_ports = Map([], capacity=ports.length())
       for port, e in ports {
         core_ports[port] = simp(e)
       }
-      Instance(path~, params~, ports=core_ports, span~, ty=@parse.clone_ty(ty))
+      Instance(path~, ports=core_ports, span~, ty=freeze_ty(ty, span))
     }
 
     Vector(elems~, span~, ty~) =>
-      Vector(elems=elems.map(simp), span~, ty=@parse.clone_ty(ty))
+      Vector(elems=elems.map(simp), span~, ty=freeze_ty(ty, span))
 
     Spread(expr~, span~, ty~) =>
-      Spread(expr=simp(expr), span~, ty=@parse.clone_ty(ty))
+      Spread(expr=simp(expr), span~, ty=freeze_ty(ty, span))
 
     Match(subject~, cases~, default~, span~, ty~) =>
       Match(
@@ -206,7 +214,7 @@ pub fn Simplifier::simplify_expr(
         }),
         default=default.map(simp),
         span~,
-        ty=@parse.clone_ty(ty),
+        ty=freeze_ty(ty, span),
       )
 
     Struct(fields~, span~, ty~) => {
@@ -222,7 +230,7 @@ pub fn Simplifier::simplify_expr(
           }
           let simp_base = simp(spread_base)
           match simp_base.ty().val {
-            Some(@parse.Type::Struct(spread_tys)) => {
+            Some(@parse.CoreType::Struct(spread_tys)) => {
               for spread_name, spread_ty in spread_tys {
                 core_fields[spread_name] = @parse.CoreExpr::FieldAccess(
                   expr=simp_base,
@@ -243,17 +251,17 @@ pub fn Simplifier::simplify_expr(
         }
       }
 
-      Struct(fields=core_fields, span~, ty=@parse.clone_ty(ty))
+      Struct(fields=core_fields, span~, ty=freeze_ty(ty, span))
     }
 
     FunCall(name="assert", args=[pred, ..rest], span~, ty~) => {
       let core_pred = simp(pred)
       try core_pred.as_int() catch {
-        _ => FunCall(name="assert", args=[core_pred, ..rest.map(simp)], span~, ty~)
+        _ => FunCall(name="assert", args=[core_pred, ..rest.map(simp)], span~, ty=freeze_ty(ty, span))
       } noraise {
         0 => raise AssertionAlwaysFails(span~)
-        1 => Struct(fields=Map([]), span~, ty~) // statically true: emit nothing
-        _ => FunCall(name="assert", args=[core_pred, ..rest.map(simp)], span~, ty~)
+        1 => Struct(fields=Map([]), span~, ty=freeze_ty(ty, span))
+        _ => FunCall(name="assert", args=[core_pred, ..rest.map(simp)], span~, ty=freeze_ty(ty, span))
       }
     }
 
@@ -272,11 +280,11 @@ pub fn Simplifier::simplify_expr(
         elems.push(simp(elem))
       }
 
-      Vector(elems~, span~, ty=@parse.clone_ty(ty))
+      Vector(elems~, span~, ty=freeze_ty(ty, span))
     }
 
     FunCall(name~, args~, span~, ty~) =>
-      FunCall(name~, args=args.map(simp), span~, ty=@parse.clone_ty(ty))
+      FunCall(name~, args=args.map(simp), span~, ty=freeze_ty(ty, span))
 
     Block(body~, last~, span~, ty~) => {
       let core_body = []
@@ -287,7 +295,7 @@ pub fn Simplifier::simplify_expr(
         body=core_body,
         last=last.map(simp),
         span~,
-        ty=@parse.clone_ty(ty),
+        ty=freeze_ty(ty, span),
       )
     }
 
@@ -344,7 +352,7 @@ pub fn Simplifier::simplify_stmt(
       env.declare_shadowing(@parse.Path::new([], name), Name(unique_name))
       Iter::singleton(@parse.CoreStmt::Let(
         name=Show::to_string(unique_name),
-        ty~,
+        ty=freeze_ty(ty, span),
         expr=simplified_expr,
         span~,
       ))
@@ -400,7 +408,8 @@ fn Simplifier::simplify_decl(
         }
       }
 
-      Some(@parse.CoreDecl::Module({ path, attributes, ports, body: simplified_body, span }))
+      let core_ports = ports.map(port => @parse.CorePort::from_port(port))
+      Some(@parse.CoreDecl::Module({ path, attributes, ports: core_ports, body: simplified_body, span }))
     }
     ModuleDeclaration(sig) => Some(@parse.CoreDecl::ModuleDeclaration(sig))
     Const(decl) => {

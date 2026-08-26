@@ -8,6 +8,8 @@ import {
 // Values
 pub fn check_snapshot(String, String) -> Unit raise
 
+pub fn compile_error(String, cmd_str? : String) -> String
+
 pub fn compile_stage(String, String) -> String raise
 
 pub fn make_vfs(Map[String, String]) -> @utils.FileSystem

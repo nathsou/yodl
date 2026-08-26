@@ -58,25 +58,25 @@ pub fn AstEmitter::emit_core_expr(self: AstEmitter, expr: CoreExpr, indent~: Boo
       self.write(".")
       self.write(port)
     }
-    Instance(path~, params~, ports~, ..) => {
+    Instance(path~, ports~, ty~, ..) => {
       self.write(Show::to_string(path))
 
-      if params.params.length() > 0 {
+      let params = match ty.val {
+        Some(CoreType::Instance(params~, ..)) => params
+        _ => Map([])
+      }
+      if !params.is_empty() {
         self.write("[")
 
-        for i, entry in params.params {
-          if i > 0 {
+        let mut first = true
+        for name, param in params {
+          if !first {
             self.write(", ")
           }
-
-          let (name, param) = entry
-
-          if name is Some(name) {
-            self.write(name)
-            self.write(": ")
-          }
-
+          self.write(name)
+          self.write(": ")
           self.write(Show::to_string(param))
+          first = false
         }
 
         self.write("]")
@@ -304,7 +304,7 @@ pub fn AstEmitter::emit_core_module_decl(self: AstEmitter, mod: CoreModuleDecl) 
     path: mod.path,
     params: [],
     attributes: mod.attributes,
-    ports: mod.ports,
+    ports: mod.ports.map(CorePort::to_port),
     span: mod.span,
   }
 

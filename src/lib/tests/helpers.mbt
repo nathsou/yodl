@@ -54,6 +54,16 @@ pub fn compile_stage(source: String, cmd_str: String) -> String raise {
   output.val
 }
 
+pub fn compile_error(source: String, cmd_str~: String = "write_low_firrtl") -> String {
+  try {
+    let _ = compile_stage(source, cmd_str)
+    fail("Expected compilation to fail")
+  } catch {
+    Failure::Failure(message) => message
+    err => err.to_string()
+  }
+}
+
 /// Parses a snapshot filename of the form `<fixture>.<stage>.snap` into
 /// `(fixture, stage)`. Returns `None` if the name doesn't match the pattern.
 fn parse_snap_name(filename: String) -> (String, String)? {

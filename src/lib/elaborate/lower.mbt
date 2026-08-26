@@ -1,5 +1,5 @@
 using @firrtl { type Id, type Annotation, type AnnotationTarget }
-using @parse { type Span, type Path, type CoreModuleDecl, type AstEmitter, type CoreExpr, type CoreStmt, type CoreDecl }
+using @parse { type Span, type Path, type CoreModuleDecl, type AstEmitter, type CoreExpr, type CoreStmt, type CoreDecl, type CoreType, type CoreStaticArg }
 
 type FExpr = @firrtl.UntypedExpr
 type FStmt = @firrtl.UntypedStmt
@@ -25,9 +25,10 @@ pub struct Elaborator {
   mut current_target: AnnotationTarget
   memories: Map[String, Id]
   mut current_clock: FExpr?
+  port_usage: PortUsage
 }
 
-pub fn Elaborator::new(circuit_name: String) -> Elaborator {
+pub fn Elaborator::new(circuit_name: String, port_usage~: PortUsage) -> Elaborator {
   {
     circuit_name,
     autoidx: 0,
@@ -37,7 +38,8 @@ pub fn Elaborator::new(circuit_name: String) -> Elaborator {
     declared_modules: {},
     current_target: { circuit: circuit_name, mod: Id::from("dummy_mod_id"), leaf: None },
     memories: {},
-    current_clock: None
+    current_clock: None,
+    port_usage,
   }
 }
 
@@ -144,24 +146,17 @@ fn id_of_path(path: Path) -> Id {
   }
 }
 
-fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
+fn lower_type(ty: CoreType, span~: Span, port_usage~: PortUsage) -> @firrtl.Type raise {
   match ty {
-    Nat({min_width}) => UInt(min_width)
-    UInt(Lit(width)) => UInt(width)
-    SInt(Lit(width)) => SInt(width)
+    UInt(width) => UInt(width)
+    SInt(width) => SInt(width)
     Clock => Clock
-    Vector(ty~, len=Lit(len)) => Vec(lower_type(ty, span~), len)
-    UInt(idx) | SInt(idx) => {
-      raise ElaborationError(message="Integer parameter '\{idx}' must be a compile-time constant", span~)
-    }
-    Vector(ty=_, len=idx) => {
-      raise ElaborationError(message="Vector length '\{idx}' must be a compile-time constant", span~)
-    }
-    MemoryMask(ty) => lower_type(ty.mask(span~), span~)
-    Instance(sig~, params~, accessed_ports~) => {
-      let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.ports.length())
+    Vector(ty~, len~) => Vec(lower_type(ty, span~, port_usage~), len)
+    Instance(sig~, params=_, ids~) => {
+      let accessed_ports = port_usage.for_instances(ids)
+      let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.length())
 
-      for port, _ in accessed_ports.ports {
+      for port, _ in accessed_ports {
         let port_sig = sig.get_port(port).unwrap_or_error(ElaborationError::ElaborationError(
           message="Module '\{sig.path.to_string()}' does not declare a port named '\{port}'",
           span~,
@@ -169,7 +164,7 @@ fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
 
         let field: @firrtl.BundleField = {
           id: Id::from(port),
-          ty: lower_type(port_sig.ty.substitute(params, span~), span~),
+          ty: lower_type(port_sig.ty, span~, port_usage~),
           flip: port_sig.dir == Input,
         }
 
@@ -178,9 +173,6 @@ fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
 
       Bundle(fields)
     }
-    Name(path~, params=_) => {
-      raise UnresolvedIdentifier(path~, span~)
-    }
     Struct(fields) => {
       let fir_fields: Array[@firrtl.BundleField] = Array::new(capacity=fields.length())
 
@@ -188,7 +180,7 @@ fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
         let (name, ty) = field
         let field: @firrtl.BundleField = {
           id: Id::from(name),
-          ty: lower_type(ty, span~),
+          ty: lower_type(ty, span~, port_usage~),
           flip: false,
         }
 
@@ -197,8 +189,15 @@ fn lower_type(ty: Type, span~: Span) -> @firrtl.Type raise {
 
       Bundle(fir_fields)
     }
-    String(len~) => Vec(UInt(8), len)
+    Unit => raise ElaborationError(message="Unit is not a storable hardware type", span~)
   }
+}
+
+fn lower_resolved_type(ty: Type, span~: Span, port_usage~: PortUsage) -> @firrtl.Type raise {
+  let core_ty = try CoreType::from_type(ty, span~) catch {
+    err => raise ElaborationError(message="Invalid type at Core boundary: \{err}", span~)
+  }
+  lower_type(core_ty, span~, port_usage~)
 }
 
 fn default_value(ty: @firrtl.Type, span~: Span) -> Value {
@@ -268,7 +267,7 @@ fn Elaborator::lower_module(self: Elaborator, mod: CoreModuleDecl) -> Unit raise
       let ports = Array::new(capacity=mod.ports.length())
 
       for port in mod.ports {
-        let fir_ty = lower_type(port.ty, span=port.span)
+        let fir_ty = lower_type(port.ty, span=port.span, port_usage=self.port_usage)
         let port_id = Id::from(port.name)
 
         // the first clock port is the module's default clock
@@ -320,7 +319,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> 
   let parameters = []
 
   for port in sig.ports {
-    let fir_ty = lower_type(port.ty, span=port.span)
+    let fir_ty = lower_resolved_type(port.ty, span=port.span, port_usage=self.port_usage)
     let port_id = Id::from(port.name)
 
     if fir_ty == Clock && self.current_clock is None {
@@ -363,7 +362,7 @@ fn Elaborator::lower_external_module(self: Elaborator, sig: ModuleSignature) -> 
   ))
 }
 
-fn unwrap_type(ty: Ref[Type?], span~: Span) -> Type raise ElaborationError {
+fn unwrap_type(ty: Ref[CoreType?], span~: Span) -> CoreType raise ElaborationError {
   ty.val.unwrap_or_error(ElaborationError::ElaborationError(
     message="Value requires a resolved type before lowering",
     span~,
@@ -514,23 +513,32 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: CoreStmt, scope~: &ScopeLike, 
     }
     Let(name~, ty~, expr~, span~) => {
       let path = Path::new([], name)
-      let ty = lower_type(unwrap_type(ty, span~), span~)
-      let id = Id::from(name)
-      scope.add_stmt(Wire(id~, ty~))
-      let variable = mk_id(id)
-      let val = match expr {
-        Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(variable)))
-        None => None
-      }
-
-      match val {
-        Some(val) => {
-          self.connect(lhs=variable, value=val, scope~)
+      let core_ty = unwrap_type(ty, span~)
+      if core_ty == CoreType::Unit {
+        let value = match expr {
+          Some(expr) => self.lower_expr(expr, scope~, env~, binding=None)
+          None => Empty(span~)
         }
-        None => ()
-      }
+        env.declare_(path, value)
+      } else {
+        let ty = lower_type(core_ty, span~, port_usage=self.port_usage)
+        let id = Id::from(name)
+        scope.add_stmt(Wire(id~, ty~))
+        let variable = mk_id(id)
+        let val = match expr {
+          Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(variable)))
+          None => None
+        }
 
-      env.declare_(path, Expr(expr=mk_ref(variable), ty~, span~))
+        match val {
+          Some(val) => {
+            self.connect(lhs=variable, value=val, scope~)
+          }
+          None => ()
+        }
+
+        env.declare_(path, Expr(expr=mk_ref(variable), ty~, span~))
+      }
     }
     Assign(lhs~, rhs~, span=_) => {
       let fir_lhs = self.lower_expr(lhs, scope~, env~, binding=None).as_ref(self, scope~, binding=None)
@@ -542,22 +550,42 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: CoreStmt, scope~: &ScopeLike, 
 
 fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, env~: ElaboratorEnv, binding~: FRef? = None) -> Value raise {
   let expr_span = expr.span()
-  let ty = lower_type(unwrap_type(expr.ty(), span=expr_span), span=expr_span)
+  let core_ty = unwrap_type(expr.ty(), span=expr_span)
+  let ty = match core_ty {
+    Unit => @firrtl.Type::UInt(0)
+    _ => lower_type(core_ty, span=expr_span, port_usage=self.port_usage)
+  }
   
   match expr {
     Natural(value~, width~, base~, span~, ty=_) => {
       let width = match width {
         Some(width) => width
-        None => @utils.significant_bits(value, is_signed=false)
+        None => match core_ty {
+          UInt(width) | SInt(width) => width
+          _ => @utils.significant_bits(value, is_signed=false)
+        }
       }
       
-      Expr(expr=mk_lit(UInt(width~, radix=Some(base), value~)), ty~, span~)
+      let literal = match ty {
+        @firrtl.Type::SInt(_) => mk_lit(@firrtl.Literal::SInt(width~, radix=Some(base), value~))
+        _ => mk_lit(@firrtl.Literal::UInt(width~, radix=Some(base), value~))
+      }
+      Expr(expr=literal, ty~, span~)
     }
     Identifier(path~, span~, ..) => {
       match env.resolve(path) {
         Some(val) => val
         None => raise UnresolvedIdentifier(path~, span~)
       }
+    }
+    Unary(op=Neg, expr=Natural(value~, base~, ..), span~, ty=_) => {
+      let width = match core_ty {
+        SInt(width) => width
+        _ => raise Unreachable(message="Negative literal must have a signed Core type", span~)
+      }
+      let value = BigInt::from_int(0) - value
+      let literal = mk_lit(@firrtl.Literal::SInt(width~, radix=Some(base), value~))
+      Expr(expr=literal, ty~, span~)
     }
     Unary(op~, expr~, span~, ty=_) => {
       let fir_expr = self.lower_expr(expr, scope~, env~).as_expr(self, scope~)
@@ -611,9 +639,13 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       }
 
       if output_width.val is Some(output_width) {
-        let width = unwrap_type(bin_ty, span~).width(span)
+        let frozen_ty = unwrap_type(bin_ty, span~)
+        let width = frozen_ty.width()
         if width < output_width {
           res = mk_prim(Bits, [res, FExpr::uint(width - 1), FExpr::uint(0)])
+          if frozen_ty is SInt(_) {
+            res = mk_prim(AsSInt, [res])
+          }
         }
       }
 
@@ -655,11 +687,11 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       Vector(elems=values, ty~, span~)
     }
     Match(subject~, cases~, default~, span~, ty=match_ty) => {
-      let has_value = unwrap_type(match_ty, span~).width(span) > 0
+      let has_value = unwrap_type(match_ty, span~) != CoreType::Unit
 
       if
         has_value &&
-        subject.ty().val is Some(UInt(Lit(1))) &&
+        subject.ty().val is Some(UInt(1)) &&
         cases.length() == 2 &&
         // Require both cases to be simple expressions without statements
         !cases.iter().any(case => case.1.contains_statements()) {
@@ -691,7 +723,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         
         let subject_binding = self.gen_id("subject")
         let fir_subject = mk_ref(self.lower_expr(subject, scope~, env~).as_ref(self, scope~, binding=Some(mk_id(subject_binding))))
-        let is_complete = default is None && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width(span)).to_int()
+        let is_complete = default is None && cases.length() == @utils.pow2(unwrap_type(subject.ty(), span~).width()).to_int()
         let mut last_when: @firrtl.UntypedWhen? = None
 
         for idx, case in cases {
@@ -766,52 +798,25 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
       Value::Struct(fields=val, ty~, span~)
     }
-    Instance(path~, params~, ports~, span~, ty=inst_ty) => {
-      if params.params.length() > 0 && !self.declared_modules.contains(path) {
-        raise ElaborationError(message="Cannot elaborate parametric instance of module '\{path.to_string()}'", span~)
+    Instance(path~, ports~, span~, ty=inst_ty) => {
+      let (core_sig, typed_params, instance_ids) = match inst_ty.val {
+        Some(Instance(sig~, params~, ids~)) => (sig, params, ids)
+        _ => raise ElaborationError::Unreachable(message="Untyped instance", span~)
       }
 
-      let (ports_sig, params_map, attributes) = match self.modules.get(path) {
-        Some(inst_mod) => {
-          let ports_sig: Map[String, @firrtl.PortSignature] = Map([])
-
-          for port in inst_mod.ports {
-            ports_sig[port.id.inner()] = {
-              ty: port.ty,
-              dir: port.dir,
-            }
-          }
-
-          let empty_params: Map[String, ResolvedParam] = Map([])
-          (ports_sig, empty_params, {})
-        }
-        None => match self.declared_modules.get(path) {
-          Some(sig) => {
-            let ports_sig = Map([], capacity=sig.ports.length())
-            let resolved_params = params.as_resolved_map(names=sig.params.map(fn(p) { p.name }))
-
-            for port in sig.ports {
-              let ty = lower_type(port.ty.substitute(resolved_params, span~), span~)
-              let port_sig: @firrtl.PortSignature = {
-                dir: port.dir,
-                ty,
-              }
-              
-              ports_sig[port.name] = port_sig
-            }
-
-            (ports_sig, resolved_params, sig.attributes)
-          }
-          None => raise ElaborationError(message="Module '\{path.to_string()}' is not declared", span~)
+      let ports_sig: Map[String, @firrtl.PortSignature] = Map([], capacity=core_sig.ports.length())
+      for port in core_sig.ports {
+        ports_sig[port.name] = {
+          dir: port.dir,
+          ty: lower_type(port.ty, span=port.span, port_usage=self.port_usage),
         }
       }
+      let params_map = typed_params
+      let attributes = core_sig.attributes
 
       let inline_connections: Map[String, FExpr] = Map([])
       let connections: Map[String, FExpr] = Map([])
-      let accessed_ports = match inst_ty.val {
-        Some(Instance(sig=_, params=_, accessed_ports~)) => accessed_ports
-        _ => raise ElaborationError::Unreachable(message="Untyped instance", span~)
-      }
+      let accessed_ports = self.port_usage.for_instances(instance_ids)
 
       let extra_ports: Array[String] = []
 
@@ -822,7 +827,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       let inst_ref = match binding {
         Some(reference) => reference
         _ => {
-          let inst_ty = lower_type(unwrap_type(inst_ty, span~), span~)
+          let inst_ty = lower_type(unwrap_type(inst_ty, span~), span~, port_usage=self.port_usage)
           let inst_id = id_of_path(path).join("_\{self.next_id()}")
           scope.add_stmt(Wire(id=inst_id, ty=inst_ty))
           mk_id(inst_id)
@@ -844,7 +849,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
       for port_name, port_sig in ports_sig {
         match inline_connections.get(port_name) {
-          Some(expr) if !(accessed_ports.is_written_to(port_name)) => {
+          Some(expr) if !self.port_usage.is_written_to(instance_ids, port_name) => {
             connections[port_name] = expr
           }
           _ => {
@@ -867,8 +872,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       }
  
       // connect ports with inline expressions which are written to afterwards
-      for port_name, access in accessed_ports.ports {
-        if access == Write && inline_connections.get(port_name) is Some(inline_expr) {
+      for port_name, access in accessed_ports {
+        if (access == Write || access == ReadWrite) && inline_connections.get(port_name) is Some(inline_expr) {
           scope.add_stmt(Connect(
             mk_field_access(lhs=inst_ref, field=Id::from(port_name)),
             inline_expr
@@ -877,7 +882,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       }
 
       if attributes.contains("internal") {
-        fn get_param(name: String) -> ResolvedParam raise {
+        fn get_param(name: String) -> CoreStaticArg raise {
           match params_map.get(name) {
             Some(param) => param
             None => raise ElaborationError(message="Unknown module parameter '\{name}'", span~)
@@ -886,10 +891,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
         match path {
           { packages: [], elem: "Reg" | "RegAsyncReset" as internal_module_name } => {
-            let reg_ty = match get_param("T") {
-              TypeParam(ty~, ..) => lower_type(ty, span~)
-              _ => raise ElaborationError::Unreachable(message="non-type parameter in Reg instance", span~)
-            }
+            let reg_ty = lower_type(get_param("T").as_type(), span~, port_usage=self.port_usage)
 
             let sync_reset = internal_module_name == "Reg"
             let uses_rst = uses_port("rst")
@@ -964,7 +966,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             }
           }
           { packages: [], elem: "Memory" } => {
-            let data_type = lower_type(get_param("T").as_type(), span~)
+            let data_type = lower_type(get_param("T").as_type(), span~, port_usage=self.port_usage)
             let depth = get_param("Depth").as_int()
             let read_ports = get_param("ReadPorts").as_int()
             let write_ports = get_param("WritePorts").as_int()
@@ -1200,7 +1202,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
     FunCall(name="uint" | "sint" as name, args=[arg], ty~, span~) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let ty = unwrap_type(ty, span~)
-      let fir_ty = lower_type(ty, span~)
+      let fir_ty = lower_type(ty, span~, port_usage=self.port_usage)
 
       match (name, arg.ty()) {
         ("uint", Vec(_)) => Expr(expr=flatten_int(arg.as_ref(self, scope~), arg.ty(), span~), ty=fir_ty, span~)
@@ -1224,7 +1226,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
     FunCall(name="pad", args=[arg, width_arg], span~, ty~) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let width = self.lower_expr(width_arg, scope~, env~).as_int().to_int()
-      let ty = lower_type(unwrap_type(ty, span~), span~)
+      let ty = lower_type(unwrap_type(ty, span~), span~, port_usage=self.port_usage)
       Expr(expr=mk_prim(Pad, [arg.as_expr(self, scope~), FExpr::uint(width)]), ty~, span~)
     }
     FunCall(name="readmemb" | "readmemh" as name, args=[path, mem], span~, ..) => {
@@ -1302,12 +1304,11 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       scope.add_stmt(Command(Stop(clk~, en~, code~)))
       Empty(span~)
     }
-    FunCall(name="rev", args=[arg], span~, ty={val: Some(Vector(len=Lit(len), ..) | String(len~) as ty)}) => {
+    FunCall(name="rev", args=[arg], span~, ty={val: Some(Vector(ty=elem_ty, len~))}) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let arg_ref = arg.as_ref(self, scope~)
       let elems = Array::new(capacity=len)
-      let elem_ty = if ty is Vector(ty~, ..) { ty } else { UInt(Lit(@parse.BITS_PER_CHAR)) }
-      let fir_elem_ty = lower_type(elem_ty, span~)
+      let fir_elem_ty = lower_type(elem_ty, span~, port_usage=self.port_usage)
 
       for i in 0..<len {
         let elem = mk_static_indexing(lhs=arg_ref, index=len - 1 - i)
@@ -1320,7 +1321,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
     FunCall(name="flip", args=[arg], span~, ty~) => {
       let arg = self.lower_expr(arg, scope~, env~)
       let arg_ref = arg.as_ref(self, scope~)
-      let width = unwrap_type(ty, span~).width(span)
+      let width = unwrap_type(ty, span~).width()
       let bits = Array::new(capacity=width)
 
       for i in 0..<width {
@@ -1353,7 +1354,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         flatten(self.lower_expr(elem, scope~, env~))
       }
 
-      let ty = lower_type(unwrap_type(ty, span~), span~)
+      let ty = lower_type(unwrap_type(ty, span~), span~, port_usage=self.port_usage)
       Expr(expr=concat_rev(refs.rev()), ty~, span~)
     }
     Spread(_) | FunCall(_) => {

@@ -9,8 +9,6 @@ pub fn AstEmitter::new(show_expr_types~: Bool = false) -> AstEmitter {
   { indent: 0, builder: StringBuilder::new(), show_expr_types }
 }
 
-let show_instance_accessed_ports = true
-
 pub impl Show for AstEmitter with output(self, logger) {
   logger.write_string(self.builder.to_string())
 }
@@ -73,7 +71,7 @@ pub impl Show for ConstValue with output(value, logger) {
   }
 }
 
-pub impl Show for ResolvedParam with output(param, logger) {
+pub impl Show for StaticArg with output(param, logger) {
   match param {
     NatParam(value~, span=_) => {
       logger.write_string(Show::to_string(value))
@@ -618,7 +616,7 @@ pub impl Show for Type with output(ty, logger) {
       logger.write_char(']')
       logger.write_string(Show::to_string(ty))
     }
-    Instance(sig={ path, .. }, params~, accessed_ports~) => {
+    Instance(sig={ path, .. }, params~, ids=_) => {
       logger.write_object(path)
 
       if params.length() > 0 {
@@ -630,10 +628,6 @@ pub impl Show for Type with output(ty, logger) {
         )
       }
 
-      if show_instance_accessed_ports {
-        logger.write_char('.')
-        logger.write_object(accessed_ports)
-      }
     }
     Name(path~, params~) => {
       logger.write_object(path)
@@ -690,6 +684,7 @@ pub impl Show for Type with output(ty, logger) {
     MemoryMask(ty) => {
       logger.write_string("MemoryMask[\{ty}]")
     }
+    Unit => logger.write_string("unit")
   }
 }
 

@@ -60,7 +60,7 @@ pub fn[E : Error] IndexExpr::map_vars(self : IndexExpr, f : (String) -> IndexExp
 }
 
 // Substitute Var(name) with Lit(n) from params_env, then constant-fold.
-pub fn IndexExpr::substitute(self: IndexExpr, params_env: Map[String, ResolvedParam]) -> IndexExpr {
+pub fn IndexExpr::substitute(self: IndexExpr, params_env: Map[String, StaticArg]) -> IndexExpr {
   match self {
     Lit(_) => self
     Var(name) => match params_env.get(name) {

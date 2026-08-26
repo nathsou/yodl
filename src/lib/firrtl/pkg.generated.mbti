@@ -394,4 +394,3 @@ pub trait FIRRTLRewriter {
   fn rewrite_extmodule(Self, ExtModule) -> ExtModule raise
   fn rewrite_circuit(Self, Circuit[Type]) -> Circuit[Type] raise
 }
-

@@ -1,20 +1,34 @@
-using @utils { type Scope, min, max, pow2, zip, zip2, is_ascii, significant_bits }
+using @utils { type Scope, min, max, pow2, zip2, is_ascii, significant_bits }
 using @parse {
     type Type, type ModuleSignature, trait Spanned,
     type Expr, type Decl, type Stmt, type Attribute, type AttributeValue,
-    type AccessedPorts, type ConstDecl, type ResolvedParam,
+    type ConstDecl, type StaticArg, type PortUsage, type InstanceId,
 }
 
 struct TypeChecker {
     modules: Map[Path, ModuleSignature]
-    top_env: Scope[Path, Type]
+    top_env: Scope[Path, Ref[Type?]]
+    port_usage: PortUsage
+    mut next_instance_id: Int
 }
 
 pub fn TypeChecker::new() -> TypeChecker {
     {
         modules: {},
         top_env: Scope::new(),
+        port_usage: PortUsage::new(),
+        next_instance_id: 0,
     }
+}
+
+pub fn TypeChecker::port_usage(self: Self) -> PortUsage {
+    self.port_usage
+}
+
+fn TypeChecker::fresh_instance_id(self: Self) -> InstanceId {
+    let id = InstanceId::new(self.next_instance_id)
+    self.next_instance_id += 1
+    id
 }
 
 priv suberror TypeCheckerError {
@@ -95,18 +109,6 @@ priv enum UnificationParam {
 
 fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
     while eqs.pop() is Some((ty1, ty2)) {
-        let identical_instances = if (ty1, ty2) is (
-            Instance(sig=sig1, params=params1, accessed_ports=ports1),
-            Instance(sig=sig2, params=params2, accessed_ports=ports2)
-        ) && sig1.path == sig2.path && params1 == params2 {
-            // merge accessed ports
-            ports1.merge_inplace(ports2)
-            ports2.mutate(ports1)
-            true
-        } else {
-            false
-        }
-
         if ty1 == ty2 {
             continue
         }
@@ -132,15 +134,10 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
             (Vector(ty=_, len=Var(_)), Vector(ty=_, len=Lit(_))) => {
                 eqs.push((ty2, ty1))
             }
-            (UInt(Lit(width)) | SInt(Lit(width)), Nat(min_width)) | (Nat(min_width), UInt(Lit(width)) | SInt(Lit(width))) => {
-                min_width.update(width)
-            }
+            (UInt(Lit(width)) | SInt(Lit(width)), Nat({ min_width })) |
+            (Nat({ min_width }), UInt(Lit(width)) | SInt(Lit(width))) if width >= min_width => ()
             (UInt(_) | SInt(_), Nat(_)) | (Nat(_), UInt(_) | SInt(_)) => ()
-            (Nat(mw1), Nat(mw2)) if mw1.min_width != mw2.min_width => {
-                mw1.update(mw2.min_width)
-                mw2.update(mw1.min_width)
-            }
-            (Instance(..), Instance(..)) if identical_instances => ()
+            (Nat(_), Nat(_)) => ()
             (String(len~), ty2) | (ty2, String(len~)) => {
                 eqs.push((Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(len)), ty2))
             }
@@ -153,12 +150,117 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
     subst
 }
 
+fn merge_inferred_types(lhs: Type, rhs: Type) -> Type {
+    match (lhs, rhs) {
+        (Nat({ min_width: lhs_width }), Nat({ min_width: rhs_width })) => {
+            Nat({ min_width: max(lhs_width, rhs_width) })
+        }
+        (Vector(ty=lhs_ty, len~), Vector(ty=rhs_ty, len=rhs_len)) if len == rhs_len => {
+            Vector(ty=merge_inferred_types(lhs_ty, rhs_ty), len~)
+        }
+        (Struct(lhs_fields), Struct(rhs_fields)) if lhs_fields.length() == rhs_fields.length() &&
+            lhs_fields.keys().all(name => rhs_fields.contains(name)) => {
+            let fields = Map([], capacity=lhs_fields.length())
+            for name, lhs_ty in lhs_fields {
+                fields[name] = merge_inferred_types(lhs_ty, rhs_fields.get(name).unwrap())
+            }
+            Struct(fields)
+        }
+        (
+            Instance(sig~, params~, ids=lhs_ids),
+            Instance(sig=rhs_sig, params=rhs_params, ids=rhs_ids),
+        ) if sig.path == rhs_sig.path && sig.span.file == rhs_sig.span.file && params == rhs_params => {
+            let ids = Array::copy(lhs_ids)
+            for id in rhs_ids {
+                if !ids.contains(id) {
+                    ids.push(id)
+                }
+            }
+            Instance(sig~, params~, ids~)
+        }
+        _ => lhs
+    }
+}
+
+fn merge_assignment_target(
+    lhs: Expr,
+    rhs_ty: Type,
+    env: Scope[Path, Ref[Type?]],
+) -> Unit {
+    let lhs_ty = lhs.ty().val.unwrap()
+    let merged_ty = merge_inferred_types(lhs_ty, rhs_ty)
+    lhs.set_ty(merged_ty)
+
+    match lhs {
+        Identifier(path~, ..) => {
+            match env.resolve(path) {
+                Some(binding) => binding.val = Some(merged_ty)
+                None => ()
+            }
+        }
+        FieldAccess(expr~, field~, ..) => {
+            match expr.ty().val {
+                Some(Struct(fields)) => {
+                    let merged_fields = Map([], capacity=fields.length())
+                    for name, ty in fields {
+                        merged_fields[name] = if name == field { merged_ty } else { ty }
+                    }
+                    merge_assignment_target(expr, Struct(merged_fields), env)
+                }
+                _ => ()
+            }
+        }
+        Indexing(expr~, ..) => {
+            match expr.ty().val {
+                Some(Vector(len~, ..)) => {
+                    merge_assignment_target(expr, Vector(ty=merged_ty, len~), env)
+                }
+                _ => ()
+            }
+        }
+        Slicing(expr~, ..) => {
+            match (expr.ty().val, merged_ty) {
+                (Some(Vector(ty=elem_ty, len~)), Vector(ty=rhs_elem_ty, ..)) => {
+                    merge_assignment_target(
+                        expr,
+                        Vector(ty=merge_inferred_types(elem_ty, rhs_elem_ty), len~),
+                        env,
+                    )
+                }
+                _ => ()
+            }
+        }
+        _ => ()
+    }
+}
+
+fn assigned_instance_port(lhs: Expr) -> (ModuleSignature, Array[InstanceId], String)? {
+    match lhs {
+        FieldAccess(expr~, field~, ..) => {
+            match expr.ty().val {
+                Some(Type::Instance(sig~, ids~, ..)) => Some((sig, ids, field))
+                _ => assigned_instance_port(expr)
+            }
+        }
+        Indexing(expr~, ..) | Slicing(expr~, ..) => assigned_instance_port(expr)
+        _ => None
+    }
+}
+
 fn unify(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
     unify_aux([(ty1, ty2)], span~, subst~)
 }
 
-fn declare_name(env~: Scope[Path, Type], path~: Path, ty~: Type, span~: Span) -> Unit raise TypeCheckerError {
-    try env.declare_(path, ty) catch {
+fn declare_name(
+    env~: Scope[Path, Ref[Type?]],
+    path~: Path,
+    ty~: Type,
+    span~: Span,
+    binding~: Ref[Type?]? = None,
+) -> Unit raise TypeCheckerError {
+    let binding = binding.unwrap_or({ val: Some(ty) })
+    binding.val = Some(ty)
+    try env.declare_(path, binding) catch {
         MemberAlreadyDeclared(_) => {
             raise type_error("Variable '\{path}' redeclared", span)
         }
@@ -174,26 +276,42 @@ fn eval_const_expr(expr: Expr) -> Int raise {
     }
 }
 
-fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
+fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span, type_params~: Set[String] = Set([])) -> Type raise {
     match ty {
         UInt(width) => UInt(width)
         SInt(width) => SInt(width)
         Nat(mw) => Nat(mw)
         Clock => Clock
-        Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty(inner_ty, span~), len~)
+        Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty(inner_ty, span~, type_params~), len~)
         Instance(_) => ty
         Name(path~, params~) => {
+            if path.packages.is_empty() && type_params.contains(path.elem) {
+                return Name(path~, params~)
+            }
             match self.modules.get(path) {
                 Some(sig) => {
                     if sig.params.length() != params.length() {
                         raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span)
                     }
 
-                    let resolved_params: Map[String, ResolvedParam] = Map::from_iter(
-                        zip(sig.params.map(p => p.name), params.map(ty => @parse.TypeParam(ty~, span~)))
-                    )
+                    let resolved_params: Map[String, StaticArg] = Map([])
+                    for index, param in sig.params {
+                        let arg = params[index]
+                        match param.sort {
+                            TypeSort => {
+                                let resolved = self.resolve_ty(arg, span~, type_params~)
+                                resolved_params[param.name] = @parse.TypeParam(ty=resolved, span~)
+                            }
+                            NatSort => {
+                                raise type_error(
+                                    "Module type '\{path}' parameter '\{param.name}' expects a Nat argument, which cannot be written in a type annotation",
+                                    span,
+                                )
+                            }
+                        }
+                    }
 
-                    Instance(sig~, params=resolved_params, accessed_ports=AccessedPorts::new())
+                    Instance(sig~, params=resolved_params, ids=[])
                 }
                 None => raise UnknownModule(path~, span~)
             }
@@ -202,29 +320,62 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span) -> Type raise {
             let field_tys = Map([], capacity=fields.length())
 
             for name, ty in fields {
-                field_tys[name] = self.resolve_ty(ty, span~)
+                field_tys[name] = self.resolve_ty(ty, span~, type_params~)
             }
 
             Struct(field_tys)
         }
-        String(len~) => String(len~)
-        MemoryMask(ty) => MemoryMask(self.resolve_ty(ty, span~))
+        String(len~) => Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(len))
+        MemoryMask(ty) => {
+            let inner = self.resolve_ty(ty, span~, type_params~)
+            try inner.mask(span~) catch {
+                NonStorableType(
+                    ty=Name(path={ packages: [], elem }, ..),
+                    ..
+                ) if type_params.contains(elem) => MemoryMask(inner)
+                err => raise err
+            }
+        }
+        Unit => Unit
     }
 }
 
-fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expected_ty~: Type? = None) -> Type raise {
+fn TypeChecker::check_expr(
+    self: Self,
+    expr: Expr,
+    env: Scope[Path, Ref[Type?]],
+    expected_ty~: Type? = None,
+    record_port_reads~: Bool = true,
+) -> Type raise {
     let ty = match expr {
         Identifier(path~, span~, ..) => {
             match env.resolve(path) {
-                Some(ty) => ty
+                Some({ val: Some(ty) }) => ty
+                Some(_) => raise type_error("Binding '\{path}' has no resolved type", span)
                 None => {
                     raise type_error("Unbound variable '\{path}'", span)
                 }
             }
         }
-        Natural(value~, width~, ..) => match width {
+        Natural(value~, width~, span~, ..) => match width {
             Some(width) => Type::uint(width)
-            None => Nat({min_width: significant_bits(value, is_signed=false)})
+            None => match expected_ty {
+                Some(UInt(Lit(width))) => {
+                    let required = significant_bits(value, is_signed=false)
+                    if required > width {
+                        raise type_error("Literal requires \{required} bits but context provides u\{width}", span)
+                    }
+                    Type::uint(width)
+                }
+                Some(SInt(Lit(width))) => {
+                    let required = significant_bits(value, is_signed=true)
+                    if required > width {
+                        raise type_error("Literal requires \{required} signed bits but context provides s\{width}", span)
+                    }
+                    Type::sint(width)
+                }
+                _ => Nat({min_width: significant_bits(value, is_signed=false)})
+            }
         }
         String(value=str,  span~, ..) => {
             for char in str {
@@ -233,19 +384,30 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 }
             }
 
-            Type::String(len=str.length())
+            Type::Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(str.length()))
         }
         Unary(op~, expr~, span~, ..) => {
-            let ty = self.check_expr(expr, env, expected_ty~)
+            match (op, expr, expected_ty) {
+                (Neg, (Natural(value~, width=None, ..) as operand), Some(SInt(Lit(width)))) => {
+                    if width <= 0 || value > pow2(width - 1) {
+                        raise type_error("Negative literal does not fit in contextual type s\{width}", span)
+                    }
+                    let _ = self.check_expr(operand, env)
+                    Type::sint(width)
+                }
+                _ => {
+                    let ty = self.check_expr(expr, env, expected_ty~)
  
-            if !ty.is_numerical() {
-                raise type_error("Invalid operand type '\{ty}' for unary operator '\{op}, expected uint or sint", span)
-            }
+                    if !ty.is_numerical() {
+                        raise type_error("Invalid operand type '\{ty}' for unary operator '\{op}, expected uint or sint", span)
+                    }
 
-            match op {
-                Not => ty
-                Neg => SInt(Lit(ty.width(span) + 1))
-                Andr | Orr | Xorr => Type::uint(1)
+                    match op {
+                        Not => ty
+                        Neg => SInt(Lit(ty.width(span) + 1))
+                        Andr | Orr | Xorr => Type::uint(1)
+                    }
+                }
             }
         }
         Binary(op~, lhs~, rhs~, output_width~, span~, ..) => {
@@ -313,13 +475,14 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             let wy = out_ty.width(span)
             output_width.val = Some(wy)
 
-            match expected_ty {
-                Some(expected_ty) => expected_ty
-                None => out_ty
+            match (out_ty, expected_ty) {
+                (UInt(_), Some(UInt(_))) | (SInt(_), Some(SInt(_))) => expected_ty.unwrap()
+                (SInt(Lit(actual)), Some(UInt(Lit(expected)))) if expected < actual => expected_ty.unwrap()
+                _ => out_ty
             }
         }
         Indexing(expr~, index~, span~, ..) => {
-            let ty = self.check_expr(expr, env)
+            let ty = self.check_expr(expr, env, record_port_reads~)
             let index_ty = self.check_expr(index, env)
 
             if !index_ty.is_numerical() {
@@ -334,7 +497,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             }
         }
         Slicing(expr~, hi~, lo~, kind~, span~, ..) => {
-            let ty = self.check_expr(expr, env)
+            let ty = self.check_expr(expr, env, record_port_reads~)
             let start_ty = self.check_expr(hi, env)
             let end_ty = self.check_expr(lo, env)
 
@@ -379,11 +542,13 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             }
         }
         FieldAccess(expr~, field=port, span~, ..) => {
-            match self.check_expr(expr, env) {
-                Instance(sig~, params~, accessed_ports~) => {
+            match self.check_expr(expr, env, record_port_reads~) {
+                Instance(sig~, params~, ids~) => {
                     match sig.get_port(port) {
                         Some(port_def) => {
-                            accessed_ports.set(port, Read)
+                            if record_port_reads {
+                                self.port_usage.record_read(ids, port)
+                            }
                             port_def.ty.substitute(params, span~)
                         }
                         None => raise UnknownModulePort(module_path=sig.path, port_name=port, span~)
@@ -402,8 +567,8 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             match self.modules.get(path) {
                 Some(sig) => {
                     let subst: Map[String, UnificationParam] = Map([])
-                    let params_env: Map[String, ResolvedParam] = Map([])
-                    let accessed_ports = AccessedPorts::new()
+                    let params_env: Map[String, StaticArg] = Map([])
+                    let instance_id = self.fresh_instance_id()
                     let params_map = params.as_resolved_map(names=sig.params.map(p => p.name))
 
                     // check monomorphized (erased) parameters
@@ -432,9 +597,9 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                                 params_env[name] = cnst_param
                             }
                             (TypeParam(ty~, span~), Some({ sort: TypeSort, .. })) => {
-                                let ty = self.resolve_ty(ty, span~)
-                                subst[name] = Type(ty)
-                                params_env[name] = TypeParam(ty~, span~)
+                                let resolved_ty = self.resolve_ty(ty, span~)
+                                subst[name] = Type(resolved_ty)
+                                params_env[name] = TypeParam(ty=resolved_ty, span~)
                             }
                             _ => {
                                 let ty = match param {
@@ -454,8 +619,9 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                     for port_name, port_expr in ports {
                         match sig.get_port(port_name) {
                             Some(port_def) => {
-                                let expr_ty = self.check_expr(port_expr, env).substitute(params_env, span~)
-                                let _ = unify(port_def.ty.substitute(params_env, span~), expr_ty, span=port_expr.span(), subst~)
+                                let port_ty = port_def.ty.substitute(params_env, span~)
+                                let expr_ty = self.check_expr(port_expr, env, expected_ty=Some(port_ty))
+                                let _ = unify(port_ty, expr_ty, span=port_expr.span(), subst~)
 
                                 if port_def.dir != Input && !is_valid_assignment_target(port_expr) {
                                     raise InvalidAssignmentTarget(span=port_expr.span())
@@ -466,28 +632,40 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                     }
 
                     if (path.elem == "Reg" || path.elem == "RegAsyncReset") && path.packages.is_empty() {
-                        accessed_ports.register_access("d")
-                        accessed_ports.register_access("q")
+                        self.port_usage.record_read([instance_id], "d")
+                        self.port_usage.record_read([instance_id], "q")
                     }
 
-                    Type::Instance(sig~, params=params_map, accessed_ports~)
+                    Type::Instance(sig~, params=params_env, ids=[instance_id])
                 }
                 None => raise UnknownModule(path~, span~)
             }
         }
         Vector(elems~, span~, ..) => {
             if elems.is_empty() {
-                return Type::empty()
-            }
-
-            let mut elem_ty = None
-            let mut len = 0
-            let subst = Map([])
+                match expected_ty {
+                    Some(Vector(ty~, len=Lit(0))) => Vector(ty~, len=Lit(0))
+                    Some(expected) => {
+                        raise type_error("Empty vector literal is incompatible with contextual type '\{expected}'", span)
+                    }
+                    None => {
+                        raise type_error("Empty vector literal requires a contextual [0]T type", span)
+                    }
+                }
+            } else {
+                let mut elem_ty = None
+                let mut len = 0
+                let subst = Map([])
+                let expected_elem_ty = match expected_ty {
+                    Some(Vector(ty~, ..)) => Some(ty)
+                    _ => None
+                }
 
             fn check_elem_ty(ty: Type) -> Unit raise TypeCheckerError {
                 match elem_ty {
                     Some(ty2) => {
                         let _ = unify(ty, ty2, span~, subst~)
+                        elem_ty = Some(merge_inferred_types(ty2, ty))
                     }
                     None => {
                         elem_ty = Some(ty)
@@ -499,6 +677,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 match elem {
                     Spread(expr=spread_expr, ..) => {
                         let spread_ty = self.check_expr(spread_expr, env)
+                        elem.set_ty(spread_ty)
                         match spread_ty {
                             Vector(ty=spread_ty_inner, len=Lit(spread_len)) => {
                                 check_elem_ty(spread_ty_inner)
@@ -519,13 +698,21 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                         }
                     }
                     _ => {
-                        check_elem_ty(self.check_expr(elem, env))
+                        check_elem_ty(self.check_expr(elem, env, expected_ty=expected_elem_ty))
                         len += 1
                     }
                 }
             }
 
-            Type::Vector(ty=elem_ty.unwrap(), len=Lit(len))
+                let vector_ty = Type::Vector(ty=elem_ty.unwrap(), len=Lit(len))
+                match expected_ty {
+                    Some(expected) => {
+                        let _ = unify(vector_ty, expected, span~)
+                    }
+                    None => ()
+                }
+                vector_ty
+            }
         }
         Spread(span~, ..) => {
             raise type_error("Spread outside vector", span)
@@ -539,7 +726,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
             let ty = self.resolve_ty(then_ty, span~)
             let _ = unify(ty, else_ty, span~)
 
-            ty
+            merge_inferred_types(ty, else_ty)
         }
         Match(subject~, cases~, default~, span~, ..) => {
             let subject_ty = self.check_expr(subject, env)
@@ -555,6 +742,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 match ret_ty {
                     Some(ty2) => {
                         let _ = unify(ty, ty2, span~, subst~)
+                        ret_ty = Some(merge_inferred_types(ty2, ty))
                     }
                     None => {
                         ret_ty = Some(ty)
@@ -746,6 +934,10 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
         }
         Struct(fields~, span~, ty=_) => {
             let field_tys = Map([], capacity=fields.length())
+            let expected_fields = match expected_ty {
+                Some(Type::Struct(fields)) => Some(fields)
+                _ => None
+            }
             // First pass: expand spreads (fields with key prefixed by "..").
             // A spread's expression must have a Struct type; its fields are added
             // first, so later explicit fields can override.
@@ -769,11 +961,19 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
 
             for name, ty in fields {
                 if !name.has_prefix("..") {
-                    field_tys[name] = self.check_expr(ty, env)
+                    let field_expected = expected_fields.bind(fields => fields.get(name))
+                    field_tys[name] = self.check_expr(ty, env, expected_ty=field_expected)
                 }
             }
 
-            Type::Struct(field_tys)
+            let struct_ty = Type::Struct(field_tys)
+            match expected_ty {
+                Some(expected) => {
+                    let _ = unify(struct_ty, expected, span~)
+                }
+                None => ()
+            }
+            struct_ty
         }
         Block(body~, last~, span=_, ty=_) => {
             let new_env = env.child()
@@ -796,7 +996,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
                 Some(else_) => {
                     let else_ty = self.check_expr(else_, env, expected_ty~)
                     let _ = unify(then_ty, else_ty, span~)
-                    then_ty
+                    merge_inferred_types(then_ty, else_ty)
                 }
                 None => {
                     let _ = unify(then_ty, Type::empty(), span~)
@@ -813,31 +1013,32 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Type], expec
     ty
 }
 
-fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Unit raise {
+fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]]) -> Unit raise {
     match stmt {
         Expr(expr~, ..) => {
             let _ = self.check_expr(expr, env)
         }
         Let(name~, ty~, expr~, span~) => {
             let path = Path::new([], name)
+            let binding = ty
 
-            ty.val = Some(match (ty.val, expr) {
+            binding.val = Some(match (binding.val, expr) {
                 (Some(ty), Some(expr)) => {
                     let ty = self.resolve_ty(ty, span~)
-                    declare_name(env~, path~, ty~, span~)
+                    declare_name(env~, path~, ty~, span~, binding=Some(binding))
                     let expr_ty = self.check_expr(expr, env, expected_ty=Some(ty))
                     let _ = unify(ty, expr_ty, span~)
-
+                    let ty = merge_inferred_types(ty, expr_ty)
                     ty
                 }
                 (Some(ty), None) => {
                     let ty = self.resolve_ty(ty, span~)
-                    declare_name(env~, path~, ty~, span~)
+                    declare_name(env~, path~, ty~, span~, binding=Some(binding))
                     ty
                 }
                 (None, Some(expr)) => {
                     let ty = self.check_expr(expr, env)
-                    declare_name(env~, path~, ty~, span~)
+                    declare_name(env~, path~, ty~, span~, binding=Some(binding))
 
                     ty
                 }
@@ -847,24 +1048,26 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Un
             })
         }
         Assign(lhs~, rhs~, span~) => {
-            let lhs_ty = self.check_expr(lhs, env)
+            let lhs_ty = self.check_expr(lhs, env, record_port_reads=false)
             let valid_lhs = is_valid_assignment_target(lhs)
 
             if !valid_lhs {
                 raise InvalidAssignmentTarget(span~)
             }
 
-            // mark instance port as being written to
-            if lhs is FieldAccess(expr~, field~, ..) && expr.ty().val is Some(Type::Instance(sig~, accessed_ports~, ..)) {
+            // Mark the root instance port as written even when the assignment targets
+            // a nested aggregate field or element of that port.
+            if assigned_instance_port(lhs) is Some((sig, ids, field)) {
                 if sig.get_port(field) is Some({ dir: Output, .. }) {
                     raise type_error("Cannot assign to output port '\{field}' of module '\{sig.path}'", span)
                 }
 
-                accessed_ports.register_write(field)
+                self.port_usage.record_write(ids, field)
             }
 
             let rhs_ty = self.check_expr(rhs, env, expected_ty=Some(lhs_ty))
             let _ = unify(lhs_ty, rhs_ty, span~)
+            merge_assignment_target(lhs, rhs_ty, env)
         }
         Scope(body~, ..) => {
             let new_env = env.child()
@@ -883,7 +1086,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Type]) -> Un
             }
 
             let body_env = env.child()
-            body_env.declare_(Path::new([], variable), end_ty)
+            body_env.declare_(Path::new([], variable), { val: Some(end_ty) })
 
             for stmt in body {
                 self.check_stmt(stmt, body_env)
@@ -899,7 +1102,7 @@ fn TypeChecker::check_format_string(
     self: Self,
     format_str~: Expr,
     args~: ArrayView[Expr],
-    env~: Scope[Path, Type],
+    env~: Scope[Path, Ref[Type?]],
     span~: Span,
 ) -> Unit raise {
     let format_str_ty = self.check_expr(format_str, env)
@@ -971,27 +1174,41 @@ fn check_attributes(attrs: Map[String, Attribute], signatures~: Map[String, Arra
     }
 }
 
-fn TypeChecker::check_const_decl(self: Self, decl: ConstDecl, env: Scope[Path, Type]) -> Unit raise {
+fn TypeChecker::check_const_decl(self: Self, decl: ConstDecl, env: Scope[Path, Ref[Type?]]) -> Unit raise {
     if !decl.expr.is_constant_expr() {
         raise ExpectedConstantExpr(span=decl.expr.span())
     }
 
-    let ty = self.check_expr(decl.expr, env)
-
-    match decl.ty {
+    let ty = match decl.ty {
         Some(expected_ty) => {
             let expected_ty = self.resolve_ty(expected_ty, span=decl.expr.span())
-            let _ = unify(expected_ty, ty, span=decl.expr.span())
+            let actual_ty = self.check_expr(decl.expr, env, expected_ty=Some(expected_ty))
+            let _ = unify(expected_ty, actual_ty, span=decl.expr.span())
+            expected_ty
         }
-        None => ()
+        None => self.check_expr(decl.expr, env)
     }
 
     declare_name(env~, path=decl.path, ty~, span=decl.span)
 }
 
-pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Unit raise {
+fn TypeChecker::resolve_port(self: Self, port: @parse.Port, type_params~: Set[String]) -> @parse.Port raise {
+    {
+        name: port.name,
+        ty: self.resolve_ty(port.ty, span=port.span, type_params~),
+        dir: port.dir,
+        span: port.span,
+        optional: port.optional,
+        attributes: port.attributes,
+    }
+}
+
+pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
     match decl {
-        Module({ path, params: _, attributes, ports, body, span: _ } as mod) => {
+        Module({ path, params, attributes, ports, body, span }) => {
+            let type_params = Set::from_iter(params.iter().filter_map(param => if param.sort == TypeSort { Some(param.name) } else { None }))
+            let ports = ports.map(port => self.resolve_port(port, type_params~))
+            let mod: @parse.ModuleDecl = { path, params, attributes, ports, body, span }
             let env = self.top_env.child()
             check_attributes(attributes, signatures=module_attribute_signatures)
 
@@ -1005,8 +1222,17 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Unit raise {
             }
 
             self.modules[path] = mod.signature()
+            Module(mod)
         }
         ModuleDeclaration(sig) => {
+            let type_params = Set::from_iter(sig.params.iter().filter_map(param => if param.sort == TypeSort { Some(param.name) } else { None }))
+            let sig: ModuleSignature = {
+                path: sig.path,
+                params: sig.params,
+                attributes: sig.attributes,
+                ports: sig.ports.map(port => self.resolve_port(port, type_params~)),
+                span: sig.span,
+            }
             check_attributes(sig.attributes, signatures=module_attribute_signatures)
             
             for port in sig.ports {
@@ -1014,12 +1240,14 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Unit raise {
             }
 
             self.modules[sig.path] = sig
+            ModuleDeclaration(sig)
         }
         Const(decl) => {
             self.check_const_decl(decl, self.top_env)
+            Const(decl)
         }
-        Package(_) => ()
-        Import(_) => ()
-        TypeAlias(_) => ()
+        Package(pkg) => Package(pkg)
+        Import(import_decl) => Import(import_decl)
+        TypeAlias(alias) => TypeAlias(alias)
     }
 }
