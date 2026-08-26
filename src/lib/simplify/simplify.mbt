@@ -279,6 +279,11 @@ pub fn Simplifier::simplify_expr(
 
     Struct(fields~, span~, ty~) => {
       let core_fields = Map([], capacity=fields.length())
+      let core_ty = freeze_ty(ty, span)
+      let expected_fields = match core_ty.val {
+        Some(@parse.CoreType::Struct(fields)) => fields
+        _ => raise Failure::Failure("Struct expression has a non-struct type")
+      }
 
       // Expand spreads first so later explicit fields override.
       for name, e in fields {
@@ -307,11 +312,11 @@ pub fn Simplifier::simplify_expr(
 
       for name, e in fields {
         if !name.has_prefix("..") {
-          core_fields[name] = simp(e)
+          core_fields[name] = self.simplify_checked_expr(e, expected_fields.get(name).unwrap(), env~)
         }
       }
 
-      Struct(fields=core_fields, span~, ty=freeze_ty(ty, span))
+      Struct(fields=core_fields, span~, ty=core_ty)
     }
 
     FunCall(name="assert", args=[pred, ..rest], span~, ty~) => {

@@ -155,6 +155,10 @@ fn merge_inferred_types(lhs: Type, rhs: Type) -> Type {
         (Nat({ min_width: lhs_width }), Nat({ min_width: rhs_width })) => {
             Nat({ min_width: max(lhs_width, rhs_width) })
         }
+        (Nat({ min_width }), UInt(Lit(width))) |
+        (UInt(Lit(width)), Nat({ min_width })) => Type::uint(max(width, min_width))
+        (Nat({ min_width }), SInt(Lit(width))) |
+        (SInt(Lit(width)), Nat({ min_width })) => Type::sint(max(width, min_width + 1))
         (Vector(ty=lhs_ty, len~), Vector(ty=rhs_ty, len=rhs_len)) if len == rhs_len => {
             Vector(ty=merge_inferred_types(lhs_ty, rhs_ty), len~)
         }
@@ -186,10 +190,64 @@ fn merge_expression_types(lhs: Type, rhs: Type, span~: Span) -> Type raise TypeC
     match (lhs, rhs) {
         (UInt(Lit(lhs_width)), UInt(Lit(rhs_width))) => Type::uint(max(lhs_width, rhs_width))
         (SInt(Lit(lhs_width)), SInt(Lit(rhs_width))) => Type::sint(max(lhs_width, rhs_width))
+        (Nat({ min_width }), UInt(Lit(width))) |
+        (UInt(Lit(width)), Nat({ min_width })) => Type::uint(max(width, min_width))
+        (Nat({ min_width }), SInt(Lit(width))) |
+        (SInt(Lit(width)), Nat({ min_width })) => Type::sint(max(width, min_width + 1))
+        (Vector(ty=lhs_ty, len~), Vector(ty=rhs_ty, len=rhs_len)) if len == rhs_len =>
+            Vector(ty=merge_expression_types(lhs_ty, rhs_ty, span~), len~)
+        (Struct(lhs_fields), Struct(rhs_fields)) if lhs_fields.length() == rhs_fields.length() &&
+            lhs_fields.keys().all(name => rhs_fields.contains(name)) => {
+            let fields = Map([], capacity=lhs_fields.length())
+            for name, lhs_ty in lhs_fields {
+                fields[name] = merge_expression_types(lhs_ty, rhs_fields.get(name).unwrap(), span~)
+            }
+            Struct(fields)
+        }
         _ => {
             let _ = unify(lhs, rhs, span~)
             merge_inferred_types(lhs, rhs)
         }
+    }
+}
+
+fn TypeChecker::recheck_inferred_expr(
+    self: Self,
+    expr: Expr,
+    ty: Type,
+    expected_ty: Type,
+    env: Scope[Path, Ref[Type?]],
+) -> Unit raise {
+    match (ty, expected_ty, expr) {
+        (Nat(_), (UInt(_) | SInt(_)) as expected, Natural(width=None, ..)) => {
+            let _ = self.check_expr(expr, env, expected_ty=expected)
+        }
+        (Nat(_), UInt(_), _) => ()
+        (Nat(_), SInt(_), _) => raise IncompatibleTypes(ty1=expected_ty, ty2=ty, span=expr.span())
+        (Vector(ty=_, len~), Vector(ty=expected_elem, len=expected_len), Vector(elems~, ..)) if len == expected_len => {
+            for elem in elems {
+                match elem {
+                    Spread(_) => ()
+                    _ => match elem.ty().val {
+                        Some(elem_ty) => self.recheck_inferred_expr(elem, elem_ty, expected_elem, env)
+                        None => ()
+                    }
+                }
+            }
+            expr.set_ty(expected_ty)
+        }
+        (Struct(actual_fields), Struct(expected_fields), Struct(fields~, ..)) if actual_fields.length() == expected_fields.length() => {
+            for name, field in fields {
+                if !name.has_prefix("..") && expected_fields.get(name) is Some(field_expected) {
+                    match field.ty().val {
+                        Some(field_ty) => self.recheck_inferred_expr(field, field_ty, field_expected, env)
+                        None => ()
+                    }
+                }
+            }
+            expr.set_ty(expected_ty)
+        }
+        _ => ()
     }
 }
 
@@ -745,6 +803,12 @@ fn TypeChecker::check_expr_in_context(
             }
 
                 let vector_ty = Type::Vector(ty=elem_ty.unwrap(), len=Lit(len))
+                for elem in elems {
+                    match elem.ty().val {
+                        Some(Nat(_) as ty) => self.recheck_inferred_expr(elem, ty, elem_ty.unwrap(), env)
+                        _ => ()
+                    }
+                }
                 vector_ty
             }
         }
@@ -756,7 +820,10 @@ fn TypeChecker::check_expr_in_context(
             let then_ty = self.check_expr_in_context(then, env, expected_ty~)
             let else_ty = self.check_expr_in_context(else_, env, expected_ty~)
 
-            merge_expression_types(self.resolve_ty(then_ty, span~), else_ty, span~)
+            let ty = merge_expression_types(self.resolve_ty(then_ty, span~), else_ty, span~)
+            self.recheck_inferred_expr(then, then_ty, ty, env)
+            self.recheck_inferred_expr(else_, else_ty, ty, env)
+            ty
         }
         Match(subject~, cases~, default~, span~, ..) => {
             let subject_ty = self.synth_expr(subject, env)
@@ -795,7 +862,22 @@ fn TypeChecker::check_expr_in_context(
                 None => ()
             }
 
-            ret_ty.unwrap()
+            let ty = ret_ty.unwrap()
+            for case in cases {
+                let (_, expr) = case
+                match expr.ty().val {
+                    Some(expr_ty) => self.recheck_inferred_expr(expr, expr_ty, ty, env)
+                    _ => ()
+                }
+            }
+            match default {
+                Some(expr) => match expr.ty().val {
+                    Some(expr_ty) => self.recheck_inferred_expr(expr, expr_ty, ty, env)
+                    _ => ()
+                }
+                None => ()
+            }
+            ty
         }
         FunCall(name="uint", args=[arg], ..) => {
             let arg_ty = self.synth_expr(arg, env)
@@ -1018,7 +1100,10 @@ fn TypeChecker::check_expr_in_context(
             let if_ty = match else_ {
                 Some(else_) => {
                     let else_ty = self.check_expr_in_context(else_, env, expected_ty~)
-                    merge_expression_types(then_ty, else_ty, span~)
+                    let ty = merge_expression_types(then_ty, else_ty, span~)
+                    self.recheck_inferred_expr(then, then_ty, ty, env)
+                    self.recheck_inferred_expr(else_, else_ty, ty, env)
+                    ty
                 }
                 None => {
                     let _ = unify(then_ty, Type::empty(), span~)

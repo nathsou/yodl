@@ -325,6 +325,49 @@ test "literal width inference is traversal-order independent" {
 }
 
 ///|
+test "literal and concrete integer joins are traversal-order independent" {
+  let source =
+    #|module Top(select: bool, unsigned: u8, signed: s8, narrow: u4) -> () {
+    #|  let ternary_nat_first = select ? 1 : unsigned
+    #|  let ternary_nat_last = select ? unsigned : 1
+    #|  let signed_nat_first = select ? 1 : signed
+    #|  let signed_nat_last = select ? signed : 1
+    #|  let match_nat_first = match select {
+    #|    1 => 1
+    #|    _ => unsigned
+    #|  }
+    #|  let match_nat_last = match select {
+    #|    1 => unsigned
+    #|    _ => 1
+    #|  }
+    #|  let vector_nat_first = [1, unsigned]
+    #|  let vector_nat_last = [unsigned, 1]
+    #|  let vector_branch_nat_first = select ? [1] : [unsigned]
+    #|  let vector_branch_nat_last = select ? [unsigned] : [1]
+    #|  let record_branch_nat_first = select ? (value: 1) : (value: unsigned)
+    #|  let record_branch_nat_last = select ? (value: unsigned) : (value: 1)
+    #|  let widened_nat_first = select ? 255 : narrow
+    #|  let widened_nat_last = select ? narrow : 255
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  for name in [
+    "ternary_nat_first", "ternary_nat_last", "match_nat_first",
+    "match_nat_last", "widened_nat_first", "widened_nat_last",
+  ] {
+    assert_true(simplified.contains("let \{name}: u8"))
+  }
+  for name in ["signed_nat_first", "signed_nat_last"] {
+    assert_true(simplified.contains("let \{name}: s8"))
+  }
+  assert_true(simplified.contains("let vector_nat_first: [2]u8"))
+  assert_true(simplified.contains("let vector_nat_last: [2]u8"))
+  assert_true(simplified.contains("let vector_branch_nat_first: [1]u8"))
+  assert_true(simplified.contains("let vector_branch_nat_last: [1]u8"))
+  assert_false(simplified.contains("truncate(unsigned)"))
+  let _ = compile_stage(source, "write_low_firrtl")
+}
+
+///|
 test "instance aliases preserve identity while port usage stays outside types" {
   let source =
     #|module Child(input: u8) -> (output: u8) {
