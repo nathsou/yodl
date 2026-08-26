@@ -39,6 +39,21 @@ pub fn AstEmitter::emit_core_expr(self: AstEmitter, expr: CoreExpr, indent~: Boo
       self.emit_core_expr(rhs)
       self.write(")")
     }
+    Truncate(expr~, ..) => {
+      self.write("truncate(")
+      self.emit_core_expr(expr)
+      self.write(")")
+    }
+    ZeroExtend(expr~, ..) => {
+      self.write("zero_extend(")
+      self.emit_core_expr(expr)
+      self.write(")")
+    }
+    SignExtend(expr~, ..) => {
+      self.write("sign_extend(")
+      self.emit_core_expr(expr)
+      self.write(")")
+    }
     Indexing(expr~, index~, ..) => {
       self.emit_core_expr(expr)
       self.write("[")

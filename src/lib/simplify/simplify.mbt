@@ -36,6 +36,46 @@ fn freeze_ty(ty: Ref[@parse.Type?], span: @parse.Span) -> Ref[@parse.CoreType?] 
   } }
 }
 
+fn explicit_coercion(
+  expr: @parse.CoreExpr,
+  expected: @parse.CoreType,
+) -> @parse.CoreExpr raise {
+  let actual = expr.ty().val.unwrap_or_error(
+    Failure::Failure("Expression is untyped while elaborating a coercion: \{expr.span()}"),
+  )
+  if actual == expected {
+    return expr
+  }
+
+  let ty = @ref.new(Some(expected))
+  match (actual, expected) {
+    (@parse.CoreType::UInt(actual_width), @parse.CoreType::UInt(expected_width)) =>
+      if expected_width < actual_width {
+        @parse.CoreExpr::Truncate(expr~, span=expr.span(), ty~)
+      } else {
+        @parse.CoreExpr::ZeroExtend(expr~, span=expr.span(), ty~)
+      }
+    (@parse.CoreType::SInt(actual_width), @parse.CoreType::SInt(expected_width)) =>
+      if expected_width < actual_width {
+        @parse.CoreExpr::Truncate(expr~, span=expr.span(), ty~)
+      } else {
+        @parse.CoreExpr::SignExtend(expr~, span=expr.span(), ty~)
+      }
+    _ => raise Failure::Failure(
+      "Invalid coercion from '\{actual}' to '\{expected}' after type checking",
+    )
+  }
+}
+
+fn Simplifier::simplify_checked_expr(
+  self: Self,
+  expr: @parse.Expr,
+  expected: @parse.CoreType,
+  env~ : SimplifierEnv,
+) -> @parse.CoreExpr raise {
+  explicit_coercion(self.simplify_expr(expr, env~), expected)
+}
+
 pub fn Simplifier::declare_unique(self: Self, name: String) -> UniqueName {
   let count = match self.name_counts.get(name) {
     Some(count) => count
@@ -105,14 +145,13 @@ pub fn Simplifier::simplify_expr(
     Unary(op~, expr~, span~, ty~) =>
       Unary(op~, expr=simp(expr), span~, ty=freeze_ty(ty, span))
 
-    Binary(op=Nand, lhs~, rhs~, output_width~, span~, ty~) =>
+    Binary(op=Nand, lhs~, rhs~, span~, ty~) =>
       Unary(
         op=Not,
         expr=Binary(
           op=And,
           lhs=simp(lhs),
           rhs=simp(rhs),
-          output_width=@ref.new(output_width.val),
           span~,
           ty=freeze_ty(ty, span),
         ),
@@ -120,12 +159,11 @@ pub fn Simplifier::simplify_expr(
         ty=freeze_ty(ty, span),
       )
 
-    Binary(op~, lhs~, rhs~, output_width~, span~, ty~) =>
+    Binary(op~, lhs~, rhs~, span~, ty~) =>
       Binary(
         op~,
         lhs=simp(lhs),
         rhs=simp(rhs),
-        output_width=@ref.new(output_width.val),
         span~,
         ty=freeze_ty(ty, span),
       )
@@ -192,33 +230,65 @@ pub fn Simplifier::simplify_expr(
     }
 
     Instance(path~, params=_, ports~, span~, ty~) => {
+      let core_ty = freeze_ty(ty, span)
+      let core_sig = match core_ty.val {
+        Some(@parse.CoreType::Instance(sig~, ..)) => sig
+        _ => raise Failure::Failure("Instance expression has a non-instance type")
+      }
       let core_ports = Map([], capacity=ports.length())
       for port, e in ports {
-        core_ports[port] = simp(e)
+        let expected = core_sig.get_port(port).unwrap().ty
+        core_ports[port] = self.simplify_checked_expr(e, expected, env~)
       }
-      Instance(path~, ports=core_ports, span~, ty=freeze_ty(ty, span))
+      Instance(path~, ports=core_ports, span~, ty=core_ty)
     }
 
-    Vector(elems~, span~, ty~) =>
-      Vector(elems=elems.map(simp), span~, ty=freeze_ty(ty, span))
+    Vector(elems~, span~, ty~) => {
+      let core_ty = freeze_ty(ty, span)
+      let elem_ty = match core_ty.val {
+        Some(@parse.CoreType::Vector(ty~, ..)) => ty
+        _ => raise Failure::Failure("Vector expression has a non-vector type")
+      }
+      Vector(
+        elems=elems.map(elem => match elem {
+          Spread(_) => simp(elem)
+          _ => self.simplify_checked_expr(elem, elem_ty, env~)
+        }),
+        span~,
+        ty=core_ty,
+      )
+    }
 
     Spread(expr~, span~, ty~) =>
       Spread(expr=simp(expr), span~, ty=freeze_ty(ty, span))
 
-    Match(subject~, cases~, default~, span~, ty~) =>
+    Match(subject~, cases~, default~, span~, ty~) => {
+      let core_ty = freeze_ty(ty, span)
+      let expected = core_ty.val.unwrap()
+      let simplified_subject = simp(subject)
+      let pattern_ty = simplified_subject.ty().val.unwrap()
       Match(
-        subject=simp(subject),
+        subject=simplified_subject,
         cases=cases.map(case => {
           let (pat, e) = case
-          (simp(pat), simp(e))
+          (
+            self.simplify_checked_expr(pat, pattern_ty, env~),
+            self.simplify_checked_expr(e, expected, env~),
+          )
         }),
-        default=default.map(simp),
+        default=default.map(e => self.simplify_checked_expr(e, expected, env~)),
         span~,
-        ty=freeze_ty(ty, span),
+        ty=core_ty,
       )
+    }
 
     Struct(fields~, span~, ty~) => {
       let core_fields = Map([], capacity=fields.length())
+      let core_ty = freeze_ty(ty, span)
+      let expected_fields = match core_ty.val {
+        Some(@parse.CoreType::Struct(fields)) => fields
+        _ => raise Failure::Failure("Struct expression has a non-struct type")
+      }
 
       // Expand spreads first so later explicit fields override.
       for name, e in fields {
@@ -247,15 +317,15 @@ pub fn Simplifier::simplify_expr(
 
       for name, e in fields {
         if !name.has_prefix("..") {
-          core_fields[name] = simp(e)
+          core_fields[name] = self.simplify_checked_expr(e, expected_fields.get(name).unwrap(), env~)
         }
       }
 
-      Struct(fields=core_fields, span~, ty=freeze_ty(ty, span))
+      Struct(fields=core_fields, span~, ty=core_ty)
     }
 
     FunCall(name="assert", args=[pred, ..rest], span~, ty~) => {
-      let core_pred = simp(pred)
+      let core_pred = self.simplify_checked_expr(pred, @parse.CoreType::UInt(1), env~)
       try core_pred.as_int() catch {
         _ => FunCall(name="assert", args=[core_pred, ..rest.map(simp)], span~, ty=freeze_ty(ty, span))
       } noraise {
@@ -283,51 +353,67 @@ pub fn Simplifier::simplify_expr(
       Vector(elems~, span~, ty=freeze_ty(ty, span))
     }
 
+    FunCall(name="clock", args=[arg], span~, ty~) =>
+      FunCall(
+        name="clock",
+        args=[self.simplify_checked_expr(arg, @parse.CoreType::UInt(1), env~)],
+        span~,
+        ty=freeze_ty(ty, span),
+      )
+
     FunCall(name~, args~, span~, ty~) =>
       FunCall(name~, args=args.map(simp), span~, ty=freeze_ty(ty, span))
 
     Block(body~, last~, span~, ty~) => {
+      let core_ty = freeze_ty(ty, span)
+      let expected = core_ty.val.unwrap()
       let core_body = []
       for stmt in body {
         core_body.push_iter(self.simplify_stmt(stmt, env~))
       }
       Block(
         body=core_body,
-        last=last.map(simp),
+        last=last.map(expr => self.simplify_checked_expr(expr, expected, env~)),
         span~,
-        ty=freeze_ty(ty, span),
+        ty=core_ty,
       )
     }
 
-    Ternary(cond~, then~, else_~, span~, ty~) =>
+    Ternary(cond~, then~, else_~, span~, ty~) => {
       // Rewrite: cond ? then : else  ->  match cond { 0 => else, 1 => then }
-      simp(@parse.Expr::Match(
-        subject=cond,
+      let core_ty = freeze_ty(ty, span)
+      let expected = core_ty.val.unwrap()
+      Match(
+        subject=self.simplify_checked_expr(cond, @parse.CoreType::UInt(1), env~),
         cases=[
-          (@parse.Expr::nat(0, width=Some(1), span~), else_),
-          (@parse.Expr::nat(1, width=Some(1), span~), then),
+          (@parse.CoreExpr::nat(0, width=Some(1), span~), self.simplify_checked_expr(else_, expected, env~)),
+          (@parse.CoreExpr::nat(1, width=Some(1), span~), self.simplify_checked_expr(then, expected, env~)),
         ],
         default=None,
         span~,
-        ty~,
-      ))
+        ty=core_ty,
+      )
+    }
 
-    If(cond~, then~, else_~, span~, ty~) =>
+    If(cond~, then~, else_~, span~, ty~) => {
       // Rewrite: if cond { then } else { else }  ->  match cond { 1 => then, 0 => else }
-      simp(@parse.Expr::Match(
-        subject=cond,
+      let core_ty = freeze_ty(ty, span)
+      let expected = core_ty.val.unwrap()
+      Match(
+        subject=self.simplify_checked_expr(cond, @parse.CoreType::UInt(1), env~),
         cases={
-          let cases = [(@parse.Expr::nat(1, width=Some(1), span~), then)]
+          let cases = [(@parse.CoreExpr::nat(1, width=Some(1), span~), self.simplify_checked_expr(then, expected, env~))]
           match else_ {
-            Some(else_) => cases.push((@parse.Expr::nat(0, width=Some(1), span~), else_))
+            Some(else_) => cases.push((@parse.CoreExpr::nat(0, width=Some(1), span~), self.simplify_checked_expr(else_, expected, env~)))
             None => ()
           }
           cases
         },
         default=None,
         span~,
-        ty~,
-      ))
+        ty=core_ty,
+      )
+    }
   }
 }
 
@@ -344,26 +430,30 @@ pub fn Simplifier::simplify_stmt(
       ))
 
     Let(name~, ty~, expr~, span~) => {
+      let core_ty = freeze_ty(ty, span)
       let simplified_expr = match expr {
-        Some(e) => Some(self.simplify_expr(e, env~))
+        Some(e) => Some(self.simplify_checked_expr(e, core_ty.val.unwrap(), env~))
         None => None
       }
       let unique_name = self.declare_unique(name)
       env.declare_shadowing(@parse.Path::new([], name), Name(unique_name))
       Iter::singleton(@parse.CoreStmt::Let(
         name=Show::to_string(unique_name),
-        ty=freeze_ty(ty, span),
+        ty=core_ty,
         expr=simplified_expr,
         span~,
       ))
     }
 
-    Assign(lhs~, rhs~, span~) =>
+    Assign(lhs~, rhs~, span~) => {
+      let core_lhs = self.simplify_expr(lhs, env~)
+      let expected = core_lhs.ty().val.unwrap()
       Iter::singleton(@parse.CoreStmt::Assign(
-        lhs=self.simplify_expr(lhs, env~),
-        rhs=self.simplify_expr(rhs, env~),
+        lhs=core_lhs,
+        rhs=self.simplify_checked_expr(rhs, expected, env~),
         span~,
       ))
+    }
 
     For(_) => raise Failure::Failure("For stmt after monomorphization")
 

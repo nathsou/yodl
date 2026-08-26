@@ -43,6 +43,13 @@ The decimal value `1621` which requires at least 11 bits can be represented as f
 | `d`         | 10   | `11'd1621` |
 | `h`         | 16   | `11'h655` | 
 
+When an integer value is assigned to a same-signed integer type, Yodl resizes
+it to the destination width. Widening an unsigned value zero-extends it,
+widening a signed value sign-extends it, and narrowing keeps the least
+significant bits. Unsized literals instead adopt the contextual width when the
+value fits. Signedness is never changed implicitly: use `uint!(x)` or `sint!(x)`
+to request a signedness reinterpretation explicitly.
+
 ### Booleans
 
 The `bool` type is an alias for the `u1` type.

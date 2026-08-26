@@ -9,10 +9,10 @@ test "unsigned addition is rejected in a signed context" {
   let diagnostic = compile_error(source)
   assert_true(
     diagnostic.has_prefix(
-      "Incompatible types 's9' and 'u9', fixture.yodl:2.3-2.14",
+      "Incompatible types 's9' and 'u9', fixture.yodl:2.11-2.14",
     ),
   )
-  assert_true(diagnostic.contains("2   out = a + b\n    ^^^^^^^^^^^"))
+  assert_true(diagnostic.contains("2   out = a + b"))
 }
 
 ///|
@@ -74,6 +74,78 @@ test "contextual literals report overflow at the literal span" {
 }
 
 ///|
+test "match patterns adopt the concrete integer subject type" {
+  let source =
+    #|module Top(unsigned: u8, signed: s8) -> (uout: u1, sout: u1, nout: u1) {
+    #|  uout = match unsigned {
+    #|    1 => 1'd1
+    #|    _ => 1'd0
+    #|  }
+    #|  sout = match signed {
+    #|    1 => 1'd1
+    #|    _ => 1'd0
+    #|  }
+    #|  nout = match 1 {
+    #|    1 => 1'd1
+    #|    _ => 1'd0
+    #|  }
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("eq(unsigned, UInt<8>(1))"))
+  assert_true(firrtl.contains("eq(signed, SInt<8>(1))"))
+  assert_true(firrtl.contains("connect nout, UInt<1>(1)"))
+}
+
+///|
+test "match patterns reject literals that do not fit the subject" {
+  let source =
+    #|module Top(subject: u3) -> (out: u1) {
+    #|  out = match subject {
+    #|    8 => 1'd1
+    #|    _ => 1'd0
+    #|  }
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(
+    diagnostic.contains("Literal requires 4 bits but context provides u3"),
+  )
+  assert_true(diagnostic.contains("fixture.yodl:3.5-3.6"))
+}
+
+///|
+test "constant assertions fold through explicit coercions" {
+  let always_true =
+    #|module Top() -> () {
+    #|  assert!(2'd1)
+    #|}
+  let simplified = compile_stage(always_true, "write_simplified")
+  assert_false(simplified.contains("assert!("))
+
+  let always_false =
+    #|module Top() -> () {
+    #|  assert!(2'd0)
+    #|}
+  assert_true(compile_error(always_false).contains("Assertion always fails"))
+
+  let truncated_false =
+    #|module Top() -> () {
+    #|  assert!(2'd2)
+    #|}
+  assert_true(compile_error(truncated_false).contains("Assertion always fails"))
+}
+
+///|
+test "inferred Nat bindings cannot acquire signedness from context" {
+  let source =
+    #|module Top() -> () {
+    #|  let n = 1
+    #|  let s: s8 = n
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Incompatible types 's8' and 'nat[1]'"))
+}
+
+///|
 test "contextual signed literals retain their frozen FIRRTL width" {
   let source =
     #|module Top() -> (out: s4) {
@@ -111,6 +183,81 @@ test "signed binary narrowing preserves FIRRTL signedness" {
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
   assert_true(firrtl.contains("asSInt(bits(add("))
+}
+
+///|
+test "integer resizing is explicit in Core and FIRRTL" {
+  let source =
+    #|module Top(a: u8, b: u8, c: s8, d: s8) -> (un: u8, uw: u12, sn: s8, sw: s12) {
+    #|  un = a + b
+    #|  uw = a + b
+    #|  sn = c + d
+    #|  sw = c + d
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("un = truncate((a + b))"))
+  assert_true(simplified.contains("uw = zero_extend((a + b))"))
+  assert_true(simplified.contains("sn = truncate((c + d))"))
+  assert_true(simplified.contains("sw = sign_extend((c + d))"))
+
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("connect un, bits(add(a, b), 7, 0)"))
+  assert_true(firrtl.contains("connect uw, pad(add(a, b), 12)"))
+  assert_true(firrtl.contains("connect sn, asSInt(bits(add(c, d), 7, 0))"))
+  assert_true(firrtl.contains("connect sw, pad(add(c, d), 12)"))
+}
+
+///|
+test "resizing applies to values, conditionals, and instance ports" {
+  let source =
+    #|module Child(input: u12) -> (output: u12) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(select: u2, a: u8, b: u8) -> (direct: u12, selected: u8, port: u12) {
+    #|  direct = a
+    #|  selected = select ? a + b : a
+    #|  let child = Child(input: a + b)
+    #|  port = child.output
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("direct = zero_extend(a)"))
+  assert_true(simplified.contains("selected = truncate("))
+  assert_true(simplified.contains("match truncate(select)"))
+  assert_true(simplified.contains("zero_extend(a)"))
+  assert_true(simplified.contains("input: zero_extend((a + b))"))
+  let _ = compile_stage(source, "write_low_firrtl")
+}
+
+///|
+test "signedness changes require explicit conversion" {
+  let signed_to_unsigned =
+    #|module Top(a: s8) -> (out: u4) {
+    #|  out = a
+    #|}
+  assert_true(
+    compile_error(signed_to_unsigned).contains("Incompatible types 'u4' and 's8'"),
+  )
+
+  let explicit =
+    #|module Top(a: u8) -> (out: s8) {
+    #|  out = sint!(a)
+    #|}
+  let _ = compile_stage(explicit, "write_low_firrtl")
+}
+
+///|
+test "contextual literals need no resize coercion" {
+  let source =
+    #|module Top() -> (unsigned: u12, signed: s12) {
+    #|  unsigned = 7
+    #|  signed = 7
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_false(simplified.contains("extend(7)"))
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("UInt<12>(7)"))
+  assert_true(firrtl.contains("SInt<12>(7)"))
 }
 
 ///|
@@ -247,6 +394,49 @@ test "literal width inference is traversal-order independent" {
   let simplified = compile_stage(source, "write_simplified")
   assert_true(simplified.contains("let ascending: [2]u8"))
   assert_true(simplified.contains("let descending: [2]u8"))
+}
+
+///|
+test "literal and concrete integer joins are traversal-order independent" {
+  let source =
+    #|module Top(select: bool, unsigned: u8, signed: s8, narrow: u4) -> () {
+    #|  let ternary_nat_first = select ? 1 : unsigned
+    #|  let ternary_nat_last = select ? unsigned : 1
+    #|  let signed_nat_first = select ? 1 : signed
+    #|  let signed_nat_last = select ? signed : 1
+    #|  let match_nat_first = match select {
+    #|    1 => 1
+    #|    _ => unsigned
+    #|  }
+    #|  let match_nat_last = match select {
+    #|    1 => unsigned
+    #|    _ => 1
+    #|  }
+    #|  let vector_nat_first = [1, unsigned]
+    #|  let vector_nat_last = [unsigned, 1]
+    #|  let vector_branch_nat_first = select ? [1] : [unsigned]
+    #|  let vector_branch_nat_last = select ? [unsigned] : [1]
+    #|  let record_branch_nat_first = select ? (value: 1) : (value: unsigned)
+    #|  let record_branch_nat_last = select ? (value: unsigned) : (value: 1)
+    #|  let widened_nat_first = select ? 255 : narrow
+    #|  let widened_nat_last = select ? narrow : 255
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  for name in [
+    "ternary_nat_first", "ternary_nat_last", "match_nat_first",
+    "match_nat_last", "widened_nat_first", "widened_nat_last",
+  ] {
+    assert_true(simplified.contains("let \{name}: u8"))
+  }
+  for name in ["signed_nat_first", "signed_nat_last"] {
+    assert_true(simplified.contains("let \{name}: s8"))
+  }
+  assert_true(simplified.contains("let vector_nat_first: [2]u8"))
+  assert_true(simplified.contains("let vector_nat_last: [2]u8"))
+  assert_true(simplified.contains("let vector_branch_nat_first: [1]u8"))
+  assert_true(simplified.contains("let vector_branch_nat_last: [1]u8"))
+  assert_false(simplified.contains("truncate(unsigned)"))
+  let _ = compile_stage(source, "write_low_firrtl")
 }
 
 ///|

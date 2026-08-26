@@ -599,7 +599,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
       Expr(expr=mk_prim(primop, [fir_expr]), ty~, span~)
     }
-    Binary(op~, lhs~, rhs~, output_width~, span~, ty=bin_ty) => {
+    Binary(op~, lhs~, rhs~, span~, ty=_) => {
       let fir_lhs = self.lower_expr(lhs, scope~, env~).as_expr(self, scope~)
       let fir_rhs = self.lower_expr(rhs, scope~, env~).as_expr(self, scope~)
       let is_rhs_int = try {
@@ -638,18 +638,26 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         res = mk_prim(Not, [res])
       }
 
-      if output_width.val is Some(output_width) {
-        let frozen_ty = unwrap_type(bin_ty, span~)
-        let width = frozen_ty.width()
-        if width < output_width {
-          res = mk_prim(Bits, [res, FExpr::uint(width - 1), FExpr::uint(0)])
-          if frozen_ty is SInt(_) {
-            res = mk_prim(AsSInt, [res])
-          }
-        }
-      }
-
       Expr(expr=res, ty~, span~) 
+    }
+    Truncate(expr~, span~, ty=_) => {
+      let fir_expr = self.lower_expr(expr, scope~, env~).as_expr(self, scope~)
+      let width = core_ty.width()
+      let source_width = unwrap_type(expr.ty(), span~).width()
+      let mut result = if width == 0 {
+        mk_prim(Tail, [fir_expr, FExpr::uint(source_width)])
+      } else {
+        mk_prim(Bits, [fir_expr, FExpr::uint(width - 1), FExpr::uint(0)])
+      }
+      if core_ty is SInt(_) {
+        result = mk_prim(AsSInt, [result])
+      }
+      Expr(expr=result, ty~, span~)
+    }
+    ZeroExtend(expr~, span~, ty=_) | SignExtend(expr~, span~, ty=_) => {
+      let fir_expr = self.lower_expr(expr, scope~, env~).as_expr(self, scope~)
+      let width = core_ty.width()
+      Expr(expr=mk_prim(Pad, [fir_expr, FExpr::uint(width)]), ty~, span~)
     }
     Vector(elems~, span~, ty=_) => {
       let values = Array::new(capacity=elems.length())

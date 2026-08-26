@@ -107,7 +107,7 @@ module CPU(
     let alu_lss_unsigned = alu_minus[32]
     let alu_lss_signed = alu_in1[31] xor alu_in2[31] ? alu_in1[31] : alu_minus[32]
     let shifter_in = funct3 == 3'd1 ? flip!(alu_in1) : alu_in1
-    let shifter: u32 = sint!(cat!(inst.q[30] and alu_in1[31], shifter_in)) shr alu_in2[4:0]
+    let shifter: u32 = uint!(sint!(cat!(inst.q[30] and alu_in1[31], shifter_in)) shr alu_in2[4:0])
     let left_shift = flip!(shifter)
 
     let alu_out = match funct3 {

@@ -170,7 +170,7 @@ pub fn Expr::partial_eval(self: Expr, params~: Map[String, StaticArg] = {}) -> E
           }
         }
       }
-      Binary(op~, lhs~, rhs~, output_width=_, span~, ty~) => {
+      Binary(op~, lhs~, rhs~, span~, ty~) => {
         let lhs_value = try lhs.as_bigint() catch {
           _ => None
         } noraise {

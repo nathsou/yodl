@@ -22,10 +22,10 @@ pub fn rewrite_expr(expr: Expr, rewriter: Rewriter) -> Expr raise {
       let expr = rewrite_expr(expr, rewriter)
       Unary(op~, expr~, span~, ty=clone_ty(ty))
     }
-    Binary(op~, lhs~, rhs~, output_width~, span~, ty~) => {
+    Binary(op~, lhs~, rhs~, span~, ty~) => {
       let lhs = rewrite_expr(lhs, rewriter)
       let rhs = rewrite_expr(rhs, rewriter)
-      Binary(op~, lhs~, rhs~, output_width=@ref.new(output_width.val), span~, ty=clone_ty(ty))
+      Binary(op~, lhs~, rhs~, span~, ty=clone_ty(ty))
     }
     Indexing(expr~, index~, span~, ty~) => {
       let expr = rewrite_expr(expr, rewriter)

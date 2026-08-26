@@ -162,7 +162,10 @@ pub(all) enum CoreExpr {
   Natural(value~: BigInt, width~: Int?, base~: Int, span~: Span, ty~: Ref[CoreType?])
   Identifier(path~: Path, span~: Span, ty~: Ref[CoreType?])
   Unary(op~: UnaryOp, expr~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
-  Binary(op~: BinaryOp, lhs~: CoreExpr, rhs~: CoreExpr, output_width~: Ref[Int?], span~: Span, ty~: Ref[CoreType?])
+  Binary(op~: BinaryOp, lhs~: CoreExpr, rhs~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
+  Truncate(expr~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
+  ZeroExtend(expr~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
+  SignExtend(expr~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
   Indexing(expr~: CoreExpr, index~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
   Slicing(expr~: CoreExpr, hi~: CoreExpr, lo~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
   FieldAccess(expr~: CoreExpr, field~: String, span~: Span, ty~: Ref[CoreType?])
@@ -287,6 +290,9 @@ pub fn CoreExpr::ty(self: CoreExpr) -> Ref[CoreType?] {
     Identifier(ty~, ..) => ty
     Unary(ty~, ..) => ty
     Binary(ty~, ..) => ty
+    Truncate(ty~, ..) => ty
+    ZeroExtend(ty~, ..) => ty
+    SignExtend(ty~, ..) => ty
     Indexing(ty~, ..) => ty
     Slicing(ty~, ..) => ty
     FieldAccess(ty~, ..) => ty
@@ -311,6 +317,9 @@ pub impl Ctor for CoreExpr with ctor(self: CoreExpr) -> String {
       Identifier(..) => "Identifier"
       Unary(..) => "Unary"
       Binary(..) => "Binary"
+    Truncate(..) => "Truncate"
+    ZeroExtend(..) => "ZeroExtend"
+    SignExtend(..) => "SignExtend"
     Indexing(..) => "Indexing"
     Slicing(..) => "Slicing"
     FieldAccess(..) => "FieldAccess"
@@ -331,6 +340,9 @@ pub impl Spanned for CoreExpr with span(self: CoreExpr) -> Span {
     Identifier(span~, ..) => span
     Unary(span~, ..) => span
     Binary(span~, ..) => span
+    Truncate(span~, ..) => span
+    ZeroExtend(span~, ..) => span
+    SignExtend(span~, ..) => span
     Indexing(span~, ..) => span
     Slicing(span~, ..) => span
     FieldAccess(span~, ..) => span
@@ -371,6 +383,8 @@ pub fn CoreExpr::contains_statements(self: CoreExpr) -> Bool {
     }
     Unary(expr~, ..) => expr.contains_statements()
     Binary(lhs~, rhs~, ..) => lhs.contains_statements() || rhs.contains_statements()
+    Truncate(expr~, ..) | ZeroExtend(expr~, ..) | SignExtend(expr~, ..) =>
+      expr.contains_statements()
     Indexing(expr~, index~, ..) => expr.contains_statements() || index.contains_statements()
     Slicing(expr~, hi~, lo~, ..) => expr.contains_statements() || hi.contains_statements() || lo.contains_statements()
     FieldAccess(expr~, ..) => expr.contains_statements()
@@ -393,6 +407,20 @@ pub fn CoreExpr::contains_statements(self: CoreExpr) -> Bool {
 pub fn CoreExpr::as_int(self: CoreExpr) -> Int raise {
   match self {
     Natural(value~, ..) => value.to_int()
+    Truncate(expr~, ty~, ..) => {
+      let ty = ty.val.unwrap_or_error(
+        Failure::Failure("Truncation expression is untyped")
+      )
+      let width = ty.width()
+      let mask = (1N << width) - 1N
+      let truncated = BigInt::from_int(expr.as_int()) & mask
+      match ty {
+        SInt(width) if width > 0 && truncated >= (1N << (width - 1)) =>
+          (truncated - (1N << width)).to_int()
+        _ => truncated.to_int()
+      }
+    }
+    ZeroExtend(expr~, ..) | SignExtend(expr~, ..) => expr.as_int()
     _ => raise ExpectedIntegerExpression(expr=self, span=Spanned::span(self))
   }
 }
