@@ -191,12 +191,12 @@ pub fn Simplifier::simplify_expr(
       }
     }
 
-    Instance(path~, params~, ports~, span~, ty~) => {
+    Instance(path~, params=_, ports~, span~, ty~) => {
       let core_ports = Map([], capacity=ports.length())
       for port, e in ports {
         core_ports[port] = simp(e)
       }
-      Instance(path~, params~, ports=core_ports, span~, ty=freeze_ty(ty, span))
+      Instance(path~, ports=core_ports, span~, ty=freeze_ty(ty, span))
     }
 
     Vector(elems~, span~, ty~) =>

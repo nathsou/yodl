@@ -16,9 +16,26 @@ pub(all) enum CoreType {
   SInt(Int)
   Clock
   Vector(ty~: CoreType, len~: Int)
-  Instance(sig~: ModuleSignature, params~: Map[String, StaticArg], ids~: Array[InstanceId])
+  Instance(sig~: CoreInstanceSignature, params~: Map[String, CoreStaticArg], ids~: Array[InstanceId])
   Struct(Map[String, CoreType])
   Unit
+}
+
+/// Static arguments after crossing the Core boundary. Type arguments contain
+/// only Core types and Nat arguments contain evaluated integers.
+pub(all) enum CoreStaticArg {
+  CoreNat(value~: Int, span~: Span)
+  CoreTy(ty~: CoreType, span~: Span)
+}
+
+/// Concrete view of an instance signature. Generic surface port types are
+/// substituted and frozen before this signature enters Core.
+pub(all) struct CoreInstanceSignature {
+  path: Path
+  params: Array[ModuleParameter]
+  attributes: Map[String, Attribute]
+  ports: Array[CorePort]
+  span: Span
 }
 
 pub impl Eq for CoreType with equal(self, other) {
@@ -29,6 +46,21 @@ pub impl Eq for CoreType with equal(self, other) {
     (Instance(sig=a, params=ap, ..), Instance(sig=b, params=bp, ..)) => a.path == b.path && a.span.file == b.span.file && ap == bp
     (Struct(a), Struct(b)) => a == b
     _ => false
+  }
+}
+
+pub impl Eq for CoreStaticArg with equal(self, other) {
+  match (self, other) {
+    (CoreNat(value=a, ..), CoreNat(value=b, ..)) => a == b
+    (CoreTy(ty=a, ..), CoreTy(ty=b, ..)) => a == b
+    _ => false
+  }
+}
+
+pub impl Show for CoreStaticArg with output(self, logger) {
+  match self {
+    CoreNat(value~, ..) => logger.write_object(value)
+    CoreTy(ty~, ..) => logger.write_object(ty)
   }
 }
 
@@ -68,17 +100,20 @@ pub fn CoreType::from_type(ty: Type, span~: Span) -> CoreType raise AstError {
     Type::Clock => Clock
     Type::Vector(ty~, len=Lit(len)) if len >= 0 => Vector(ty=CoreType::from_type(ty, span~), len~)
     Type::Instance(sig~, params~, ids~) => {
-      let core_params: Map[String, StaticArg] = Map([], capacity=params.length())
+      let core_params: Map[String, CoreStaticArg] = Map([], capacity=params.length())
       for name, param in params {
         core_params[name] = match param {
           TypeParam(ty~, span=param_span) => {
             let core_ty = CoreType::from_type(ty, span=param_span)
-            TypeParam(ty=core_ty.to_type(), span=param_span)
+            CoreTy(ty=core_ty, span=param_span)
           }
-          NatParam(_) => param
+          NatParam(value=ConstValue::Natural(value~, ..), span=param_span) =>
+            CoreNat(value=value.to_int(), span=param_span)
+          NatParam(span=param_span, ..) => raise ExpectedIntParameter(span=param_span)
         }
       }
-      Instance(sig~, params=core_params, ids=Array::copy(ids))
+      let core_sig = CoreInstanceSignature::from_signature(sig, params, span)
+      Instance(sig=core_sig, params=core_params, ids=Array::copy(ids))
     }
     Type::Struct(fields) => {
       let core_fields = Map([], capacity=fields.length())
@@ -111,7 +146,13 @@ pub fn CoreType::to_type(self: CoreType) -> Type {
     SInt(width) => Type::SInt(Lit(width))
     Clock => Type::Clock
     Vector(ty~, len~) => Type::Vector(ty=ty.to_type(), len=Lit(len))
-    Instance(sig~, params~, ids~) => Type::Instance(sig~, params~, ids=Array::copy(ids))
+    Instance(sig~, params~, ids~) => {
+      let surface_params: Map[String, StaticArg] = Map([], capacity=params.length())
+      for name, param in params {
+        surface_params[name] = param.to_static_arg()
+      }
+      Type::Instance(sig=sig.to_signature(), params=surface_params, ids=Array::copy(ids))
+    }
     Struct(fields) => Type::Struct(@utils.map_values(fields, CoreType::to_type))
     Unit => Type::Unit
   }
@@ -125,7 +166,7 @@ pub(all) enum CoreExpr {
   Indexing(expr~: CoreExpr, index~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
   Slicing(expr~: CoreExpr, hi~: CoreExpr, lo~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
   FieldAccess(expr~: CoreExpr, field~: String, span~: Span, ty~: Ref[CoreType?])
-  Instance(path~: Path, params~: InstanceParams, ports~: Map[String, CoreExpr], span~: Span, ty~: Ref[CoreType?])
+  Instance(path~: Path, ports~: Map[String, CoreExpr], span~: Span, ty~: Ref[CoreType?])
   Vector(elems~: Array[CoreExpr], span~: Span, ty~: Ref[CoreType?])
   Spread(expr~: CoreExpr, span~: Span, ty~: Ref[CoreType?])
   Match(subject~: CoreExpr, cases~: Array[(CoreExpr, CoreExpr)], default~: CoreExpr?, span~: Span, ty~: Ref[CoreType?])
@@ -156,6 +197,75 @@ pub fn CorePort::from_port(port: Port) -> CorePort raise AstError {
 
 pub fn CorePort::to_port(self: CorePort) -> Port {
   { name: self.name, ty: self.ty.to_type(), dir: self.dir, span: self.span, optional: self.optional, attributes: self.attributes }
+}
+
+pub fn CoreStaticArg::to_static_arg(self: CoreStaticArg) -> StaticArg {
+  match self {
+    CoreNat(value~, span~) => NatParam(
+      value=ConstValue::Natural(
+        value=BigInt::from_int(value),
+        width=None,
+        base=10,
+        span~,
+      ),
+      span~,
+    )
+    CoreTy(ty~, span~) => TypeParam(ty=ty.to_type(), span~)
+  }
+}
+
+pub fn CoreStaticArg::as_int(self: CoreStaticArg) -> Int raise AstError {
+  match self {
+    CoreNat(value~, ..) => value
+    CoreTy(span~, ..) => raise ExpectedIntParameter(span~)
+  }
+}
+
+pub fn CoreStaticArg::as_type(self: CoreStaticArg) -> CoreType raise AstError {
+  match self {
+    CoreTy(ty~, ..) => ty
+    CoreNat(span~, ..) => raise ExpectedTypeParameter(span~)
+  }
+}
+
+pub fn CoreInstanceSignature::from_signature(
+  sig: ModuleSignature,
+  params: Map[String, StaticArg],
+  span: Span,
+) -> CoreInstanceSignature raise AstError {
+  let ports = Array::new(capacity=sig.ports.length())
+  for port in sig.ports {
+    let resolved_ty = port.ty.substitute(params, span~)
+    let core_port: CorePort = {
+      name: port.name,
+      ty: CoreType::from_type(resolved_ty, span=port.span),
+      dir: port.dir,
+      span: port.span,
+      optional: port.optional,
+      attributes: port.attributes,
+    }
+    ports.push(core_port)
+  }
+  { path: sig.path, params: sig.params, attributes: sig.attributes, ports, span: sig.span }
+}
+
+pub fn CoreInstanceSignature::get_port(self: CoreInstanceSignature, name: String) -> CorePort? {
+  for port in self.ports {
+    if port.name == name {
+      return Some(port)
+    }
+  }
+  None
+}
+
+pub fn CoreInstanceSignature::to_signature(self: CoreInstanceSignature) -> ModuleSignature {
+  {
+    path: self.path,
+    params: self.params,
+    attributes: self.attributes,
+    ports: self.ports.map(CorePort::to_port),
+    span: self.span,
+  }
 }
 
 pub(all) struct CoreModuleDecl {

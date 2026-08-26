@@ -161,7 +161,7 @@ pub(all) enum CoreExpr {
   Indexing(expr~ : CoreExpr, index~ : CoreExpr, span~ : Span, ty~ : @ref.Ref[CoreType?])
   Slicing(expr~ : CoreExpr, hi~ : CoreExpr, lo~ : CoreExpr, span~ : Span, ty~ : @ref.Ref[CoreType?])
   FieldAccess(expr~ : CoreExpr, field~ : String, span~ : Span, ty~ : @ref.Ref[CoreType?])
-  Instance(path~ : Path, params~ : InstanceParams, ports~ : Map[String, CoreExpr], span~ : Span, ty~ : @ref.Ref[CoreType?])
+  Instance(path~ : Path, ports~ : Map[String, CoreExpr], span~ : Span, ty~ : @ref.Ref[CoreType?])
   Vector(elems~ : Array[CoreExpr], span~ : Span, ty~ : @ref.Ref[CoreType?])
   Spread(expr~ : CoreExpr, span~ : Span, ty~ : @ref.Ref[CoreType?])
   Match(subject~ : CoreExpr, cases~ : Array[(CoreExpr, CoreExpr)], default~ : CoreExpr?, span~ : Span, ty~ : @ref.Ref[CoreType?])
@@ -178,6 +178,17 @@ pub fn CoreExpr::set_ty(Self, CoreType) -> Unit
 pub fn CoreExpr::ty(Self) -> @ref.Ref[CoreType?]
 pub impl Ctor for CoreExpr
 pub impl Spanned for CoreExpr
+
+pub(all) struct CoreInstanceSignature {
+  path : Path
+  params : Array[ModuleParameter]
+  attributes : Map[String, Attribute]
+  ports : Array[CorePort]
+  span : Span
+}
+pub fn CoreInstanceSignature::from_signature(ModuleSignature, Map[String, StaticArg], Span) -> Self raise AstError
+pub fn CoreInstanceSignature::get_port(Self, String) -> CorePort?
+pub fn CoreInstanceSignature::to_signature(Self) -> ModuleSignature
 
 pub(all) struct CoreModuleDecl {
   path : Path
@@ -198,6 +209,16 @@ pub(all) struct CorePort {
 pub fn CorePort::from_port(Port) -> Self raise AstError
 pub fn CorePort::to_port(Self) -> Port
 
+pub(all) enum CoreStaticArg {
+  CoreNat(value~ : Int, span~ : Span)
+  CoreTy(ty~ : CoreType, span~ : Span)
+}
+pub fn CoreStaticArg::as_int(Self) -> Int raise AstError
+pub fn CoreStaticArg::as_type(Self) -> CoreType raise AstError
+pub fn CoreStaticArg::to_static_arg(Self) -> StaticArg
+pub impl Eq for CoreStaticArg
+pub impl Show for CoreStaticArg
+
 pub(all) enum CoreStmt {
   Expr(expr~ : CoreExpr, span~ : Span)
   Let(name~ : String, ty~ : @ref.Ref[CoreType?], expr~ : CoreExpr?, span~ : Span)
@@ -210,7 +231,7 @@ pub(all) enum CoreType {
   SInt(Int)
   Clock
   Vector(ty~ : CoreType, len~ : Int)
-  Instance(sig~ : ModuleSignature, params~ : Map[String, StaticArg], ids~ : Array[InstanceId])
+  Instance(sig~ : CoreInstanceSignature, params~ : Map[String, CoreStaticArg], ids~ : Array[InstanceId])
   Struct(Map[String, CoreType])
   Unit
 }

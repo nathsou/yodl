@@ -340,7 +340,13 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span, type_params~: Set[
     }
 }
 
-fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Ref[Type?]], expected_ty~: Type? = None) -> Type raise {
+fn TypeChecker::check_expr(
+    self: Self,
+    expr: Expr,
+    env: Scope[Path, Ref[Type?]],
+    expected_ty~: Type? = None,
+    record_port_reads~: Bool = true,
+) -> Type raise {
     let ty = match expr {
         Identifier(path~, span~, ..) => {
             match env.resolve(path) {
@@ -476,7 +482,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Ref[Type?]],
             }
         }
         Indexing(expr~, index~, span~, ..) => {
-            let ty = self.check_expr(expr, env)
+            let ty = self.check_expr(expr, env, record_port_reads~)
             let index_ty = self.check_expr(index, env)
 
             if !index_ty.is_numerical() {
@@ -491,7 +497,7 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Ref[Type?]],
             }
         }
         Slicing(expr~, hi~, lo~, kind~, span~, ..) => {
-            let ty = self.check_expr(expr, env)
+            let ty = self.check_expr(expr, env, record_port_reads~)
             let start_ty = self.check_expr(hi, env)
             let end_ty = self.check_expr(lo, env)
 
@@ -536,11 +542,13 @@ fn TypeChecker::check_expr(self: Self, expr: Expr, env: Scope[Path, Ref[Type?]],
             }
         }
         FieldAccess(expr~, field=port, span~, ..) => {
-            match self.check_expr(expr, env) {
+            match self.check_expr(expr, env, record_port_reads~) {
                 Instance(sig~, params~, ids~) => {
                     match sig.get_port(port) {
                         Some(port_def) => {
-                            self.port_usage.record_read(ids, port)
+                            if record_port_reads {
+                                self.port_usage.record_read(ids, port)
+                            }
                             port_def.ty.substitute(params, span~)
                         }
                         None => raise UnknownModulePort(module_path=sig.path, port_name=port, span~)
@@ -1040,7 +1048,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
             })
         }
         Assign(lhs~, rhs~, span~) => {
-            let lhs_ty = self.check_expr(lhs, env)
+            let lhs_ty = self.check_expr(lhs, env, record_port_reads=false)
             let valid_lhs = is_valid_assignment_target(lhs)
 
             if !valid_lhs {

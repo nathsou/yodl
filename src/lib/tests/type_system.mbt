@@ -332,6 +332,44 @@ test "instance aliases assigned through aggregates retain identity" {
 }
 
 ///|
+test "instance input assignments are tracked as writes without spurious reads" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(first: u8, second: u8) -> (result: u8) {
+    #|  let child = Child(input: first)
+    #|  child.input = second
+    #|  result = child.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("connect child_input, second"))
+  assert_true(firrtl.contains("connect inst_0$.input, child_input"))
+  assert_false(firrtl.contains("connect inst_0$.input, first"))
+}
+
+///|
+test "lvalue checking preserves reads used by dynamic indices" {
+  let source =
+    #|module Index(value: bool) -> (output: bool) {
+    #|  output = value
+    #|}
+    #|module Child(input: [2]u8) -> (output: u8) {
+    #|  output = input[0]
+    #|}
+    #|module Top(select: bool, first: u8, second: u8) -> (result: u8) {
+    #|  let index = Index(value: select)
+    #|  let child = Child(input: [first, first])
+    #|  child.input[index.output] = second
+    #|  result = child.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("wire index_output: UInt<1>"))
+  assert_true(firrtl.contains("mux(eq(index_output, UInt<1>(0)), second"))
+}
+
+///|
 test "instance branches union actual port demand deterministically" {
   let source =
     #|module Child(value: u8) -> (output: u8) {

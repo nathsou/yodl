@@ -1,5 +1,5 @@
 using @firrtl { type Id, type Annotation, type AnnotationTarget }
-using @parse { type Span, type Path, type CoreModuleDecl, type AstEmitter, type CoreExpr, type CoreStmt, type CoreDecl, type CoreType }
+using @parse { type Span, type Path, type CoreModuleDecl, type AstEmitter, type CoreExpr, type CoreStmt, type CoreDecl, type CoreType, type CoreStaticArg }
 
 type FExpr = @firrtl.UntypedExpr
 type FStmt = @firrtl.UntypedStmt
@@ -152,7 +152,7 @@ fn lower_type(ty: CoreType, span~: Span, port_usage~: PortUsage) -> @firrtl.Type
     SInt(width) => SInt(width)
     Clock => Clock
     Vector(ty~, len~) => Vec(lower_type(ty, span~, port_usage~), len)
-    Instance(sig~, params~, ids~) => {
+    Instance(sig~, params=_, ids~) => {
       let accessed_ports = port_usage.for_instances(ids)
       let fields: Array[@firrtl.BundleField] = Array::new(capacity=accessed_ports.length())
 
@@ -164,7 +164,7 @@ fn lower_type(ty: CoreType, span~: Span, port_usage~: PortUsage) -> @firrtl.Type
 
         let field: @firrtl.BundleField = {
           id: Id::from(port),
-          ty: lower_resolved_type(port_sig.ty.substitute(params, span~), span~, port_usage~),
+          ty: lower_type(port_sig.ty, span~, port_usage~),
           flip: port_sig.dir == Input,
         }
 
@@ -798,49 +798,21 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
       Value::Struct(fields=val, ty~, span~)
     }
-    Instance(path~, params~, ports~, span~, ty=inst_ty) => {
-      if params.params.length() > 0 && !self.declared_modules.contains(path) {
-        raise ElaborationError(message="Cannot elaborate parametric instance of module '\{path.to_string()}'", span~)
-      }
-
-      let (typed_params, instance_ids) = match inst_ty.val {
-        Some(Instance(sig=_, params~, ids~)) => (params, ids)
+    Instance(path~, ports~, span~, ty=inst_ty) => {
+      let (core_sig, typed_params, instance_ids) = match inst_ty.val {
+        Some(Instance(sig~, params~, ids~)) => (sig, params, ids)
         _ => raise ElaborationError::Unreachable(message="Untyped instance", span~)
       }
 
-      let (ports_sig, params_map, attributes) = match self.modules.get(path) {
-        Some(inst_mod) => {
-          let ports_sig: Map[String, @firrtl.PortSignature] = Map([])
-
-          for port in inst_mod.ports {
-            ports_sig[port.id.inner()] = {
-              ty: port.ty,
-              dir: port.dir,
-            }
-          }
-
-          let empty_params: Map[String, StaticArg] = Map([])
-          (ports_sig, empty_params, {})
-        }
-        None => match self.declared_modules.get(path) {
-          Some(sig) => {
-            let ports_sig = Map([], capacity=sig.ports.length())
-
-            for port in sig.ports {
-              let ty = lower_resolved_type(port.ty.substitute(typed_params, span~), span~, port_usage=self.port_usage)
-              let port_sig: @firrtl.PortSignature = {
-                dir: port.dir,
-                ty,
-              }
-              
-              ports_sig[port.name] = port_sig
-            }
-
-            (ports_sig, typed_params, sig.attributes)
-          }
-          None => raise ElaborationError(message="Module '\{path.to_string()}' is not declared", span~)
+      let ports_sig: Map[String, @firrtl.PortSignature] = Map([], capacity=core_sig.ports.length())
+      for port in core_sig.ports {
+        ports_sig[port.name] = {
+          dir: port.dir,
+          ty: lower_type(port.ty, span=port.span, port_usage=self.port_usage),
         }
       }
+      let params_map = typed_params
+      let attributes = core_sig.attributes
 
       let inline_connections: Map[String, FExpr] = Map([])
       let connections: Map[String, FExpr] = Map([])
@@ -910,7 +882,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       }
 
       if attributes.contains("internal") {
-        fn get_param(name: String) -> StaticArg raise {
+        fn get_param(name: String) -> CoreStaticArg raise {
           match params_map.get(name) {
             Some(param) => param
             None => raise ElaborationError(message="Unknown module parameter '\{name}'", span~)
@@ -919,10 +891,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
         match path {
           { packages: [], elem: "Reg" | "RegAsyncReset" as internal_module_name } => {
-            let reg_ty = match get_param("T") {
-              TypeParam(ty~, ..) => lower_resolved_type(ty, span~, port_usage=self.port_usage)
-              _ => raise ElaborationError::Unreachable(message="non-type parameter in Reg instance", span~)
-            }
+            let reg_ty = lower_type(get_param("T").as_type(), span~, port_usage=self.port_usage)
 
             let sync_reset = internal_module_name == "Reg"
             let uses_rst = uses_port("rst")
@@ -997,7 +966,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             }
           }
           { packages: [], elem: "Memory" } => {
-            let data_type = lower_resolved_type(get_param("T").as_type(), span~, port_usage=self.port_usage)
+            let data_type = lower_type(get_param("T").as_type(), span~, port_usage=self.port_usage)
             let depth = get_param("Depth").as_int()
             let read_ports = get_param("ReadPorts").as_int()
             let write_ports = get_param("WritePorts").as_int()
