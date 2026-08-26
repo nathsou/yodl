@@ -302,6 +302,12 @@ The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <tr><td><code>h</code></td><td>16</td><td><code>11'h655</code></td></tr>
 </tbody></table>
 </div>
+<p>When an integer value is assigned to a same-signed integer type, Yodl resizes
+it to the destination width. Widening an unsigned value zero-extends it,
+widening a signed value sign-extends it, and narrowing keeps the least
+significant bits. Unsized literals instead adopt the contextual width when the
+value fits. Signedness is never changed implicitly: use <code>uint!(x)</code> or <code>sint!(x)</code>
+to request a signedness reinterpretation explicitly.</p>
 <h3 id="booleans"><a class="header" href="#booleans">Booleans</a></h3>
 <p>The <code>bool</code> type is an alias for the <code>u1</code> type.</p>
 <p>For readability, the <code>true</code> and <code>false</code> keywords are supported and correspond to <code>1'b1</code> and <code>1'b0</code> respectively.</p>
