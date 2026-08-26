@@ -975,7 +975,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
         self.expect(Rbracket, start_idx)
         UInt(width)
       } else {
-        Nat({min_width: 0})
+        raise ExpectedType(received=UInt, span=self.span(start_idx))
       }
     }
     SInt => {

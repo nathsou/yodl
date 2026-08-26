@@ -44,7 +44,6 @@ pub const BITS_PER_CHAR = 8
 /// declaration enters expression checking. Core construction validates that
 /// only concrete lowerable variants remain.
 pub(all) enum Type {
-  Nat(MinWidth)
   UInt(IndexExpr)
   SInt(IndexExpr)
   Clock
@@ -62,7 +61,6 @@ pub(all) enum Type {
 /// arguments form the instance type.
 pub impl Eq for Type with equal(self, other) {
   match (self, other) {
-    (Nat(a), Nat(b)) => a == b
     (UInt(a), UInt(b)) | (SInt(a), SInt(b)) => a == b
     (Clock, Clock) | (Unit, Unit) => true
     (Vector(ty=a, len=al), Vector(ty=b, len=bl)) => a == b && al == bl
@@ -74,10 +72,6 @@ pub impl Eq for Type with equal(self, other) {
     _ => false
   }
 }
-
-pub(all) struct MinWidth {
-  min_width: Int
-} derive(Eq)
 
 pub fn Type::bool() -> Type {
   UInt(Lit(1))
@@ -97,7 +91,7 @@ pub fn Type::empty() -> Type {
 
 pub fn Type::is_ground(self: Type) -> Bool {
   match self {
-    Nat(_) | UInt(_) | SInt(_) => true
+    UInt(_) | SInt(_) => true
     _ => false
   }
 }
@@ -121,7 +115,7 @@ pub fn Type::is_string(self: Type) -> Bool {
 // high.
 pub fn Type::mask(self: Type, span~: Span) -> Type raise AstError {
   match self {
-    UInt(_) | SInt(_) | Nat(_) | Clock | String(_) => UInt(Lit(1))
+    UInt(_) | SInt(_) | Clock | String(_) => UInt(Lit(1))
     Vector(ty~, len~) => Vector(ty=ty.mask(span~), len~)
     Struct(fields) => Struct({
       let new_fields = Map([], capacity=fields.length())
@@ -555,7 +549,6 @@ pub fn Expr::contains_statements(self: Expr) -> Bool {
 
 pub fn Type::width(self: Type, span: Span) -> Int raise AstError {
   match self {
-    Nat({min_width}) => min_width
     UInt(idx) => idx.expect_lit(span)
     SInt(idx) => idx.expect_lit(span)
     Clock => 1
@@ -579,7 +572,7 @@ pub fn Type::width(self: Type, span: Span) -> Int raise AstError {
 
 pub fn Type::substitute(self: Type, params_env: Map[String, StaticArg], span~: Span) -> Type raise AstError {
   match self {
-    Nat(_) | String(_) | Unit => self
+    String(_) | Unit => self
     UInt(idx) => UInt(idx.substitute(params_env))
     SInt(idx) => SInt(idx.substitute(params_env))
     Clock => Clock
@@ -632,14 +625,13 @@ pub fn Type::substitute(self: Type, params_env: Map[String, StaticArg], span~: S
 
 pub fn Type::is_numerical(self: Type) -> Bool {
   match self {
-    Nat(_) | UInt(_) | SInt(_) => true
+    UInt(_) | SInt(_) => true
     _ => false
   }
 }
 
 pub fn Type::has_zero_width(self: Type) -> Bool {
   match self {
-    Nat(_) => false
     UInt(idx) | SInt(idx) => idx == Lit(0)
     Clock => false
     Vector(ty~, len~) => match len {
@@ -662,7 +654,7 @@ pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> E
 pub fn Expr::bignat(n: BigInt, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
   let ty = match width {
     Some(width) => if n > 0 { Type::uint(width) } else { Type::uint(width) }
-    None => Nat({min_width: @utils.significant_bits(n)})
+    None => Type::uint(@utils.significant_bits(n))
   }
 
   Natural(value=n, width~, base~, span~, ty={ val: Some(ty) })
@@ -713,7 +705,6 @@ pub fn InstanceParams::as_map(self: InstanceParams, names~: Array[String]) -> Ma
 
 pub fn Type::clone(self: Type) -> Type {
   match self {
-    Nat({min_width}) => Nat({min_width,})
     UInt(width) => UInt(width)
     SInt(width) => SInt(width)
     Vector(ty~, len~) => Vector(ty=ty.clone(), len~)

@@ -339,10 +339,6 @@ pub struct Lexer {
 pub fn Lexer::lex(Self) -> Array[Token] raise
 pub fn Lexer::new(String, file~ : String, file_content~ : String) -> Self
 
-pub(all) struct MinWidth {
-  min_width : Int
-} derive(Eq)
-
 pub(all) struct ModuleDecl {
   path : Path
   params : Array[ModuleParameter]
@@ -515,7 +511,6 @@ type TokenType derive(Eq, @debug.Debug)
 pub impl Show for TokenType
 
 pub(all) enum Type {
-  Nat(MinWidth)
   UInt(IndexExpr)
   SInt(IndexExpr)
   Clock

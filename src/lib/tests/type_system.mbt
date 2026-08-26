@@ -135,14 +135,14 @@ test "constant assertions fold through explicit coercions" {
 }
 
 ///|
-test "inferred Nat bindings cannot acquire signedness from context" {
+test "inferred unsigned literals cannot acquire signedness from context" {
   let source =
     #|module Top() -> () {
     #|  let n = 1
     #|  let s: s8 = n
     #|}
   let diagnostic = compile_error(source)
-  assert_true(diagnostic.contains("Incompatible types 's8' and 'nat[1]'"))
+  assert_true(diagnostic.contains("Incompatible types 's8' and 'u1'"))
 }
 
 ///|
@@ -397,13 +397,11 @@ test "literal width inference is traversal-order independent" {
 }
 
 ///|
-test "literal and concrete integer joins are traversal-order independent" {
+test "unsigned literal joins are traversal-order independent" {
   let source =
     #|module Top(select: bool, unsigned: u8, signed: s8, narrow: u4) -> () {
     #|  let ternary_nat_first = select ? 1 : unsigned
     #|  let ternary_nat_last = select ? unsigned : 1
-    #|  let signed_nat_first = select ? 1 : signed
-    #|  let signed_nat_last = select ? signed : 1
     #|  let match_nat_first = match select {
     #|    1 => 1
     #|    _ => unsigned
@@ -428,15 +426,30 @@ test "literal and concrete integer joins are traversal-order independent" {
   ] {
     assert_true(simplified.contains("let \{name}: u8"))
   }
-  for name in ["signed_nat_first", "signed_nat_last"] {
-    assert_true(simplified.contains("let \{name}: s8"))
-  }
   assert_true(simplified.contains("let vector_nat_first: [2]u8"))
   assert_true(simplified.contains("let vector_nat_last: [2]u8"))
   assert_true(simplified.contains("let vector_branch_nat_first: [1]u8"))
   assert_true(simplified.contains("let vector_branch_nat_last: [1]u8"))
   assert_false(simplified.contains("truncate(unsigned)"))
   let _ = compile_stage(source, "write_low_firrtl")
+
+  let signed =
+    #|module Top(select: bool, value: s8) -> () {
+    #|  let result = select ? 1 : value
+    #|}
+  assert_true(compile_error(signed).contains("Incompatible types 'u1' and 's8'"))
+}
+
+///|
+test "uncontextualized natural literals synthesize canonical unsigned widths" {
+  let source =
+    #|module Top() -> () {
+    #|  let one = 1
+    #|  let wide = 255
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("let one: u1"))
+  assert_true(simplified.contains("let wide: u8"))
 }
 
 ///|

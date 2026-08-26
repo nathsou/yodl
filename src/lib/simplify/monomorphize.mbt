@@ -183,7 +183,7 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
 
       ty
     }
-    Clock | Nat(_) | Instance(_) | String(_) | Unit => ty
+    Clock | Instance(_) | String(_) | Unit => ty
     MemoryMask(ty) => @parse.Type::MemoryMask(self.monomorphize_type(ty, env~, packages~, span~).ty)
   }
 
@@ -231,9 +231,7 @@ fn Monomorphizer::register_monomorphized_module(
       map[name] = resolved_param
 
       match (resolved_param, param_sig.sort) {
-        (NatParam(value~, span~), NatSort) => {
-          params.instantiated.push((value.as_expr(), @parse.Type::Nat({min_width: 0}), span))
-        }
+        (NatParam(_, ..), NatSort) => ()
         (TypeParam(_), TypeSort) => ()
         _ => raise InvalidParameterInstantiation(path~, param=name, span=param.span(), param_span=param_sig.span)
       }
