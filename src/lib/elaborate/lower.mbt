@@ -639,9 +639,13 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       }
 
       if output_width.val is Some(output_width) {
-        let width = unwrap_type(bin_ty, span~).width()
+        let frozen_ty = unwrap_type(bin_ty, span~)
+        let width = frozen_ty.width()
         if width < output_width {
           res = mk_prim(Bits, [res, FExpr::uint(width - 1), FExpr::uint(0)])
+          if frozen_ty is SInt(_) {
+            res = mk_prim(AsSInt, [res])
+          }
         }
       }
 

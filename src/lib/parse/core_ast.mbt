@@ -67,7 +67,19 @@ pub fn CoreType::from_type(ty: Type, span~: Span) -> CoreType raise AstError {
     Type::SInt(Lit(width)) if width >= 0 => SInt(width)
     Type::Clock => Clock
     Type::Vector(ty~, len=Lit(len)) if len >= 0 => Vector(ty=CoreType::from_type(ty, span~), len~)
-    Type::Instance(sig~, params~, ids~) => Instance(sig~, params~, ids=Array::copy(ids))
+    Type::Instance(sig~, params~, ids~) => {
+      let core_params: Map[String, StaticArg] = Map([], capacity=params.length())
+      for name, param in params {
+        core_params[name] = match param {
+          TypeParam(ty~, span=param_span) => {
+            let core_ty = CoreType::from_type(ty, span=param_span)
+            TypeParam(ty=core_ty.to_type(), span=param_span)
+          }
+          NatParam(_) => param
+        }
+      }
+      Instance(sig~, params=core_params, ids=Array::copy(ids))
+    }
     Type::Struct(fields) => {
       let core_fields = Map([], capacity=fields.length())
       for name, field_ty in fields { core_fields[name] = CoreType::from_type(field_ty, span~) }

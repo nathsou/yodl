@@ -153,6 +153,10 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
       @parse.Type::Struct(mono_fields)
     }
     Name(path~, params~) => {
+      if params.is_empty() && resolve_member(env, path~, packages~) is Some((Param(TypeParam(ty~, ..)), _)) {
+        return { ty, is_type_alias: false }
+      }
+
       fn substitute(type_alias: @parse.TypeAliasDecl) -> TypeInfo raise {
         if type_alias.parameters.length() != params.length() {
           raise InvalidTypeAliasParameters(
@@ -399,11 +403,17 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
         None => None
       }
 
-      match mono_ty {
-        Some(Name(path~, params~)) => {
-          if !is_type_alias && params.length() > 0 {
-            let _ = self.register_monomorphized_module(
-              path~,
+      let mono_ty = match mono_ty {
+        Some(Name(path~, params~)) if !is_type_alias && params.length() > 0 => {
+          let resolved_path = match resolve_member(env, path~, packages~) {
+            Some((MonoEnvEntry::Name(packages=member_packages), resolved_path)) => resolved_path.prepend(member_packages)
+            _ => raise UnresolvedNamedType(path~, span~)
+          }
+          if self.declared_modules.contains(resolved_path) {
+            Some(@parse.Type::Name(path=resolved_path, params~))
+          } else {
+            let mod = self.register_monomorphized_module(
+              path=resolved_path,
               params=@parse.InstanceParams::new(@utils.map(params, fn(ty) {
                 (None, @parse.Resolved(@parse.TypeParam(ty~, span~)))
               })),
@@ -411,9 +421,10 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
               span~,
               packages~,
             )
+            Some(@parse.Type::Name(path=mod.path, params=[]))
           }
         }
-        _ => ()
+        other => other
       }
 
       // ignore duplicate declarations as these will be caught by the type checker

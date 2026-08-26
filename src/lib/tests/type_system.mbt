@@ -104,6 +104,27 @@ test "contextual negative literals check the signed value as a whole" {
 }
 
 ///|
+test "signed binary narrowing preserves FIRRTL signedness" {
+  let source =
+    #|module Top(a: s8, b: s8) -> (out: s8) {
+    #|  out = a + b
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("asSInt(bits(add("))
+}
+
+///|
+test "typed constants retain their resolved declared type" {
+  let source =
+    #|const VALUE: s4 = 7
+    #|module Top() -> (out: s4) {
+    #|  out = VALUE
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("SInt<4>(7)"))
+}
+
+///|
 test "empty vectors adopt only a contextual zero-length vector type" {
   let accepted =
     #|module Top() -> (out: [0]u8) {
@@ -290,6 +311,27 @@ test "instance aliases assigned after declaration retain identity" {
 }
 
 ///|
+test "instance aliases assigned through aggregates retain identity" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u8) -> (result: u8) {
+    #|  let child = Child()
+    #|  let holder: (child: Child)
+    #|  holder.child = child
+    #|  holder.child.input = value
+    #|  result = holder.child.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("wire child_input: UInt<8>"))
+  assert_true(firrtl.contains("wire child_output: UInt<8>"))
+  assert_true(firrtl.contains("wire holder_child_input: UInt<8>"))
+  assert_true(firrtl.contains("wire holder_child_output: UInt<8>"))
+}
+
+///|
 test "instance branches union actual port demand deterministically" {
   let source =
     #|module Child(value: u8) -> (output: u8) {
@@ -362,6 +404,69 @@ test "instance static type arguments are resolved before Core" {
 }
 
 ///|
+test "declared module type annotations resolve nested static types" {
+  let source =
+    #|declare module Cell[T: Type](input: T) -> (output: T)
+    #|module Top(value: bool) -> (result: bool) {
+    #|  let cell = Cell[T: MemoryMask[u8]]()
+    #|  let alias: Cell[MemoryMask[u8]] = cell
+    #|  alias.input = value
+    #|  result = alias.output
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("Cell[u1]"))
+}
+
+///|
+test "source module type annotations use the monomorphized nominal type" {
+  let source =
+    #|module Cell[T: Type](input: T) -> (output: T) {
+    #|  output = input
+    #|}
+    #|module Top(value: u8) -> (result: u8) {
+    #|  let cell = Cell[T: u8]()
+    #|  let alias: Cell[u8] = cell
+    #|  alias.input = value
+    #|  result = alias.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("wire cell_input: UInt<8>"))
+  assert_true(firrtl.contains("wire cell_output: UInt<8>"))
+}
+
+///|
+test "module type annotations reject Nat-sorted static arguments" {
+  let source =
+    #|declare module Box[N: Nat](input: uint[N]) -> (output: uint[N])
+    #|module Top() -> () {
+    #|  let box: Box[u4]
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(
+    diagnostic.contains(
+      "parameter 'N' expects a Nat argument, which cannot be written in a type annotation",
+    ),
+  )
+}
+
+///|
+test "MemoryMask defers generic parameters but rejects concrete non-storable types" {
+  let generic =
+    #|declare module Masked[T: Type](mask: MemoryMask[T]) -> ()
+    #|module Top() -> () {}
+  let _ = compile_stage(generic, "write_simplified")
+
+  let concrete =
+    #|module Child() -> () {}
+    #|module Top() -> () {
+    #|  let mask: MemoryMask[Child]
+    #|}
+  let diagnostic = compile_error(concrete)
+  assert_true(diagnostic.contains("Type 'Child' is not storable"))
+  assert_false(diagnostic.contains("reached Core construction"))
+}
+
+///|
 test "Unit-valued let bindings lower their effects without hardware wires" {
   let source =
     #|module Top(clk: clock, pred: bool) -> () {
@@ -398,6 +503,20 @@ test "instance direction errors stay attached to the assignment" {
   assert_true(
     diagnostic.has_prefix(
       "Cannot assign to output port 'output' of module 'Child', fixture.yodl:7.3-7.23",
+    ),
+  )
+
+  let nested =
+    #|module Child() -> (output: (value: u8)) {
+    #|  output = (value: 0)
+    #|}
+    #|module Top(value: u8) -> () {
+    #|  let child = Child()
+    #|  child.output.value = value
+    #|}
+  assert_true(
+    compile_error(nested).contains(
+      "Cannot assign to output port 'output' of module 'Child'",
     ),
   )
 }

@@ -1,4 +1,4 @@
-using @utils { type Scope, min, max, pow2, zip, zip2, is_ascii, significant_bits }
+using @utils { type Scope, min, max, pow2, zip2, is_ascii, significant_bits }
 using @parse {
     type Type, type ModuleSignature, trait Spanned,
     type Expr, type Decl, type Stmt, type Attribute, type AttributeValue,
@@ -182,6 +182,71 @@ fn merge_inferred_types(lhs: Type, rhs: Type) -> Type {
     }
 }
 
+fn merge_assignment_target(
+    lhs: Expr,
+    rhs_ty: Type,
+    env: Scope[Path, Ref[Type?]],
+) -> Unit {
+    let lhs_ty = lhs.ty().val.unwrap()
+    let merged_ty = merge_inferred_types(lhs_ty, rhs_ty)
+    lhs.set_ty(merged_ty)
+
+    match lhs {
+        Identifier(path~, ..) => {
+            match env.resolve(path) {
+                Some(binding) => binding.val = Some(merged_ty)
+                None => ()
+            }
+        }
+        FieldAccess(expr~, field~, ..) => {
+            match expr.ty().val {
+                Some(Struct(fields)) => {
+                    let merged_fields = Map([], capacity=fields.length())
+                    for name, ty in fields {
+                        merged_fields[name] = if name == field { merged_ty } else { ty }
+                    }
+                    merge_assignment_target(expr, Struct(merged_fields), env)
+                }
+                _ => ()
+            }
+        }
+        Indexing(expr~, ..) => {
+            match expr.ty().val {
+                Some(Vector(len~, ..)) => {
+                    merge_assignment_target(expr, Vector(ty=merged_ty, len~), env)
+                }
+                _ => ()
+            }
+        }
+        Slicing(expr~, ..) => {
+            match (expr.ty().val, merged_ty) {
+                (Some(Vector(ty=elem_ty, len~)), Vector(ty=rhs_elem_ty, ..)) => {
+                    merge_assignment_target(
+                        expr,
+                        Vector(ty=merge_inferred_types(elem_ty, rhs_elem_ty), len~),
+                        env,
+                    )
+                }
+                _ => ()
+            }
+        }
+        _ => ()
+    }
+}
+
+fn assigned_instance_port(lhs: Expr) -> (ModuleSignature, Array[InstanceId], String)? {
+    match lhs {
+        FieldAccess(expr~, field~, ..) => {
+            match expr.ty().val {
+                Some(Type::Instance(sig~, ids~, ..)) => Some((sig, ids, field))
+                _ => assigned_instance_port(expr)
+            }
+        }
+        Indexing(expr~, ..) | Slicing(expr~, ..) => assigned_instance_port(expr)
+        _ => None
+    }
+}
+
 fn unify(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
     unify_aux([(ty1, ty2)], span~, subst~)
 }
@@ -229,9 +294,22 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span, type_params~: Set[
                         raise type_error("Module '\{path}' expected \{sig.params.length()} type parameters, got \{params.length()}", span)
                     }
 
-                    let resolved_params: Map[String, StaticArg] = Map::from_iter(
-                        zip(sig.params.map(p => p.name), params.map(ty => @parse.TypeParam(ty~, span~)))
-                    )
+                    let resolved_params: Map[String, StaticArg] = Map([])
+                    for index, param in sig.params {
+                        let arg = params[index]
+                        match param.sort {
+                            TypeSort => {
+                                let resolved = self.resolve_ty(arg, span~, type_params~)
+                                resolved_params[param.name] = @parse.TypeParam(ty=resolved, span~)
+                            }
+                            NatSort => {
+                                raise type_error(
+                                    "Module type '\{path}' parameter '\{param.name}' expects a Nat argument, which cannot be written in a type annotation",
+                                    span,
+                                )
+                            }
+                        }
+                    }
 
                     Instance(sig~, params=resolved_params, ids=[])
                 }
@@ -251,7 +329,11 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span, type_params~: Set[
         MemoryMask(ty) => {
             let inner = self.resolve_ty(ty, span~, type_params~)
             try inner.mask(span~) catch {
-                _ => MemoryMask(inner)
+                NonStorableType(
+                    ty=Name(path={ packages: [], elem }, ..),
+                    ..
+                ) if type_params.contains(elem) => MemoryMask(inner)
+                err => raise err
             }
         }
         Unit => Unit
@@ -965,8 +1047,9 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
                 raise InvalidAssignmentTarget(span~)
             }
 
-            // mark instance port as being written to
-            if lhs is FieldAccess(expr~, field~, ..) && expr.ty().val is Some(Type::Instance(sig~, ids~, ..)) {
+            // Mark the root instance port as written even when the assignment targets
+            // a nested aggregate field or element of that port.
+            if assigned_instance_port(lhs) is Some((sig, ids, field)) {
                 if sig.get_port(field) is Some({ dir: Output, .. }) {
                     raise type_error("Cannot assign to output port '\{field}' of module '\{sig.path}'", span)
                 }
@@ -976,14 +1059,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
 
             let rhs_ty = self.check_expr(rhs, env, expected_ty=Some(lhs_ty))
             let _ = unify(lhs_ty, rhs_ty, span~)
-            if lhs is Identifier(path~, ..) {
-                let merged_ty = merge_inferred_types(lhs_ty, rhs_ty)
-                match env.resolve(path) {
-                    Some(binding) => binding.val = Some(merged_ty)
-                    None => ()
-                }
-                lhs.set_ty(merged_ty)
-            }
+            merge_assignment_target(lhs, rhs_ty, env)
         }
         Scope(body~, ..) => {
             let new_env = env.child()
@@ -1095,14 +1171,14 @@ fn TypeChecker::check_const_decl(self: Self, decl: ConstDecl, env: Scope[Path, R
         raise ExpectedConstantExpr(span=decl.expr.span())
     }
 
-    let ty = self.check_expr(decl.expr, env)
-
-    match decl.ty {
+    let ty = match decl.ty {
         Some(expected_ty) => {
             let expected_ty = self.resolve_ty(expected_ty, span=decl.expr.span())
-            let _ = unify(expected_ty, ty, span=decl.expr.span())
+            let actual_ty = self.check_expr(decl.expr, env, expected_ty=Some(expected_ty))
+            let _ = unify(expected_ty, actual_ty, span=decl.expr.span())
+            expected_ty
         }
-        None => ()
+        None => self.check_expr(decl.expr, env)
     }
 
     declare_name(env~, path=decl.path, ty~, span=decl.span)
