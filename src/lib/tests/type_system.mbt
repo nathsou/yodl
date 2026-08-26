@@ -74,6 +74,45 @@ test "contextual literals report overflow at the literal span" {
 }
 
 ///|
+test "match patterns adopt the concrete integer subject type" {
+  let source =
+    #|module Top(unsigned: u8, signed: s8) -> (uout: u1, sout: u1, nout: u1) {
+    #|  uout = match unsigned {
+    #|    1 => 1'd1
+    #|    _ => 1'd0
+    #|  }
+    #|  sout = match signed {
+    #|    1 => 1'd1
+    #|    _ => 1'd0
+    #|  }
+    #|  nout = match 1 {
+    #|    1 => 1'd1
+    #|    _ => 1'd0
+    #|  }
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("eq(unsigned, UInt<8>(1))"))
+  assert_true(firrtl.contains("eq(signed, SInt<8>(1))"))
+  assert_true(firrtl.contains("connect nout, UInt<1>(1)"))
+}
+
+///|
+test "match patterns reject literals that do not fit the subject" {
+  let source =
+    #|module Top(subject: u3) -> (out: u1) {
+    #|  out = match subject {
+    #|    8 => 1'd1
+    #|    _ => 1'd0
+    #|  }
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(
+    diagnostic.contains("Literal requires 4 bits but context provides u3"),
+  )
+  assert_true(diagnostic.contains("fixture.yodl:3.5-3.6"))
+}
+
+///|
 test "contextual signed literals retain their frozen FIRRTL width" {
   let source =
     #|module Top() -> (out: s4) {

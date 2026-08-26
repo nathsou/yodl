@@ -827,6 +827,10 @@ fn TypeChecker::check_expr_in_context(
         }
         Match(subject~, cases~, default~, span~, ..) => {
             let subject_ty = self.synth_expr(subject, env)
+            let pattern_ty = match subject_ty {
+                Nat({ min_width }) => Type::uint(min_width)
+                _ => subject_ty
+            }
             
             if cases.is_empty() && default is None {
                 raise type_error("Empty match expression", span)
@@ -848,7 +852,7 @@ fn TypeChecker::check_expr_in_context(
 
             for case in cases {
                 let (pat, expr) = case
-                let pat_ty = self.synth_expr(pat, env)
+                let pat_ty = self.check_expr(pat, env, expected_ty=pattern_ty)
                 let expr_ty = self.check_expr_in_context(expr, env, expected_ty~)
                 let _ = unify(subject_ty, pat_ty, subst~, span~)
                 check_ret_ty(expr_ty)

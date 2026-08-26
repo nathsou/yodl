@@ -265,11 +265,16 @@ pub fn Simplifier::simplify_expr(
     Match(subject~, cases~, default~, span~, ty~) => {
       let core_ty = freeze_ty(ty, span)
       let expected = core_ty.val.unwrap()
+      let simplified_subject = simp(subject)
+      let pattern_ty = simplified_subject.ty().val.unwrap()
       Match(
-        subject=simp(subject),
+        subject=simplified_subject,
         cases=cases.map(case => {
           let (pat, e) = case
-          (simp(pat), self.simplify_checked_expr(e, expected, env~))
+          (
+            self.simplify_checked_expr(pat, pattern_ty, env~),
+            self.simplify_checked_expr(e, expected, env~),
+          )
         }),
         default=default.map(e => self.simplify_checked_expr(e, expected, env~)),
         span~,
