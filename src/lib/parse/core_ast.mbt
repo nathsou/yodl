@@ -407,6 +407,20 @@ pub fn CoreExpr::contains_statements(self: CoreExpr) -> Bool {
 pub fn CoreExpr::as_int(self: CoreExpr) -> Int raise {
   match self {
     Natural(value~, ..) => value.to_int()
+    Truncate(expr~, ty~, ..) => {
+      let ty = ty.val.unwrap_or_error(
+        Failure::Failure("Truncation expression is untyped")
+      )
+      let width = ty.width()
+      let mask = (1N << width) - 1N
+      let truncated = BigInt::from_int(expr.as_int()) & mask
+      match ty {
+        SInt(width) if width > 0 && truncated >= (1N << (width - 1)) =>
+          (truncated - (1N << width)).to_int()
+        _ => truncated.to_int()
+      }
+    }
+    ZeroExtend(expr~, ..) | SignExtend(expr~, ..) => expr.as_int()
     _ => raise ExpectedIntegerExpression(expr=self, span=Spanned::span(self))
   }
 }

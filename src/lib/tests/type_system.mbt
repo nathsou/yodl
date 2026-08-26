@@ -113,6 +113,28 @@ test "match patterns reject literals that do not fit the subject" {
 }
 
 ///|
+test "constant assertions fold through explicit coercions" {
+  let always_true =
+    #|module Top() -> () {
+    #|  assert!(2'd1)
+    #|}
+  let simplified = compile_stage(always_true, "write_simplified")
+  assert_false(simplified.contains("assert!("))
+
+  let always_false =
+    #|module Top() -> () {
+    #|  assert!(2'd0)
+    #|}
+  assert_true(compile_error(always_false).contains("Assertion always fails"))
+
+  let truncated_false =
+    #|module Top() -> () {
+    #|  assert!(2'd2)
+    #|}
+  assert_true(compile_error(truncated_false).contains("Assertion always fails"))
+}
+
+///|
 test "contextual signed literals retain their frozen FIRRTL width" {
   let source =
     #|module Top() -> (out: s4) {
