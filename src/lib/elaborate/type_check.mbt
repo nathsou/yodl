@@ -1150,9 +1150,10 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
             }
         }
         For(variable~, range~, body~, ..) => {
-            let _ = self.check_static_nat(range.start, env)
+            let start_val = self.check_static_nat(range.start, env)
             let end_val = self.check_static_nat(range.end, env)
-            let max_value = if range.inclusive { end_val } else { max(end_val - 1, 0) }
+            let last_value = if range.inclusive { end_val } else { max(end_val - 1, 0) }
+            let max_value = max(start_val, last_value)
             let end_ty = Type::uint(significant_bits(BigInt::from_int(max_value), is_signed=false))
 
             let body_env = env.child()
