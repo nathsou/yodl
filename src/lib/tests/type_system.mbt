@@ -463,6 +463,14 @@ test "unsized integer type annotations report a missing width" {
 }
 
 ///|
+test "static Nat arguments reject negative constant expressions" {
+  let source = "module Top() -> () { let value = pad!(1'b0, 0 - 1); }"
+  assert_true(
+    compile_error(source).contains("Expected a nonnegative constant expression"),
+  )
+}
+
+///|
 test "instance aliases preserve identity while port usage stays outside types" {
   let source =
     #|module Child(input: u8) -> (output: u8) {

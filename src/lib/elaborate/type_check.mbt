@@ -349,7 +349,13 @@ fn TypeChecker::check_static_nat(
     env: Scope[Path, Ref[Type?]],
 ) -> Int raise {
     match self.synth_expr(expr, env) {
-        UInt(_) => eval_const_expr(expr)
+        UInt(_) => {
+            let value = eval_const_expr(expr)
+            if value < 0 {
+                raise type_error("Expected a nonnegative constant expression", expr.span())
+            }
+            value
+        }
         _ => raise ExpectedConstantExpr(span=expr.span())
     }
 }
