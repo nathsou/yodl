@@ -453,12 +453,13 @@ test "uncontextualized natural literals synthesize canonical unsigned widths" {
 }
 
 ///|
-test "unsized unsigned type annotations report a missing width" {
-  let source =
-    #|module Top(value: uint) -> () {}
-  assert_true(
-    compile_error(source).contains("Unsigned integer types require a width"),
-  )
+test "unsized integer type annotations report a missing width" {
+  for ty in ["uint", "sint"] {
+    let source = "module Top(value: \{ty}) -> () {}"
+    assert_true(
+      compile_error(source).contains("Integer types require a width"),
+    )
+  }
 }
 
 ///|

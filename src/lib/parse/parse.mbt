@@ -28,7 +28,7 @@ pub impl Show for ParserError with output(self, logger) {
     ExpectedType(received~, span~) =>
       logger.write_string("Expected a type, got '\{received}' at \{span}\n\{span.context()}")
     MissingIntegerWidth(span~) =>
-      logger.write_string("Unsigned integer types require a width, for example 'uint[8]' at \{span}\n\{span.context()}")
+      logger.write_string("Integer types require a width, for example 'u8', 's8', 'uint[8]', or 'sint[8]' at \{span}\n\{span.context()}")
     ExpectedExpr(received~, span~) =>
       logger.write_string("Expected an expression, got '\{received}' at \{span}\n\{span.context()}")
     ExpectedIdentifier(received~, span~) =>
@@ -983,10 +983,13 @@ fn Parser::parse_type(self: Parser) -> Type raise {
     }
     SInt => {
       self.advance()
-      self.expect(Lbracket, start_idx)
-      let width = self.parse_index_expr()
-      self.expect(Rbracket, start_idx)
-      SInt(width)
+      if self.consumes(Lbracket) {
+        let width = self.parse_index_expr()
+        self.expect(Rbracket, start_idx)
+        SInt(width)
+      } else {
+        raise MissingIntegerWidth(span=self.span(start_idx))
+      }
     }
     UIntType(width) => {
       self.advance()
