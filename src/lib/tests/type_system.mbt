@@ -176,6 +176,23 @@ test "contextual negative literals check the signed value as a whole" {
 }
 
 ///|
+test "folded negative literals remain signed and reject unsigned contexts" {
+  let source =
+    #|module Top() -> () {
+    #|  let value = 0 - 1
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("let value: s2"))
+
+  let unsigned = "module Top() -> (out: u1) { out = 0 - 1; }"
+  assert_true(
+    compile_error(unsigned).contains(
+      "Negative literal cannot be represented as unsigned type u1",
+    ),
+  )
+}
+
+///|
 test "signed binary narrowing preserves FIRRTL signedness" {
   let source =
     #|module Top(a: s8, b: s8) -> (out: s8) {

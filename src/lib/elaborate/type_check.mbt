@@ -461,9 +461,17 @@ fn TypeChecker::check_expr_in_context(
             }
         }
         Natural(value~, width~, span~, ..) => match width {
-            Some(width) => Type::uint(width)
+            Some(width) => {
+                if value < 0 {
+                    raise type_error("Negative literal cannot be represented as unsigned type u\{width}", span)
+                }
+                Type::uint(width)
+            }
             None => match expected_ty {
                 Some(UInt(Lit(width))) => {
+                    if value < 0 {
+                        raise type_error("Negative literal cannot be represented as unsigned type u\{width}", span)
+                    }
                     let required = significant_bits(value, is_signed=false)
                     if required > width {
                         raise type_error("Literal requires \{required} bits but context provides u\{width}", span)
@@ -477,7 +485,11 @@ fn TypeChecker::check_expr_in_context(
                     }
                     Type::sint(width)
                 }
-                _ => Type::uint(significant_bits(value, is_signed=false))
+                _ => if value < 0 {
+                    Type::sint(significant_bits(value, is_signed=true))
+                } else {
+                    Type::uint(significant_bits(value, is_signed=false))
+                }
             }
         }
         String(value=str,  span~, ..) => {
