@@ -231,7 +231,16 @@ fn Monomorphizer::register_monomorphized_module(
       map[name] = resolved_param
 
       match (resolved_param, param_sig.sort) {
-        (NatParam(_, ..), NatSort) => ()
+        (NatParam(value~, ..), NatSort) => {
+          match value {
+            Natural(value~, ..) => {
+              if value < 0 {
+                raise InvalidParameter(sort=NatSort, span=param.span())
+              }
+            }
+            _ => raise InvalidParameter(sort=NatSort, span=param.span())
+          }
+        }
         (TypeParam(_), TypeSort) => ()
         _ => raise InvalidParameterInstantiation(path~, param=name, span=param.span(), param_span=param_sig.span)
       }

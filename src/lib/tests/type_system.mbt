@@ -471,6 +471,19 @@ test "static Nat arguments reject negative constant expressions" {
 }
 
 ///|
+test "module Nat arguments must be nonnegative numeric constants" {
+  let source =
+    #|module Box[N: Nat](input: uint[N]) -> (output: uint[N]) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u1) -> () {
+    #|  let box = Box[N: 0 - 1](input: value)
+    #|}
+  assert_true(compile_error(source).contains("Invalid parameter of sort 'Nat'"))
+}
+
+///|
 test "instance aliases preserve identity while port usage stays outside types" {
   let source =
     #|module Child(input: u8) -> (output: u8) {
