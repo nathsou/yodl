@@ -464,10 +464,12 @@ test "unsized integer type annotations report a missing width" {
 
 ///|
 test "static Nat arguments reject negative constant expressions" {
-  let source = "module Top() -> () { let value = pad!(1'b0, 0 - 1); }"
-  assert_true(
-    compile_error(source).contains("Expected a nonnegative constant expression"),
-  )
+  for width in ["0 - 1", "-1"] {
+    let source = "module Top() -> () { let value = pad!(1'b0, \{width}); }"
+    assert_true(
+      compile_error(source).contains("Expected a nonnegative constant expression"),
+    )
+  }
 }
 
 ///|

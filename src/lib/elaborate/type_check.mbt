@@ -339,6 +339,7 @@ fn declare_name(
 fn eval_const_expr(expr: Expr) -> Int raise {
     match expr {
         Natural(value~, ..) => value.to_int()
+        Unary(op=Neg, expr=Natural(value~, ..), ..) => -value.to_int()
         _ => raise ExpectedConstantExpr(span=expr.span())
     }
 }
@@ -349,7 +350,7 @@ fn TypeChecker::check_static_nat(
     env: Scope[Path, Ref[Type?]],
 ) -> Int raise {
     match self.synth_expr(expr, env) {
-        UInt(_) => {
+        UInt(_) | SInt(_) => {
             let value = eval_const_expr(expr)
             if value < 0 {
                 raise type_error("Expected a nonnegative constant expression", expr.span())
