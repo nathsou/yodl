@@ -65,6 +65,7 @@ pub suberror ParserError {
   ExpectedExpr(received~ : TokenType, span~ : Span)
   ExpectedStmt(received~ : TokenType, span~ : Span)
   ExpectedType(received~ : TokenType, span~ : Span)
+  MissingIntegerWidth(span~ : Span)
   ExpectedDecl(received~ : TokenType, span~ : Span)
   ExpectedRangeOperator(received~ : TokenType, span~ : Span)
   MultipleDefaultCases(span~ : Span)

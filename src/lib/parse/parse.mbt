@@ -12,6 +12,7 @@ pub suberror ParserError {
   ExpectedExpr(received~: TokenType, span~: Span)
   ExpectedStmt(received~: TokenType, span~: Span)
   ExpectedType(received~: TokenType, span~: Span)
+  MissingIntegerWidth(span~: Span)
   ExpectedDecl(received~: TokenType, span~: Span)
   ExpectedRangeOperator(received~: TokenType, span~: Span)
   MultipleDefaultCases(span~: Span)
@@ -26,6 +27,8 @@ pub impl Show for ParserError with output(self, logger) {
       logger.write_string("UnexpectedToken: expected '\{expected}', got '\{received}' at \{span}\n\{span.context()}")
     ExpectedType(received~, span~) =>
       logger.write_string("Expected a type, got '\{received}' at \{span}\n\{span.context()}")
+    MissingIntegerWidth(span~) =>
+      logger.write_string("Unsigned integer types require a width, for example 'uint[8]' at \{span}\n\{span.context()}")
     ExpectedExpr(received~, span~) =>
       logger.write_string("Expected an expression, got '\{received}' at \{span}\n\{span.context()}")
     ExpectedIdentifier(received~, span~) =>
@@ -975,7 +978,7 @@ fn Parser::parse_type(self: Parser) -> Type raise {
         self.expect(Rbracket, start_idx)
         UInt(width)
       } else {
-        raise ExpectedType(received=UInt, span=self.span(start_idx))
+        raise MissingIntegerWidth(span=self.span(start_idx))
       }
     }
     SInt => {

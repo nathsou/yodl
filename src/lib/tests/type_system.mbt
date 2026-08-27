@@ -453,6 +453,15 @@ test "uncontextualized natural literals synthesize canonical unsigned widths" {
 }
 
 ///|
+test "unsized unsigned type annotations report a missing width" {
+  let source =
+    #|module Top(value: uint) -> () {}
+  assert_true(
+    compile_error(source).contains("Unsigned integer types require a width"),
+  )
+}
+
+///|
 test "instance aliases preserve identity while port usage stays outside types" {
   let source =
     #|module Child(input: u8) -> (output: u8) {
