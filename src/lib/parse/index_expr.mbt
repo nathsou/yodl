@@ -8,6 +8,8 @@ pub(all) enum IndexExpr {
   CDiv(IndexExpr, IndexExpr)
 } derive(Eq)
 
+// Size functions are defined over natural values. `clog2!(0)` is zero;
+// ceiling division requires a nonnegative dividend and a positive divisor.
 // Evaluate a closed IndexExpr to an Int, or return None if it contains unresolved variables.
 pub fn IndexExpr::eval(self: IndexExpr) -> Int? {
   match self {
@@ -18,13 +20,14 @@ pub fn IndexExpr::eval(self: IndexExpr) -> Int? {
         Add(_, _) => Some(x + y)
         Sub(_, _) => Some(x - y)
         Mul(_, _) => Some(x * y)
-        CDiv(_, _) if y != 0 => Some((x + y - 1) / y)
+        CDiv(_, _) if x >= 0 && y > 0 => Some(x / y + (if x % y == 0 { 0 } else { 1 }))
         _ => None
       }
       _ => None
     }
     Clog2(a) => match a.eval() {
-      Some(n) => Some(@utils.clog2_int(n))
+      Some(n) if n >= 0 => Some(@utils.clog2_int(n))
+      Some(_) => None
       None => None
     }
   }
@@ -49,11 +52,11 @@ pub fn[E : Error] IndexExpr::map_vars(self : IndexExpr, f : (String) -> IndexExp
       (a2, b2) => Mul(a2, b2)
     }
     Clog2(a) => match a.map_vars(f) {
-      Lit(n) => Lit(@utils.clog2_int(n))
+      Lit(n) if n >= 0 => Lit(@utils.clog2_int(n))
       a2 => Clog2(a2)
     }
     CDiv(a, b) => match (a.map_vars(f), b.map_vars(f)) {
-      (Lit(x), Lit(y)) if y != 0 => Lit((x + y - 1) / y)
+      (Lit(x), Lit(y)) if x >= 0 && y > 0 => Lit(x / y + (if x % y == 0 { 0 } else { 1 }))
       (a2, b2) => CDiv(a2, b2)
     }
   }
@@ -80,11 +83,11 @@ pub fn IndexExpr::substitute(self: IndexExpr, params_env: Map[String, StaticArg]
       (a2, b2) => Mul(a2, b2)
     }
     Clog2(a) => match a.substitute(params_env) {
-      Lit(n) => Lit(@utils.clog2_int(n))
+      Lit(n) if n >= 0 => Lit(@utils.clog2_int(n))
       a2 => Clog2(a2)
     }
     CDiv(a, b) => match (a.substitute(params_env), b.substitute(params_env)) {
-      (Lit(x), Lit(y)) if y != 0 => Lit((x + y - 1) / y)
+      (Lit(x), Lit(y)) if x >= 0 && y > 0 => Lit(x / y + (if x % y == 0 { 0 } else { 1 }))
       (a2, b2) => CDiv(a2, b2)
     }
   }

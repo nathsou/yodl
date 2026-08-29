@@ -9,6 +9,7 @@ struct TypeChecker {
     modules: Map[Path, ModuleSignature]
     top_env: Scope[Path, Ref[Type?]]
     port_usage: PortUsage
+    size_constraints: Array[SizeConstraint]
     mut next_instance_id: Int
 }
 
@@ -17,6 +18,7 @@ pub fn TypeChecker::new() -> TypeChecker {
         modules: {},
         top_env: Scope::new(),
         port_usage: PortUsage::new(),
+        size_constraints: [],
         next_instance_id: 0,
     }
 }
@@ -104,6 +106,233 @@ fn type_error(message: String, span: Span) -> TypeCheckerError {
 
 fn negative_unsigned_literal_error(width: Int, span: Span) -> TypeCheckerError {
     type_error("Negative literal cannot be represented as unsigned type u\{width}", span)
+}
+
+priv enum Size {
+    Affine(constant~: Int, terms~: Map[String, Int])
+    Add(Size, Size)
+    Sub(Size, Size)
+    Mul(Size, Size)
+    Clog2(Size)
+    CDiv(Size, Size)
+}
+
+priv enum SizeConstraintKind {
+    NonNegative
+    Positive
+} derive(Eq)
+
+priv struct SizeConstraint {
+    size: Size
+    kind: SizeConstraintKind
+    description: String
+    span: Span
+}
+
+fn affine_constant(value: Int) -> Size {
+    Affine(constant=value, terms={})
+}
+
+fn merge_affine(
+    lhs_constant: Int,
+    lhs_terms: Map[String, Int],
+    rhs_constant: Int,
+    rhs_terms: Map[String, Int],
+    rhs_factor: Int,
+) -> Size {
+    let terms = Map::from_iter(lhs_terms.iter())
+    for name, coefficient in rhs_terms {
+        let coefficient = terms.get(name).unwrap_or(0) + rhs_factor * coefficient
+        if coefficient == 0 {
+            terms.remove(name)
+        } else {
+            terms[name] = coefficient
+        }
+    }
+    Affine(constant=lhs_constant + rhs_factor * rhs_constant, terms~)
+}
+
+fn scale_size(size: Size, factor: Int) -> Size {
+    match size {
+        Affine(constant~, terms~) => {
+            let scaled_terms = Map([], capacity=terms.length())
+            for name, coefficient in terms {
+                let coefficient = factor * coefficient
+                if coefficient != 0 {
+                    scaled_terms[name] = coefficient
+                }
+            }
+            Affine(constant=factor * constant, terms=scaled_terms)
+        }
+        _ => Mul(affine_constant(factor), size)
+    }
+}
+
+fn normalize_size(index: @parse.IndexExpr) -> Size {
+    match index {
+        Lit(value) => affine_constant(value)
+        Var(name) => {
+            let terms: Map[String, Int] = Map([])
+            terms[name] = 1
+            Affine(constant=0, terms~)
+        }
+        Add(lhs, rhs) => match (normalize_size(lhs), normalize_size(rhs)) {
+            (Affine(constant=lc, terms=lt), Affine(constant=rc, terms=rt)) =>
+                merge_affine(lc, lt, rc, rt, 1)
+            (lhs, rhs) => Add(lhs, rhs)
+        }
+        Sub(lhs, rhs) => match (normalize_size(lhs), normalize_size(rhs)) {
+            (Affine(constant=lc, terms=lt), Affine(constant=rc, terms=rt)) =>
+                merge_affine(lc, lt, rc, rt, -1)
+            (lhs, rhs) => Sub(lhs, rhs)
+        }
+        Mul(lhs, rhs) => match (normalize_size(lhs), normalize_size(rhs)) {
+            (Affine(constant~, terms~), rhs) if terms.is_empty() => scale_size(rhs, constant)
+            (lhs, Affine(constant~, terms~)) if terms.is_empty() => scale_size(lhs, constant)
+            (lhs, rhs) => Mul(lhs, rhs)
+        }
+        Clog2(arg) => Clog2(normalize_size(arg))
+        CDiv(dividend, divisor) => CDiv(normalize_size(dividend), normalize_size(divisor))
+    }
+}
+
+fn affine_term(name: String, coefficient: Int) -> @parse.IndexExpr {
+    if coefficient == 1 {
+        Var(name)
+    } else {
+        Mul(Lit(coefficient), Var(name))
+    }
+}
+
+fn affine_to_index_expr(constant: Int, terms: Map[String, Int]) -> @parse.IndexExpr {
+    let names = terms.keys().collect()
+    names.sort()
+    let mut result: @parse.IndexExpr? = None
+    for name in names {
+        let coefficient = terms[name]
+        if coefficient > 0 {
+            let term = affine_term(name, coefficient)
+            result = Some(match result {
+                Some(lhs) => Add(lhs, term)
+                None => term
+            })
+        }
+    }
+    if result is None {
+        result = Some(Lit(if constant > 0 { constant } else { 0 }))
+    } else if constant > 0 {
+        result = Some(Add(result.unwrap(), Lit(constant)))
+    }
+    if constant < 0 {
+        result = Some(Sub(result.unwrap(), Lit(-constant)))
+    }
+    for name in names {
+        let coefficient = terms[name]
+        if coefficient < 0 {
+            result = Some(Sub(result.unwrap(), affine_term(name, -coefficient)))
+        }
+    }
+    result.unwrap()
+}
+
+fn Size::eval(self: Size) -> Int? {
+    match self {
+        Affine(constant~, terms~) if terms.is_empty() => Some(constant)
+        Affine(_) => None
+        Add(lhs, rhs) | Sub(lhs, rhs) | Mul(lhs, rhs) => match (lhs.eval(), rhs.eval()) {
+            (Some(a), Some(b)) => match self {
+                Add(_) => Some(a + b)
+                Sub(_) => Some(a - b)
+                Mul(_) => Some(a * b)
+                _ => None
+            }
+            _ => None
+        }
+        Clog2(arg) => match arg.eval() {
+            Some(value) if value >= 0 => Some(@utils.clog2_int(value))
+            _ => None
+        }
+        CDiv(dividend, divisor) => match (dividend.eval(), divisor.eval()) {
+            (Some(a), Some(b)) if a >= 0 && b > 0 =>
+                Some(a / b + (if a % b == 0 { 0 } else { 1 }))
+            _ => None
+        }
+    }
+}
+
+fn Size::to_index_expr(self: Size) -> @parse.IndexExpr {
+    if self.eval() is Some(value) {
+        return Lit(value)
+    }
+    match self {
+        Affine(constant~, terms~) => affine_to_index_expr(constant, terms)
+        Add(lhs, rhs) => Add(lhs.to_index_expr(), rhs.to_index_expr())
+        Sub(lhs, rhs) => Sub(lhs.to_index_expr(), rhs.to_index_expr())
+        Mul(lhs, rhs) => Mul(lhs.to_index_expr(), rhs.to_index_expr())
+        Clog2(arg) => Clog2(arg.to_index_expr())
+        CDiv(dividend, divisor) => CDiv(dividend.to_index_expr(), divisor.to_index_expr())
+    }
+}
+
+fn TypeChecker::require_size(
+    self: Self,
+    size: Size,
+    kind: SizeConstraintKind,
+    description: String,
+    span: Span,
+) -> Unit raise TypeCheckerError {
+    match size.eval() {
+        Some(value) => match kind {
+            NonNegative if value < 0 =>
+                raise type_error("Invalid negative \{description} \{value}", span)
+            Positive if value <= 0 =>
+                raise type_error("\{description} must be positive, got \{value}", span)
+            _ => ()
+        }
+        None => {
+            let normalized = size.to_index_expr()
+            if !self.size_constraints.iter().any(constraint =>
+                constraint.kind == kind &&
+                constraint.description == description &&
+                constraint.span == span &&
+                constraint.size.to_index_expr() == normalized
+            ) {
+                self.size_constraints.push({ size, kind, description, span })
+            }
+        }
+    }
+}
+
+fn TypeChecker::validate_size(self: Self, size: Size, span: Span) -> Unit raise TypeCheckerError {
+    match size {
+        Affine(_) => ()
+        Add(lhs, rhs) | Sub(lhs, rhs) | Mul(lhs, rhs) => {
+            self.validate_size(lhs, span)
+            self.validate_size(rhs, span)
+        }
+        Clog2(arg) => {
+            self.validate_size(arg, span)
+            self.require_size(arg, NonNegative, "clog2 argument", span)
+        }
+        CDiv(dividend, divisor) => {
+            self.validate_size(dividend, span)
+            self.validate_size(divisor, span)
+            self.require_size(dividend, NonNegative, "ceiling-division dividend", span)
+            self.require_size(divisor, Positive, "ceiling-division divisor", span)
+        }
+    }
+}
+
+fn TypeChecker::resolve_size(
+    self: Self,
+    index: @parse.IndexExpr,
+    description: String,
+    span: Span,
+) -> @parse.IndexExpr raise TypeCheckerError {
+    let size = normalize_size(index)
+    self.validate_size(size, span)
+    self.require_size(size, NonNegative, description, span)
+    size.to_index_expr()
 }
 
 priv enum TypeEqualityParam {
@@ -401,10 +630,13 @@ fn TypeChecker::check_static_nat(
 
 fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span, type_params~: Set[String] = Set([])) -> Type raise {
     match ty {
-        UInt(width) => UInt(width)
-        SInt(width) => SInt(width)
+        UInt(width) => UInt(self.resolve_size(width, "integer width", span))
+        SInt(width) => SInt(self.resolve_size(width, "integer width", span))
         Clock => Clock
-        Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty(inner_ty, span~, type_params~), len~)
+        Vector(ty=inner_ty, len~) => Vector(
+            ty=self.resolve_ty(inner_ty, span~, type_params~),
+            len=self.resolve_size(len, "vector length", span),
+        )
         Instance(_) => ty
         Name(path~, params~) => {
             if path.packages.is_empty() && type_params.contains(path.elem) {

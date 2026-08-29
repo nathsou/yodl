@@ -829,7 +829,7 @@ test "Unit-valued let bindings lower their effects without hardware wires" {
 }
 
 ///|
-test "negative hardware dimensions are rejected at the Core boundary" {
+test "negative hardware dimensions are rejected during type resolution" {
   let invalid = [
     "module Top() -> (out: uint[1 - 2]) {}",
     "module Top() -> (out: [1 - 2]u8) {}",
@@ -837,6 +837,65 @@ test "negative hardware dimensions are rejected at the Core boundary" {
   for source in invalid {
     assert_true(compile_error(source).contains("Invalid negative"))
   }
+}
+
+///|
+test "size expressions reject invalid function domains during type resolution" {
+  let invalid = [
+    (
+      "module Top() -> (out: uint[clog2!(1 - 2)]) {}",
+      "Invalid negative clog2 argument -1",
+    ),
+    (
+      "module Top() -> (out: uint[cdiv!(1 - 2, 4)]) {}",
+      "Invalid negative ceiling-division dividend -1",
+    ),
+    (
+      "module Top() -> (out: uint[cdiv!(8, 0)]) {}",
+      "ceiling-division divisor must be positive, got 0",
+    ),
+  ]
+  for case in invalid {
+    let (source, expected) = case
+    let diagnostic = compile_error(source)
+    assert_true(diagnostic.contains(expected))
+    assert_true(diagnostic.contains("fixture.yodl:1"))
+  }
+}
+
+///|
+test "size expressions define zero behavior for clog2 and ceiling division" {
+  let source =
+    #|module Top() -> (log: uint[clog2!(0)], div: uint[cdiv!(0, 4)]) {}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("log: u0"))
+  assert_true(simplified.contains("div: u0"))
+}
+
+///|
+test "symbolic affine sizes are canonicalized during type resolution" {
+  let source =
+    #|declare module Shapes[M: Nat, N: Nat](
+    #|  a: uint[N + 1],
+    #|  b: uint[1 + N],
+    #|  c: uint[2 * N + 2],
+    #|  d: uint[N + N + 2],
+    #|  e: uint[cdiv!(N, 4)],
+    #|  f: uint[N * 0],
+    #|  g: uint[N + M],
+    #|  h: uint[M + N],
+    #|) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("a: uint<N + 1>"))
+  assert_true(typed.contains("b: uint<N + 1>"))
+  assert_true(typed.contains("c: uint<2 * N + 2>"))
+  assert_true(typed.contains("d: uint<2 * N + 2>"))
+  assert_true(typed.contains("e: uint<cdiv!(N, 4)>"))
+  assert_true(typed.contains("f: u0"))
+  assert_true(typed.contains("g: uint<M + N>"))
+  assert_true(typed.contains("h: uint<M + N>"))
 }
 
 ///|
