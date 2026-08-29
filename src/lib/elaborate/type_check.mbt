@@ -489,10 +489,13 @@ fn TypeChecker::check_expr_in_context(
                     }
                     Type::sint(width)
                 }
-                _ => if value < 0 {
-                    Type::sint(significant_bits(value, is_signed=true))
-                } else {
-                    Type::uint(significant_bits(value, is_signed=false))
+                _ => {
+                    let width = significant_bits(value, is_signed=value < 0)
+                    if value < 0 {
+                        Type::sint(width)
+                    } else {
+                        Type::uint(width)
+                    }
                 }
             }
         }
