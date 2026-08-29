@@ -102,6 +102,10 @@ fn type_error(message: String, span: Span) -> TypeCheckerError {
     TypeCheckerError(message~, span~)
 }
 
+fn negative_unsigned_literal_error(width: Int, span: Span) -> TypeCheckerError {
+    type_error("Negative literal cannot be represented as unsigned type u\{width}", span)
+}
+
 priv enum UnificationParam {
     Int(Int)
     Type(Type)
@@ -463,14 +467,14 @@ fn TypeChecker::check_expr_in_context(
         Natural(value~, width~, span~, ..) => match width {
             Some(width) => {
                 if value < 0 {
-                    raise type_error("Negative literal cannot be represented as unsigned type u\{width}", span)
+                    raise negative_unsigned_literal_error(width, span)
                 }
                 Type::uint(width)
             }
             None => match expected_ty {
                 Some(UInt(Lit(width))) => {
                     if value < 0 {
-                        raise type_error("Negative literal cannot be represented as unsigned type u\{width}", span)
+                        raise negative_unsigned_literal_error(width, span)
                     }
                     let required = significant_bits(value, is_signed=false)
                     if required > width {
