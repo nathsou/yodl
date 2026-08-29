@@ -970,6 +970,35 @@ test "nested non-affine constant multiplication is canonicalized" {
 }
 
 ///|
+test "zero multiplication of non-affine sizes is canonicalized" {
+  let source =
+    #|declare module Shapes[N: Nat, M: Nat](
+    #|  left: uint[0 * clog2!(N)],
+    #|  right: uint[clog2!(N) * 0],
+    #|  nested: uint[(N * M) * 0],
+    #|) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("left: u0"))
+  assert_true(typed.contains("right: u0"))
+  assert_true(typed.contains("nested: u0"))
+}
+
+///|
+test "zero multiplication still validates non-affine size domains" {
+  let invalid = [
+    "module Top() -> (out: uint[0 * clog2!(1 - 2)]) {}",
+    "module Top() -> (out: uint[0 * cdiv!(8, 0)]) {}",
+  ]
+  for source in invalid {
+    let diagnostic = compile_error(source)
+    assert_true(diagnostic.contains("Invalid negative") || diagnostic.contains("must be positive"))
+    assert_true(diagnostic.contains("fixture.yodl:1"))
+  }
+}
+
+///|
 test "invalid size-function diagnostics preserve the inner call span" {
   let source =
     #|module Child[N: Nat]() -> () {}

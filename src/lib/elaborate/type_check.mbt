@@ -242,13 +242,17 @@ fn Size::eval(self: Size) -> Int? {
     match self {
         Affine(constant~, terms~) if terms.is_empty() => Some(constant)
         Affine(_) => None
-        Add(lhs, rhs) | Sub(lhs, rhs) | Mul(lhs, rhs) => match (lhs.eval(), rhs.eval()) {
+        Add(lhs, rhs) | Sub(lhs, rhs) => match (lhs.eval(), rhs.eval()) {
             (Some(a), Some(b)) => match self {
                 Add(_) => Some(a + b)
                 Sub(_) => Some(a - b)
-                Mul(_) => Some(a * b)
                 _ => None
             }
+            _ => None
+        }
+        Mul(lhs, rhs) => match (lhs.eval(), rhs.eval()) {
+            (Some(0), _) | (_, Some(0)) => Some(0)
+            (Some(a), Some(b)) => Some(a * b)
             _ => None
         }
         Clog2(arg) => match arg.eval() {
