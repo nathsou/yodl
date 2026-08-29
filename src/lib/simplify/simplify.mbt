@@ -36,7 +36,8 @@ fn freeze_ty(ty: Ref[@parse.Type?], span: @parse.Span) -> Ref[@parse.CoreType?] 
   } }
 }
 
-fn explicit_coercion(
+fn Simplifier::explicit_coercion(
+  self: Self,
   expr: @parse.CoreExpr,
   expected: @parse.CoreType,
 ) -> @parse.CoreExpr raise {
@@ -48,6 +49,39 @@ fn explicit_coercion(
   }
 
   let ty = @ref.new(Some(expected))
+  if expr.contains_statements() {
+    match (actual, expected) {
+      (
+        @parse.CoreType::Vector(_),
+        @parse.CoreType::Vector(_),
+      ) | (
+        @parse.CoreType::Struct(_),
+        @parse.CoreType::Struct(_),
+      ) => {
+        let span = expr.span()
+        let name = Show::to_string(self.declare_unique("__coerced"))
+        let binding = @parse.CoreExpr::Identifier(
+          path=@parse.Path::new([], name),
+          span~,
+          ty={ val: Some(actual) },
+        )
+        let coerced = self.explicit_coercion(binding, expected)
+        return @parse.CoreExpr::Block(
+          body=[@parse.CoreStmt::Let(
+            name~,
+            ty={ val: Some(actual) },
+            expr=Some(expr),
+            span~,
+          )],
+          last=Some(coerced),
+          span~,
+          ty~,
+        )
+      }
+      _ => ()
+    }
+  }
+
   match (actual, expected) {
     (@parse.CoreType::UInt(actual_width), @parse.CoreType::UInt(expected_width)) =>
       if expected_width < actual_width {
@@ -77,7 +111,7 @@ fn explicit_coercion(
         let elem = @parse.CoreExpr::Indexing(
           expr~, index=index_expr, span=expr.span(), ty={ val: Some(actual_elem) },
         )
-        elems.push(explicit_coercion(elem, expected_elem))
+        elems.push(self.explicit_coercion(elem, expected_elem))
       }
       @parse.CoreExpr::Vector(elems~, span=expr.span(), ty~)
     }
@@ -88,7 +122,7 @@ fn explicit_coercion(
         let field = @parse.CoreExpr::FieldAccess(
           expr~, field=name, span=expr.span(), ty={ val: Some(actual_field) },
         )
-        fields[name] = explicit_coercion(field, expected_field)
+        fields[name] = self.explicit_coercion(field, expected_field)
       }
       @parse.CoreExpr::Struct(fields~, span=expr.span(), ty~)
     }
@@ -104,7 +138,7 @@ fn Simplifier::simplify_checked_expr(
   expected: @parse.CoreType,
   env~ : SimplifierEnv,
 ) -> @parse.CoreExpr raise {
-  explicit_coercion(self.simplify_expr(expr, env~), expected)
+  self.explicit_coercion(self.simplify_expr(expr, env~), expected)
 }
 
 pub fn Simplifier::declare_unique(self: Self, name: String) -> UniqueName {

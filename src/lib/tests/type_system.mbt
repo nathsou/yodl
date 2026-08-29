@@ -76,6 +76,18 @@ test "aggregate compatibility recursively coerces typed values" {
 }
 
 ///|
+test "aggregate coercions evaluate statementful sources once" {
+  let source =
+    #|module Top() -> (out: [2]u8) {
+    #|  out = {
+    #|    let narrow: [2]u4 = [1, 2]
+    #|    narrow
+    #|  }
+    #|}
+  let _ = compile_stage(source, "write_low_firrtl")
+}
+
+///|
 test "contextual literals report overflow at the literal span" {
   let source =
     #|module Top() -> (out: [2]u3) {
