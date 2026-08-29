@@ -913,6 +913,22 @@ test "declared module ports revalidate size domains after Nat substitution" {
 }
 
 ///|
+test "declared module signatures resolve global size constants" {
+  let source =
+    #|const D = 0
+    #|
+    #|declare module Cell(unused: uint[cdiv!(8, D)]) -> ()
+    #|
+    #|module Top() -> () {
+    #|  let cell = Cell()
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("ceiling-division divisor must be positive, got 0"))
+  assert_true(diagnostic.contains("fixture.yodl:3"))
+  assert_false(diagnostic.contains("reached Core construction"))
+}
+
+///|
 test "non-affine size identity multiplication is canonicalized" {
   let source =
     #|declare module Shapes[N: Nat](

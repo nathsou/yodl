@@ -113,6 +113,35 @@ fn Monomorphizer::monomorphize_index_expr(_ : Self, idx : @parse.IndexExpr, env~
   })
 }
 
+fn Monomorphizer::monomorphize_declared_type(
+  self: Self,
+  ty: @parse.Type,
+  env~: MonoEnv,
+  packages~: Array[String],
+) -> @parse.Type raise {
+  match ty {
+    @parse.UInt(idx) => @parse.UInt(self.monomorphize_index_expr(idx, env~, packages~))
+    @parse.SInt(idx) => @parse.SInt(self.monomorphize_index_expr(idx, env~, packages~))
+    @parse.Vector(ty~, len~) => @parse.Vector(
+      ty=self.monomorphize_declared_type(ty, env~, packages~),
+      len=self.monomorphize_index_expr(len, env~, packages~),
+    )
+    @parse.Name(path~, params~) => @parse.Name(
+      path~,
+      params=params.map(ty => self.monomorphize_declared_type(ty, env~, packages~)),
+    )
+    @parse.Struct(fields) => {
+      let resolved_fields = Map([], capacity=fields.length())
+      for name, field_ty in fields {
+        resolved_fields[name] = self.monomorphize_declared_type(field_ty, env~, packages~)
+      }
+      @parse.Struct(resolved_fields)
+    }
+    @parse.MemoryMask(ty) => @parse.MemoryMask(self.monomorphize_declared_type(ty, env~, packages~))
+    _ => ty
+  }
+}
+
 priv struct TypeInfo {
   ty: @parse.Type
   is_type_alias: Bool 
@@ -565,6 +594,24 @@ pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packa
       }
       ModuleDeclaration(sig) => {
         let mod_path = sig.path.prepend(packages)
+        let ports: Array[@parse.Port] = []
+        for port in sig.ports {
+          ports.push({
+            name: port.name,
+            ty: self.monomorphize_declared_type(port.ty, env=self.top_env, packages~),
+            dir: port.dir,
+            span: port.span,
+            optional: port.optional,
+            attributes: port.attributes,
+          })
+        }
+        let sig: @parse.ModuleSignature = {
+          path: sig.path,
+          params: sig.params,
+          attributes: sig.attributes,
+          ports,
+          span: sig.span,
+        }
         self.declared_modules[mod_path] = sig
         self.top_env.declare_(mod_path, Name(packages~))
       }
