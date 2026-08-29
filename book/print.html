@@ -308,6 +308,13 @@ widening a signed value sign-extends it, and narrowing keeps the least
 significant bits. Unsized literals instead adopt the contextual width when the
 value fits. Signedness is never changed implicitly: use <code>uint!(x)</code> or <code>sint!(x)</code>
 to request a signedness reinterpretation explicitly.</p>
+<p>Without a context, an unsized nonnegative literal synthesizes as an unsigned
+integer with its minimum representable width (<code>1</code> is <code>u1</code>, <code>255</code> is <code>u8</code>). In a
+<code>uN</code> or <code>sN</code> context it is checked at the literal for overflow and then adopts
+that exact type. Negative values are rejected by unsigned contexts and must fit
+the two's-complement range of a signed context. Static <code>Nat</code> parameters and
+width expressions are evaluated in the separate static/index language; they
+are not runtime signal types.</p>
 <h3 id="booleans"><a class="header" href="#booleans">Booleans</a></h3>
 <p>The <code>bool</code> type is an alias for the <code>u1</code> type.</p>
 <p>For readability, the <code>true</code> and <code>false</code> keywords are supported and correspond to <code>1'b1</code> and <code>1'b0</code> respectively.</p>
