@@ -102,6 +102,10 @@ fn type_error(message: String, span: Span) -> TypeCheckerError {
     TypeCheckerError(message~, span~)
 }
 
+fn negative_unsigned_literal_error(width: Int, span: Span) -> TypeCheckerError {
+    type_error("Negative literal cannot be represented as unsigned type u\{width}", span)
+}
+
 priv enum UnificationParam {
     Int(Int)
     Type(Type)
@@ -134,10 +138,6 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
             (Vector(ty=_, len=Var(_)), Vector(ty=_, len=Lit(_))) => {
                 eqs.push((ty2, ty1))
             }
-            (UInt(Lit(width)) | SInt(Lit(width)), Nat({ min_width })) |
-            (Nat({ min_width }), UInt(Lit(width)) | SInt(Lit(width))) if width >= min_width => ()
-            (UInt(_) | SInt(_), Nat(_)) | (Nat(_), UInt(_) | SInt(_)) => ()
-            (Nat(_), Nat(_)) => ()
             (String(len~), ty2) | (ty2, String(len~)) => {
                 eqs.push((Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(len)), ty2))
             }
@@ -152,13 +152,6 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
 
 fn merge_inferred_types(lhs: Type, rhs: Type) -> Type {
     match (lhs, rhs) {
-        (Nat({ min_width: lhs_width }), Nat({ min_width: rhs_width })) => {
-            Nat({ min_width: max(lhs_width, rhs_width) })
-        }
-        (Nat({ min_width }), UInt(Lit(width))) |
-        (UInt(Lit(width)), Nat({ min_width })) => Type::uint(max(width, min_width))
-        (Nat({ min_width }), SInt(Lit(width))) |
-        (SInt(Lit(width)), Nat({ min_width })) => Type::sint(max(width, min_width + 1))
         (Vector(ty=lhs_ty, len~), Vector(ty=rhs_ty, len=rhs_len)) if len == rhs_len => {
             Vector(ty=merge_inferred_types(lhs_ty, rhs_ty), len~)
         }
@@ -190,10 +183,6 @@ fn merge_expression_types(lhs: Type, rhs: Type, span~: Span) -> Type raise TypeC
     match (lhs, rhs) {
         (UInt(Lit(lhs_width)), UInt(Lit(rhs_width))) => Type::uint(max(lhs_width, rhs_width))
         (SInt(Lit(lhs_width)), SInt(Lit(rhs_width))) => Type::sint(max(lhs_width, rhs_width))
-        (Nat({ min_width }), UInt(Lit(width))) |
-        (UInt(Lit(width)), Nat({ min_width })) => Type::uint(max(width, min_width))
-        (Nat({ min_width }), SInt(Lit(width))) |
-        (SInt(Lit(width)), Nat({ min_width })) => Type::sint(max(width, min_width + 1))
         (Vector(ty=lhs_ty, len~), Vector(ty=rhs_ty, len=rhs_len)) if len == rhs_len =>
             Vector(ty=merge_expression_types(lhs_ty, rhs_ty, span~), len~)
         (Struct(lhs_fields), Struct(rhs_fields)) if lhs_fields.length() == rhs_fields.length() &&
@@ -219,11 +208,9 @@ fn TypeChecker::recheck_inferred_expr(
     env: Scope[Path, Ref[Type?]],
 ) -> Unit raise {
     match (ty, expected_ty, expr) {
-        (Nat(_), (UInt(_) | SInt(_)) as expected, Natural(width=None, ..)) => {
+        (_, (UInt(_) | SInt(_)) as expected, Natural(width=None, ..)) => {
             let _ = self.check_expr(expr, env, expected_ty=expected)
         }
-        (Nat(_), UInt(_), _) => ()
-        (Nat(_), SInt(_), _) => raise IncompatibleTypes(ty1=expected_ty, ty2=ty, span=expr.span())
         (Vector(ty=_, len~), Vector(ty=expected_elem, len=expected_len), Vector(elems~, ..)) if len == expected_len => {
             for elem in elems {
                 match elem {
@@ -331,7 +318,6 @@ fn check_assignment_compatibility(expected: Type, actual: Type, span~: Span) -> 
 
     match (expected, actual) {
         (UInt(Lit(_)), UInt(Lit(_))) | (SInt(Lit(_)), SInt(Lit(_))) => ()
-        (UInt(Lit(width)), Nat({ min_width })) if width >= min_width => ()
         _ => raise IncompatibleTypes(ty1=expected, ty2=actual, span~)
     }
 }
@@ -357,6 +343,24 @@ fn declare_name(
 fn eval_const_expr(expr: Expr) -> Int raise {
     match expr {
         Natural(value~, ..) => value.to_int()
+        Unary(op=Neg, expr=Natural(value~, ..), ..) => -value.to_int()
+        _ => raise ExpectedConstantExpr(span=expr.span())
+    }
+}
+
+fn TypeChecker::check_static_nat(
+    self: Self,
+    expr: Expr,
+    env: Scope[Path, Ref[Type?]],
+) -> Int raise {
+    match self.synth_expr(expr, env) {
+        UInt(_) | SInt(_) => {
+            let value = eval_const_expr(expr)
+            if value < 0 {
+                raise type_error("Expected a nonnegative constant expression", expr.span())
+            }
+            value
+        }
         _ => raise ExpectedConstantExpr(span=expr.span())
     }
 }
@@ -365,7 +369,6 @@ fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span, type_params~: Set[
     match ty {
         UInt(width) => UInt(width)
         SInt(width) => SInt(width)
-        Nat(mw) => Nat(mw)
         Clock => Clock
         Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty(inner_ty, span~, type_params~), len~)
         Instance(_) => ty
@@ -462,9 +465,17 @@ fn TypeChecker::check_expr_in_context(
             }
         }
         Natural(value~, width~, span~, ..) => match width {
-            Some(width) => Type::uint(width)
+            Some(width) => {
+                if value < 0 {
+                    raise negative_unsigned_literal_error(width, span)
+                }
+                Type::uint(width)
+            }
             None => match expected_ty {
                 Some(UInt(Lit(width))) => {
+                    if value < 0 {
+                        raise negative_unsigned_literal_error(width, span)
+                    }
                     let required = significant_bits(value, is_signed=false)
                     if required > width {
                         raise type_error("Literal requires \{required} bits but context provides u\{width}", span)
@@ -478,7 +489,14 @@ fn TypeChecker::check_expr_in_context(
                     }
                     Type::sint(width)
                 }
-                _ => Nat({min_width: significant_bits(value, is_signed=false)})
+                _ => {
+                    let width = significant_bits(value, is_signed=value < 0)
+                    if value < 0 {
+                        Type::sint(width)
+                    } else {
+                        Type::uint(width)
+                    }
+                }
             }
         }
         String(value=str,  span~, ..) => {
@@ -530,16 +548,6 @@ fn TypeChecker::check_expr_in_context(
                     _ => None
                 }
                 _ => None
-            }
-
-            let lhs_ty = match lhs_ty {
-                Nat({min_width}) => Type::UInt(Lit(min_width))
-                _ => lhs_ty
-            }
-
-            let rhs_ty = match rhs_ty {
-                Nat({min_width}) => Type::UInt(Lit(min_width))
-                _ => rhs_ty
             }
 
             let out_ty = match (op, lhs_ty, rhs_ty) {
@@ -595,25 +603,17 @@ fn TypeChecker::check_expr_in_context(
         }
         Slicing(expr~, hi~, lo~, kind~, span~, ..) => {
             let ty = self.synth_expr(expr, env, record_port_reads~)
-            let start_ty = self.synth_expr(hi, env)
-            let end_ty = self.synth_expr(lo, env)
-
-            match (start_ty, end_ty) {
-                (Nat(_), Nat(_)) => ()
-                _ => raise InvalidSlicingRange(reason="start and end must be natural numbers", span~)
-            }
-
-            let hi_val = eval_const_expr(hi)
+            let hi_val = self.check_static_nat(hi, env)
             let (msb, lsb) = match kind {
-                Absolute => (hi_val, eval_const_expr(lo))
+                Absolute => (hi_val, self.check_static_nat(lo, env))
                 WidthDescending => {
                     // [base -: w] selects bits [base : base - w + 1]
-                    let width = eval_const_expr(lo)
+                    let width = self.check_static_nat(lo, env)
                     (hi_val, hi_val + 1 - width)
                 }
                 WidthAscending => {
                     // [base +: w] selects bits [base + w - 1 : base]
-                    let width = eval_const_expr(lo)
+                    let width = self.check_static_nat(lo, env)
                     (hi_val + width - 1, hi_val)
                 }
             }
@@ -680,16 +680,8 @@ fn TypeChecker::check_expr_in_context(
                         let param_sig = sig.get_param(name)
 
                         match (param, param_sig) {
-                            (NatParam(value~, ..) as cnst_param, Some({ sort: NatSort, span: param_span, .. })) => {
-                                let value_ty = self.synth_expr(value.as_expr(), env)
-                                let _ = unify(value_ty, Nat({min_width: 0}), span=param_span, subst~)
-
-                                match value {
-                                    Natural(value=n, ..) => {
-                                        subst[name] = Int(n.to_int())
-                                    }
-                                    _ => ()
-                                }
+                            (NatParam(value~, ..) as cnst_param, Some({ sort: NatSort, .. })) => {
+                                subst[name] = Int(self.check_static_nat(value.as_expr(), env))
 
                                 params_env[name] = cnst_param
                             }
@@ -805,7 +797,7 @@ fn TypeChecker::check_expr_in_context(
                 let vector_ty = Type::Vector(ty=elem_ty.unwrap(), len=Lit(len))
                 for elem in elems {
                     match elem.ty().val {
-                        Some(Nat(_) as ty) => self.recheck_inferred_expr(elem, ty, elem_ty.unwrap(), env)
+                        Some(ty) => self.recheck_inferred_expr(elem, ty, elem_ty.unwrap(), env)
                         _ => ()
                     }
                 }
@@ -827,10 +819,7 @@ fn TypeChecker::check_expr_in_context(
         }
         Match(subject~, cases~, default~, span~, ..) => {
             let subject_ty = self.synth_expr(subject, env)
-            let pattern_ty = match subject_ty {
-                Nat({ min_width }) => Type::uint(min_width)
-                _ => subject_ty
-            }
+            let pattern_ty = subject_ty
             
             if cases.is_empty() && default is None {
                 raise type_error("Empty match expression", span)
@@ -899,9 +888,7 @@ fn TypeChecker::check_expr_in_context(
         }
         FunCall(name="pad", args=[arg, width], span~, ..) => {
             let arg_ty = self.synth_expr(arg, env)
-            let width_ty = self.synth_expr(width, env)
-            let _ = unify(width_ty, Nat({min_width: 0}), span=width.span())
-            let width = eval_const_expr(width)
+            let width = self.check_static_nat(width, env)
             let required_width = arg_ty.width(arg.span())
 
             if width < required_width {
@@ -997,7 +984,7 @@ fn TypeChecker::check_expr_in_context(
                 let (ty, elem_span) = stack.unsafe_pop()
 
                 match ty {
-                    UInt(_) | SInt(_) | Nat(_) => {
+                    UInt(_) | SInt(_) => {
                         let is_elem_signed = ty is SInt(_)
 
                         match is_signed {
@@ -1024,11 +1011,9 @@ fn TypeChecker::check_expr_in_context(
                 Type::uint(len)
             }
         }
-        FunCall(name="fill", args=[count, elem], span~, ..) => {
-            let count_ty = self.synth_expr(count, env)
-            let _ = unify(count_ty, Nat({min_width: 0}), span~)
+        FunCall(name="fill", args=[count, elem], ..) => {
+            let count_val = self.check_static_nat(count, env)
             let elem_ty = self.synth_expr(elem, env)
-            let count_val = eval_const_expr(count)
 
             Vector(ty=elem_ty, len=Lit(count_val))
         }
@@ -1190,14 +1175,12 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
                 self.check_stmt(stmt, new_env)
             }
         }
-        For(variable~, range~, body~, span~) => {
-            let start_ty = self.synth_expr(range.start, env)
-            let end_ty = self.synth_expr(range.end, env)
-
-            match (start_ty, end_ty) {
-                (Nat(_), Nat(_)) => ()
-                _ => raise ExpectedConstantExpr(span~)
-            }
+        For(variable~, range~, body~, ..) => {
+            let start_val = self.check_static_nat(range.start, env)
+            let end_val = self.check_static_nat(range.end, env)
+            let last_value = if range.inclusive { end_val } else { max(end_val - 1, 0) }
+            let max_value = max(start_val, last_value)
+            let end_ty = Type::uint(significant_bits(BigInt::from_int(max_value), is_signed=false))
 
             let body_env = env.child()
             body_env.declare_(Path::new([], variable), { val: Some(end_ty) })

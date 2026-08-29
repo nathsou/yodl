@@ -135,14 +135,14 @@ test "constant assertions fold through explicit coercions" {
 }
 
 ///|
-test "inferred Nat bindings cannot acquire signedness from context" {
+test "inferred unsigned literals cannot acquire signedness from context" {
   let source =
     #|module Top() -> () {
     #|  let n = 1
     #|  let s: s8 = n
     #|}
   let diagnostic = compile_error(source)
-  assert_true(diagnostic.contains("Incompatible types 's8' and 'nat[1]'"))
+  assert_true(diagnostic.contains("Incompatible types 's8' and 'u1'"))
 }
 
 ///|
@@ -171,6 +171,41 @@ test "contextual negative literals check the signed value as a whole" {
   assert_true(
     compile_error(overflow).contains(
       "Negative literal does not fit in contextual type s4",
+    ),
+  )
+}
+
+///|
+test "folded negative literals remain signed and reject unsigned contexts" {
+  let source =
+    #|module Top() -> () {
+    #|  let minus_one = 0 - 1
+    #|  let minus_four = 0 - 4
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("let minus_one: s1"))
+  assert_true(simplified.contains("let minus_four: s3"))
+
+  let signed =
+    #|module Top() -> (minus_one: s1, minus_four: s3) {
+    #|  minus_one = 0 - 1
+    #|  minus_four = 0 - 4
+    #|}
+  let firrtl = compile_stage(signed, "write_low_firrtl")
+  assert_true(firrtl.contains("SInt<1>(-1)"))
+  assert_true(firrtl.contains("SInt<3>(-4)"))
+
+  let unsigned = "module Top() -> (out: u1) { out = 0 - 1; }"
+  assert_true(
+    compile_error(unsigned).contains(
+      "Negative literal cannot be represented as unsigned type u1",
+    ),
+  )
+
+  let overflow = "module Top() -> (out: s3) { out = 0 - 5; }"
+  assert_true(
+    compile_error(overflow).contains(
+      "Literal requires 4 signed bits but context provides s3",
     ),
   )
 }
@@ -397,13 +432,11 @@ test "literal width inference is traversal-order independent" {
 }
 
 ///|
-test "literal and concrete integer joins are traversal-order independent" {
+test "unsigned literal joins are traversal-order independent" {
   let source =
     #|module Top(select: bool, unsigned: u8, signed: s8, narrow: u4) -> () {
     #|  let ternary_nat_first = select ? 1 : unsigned
     #|  let ternary_nat_last = select ? unsigned : 1
-    #|  let signed_nat_first = select ? 1 : signed
-    #|  let signed_nat_last = select ? signed : 1
     #|  let match_nat_first = match select {
     #|    1 => 1
     #|    _ => unsigned
@@ -428,15 +461,63 @@ test "literal and concrete integer joins are traversal-order independent" {
   ] {
     assert_true(simplified.contains("let \{name}: u8"))
   }
-  for name in ["signed_nat_first", "signed_nat_last"] {
-    assert_true(simplified.contains("let \{name}: s8"))
-  }
   assert_true(simplified.contains("let vector_nat_first: [2]u8"))
   assert_true(simplified.contains("let vector_nat_last: [2]u8"))
   assert_true(simplified.contains("let vector_branch_nat_first: [1]u8"))
   assert_true(simplified.contains("let vector_branch_nat_last: [1]u8"))
   assert_false(simplified.contains("truncate(unsigned)"))
   let _ = compile_stage(source, "write_low_firrtl")
+
+  let signed =
+    #|module Top(select: bool, value: s8) -> () {
+    #|  let result = select ? 1 : value
+    #|}
+  assert_true(compile_error(signed).contains("Incompatible types 'u1' and 's8'"))
+}
+
+///|
+test "uncontextualized natural literals synthesize canonical unsigned widths" {
+  let source =
+    #|module Top() -> () {
+    #|  let one = 1
+    #|  let wide = 255
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("let one: u1"))
+  assert_true(simplified.contains("let wide: u8"))
+}
+
+///|
+test "unsized integer type annotations report a missing width" {
+  for ty in ["uint", "sint"] {
+    let source = "module Top(value: \{ty}) -> () {}"
+    assert_true(
+      compile_error(source).contains("Integer types require a width"),
+    )
+  }
+}
+
+///|
+test "static Nat arguments reject negative constant expressions" {
+  for width in ["0 - 1", "-1"] {
+    let source = "module Top() -> () { let value = pad!(1'b0, \{width}); }"
+    assert_true(
+      compile_error(source).contains("Expected a nonnegative constant expression"),
+    )
+  }
+}
+
+///|
+test "module Nat arguments must be nonnegative numeric constants" {
+  let source =
+    #|module Box[N: Nat](input: uint[N]) -> (output: uint[N]) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u1) -> () {
+    #|  let box = Box[N: 0 - 1](input: value)
+    #|}
+  assert_true(compile_error(source).contains("Invalid parameter of sort 'Nat'"))
 }
 
 ///|

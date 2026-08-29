@@ -592,9 +592,6 @@ pub impl Show for IndexExpr with output(self, logger) {
 
 pub impl Show for Type with output(ty, logger) {
   match ty {
-    Nat({min_width}) => {
-      logger.write_string("nat[\{min_width}]")
-    }
     UInt(width) => {
       match width {
         Lit(n) => logger.write_string("u\{n}")

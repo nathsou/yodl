@@ -31,7 +31,7 @@ pub fn Path::prepend(self: Path, packages: Array[String]) -> Path {
 }
 
 pub(all) enum ParamSort {
-  NatSort  // N: uint  or  N: Nat
+  NatSort  // N: Nat
   TypeSort // T: type  or  T: Type
 } derive(Eq)
 

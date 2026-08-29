@@ -94,7 +94,6 @@ pub impl Show for CoreType with output(self, logger) {
 
 pub fn CoreType::from_type(ty: Type, span~: Span) -> CoreType raise AstError {
   match ty {
-    Nat({ min_width }) if min_width >= 0 => UInt(min_width)
     Type::UInt(Lit(width)) if width >= 0 => UInt(width)
     Type::SInt(Lit(width)) if width >= 0 => SInt(width)
     Type::Clock => Clock
@@ -121,7 +120,6 @@ pub fn CoreType::from_type(ty: Type, span~: Span) -> CoreType raise AstError {
       Struct(core_fields)
     }
     Type::Unit => Unit
-    Nat({ min_width }) => raise InvalidCoreDimension(kind="literal width", value=min_width, span~)
     Type::UInt(Lit(width)) | Type::SInt(Lit(width)) =>
       raise InvalidCoreDimension(kind="integer width", value=width, span~)
     Type::Vector(len=Lit(len), ..) =>
