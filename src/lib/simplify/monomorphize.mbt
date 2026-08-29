@@ -88,6 +88,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
 
 pub enum MonoEnvEntry {
   Param(@parse.StaticArg)
+  BoundParam
   Const(@parse.ConstDecl)
   Type(@parse.TypeAliasDecl)
   Name(packages~: Array[String])
@@ -151,9 +152,23 @@ fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, sort~: @parse.
   match param {
     Unresolved(unresolved) => match unresolved.parse(sort) {
       ExprParam(expr~, span~) => {
+        let param_file_content = span.file_content
         let mono_expr = try self.monomorphize_expr(expr, env~, packages~) catch {
-          @parse.InvalidSizeFunctionDomain(message~, ..) =>
-            raise InvalidSizeFunctionDomain(message~, span~)
+          @parse.InvalidSizeFunctionDomain(message~, span~) => {
+            // Deferred parameter parsing keeps source locations from the
+            // original file while parsing a sliced StringView. Reattach the
+            // original source before the diagnostic is rendered.
+            let precise_span: @parse.Span = {
+              file: span.file,
+              file_content: param_file_content,
+              start: span.start,
+              end: span.end,
+            }
+            raise InvalidSizeFunctionDomain(
+              message~,
+              span=precise_span,
+            )
+          }
           err => raise err
         }
         let value = match @parse.ConstValue::from(mono_expr) {
@@ -345,6 +360,7 @@ fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv
           Some((GenVar(n), _)) => @parse.Expr::nat(n, width=None, base=10, span~)
           Some((Param(NatParam(value~, span=_)), _)) => value.as_expr()
           Some((Param(TypeParam(_)), _)) => raise ReceivedTypeParameterInsteadOfExpr(span~)
+          Some((BoundParam, _)) => Identifier(path~, span~, ty={ val: None })
           Some((Const(decl), _)) => decl.expr
           Some((Type(_), _)) => raise ReceivedTypeAliasInsteadOfExpr(span~)
           Some((Name(_), resolved_path)) => @parse.Expr::Identifier(path=resolved_path, span~, ty={ val: None })
@@ -594,11 +610,18 @@ pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packa
       }
       ModuleDeclaration(sig) => {
         let mod_path = sig.path.prepend(packages)
+        let signature_env = self.top_env.child()
+        for param in sig.params {
+          signature_env.declare_shadowing(
+            @parse.Path::new([], param.name),
+            BoundParam,
+          )
+        }
         let ports: Array[@parse.Port] = []
         for port in sig.ports {
           ports.push({
             name: port.name,
-            ty: self.monomorphize_declared_type(port.ty, env=self.top_env, packages~),
+            ty: self.monomorphize_declared_type(port.ty, env=signature_env, packages~),
             dir: port.dir,
             span: port.span,
             optional: port.optional,

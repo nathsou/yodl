@@ -164,6 +164,8 @@ fn scale_size(size: Size, factor: Int) -> Size {
             }
             Affine(constant=factor * constant, terms=scaled_terms)
         }
+        Mul(Affine(constant=inner_factor, terms~), inner) if terms.is_empty() =>
+            scale_size(inner, factor * inner_factor)
         _ if factor == 1 => size
         _ => Mul(affine_constant(factor), size)
     }

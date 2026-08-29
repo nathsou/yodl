@@ -929,6 +929,19 @@ test "declared module signatures resolve global size constants" {
 }
 
 ///|
+test "declared module Nat parameters shadow global size constants" {
+  let source =
+    #|const N = 4
+    #|
+    #|declare module Cell[N: Nat](input: uint[N]) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("input: uint<N>"))
+  assert_false(typed.contains("input: u4"))
+}
+
+///|
 test "non-affine size identity multiplication is canonicalized" {
   let source =
     #|declare module Shapes[N: Nat](
@@ -940,6 +953,32 @@ test "non-affine size identity multiplication is canonicalized" {
   let typed = compile_stage(source, "write_typed")
   assert_true(typed.contains("multiplied: uint<clog2!(N)>"))
   assert_true(typed.contains("direct: uint<clog2!(N)>"))
+}
+
+///|
+test "nested non-affine constant multiplication is canonicalized" {
+  let source =
+    #|declare module Shapes[N: Nat](
+    #|  nested: uint[2 * (3 * clog2!(N))],
+    #|  combined: uint[6 * clog2!(N)],
+    #|) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("nested: uint<6 * clog2!(N)>"))
+  assert_true(typed.contains("combined: uint<6 * clog2!(N)>"))
+}
+
+///|
+test "invalid size-function diagnostics preserve the inner call span" {
+  let source =
+    #|module Child[N: Nat]() -> () {}
+    #|module Top() -> () {
+    #|  let child = Child[N: 1 + cdiv!(8, 0)]()
+    #|}
+  let diagnostic = compile_error(source, cmd_str="write_mono")
+  assert_true(diagnostic.contains("fixture.yodl:3.32-3.38"))
+  assert_false(diagnostic.contains("fixture.yodl:3.24-3.38"))
 }
 
 ///|
