@@ -113,8 +113,8 @@ priv enum Size {
     Add(Size, Size)
     Sub(Size, Size)
     Mul(Size, Size)
-    Clog2(Size)
-    CDiv(Size, Size)
+    Clog2(Size, Span)
+    CDiv(Size, Size, Span)
 }
 
 priv enum SizeConstraintKind {
@@ -194,8 +194,8 @@ fn normalize_size(index: @parse.IndexExpr) -> Size {
             (lhs, Affine(constant~, terms~)) if terms.is_empty() => scale_size(lhs, constant)
             (lhs, rhs) => Mul(lhs, rhs)
         }
-        Clog2(arg) => Clog2(normalize_size(arg))
-        CDiv(dividend, divisor) => CDiv(normalize_size(dividend), normalize_size(divisor))
+        Clog2(arg, span) => Clog2(normalize_size(arg), span)
+        CDiv(dividend, divisor, span) => CDiv(normalize_size(dividend), normalize_size(divisor), span)
     }
 }
 
@@ -255,11 +255,11 @@ fn Size::eval(self: Size) -> Int? {
             (Some(a), Some(b)) => Some(a * b)
             _ => None
         }
-        Clog2(arg) => match arg.eval() {
+        Clog2(arg, _) => match arg.eval() {
             Some(value) if value >= 0 => Some(@utils.clog2_int(value))
             _ => None
         }
-        CDiv(dividend, divisor) => match (dividend.eval(), divisor.eval()) {
+        CDiv(dividend, divisor, _) => match (dividend.eval(), divisor.eval()) {
             (Some(a), Some(b)) if a >= 0 && b > 0 =>
                 Some(a / b + (if a % b == 0 { 0 } else { 1 }))
             _ => None
@@ -276,8 +276,12 @@ fn Size::to_index_expr(self: Size) -> @parse.IndexExpr {
         Add(lhs, rhs) => Add(lhs.to_index_expr(), rhs.to_index_expr())
         Sub(lhs, rhs) => Sub(lhs.to_index_expr(), rhs.to_index_expr())
         Mul(lhs, rhs) => Mul(lhs.to_index_expr(), rhs.to_index_expr())
-        Clog2(arg) => Clog2(arg.to_index_expr())
-        CDiv(dividend, divisor) => CDiv(dividend.to_index_expr(), divisor.to_index_expr())
+        Clog2(arg, span) => @parse.IndexExpr::Clog2(arg.to_index_expr(), span)
+        CDiv(dividend, divisor, span) => @parse.IndexExpr::CDiv(
+            dividend.to_index_expr(),
+            divisor.to_index_expr(),
+            span,
+        )
     }
 }
 
@@ -317,15 +321,15 @@ fn TypeChecker::validate_size(self: Self, size: Size, span: Span) -> Unit raise 
             self.validate_size(lhs, span)
             self.validate_size(rhs, span)
         }
-        Clog2(arg) => {
+        Clog2(arg, function_span) => {
             self.validate_size(arg, span)
-            self.require_size(arg, NonNegative, "clog2 argument", span)
+            self.require_size(arg, NonNegative, "clog2 argument", function_span)
         }
-        CDiv(dividend, divisor) => {
+        CDiv(dividend, divisor, function_span) => {
             self.validate_size(dividend, span)
             self.validate_size(divisor, span)
-            self.require_size(dividend, NonNegative, "ceiling-division dividend", span)
-            self.require_size(divisor, Positive, "ceiling-division divisor", span)
+            self.require_size(dividend, NonNegative, "ceiling-division dividend", function_span)
+            self.require_size(divisor, Positive, "ceiling-division divisor", function_span)
         }
     }
 }

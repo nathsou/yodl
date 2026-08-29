@@ -4,8 +4,8 @@ pub(all) enum IndexExpr {
   Add(IndexExpr, IndexExpr)
   Sub(IndexExpr, IndexExpr)
   Mul(IndexExpr, IndexExpr)
-  Clog2(IndexExpr)
-  CDiv(IndexExpr, IndexExpr)
+  Clog2(IndexExpr, Span)
+  CDiv(IndexExpr, IndexExpr, Span)
 } derive(Eq)
 
 // Size functions are defined over natural values. `clog2!(0)` is zero;
@@ -16,17 +16,17 @@ pub fn IndexExpr::eval(self: IndexExpr) -> Int? {
   match self {
     Lit(n) => Some(n)
     Var(_) => None
-    Add(a, b) | Sub(a, b) | Mul(a, b) | CDiv(a, b) => match (a.eval(), b.eval()) {
+    Add(a, b) | Sub(a, b) | Mul(a, b) | CDiv(a, b, _) => match (a.eval(), b.eval()) {
       (Some(x), Some(y)) => match self {
         Add(_, _) => Some(x + y)
         Sub(_, _) => Some(x - y)
         Mul(_, _) => Some(x * y)
-        CDiv(_, _) if x >= 0 && y > 0 => Some(x / y + (if x % y == 0 { 0 } else { 1 }))
+        CDiv(_, _, _) if x >= 0 && y > 0 => Some(x / y + (if x % y == 0 { 0 } else { 1 }))
         _ => None
       }
       _ => None
     }
-    Clog2(a) => match a.eval() {
+    Clog2(a, _) => match a.eval() {
       Some(n) if n >= 0 => Some(@utils.clog2_int(n))
       Some(_) => None
       None => None
@@ -52,13 +52,13 @@ pub fn[E : Error] IndexExpr::map_vars(self : IndexExpr, f : (String) -> IndexExp
       (Lit(x), Lit(y)) => Lit(x * y)
       (a2, b2) => Mul(a2, b2)
     }
-    Clog2(a) => match a.map_vars(f) {
+    Clog2(a, span) => match a.map_vars(f) {
       Lit(n) if n >= 0 => Lit(@utils.clog2_int(n))
-      a2 => Clog2(a2)
+      a2 => Clog2(a2, span)
     }
-    CDiv(a, b) => match (a.map_vars(f), b.map_vars(f)) {
+    CDiv(a, b, span) => match (a.map_vars(f), b.map_vars(f)) {
       (Lit(x), Lit(y)) if x >= 0 && y > 0 => Lit(x / y + (if x % y == 0 { 0 } else { 1 }))
-      (a2, b2) => CDiv(a2, b2)
+      (a2, b2) => CDiv(a2, b2, span)
     }
   }
 }
@@ -83,13 +83,13 @@ pub fn IndexExpr::substitute(self: IndexExpr, params_env: Map[String, StaticArg]
       (Lit(x), Lit(y)) => Lit(x * y)
       (a2, b2) => Mul(a2, b2)
     }
-    Clog2(a) => match a.substitute(params_env) {
+    Clog2(a, span) => match a.substitute(params_env) {
       Lit(n) if n >= 0 => Lit(@utils.clog2_int(n))
-      a2 => Clog2(a2)
+      a2 => Clog2(a2, span)
     }
-    CDiv(a, b) => match (a.substitute(params_env), b.substitute(params_env)) {
+    CDiv(a, b, span) => match (a.substitute(params_env), b.substitute(params_env)) {
       (Lit(x), Lit(y)) if x >= 0 && y > 0 => Lit(x / y + (if x % y == 0 { 0 } else { 1 }))
-      (a2, b2) => CDiv(a2, b2)
+      (a2, b2) => CDiv(a2, b2, span)
     }
   }
 }

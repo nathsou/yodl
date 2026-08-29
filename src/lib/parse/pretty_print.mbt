@@ -536,7 +536,7 @@ impl Show for StructField with output(field, logger) {
 
 fn index_expr_prec(expr: IndexExpr) -> Int {
   match expr {
-    Lit(_) | Var(_) | Clog2(_) | CDiv(_, _) => 3
+    Lit(_) | Var(_) | Clog2(_, _) | CDiv(_, _, _) => 3
     Mul(_, _) => 2
     Add(_, _) | Sub(_, _) => 1
   }
@@ -575,12 +575,12 @@ pub impl Show for IndexExpr with output(self, logger) {
       logger.write_string(" * ")
       write_index_expr_child(b, logger, 2)
     }
-    Clog2(a) => {
+    Clog2(a, _) => {
       logger.write_string("clog2!(")
       logger.write_object(a)
       logger.write_char(')')
     }
-    CDiv(a, b) => {
+    CDiv(a, b, _) => {
       logger.write_string("cdiv!(")
       logger.write_object(a)
       logger.write_string(", ")

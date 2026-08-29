@@ -999,6 +999,16 @@ test "zero multiplication still validates non-affine size domains" {
 }
 
 ///|
+test "size-function diagnostics use the failing call span" {
+  let source =
+    #|module Top() -> (
+    #|  out: uint[1 +
+    #|    cdiv!(8, 0)]) {}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("fixture.yodl:3.5-3.15"))
+}
+
+///|
 test "invalid size-function diagnostics preserve the inner call span" {
   let source =
     #|module Child[N: Nat]() -> () {}
