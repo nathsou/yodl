@@ -71,7 +71,9 @@ test "aggregate compatibility recursively coerces typed values" {
     #|}
   let simplified = compile_stage(source, "write_simplified")
   assert_true(simplified.contains("vector = [zero_extend(narrow_vector[0]), zero_extend(narrow_vector[1])]"))
-  assert_true(simplified.contains("record = (value: zero_extend(narrow_record.value), nested: [zero_extend(narrow_record.nested[0]), zero_extend(narrow_record.nested[1])])"))
+  assert_true(simplified.contains("zero_extend(narrow_record.value)"))
+  assert_true(simplified.contains("zero_extend(__coerced[0])"))
+  assert_true(simplified.contains("zero_extend(__coerced[1])"))
   let _ = compile_stage(source, "write_low_firrtl")
 }
 
@@ -84,6 +86,19 @@ test "aggregate coercions evaluate statementful sources once" {
     #|    narrow
     #|  }
     #|}
+  let _ = compile_stage(source, "write_low_firrtl")
+}
+
+///|
+test "aggregate coercions bind statement-free sources before projecting" {
+  let source =
+    #|module Top(a: u4, b: u4) -> (out: [2]u8) {
+    #|  out = fill!(2, a + b)
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("let __coerced"))
+  assert_true(simplified.contains("zero_extend(__coerced[0])"))
+  assert_true(simplified.contains("zero_extend(__coerced[1])"))
   let _ = compile_stage(source, "write_low_firrtl")
 }
 

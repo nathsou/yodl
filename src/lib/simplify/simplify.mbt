@@ -49,8 +49,9 @@ fn Simplifier::explicit_coercion(
   }
 
   let ty = @ref.new(Some(expected))
-  if expr.contains_statements() {
-    match (actual, expected) {
+  match expr {
+    @parse.CoreExpr::Identifier(_) => ()
+    _ => match (actual, expected) {
       (
         @parse.CoreType::Vector(_),
         @parse.CoreType::Vector(_),
