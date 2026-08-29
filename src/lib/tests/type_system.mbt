@@ -913,6 +913,20 @@ test "declared module ports revalidate size domains after Nat substitution" {
 }
 
 ///|
+test "non-affine size identity multiplication is canonicalized" {
+  let source =
+    #|declare module Shapes[N: Nat](
+    #|  multiplied: uint[1 * clog2!(N)],
+    #|  direct: uint[clog2!(N)],
+    #|) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("multiplied: uint<clog2!(N)>"))
+  assert_true(typed.contains("direct: uint<clog2!(N)>"))
+}
+
+///|
 test "instance direction errors stay attached to the assignment" {
   let source =
     #|module Child() -> (output: u8) {
