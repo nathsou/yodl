@@ -319,6 +319,10 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Fixed(1),
     apply: (args, span) => {
       match as_bigint_or_none(args[0]) {
+        Some(arg) if arg < 0 => raise InvalidSizeFunctionDomain(
+          message="Invalid negative clog2 argument \{arg}",
+          span~,
+        )
         Some(arg) => Some(Expr::bignat(@utils.clog2(arg), width=None, span~))
         None => None
       }
@@ -337,6 +341,14 @@ let builtin_functions: Map[String, BuiltinFunction] = {
     arity: Fixed(2),
     apply: (args, span) => {
       match (as_bigint_or_none(args[0]), as_bigint_or_none(args[1])) {
+        (Some(dividend), _) if dividend < 0 => raise InvalidSizeFunctionDomain(
+          message="Invalid negative ceiling-division dividend \{dividend}",
+          span~,
+        )
+        (_, Some(divisor)) if divisor <= 0 => raise InvalidSizeFunctionDomain(
+          message="ceiling-division divisor must be positive, got \{divisor}",
+          span~,
+        )
         (Some(dividend), Some(divisor)) => Some(Expr::bignat(@utils.cdiv(dividend, divisor), span~))
         _ => None
       }

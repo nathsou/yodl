@@ -31,6 +31,7 @@ pub suberror MonomorphizerError {
   InvalidModuleParameterCount(path~: @parse.Path, expected~: Int, actual~: Int, span~: @parse.Span)
   ReceivedTypeParameterInsteadOfExpr(span~: @parse.Span)
   InvalidParameter(sort~: @parse.ParamSort, span~: @parse.Span)
+  InvalidSizeFunctionDomain(message~: String, span~: @parse.Span)
   ReceivedTypeAliasInsteadOfExpr(span~: @parse.Span)
   InvalidParameterInstantiation(path~: @parse.Path, param~: String, span~: @parse.Span, param_span~: @parse.Span)
   InvalidTypeAliasParameters(path~: @parse.Path, exptected~: Int, actual~: Int, span~: @parse.Span)
@@ -50,6 +51,9 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     }
     InvalidParameter(sort~, span~) => {
       logger.write_string("Invalid parameter of sort '\{sort}' at \{span}")
+    }
+    InvalidSizeFunctionDomain(message~, ..) => {
+      logger.write_string(message)
     }
     InvalidParameterInstantiation(path~, param~, param_span~, ..) => {
       logger.write_string("Invalid instantiation of parameter '\{param}' in module '\{path}', declared at \{param_span}")
@@ -74,6 +78,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
     InvalidModuleParameterCount(span~, ..) => span
     ReceivedTypeParameterInsteadOfExpr(span~) => span
     InvalidParameter(span~, ..) => span
+    InvalidSizeFunctionDomain(span~, ..) => span
     InvalidParameterInstantiation(span~, ..) => span
     InvalidTypeAliasParameters(span~, ..) => span
     UnresolvedNamedType(span~, ..) => span
@@ -117,7 +122,11 @@ fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, sort~: @parse.
   match param {
     Unresolved(unresolved) => match unresolved.parse(sort) {
       ExprParam(expr~, span~) => {
-        let mono_expr = self.monomorphize_expr(expr, env~, packages~)
+        let mono_expr = try self.monomorphize_expr(expr, env~, packages~) catch {
+          @parse.InvalidSizeFunctionDomain(message~, ..) =>
+            raise InvalidSizeFunctionDomain(message~, span~)
+          err => raise err
+        }
         let value = match @parse.ConstValue::from(mono_expr) {
           Some(val) => val
           _ => raise InvalidParameter(sort~, span~)

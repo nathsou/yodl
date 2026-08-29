@@ -17,6 +17,7 @@ pub suberror MonomorphizerError {
   InvalidModuleParameterCount(path~ : @parse.Path, expected~ : Int, actual~ : Int, span~ : @parse.Span)
   ReceivedTypeParameterInsteadOfExpr(span~ : @parse.Span)
   InvalidParameter(sort~ : @parse.ParamSort, span~ : @parse.Span)
+  InvalidSizeFunctionDomain(message~ : String, span~ : @parse.Span)
   ReceivedTypeAliasInsteadOfExpr(span~ : @parse.Span)
   InvalidParameterInstantiation(path~ : @parse.Path, param~ : String, span~ : @parse.Span, param_span~ : @parse.Span)
   InvalidTypeAliasParameters(path~ : @parse.Path, exptected~ : Int, actual~ : Int, span~ : @parse.Span)
@@ -92,4 +93,3 @@ type UniqueName
 // Type aliases
 
 // Traits
-

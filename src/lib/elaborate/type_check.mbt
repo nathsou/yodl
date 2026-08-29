@@ -912,7 +912,7 @@ fn TypeChecker::check_expr_in_context(
                             if record_port_reads {
                                 self.port_usage.record_read(ids, port)
                             }
-                            port_def.ty.substitute(params, span~)
+                            self.resolve_ty(port_def.ty.substitute(params, span~), span~)
                         }
                         None => raise UnknownModulePort(module_path=sig.path, port_name=port, span~)
                     }
@@ -971,10 +971,22 @@ fn TypeChecker::check_expr_in_context(
                         }
                     }
 
+                    // Declared-module signatures retain symbolic Nat parameters until
+                    // instantiation. Re-resolve every substituted port now so invalid
+                    // size-function domains are reported even for ports that are unused.
+                    let instantiated_port_tys: Map[String, Type] = Map([], capacity=sig.ports.length())
+                    for port_def in sig.ports {
+                        let port_ty = self.resolve_ty(
+                            port_def.ty.substitute(params_env, span=port_def.span),
+                            span=port_def.span,
+                        )
+                        instantiated_port_tys[port_def.name] = port_ty
+                    }
+
                     for port_name, port_expr in ports {
                         match sig.get_port(port_name) {
                             Some(port_def) => {
-                                let port_ty = port_def.ty.substitute(params_env, span~)
+                                let port_ty = instantiated_port_tys[port_name]
                                 if port_def.dir == Input {
                                     let _ = self.check_expr(port_expr, env, expected_ty=port_ty)
                                 } else {

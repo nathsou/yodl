@@ -10,7 +10,8 @@ pub(all) enum IndexExpr {
 
 // Size functions are defined over natural values. `clog2!(0)` is zero;
 // ceiling division requires a nonnegative dividend and a positive divisor.
-// Evaluate a closed IndexExpr to an Int, or return None if it contains unresolved variables.
+// Evaluate a closed, domain-valid IndexExpr to an Int. Returns None for unresolved
+// variables or invalid `clog2`/ceiling-division domains.
 pub fn IndexExpr::eval(self: IndexExpr) -> Int? {
   match self {
     Lit(n) => Some(n)

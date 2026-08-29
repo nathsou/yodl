@@ -899,6 +899,20 @@ test "symbolic affine sizes are canonicalized during type resolution" {
 }
 
 ///|
+test "declared module ports revalidate size domains after Nat substitution" {
+  let source =
+    #|declare module Cell[N: Nat](unused: uint[cdiv!(8, N)]) -> ()
+    #|
+    #|module Top() -> () {
+    #|  let cell = Cell[N: 0]()
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("ceiling-division divisor must be positive, got 0"))
+  assert_true(diagnostic.contains("fixture.yodl:1"))
+  assert_false(diagnostic.contains("reached Core construction"))
+}
+
+///|
 test "instance direction errors stay attached to the assignment" {
   let source =
     #|module Child() -> (output: u8) {
