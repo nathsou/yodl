@@ -61,6 +61,21 @@ test "aggregate compatibility rejects shape errors and normalizes strings" {
 }
 
 ///|
+test "aggregate compatibility recursively coerces typed values" {
+  let source =
+    #|module Top() -> (vector: [2]u8, record: (value: u8, nested: [2]u8)) {
+    #|  let narrow_vector: [2]u4 = [1, 2]
+    #|  let narrow_record: (value: u4, nested: [2]u4) = (value: 3, nested: [4, 5])
+    #|  vector = narrow_vector
+    #|  record = narrow_record
+    #|}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("vector = [zero_extend(narrow_vector[0]), zero_extend(narrow_vector[1])]"))
+  assert_true(simplified.contains("record = (value: zero_extend(narrow_record.value), nested: [zero_extend(narrow_record.nested[0]), zero_extend(narrow_record.nested[1])])"))
+  let _ = compile_stage(source, "write_low_firrtl")
+}
+
+///|
 test "contextual literals report overflow at the literal span" {
   let source =
     #|module Top() -> (out: [2]u3) {

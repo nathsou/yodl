@@ -106,12 +106,12 @@ fn negative_unsigned_literal_error(width: Int, span: Span) -> TypeCheckerError {
     type_error("Negative literal cannot be represented as unsigned type u\{width}", span)
 }
 
-priv enum UnificationParam {
+priv enum TypeEqualityParam {
     Int(Int)
     Type(Type)
 }
 
-fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
+fn type_equal_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, TypeEqualityParam] = {}) -> Map[String, TypeEqualityParam] raise TypeCheckerError {
     while eqs.pop() is Some((ty1, ty2)) {
         if ty1 == ty2 {
             continue
@@ -137,6 +137,21 @@ fn unify_aux(eqs: Array[(Type, Type)], span~: Span, subst~: Map[String, Unificat
             }
             (Vector(ty=_, len=Var(_)), Vector(ty=_, len=Lit(_))) => {
                 eqs.push((ty2, ty1))
+            }
+            (Vector(ty=ty1_inner, len=Lit(len1)), Vector(ty=ty2_inner, len=Lit(len2))) => {
+                if len1 != len2 {
+                    raise IncompatibleTypes(ty1~, ty2~, span~)
+                }
+                eqs.push((ty1_inner, ty2_inner))
+            }
+            (Struct(fields1), Struct(fields2)) => {
+                if fields1.length() != fields2.length() ||
+                    !fields1.keys().all(name => fields2.contains(name)) {
+                    raise IncompatibleTypes(ty1~, ty2~, span~)
+                }
+                for name, field1 in fields1 {
+                    eqs.push((field1, fields2.get(name).unwrap()))
+                }
             }
             (String(len~), ty2) | (ty2, String(len~)) => {
                 eqs.push((Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(len)), ty2))
@@ -194,7 +209,7 @@ fn merge_expression_types(lhs: Type, rhs: Type, span~: Span) -> Type raise TypeC
             Struct(fields)
         }
         _ => {
-            let _ = unify(lhs, rhs, span~)
+            let _ = type_equal(lhs, rhs, span~)
             merge_inferred_types(lhs, rhs)
         }
     }
@@ -303,21 +318,40 @@ fn assigned_instance_port(lhs: Expr) -> (ModuleSignature, Array[InstanceId], Str
     }
 }
 
-fn unify(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, UnificationParam] = {}) -> Map[String, UnificationParam] raise TypeCheckerError {
-    unify_aux([(ty1, ty2)], span~, subst~)
+fn type_equal(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, TypeEqualityParam] = {}) -> Map[String, TypeEqualityParam] raise TypeCheckerError {
+    type_equal_aux([(ty1, ty2)], span~, subst~)
 }
 
 /// Directional compatibility for expression contexts. Unlike equality and
-/// unification, this permits an integer value to be resized only when its
+/// type equality, this permits an integer value to be resized only when its
 /// signedness is unchanged. The simplifier records every such resize as an
 /// explicit Core coercion before lowering.
-fn check_assignment_compatibility(expected: Type, actual: Type, span~: Span) -> Unit raise TypeCheckerError {
+fn check_compatible(expected: Type, actual: Type, span~: Span) -> Unit raise TypeCheckerError {
     if expected == actual {
         return
     }
 
     match (expected, actual) {
         (UInt(Lit(_)), UInt(Lit(_))) | (SInt(Lit(_)), SInt(Lit(_))) => ()
+        (Vector(ty=expected_elem, len=Lit(expected_len)), Vector(ty=actual_elem, len=Lit(actual_len))) => {
+            if expected_len != actual_len {
+                raise IncompatibleTypes(ty1=expected, ty2=actual, span~)
+            }
+            check_compatible(expected_elem, actual_elem, span~)
+        }
+        (Struct(expected_fields), Struct(actual_fields)) => {
+            if expected_fields.length() != actual_fields.length() ||
+                !expected_fields.keys().all(name => actual_fields.contains(name)) {
+                raise IncompatibleTypes(ty1=expected, ty2=actual, span~)
+            }
+            for name, expected_field in expected_fields {
+                check_compatible(expected_field, actual_fields.get(name).unwrap(), span~)
+            }
+        }
+        (String(len=expected_len), actual) =>
+            check_compatible(Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(expected_len)), actual, span~)
+        (expected, String(len=actual_len)) =>
+            check_compatible(expected, Vector(ty=Type::uint(@parse.BITS_PER_CHAR), len=Lit(actual_len)), span~)
         _ => raise IncompatibleTypes(ty1=expected, ty2=actual, span~)
     }
 }
@@ -663,7 +697,7 @@ fn TypeChecker::check_expr_in_context(
         Instance(path~, params~, ports~, span~, ..) => {
             match self.modules.get(path) {
                 Some(sig) => {
-                    let subst: Map[String, UnificationParam] = Map([])
+                    let subst: Map[String, TypeEqualityParam] = Map([])
                     let params_env: Map[String, StaticArg] = Map([])
                     let instance_id = self.fresh_instance_id()
                     let params_map = params.as_resolved_map(names=sig.params.map(p => p.name))
@@ -673,7 +707,7 @@ fn TypeChecker::check_expr_in_context(
                         let (expr, ann, span) = param
                         let expr_ty = self.synth_expr(expr, env)
                         let expr_ty = self.resolve_ty(expr_ty, span~)
-                        let _ = unify(expr_ty, ann, span=span, subst~)
+                        let _ = type_equal(expr_ty, ann, span=span, subst~)
                     }
 
                     for name, param in params_map {
@@ -713,7 +747,7 @@ fn TypeChecker::check_expr_in_context(
                                     let _ = self.check_expr(port_expr, env, expected_ty=port_ty)
                                 } else {
                                     let expr_ty = self.synth_expr(port_expr, env)
-                                    let _ = unify(port_ty, expr_ty, span=port_expr.span())
+                                    let _ = type_equal(port_ty, expr_ty, span=port_expr.span())
                                     if !is_valid_assignment_target(port_expr) {
                                         raise InvalidAssignmentTarget(span=port_expr.span())
                                     }
@@ -843,7 +877,7 @@ fn TypeChecker::check_expr_in_context(
                 let (pat, expr) = case
                 let pat_ty = self.check_expr(pat, env, expected_ty=pattern_ty)
                 let expr_ty = self.check_expr_in_context(expr, env, expected_ty~)
-                let _ = unify(subject_ty, pat_ty, subst~, span~)
+                let _ = type_equal(subject_ty, pat_ty, subst~, span~)
                 check_ret_ty(expr_ty)
             }
 
@@ -1095,7 +1129,7 @@ fn TypeChecker::check_expr_in_context(
                     ty
                 }
                 None => {
-                    let _ = unify(then_ty, Type::empty(), span~)
+                    let _ = type_equal(then_ty, Type::empty(), span~)
                     then_ty
                 }
             }
@@ -1105,7 +1139,7 @@ fn TypeChecker::check_expr_in_context(
     }
 
     match expected_ty {
-        Some(expected) => check_assignment_compatibility(expected, ty, span=expr.span())
+        Some(expected) => check_compatible(expected, ty, span=expr.span())
         None => ()
     }
 

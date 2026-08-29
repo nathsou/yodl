@@ -61,6 +61,37 @@ fn explicit_coercion(
       } else {
         @parse.CoreExpr::SignExtend(expr~, span=expr.span(), ty~)
       }
+    (
+      @parse.CoreType::Vector(ty=actual_elem, len=actual_len),
+      @parse.CoreType::Vector(ty=expected_elem, len=expected_len),
+    ) if actual_len == expected_len => {
+      let elems = []
+      for index in 0..<actual_len {
+        let index_expr = @parse.CoreExpr::Natural(
+          value=BigInt::from_int(index),
+          width=None,
+          base=10,
+          span=expr.span(),
+          ty={ val: Some(@parse.CoreType::UInt(1)) },
+        )
+        let elem = @parse.CoreExpr::Indexing(
+          expr~, index=index_expr, span=expr.span(), ty={ val: Some(actual_elem) },
+        )
+        elems.push(explicit_coercion(elem, expected_elem))
+      }
+      @parse.CoreExpr::Vector(elems~, span=expr.span(), ty~)
+    }
+    (@parse.CoreType::Struct(actual_fields), @parse.CoreType::Struct(expected_fields)) => {
+      let fields = Map([], capacity=expected_fields.length())
+      for name, expected_field in expected_fields {
+        let actual_field = actual_fields.get(name).unwrap()
+        let field = @parse.CoreExpr::FieldAccess(
+          expr~, field=name, span=expr.span(), ty={ val: Some(actual_field) },
+        )
+        fields[name] = explicit_coercion(field, expected_field)
+      }
+      @parse.CoreExpr::Struct(fields~, span=expr.span(), ty~)
+    }
     _ => raise Failure::Failure(
       "Invalid coercion from '\{actual}' to '\{expected}' after type checking",
     )
