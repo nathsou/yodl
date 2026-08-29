@@ -179,15 +179,33 @@ test "contextual negative literals check the signed value as a whole" {
 test "folded negative literals remain signed and reject unsigned contexts" {
   let source =
     #|module Top() -> () {
-    #|  let value = 0 - 1
+    #|  let minus_one = 0 - 1
+    #|  let minus_four = 0 - 4
     #|}
   let simplified = compile_stage(source, "write_simplified")
-  assert_true(simplified.contains("let value: s2"))
+  assert_true(simplified.contains("let minus_one: s1"))
+  assert_true(simplified.contains("let minus_four: s3"))
+
+  let signed =
+    #|module Top() -> (minus_one: s1, minus_four: s3) {
+    #|  minus_one = 0 - 1
+    #|  minus_four = 0 - 4
+    #|}
+  let firrtl = compile_stage(signed, "write_low_firrtl")
+  assert_true(firrtl.contains("SInt<1>(-1)"))
+  assert_true(firrtl.contains("SInt<3>(-4)"))
 
   let unsigned = "module Top() -> (out: u1) { out = 0 - 1; }"
   assert_true(
     compile_error(unsigned).contains(
       "Negative literal cannot be represented as unsigned type u1",
+    ),
+  )
+
+  let overflow = "module Top() -> (out: s3) { out = 0 - 5; }"
+  assert_true(
+    compile_error(overflow).contains(
+      "Literal requires 4 signed bits but context provides s3",
     ),
   )
 }

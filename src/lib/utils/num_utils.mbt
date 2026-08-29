@@ -319,7 +319,10 @@ pub fn significant_bits(n: BigInt, is_signed~: Bool = false) -> Int {
   }
 
   if n < 0 {
-    return significant_bits(-n, is_signed=true)
+    if n == -1 {
+      return 1
+    }
+    return significant_bits(-n - 1) + 1
   }
 
   let bytes = n.to_octets()

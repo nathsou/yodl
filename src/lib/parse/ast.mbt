@@ -653,8 +653,12 @@ pub fn Expr::nat(n: Int, width~: Int? = None, base~: Int = 10, span~: Span) -> E
 
 pub fn Expr::bignat(n: BigInt, width~: Int? = None, base~: Int = 10, span~: Span) -> Expr {
   let ty = match width {
-    Some(width) => if n > 0 { Type::uint(width) } else { Type::uint(width) }
-    None => Type::uint(@utils.significant_bits(n))
+    Some(width) => Type::uint(width)
+    None => if n < 0 {
+      Type::sint(@utils.significant_bits(n, is_signed=true))
+    } else {
+      Type::uint(@utils.significant_bits(n))
+    }
   }
 
   Natural(value=n, width~, base~, span~, ty={ val: Some(ty) })

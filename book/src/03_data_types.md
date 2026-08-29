@@ -53,8 +53,10 @@ to request a signedness reinterpretation explicitly.
 Without a context, an unsized nonnegative literal synthesizes as an unsigned
 integer with its minimum representable width (`1` is `u1`, `255` is `u8`). In a
 `uN` or `sN` context it is checked at the literal for overflow and then adopts
-that exact type. Static `Nat` parameters and width expressions are evaluated in
-the separate static/index language; they are not runtime signal types.
+that exact type. Negative values are rejected by unsigned contexts and must fit
+the two's-complement range of a signed context. Static `Nat` parameters and
+width expressions are evaluated in the separate static/index language; they
+are not runtime signal types.
 
 ### Booleans
 
