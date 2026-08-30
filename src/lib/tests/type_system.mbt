@@ -873,6 +873,22 @@ test "size expressions define zero behavior for clog2 and ceiling division" {
 }
 
 ///|
+test "ceiling division handles maximum integers without overflow" {
+  let span: @parse.Span = {
+    file: "type-system-test.yodl",
+    file_content: ""[:],
+    start: { index: 0, line: 0, column: 0 },
+    end: { index: 0, line: 0, column: 0 },
+  }
+  let expression = @parse.IndexExpr::CDiv(
+    @parse.IndexExpr::Lit(@int.MAX_VALUE),
+    @parse.IndexExpr::Lit(@int.MAX_VALUE - 1),
+    span,
+  )
+  assert_eq(expression.eval(), Some(2))
+}
+
+///|
 test "symbolic affine sizes are canonicalized during type resolution" {
   let source =
     #|declare module Shapes[M: Nat, N: Nat](

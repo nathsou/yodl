@@ -4,6 +4,7 @@ warnings = "-24"
 
 import {
   "moonbitlang/core/builtin",
+  "moonbitlang/core/int",
   "nathsou/yodl/lib/driver",
   "nathsou/yodl/lib/parse",
   "nathsou/yodl/lib/utils",
