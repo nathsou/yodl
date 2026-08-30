@@ -341,6 +341,17 @@ fn TypeChecker::require_size(
     }
 }
 
+pub fn TypeChecker::finalize(self: Self) -> Unit raise {
+    for constraint in self.size_constraints.iter() {
+        if constraint.size.eval() is None {
+            raise type_error(
+                "Unresolved \{constraint.description}; expected a concrete size",
+                constraint.span,
+            )
+        }
+    }
+}
+
 fn TypeChecker::validate_size(self: Self, size: Size, span: Span) -> Unit raise TypeCheckerError {
     match size {
         Affine(_) => ()
@@ -1668,6 +1679,9 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
                 constraints.push(self.size_constraints[index])
             }
             self.declared_size_constraints[sig.path] = constraints
+            while self.size_constraints.length() > constraint_start {
+                let _ = self.size_constraints.pop()
+            }
             check_attributes(sig.attributes, signatures=module_attribute_signatures)
             
             for port in sig.ports {

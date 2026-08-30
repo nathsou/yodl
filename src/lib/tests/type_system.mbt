@@ -913,6 +913,15 @@ test "declared module ports revalidate size domains after Nat substitution" {
 }
 
 ///|
+test "ordinary module unresolved sizes are rejected before Core construction" {
+  let source =
+    #|module Top() -> (out: uint[Unknown]) {}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Unresolved integer width"))
+  assert_false(diagnostic.contains("reached Core construction"))
+}
+
+///|
 test "declared module signatures resolve global size constants" {
   let source =
     #|const D = 0

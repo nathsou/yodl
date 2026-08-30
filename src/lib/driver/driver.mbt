@@ -64,6 +64,10 @@ pub fn run(
     resolved_decls.push(resolved)
   }
 
+  try checker.finalize() catch {
+    err => raise Failure::Failure(err.to_string())
+  }
+
   for cmd in commands {
     if cmd is WriteTyped(path~) {
       let emitter = @parse.AstEmitter::new(show_expr_types=true)
