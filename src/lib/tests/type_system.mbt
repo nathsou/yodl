@@ -698,6 +698,24 @@ test "inline instance outputs remain driven when read back" {
 }
 
 ///|
+test "register proxy cleanup preserves conditional updates" {
+  let source =
+    #|module Top(clk: clock, rst: bool, en: bool, d: u8) -> (q: u8) {
+    #|  let reg = Reg[u8](clk, rst)
+    #|  if en {
+    #|    reg.d = d
+    #|  } else {
+    #|    reg.d = 0
+    #|  }
+    #|  q = reg.q
+    #|}
+  let firrtl = compile_stage(source, "write_firrtl")
+  assert_false(firrtl.contains("wire reg: { flip d: UInt<8>, q: UInt<8> }"))
+  assert_true(firrtl.contains("connect reg, d"))
+  assert_true(firrtl.contains("connect reg, UInt<8>(0)"))
+}
+
+///|
 test "lvalue checking preserves reads used by dynamic indices" {
   let source =
     #|module Index(value: bool) -> (output: bool) {

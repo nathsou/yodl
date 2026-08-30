@@ -216,7 +216,53 @@ fn root_decl_id(expr: TypedExpr) -> Id? {
   }
 }
 
-fn rewrite_stmt(stmt: TypedStmt, aliases: AliasMap, removed: Set[TypedRef], renames: Map[Id, Id]) -> TypedStmt? {
+fn direct_field_id(reference: TypedRef) -> Id? {
+  match reference {
+    FieldAccess(lhs=Id(_), field~, ..) => Some(field)
+    _ => None
+  }
+}
+
+fn has_reg_input_connection(stmts: Array[TypedStmt], reg_id: Id, d_ref: TypedRef) -> Bool {
+  for stmt in stmts {
+    match stmt {
+      Connect(Id(lhs_id, ..), Reference(rhs, ..)) if lhs_id == reg_id && refs_equal(rhs, d_ref) => return true
+      When({ body, otherwise, .. }) => {
+        if has_reg_input_connection(body, reg_id, d_ref) {
+          return true
+        }
+        match otherwise {
+          Some(body) if has_reg_input_connection(body, reg_id, d_ref) => return true
+          _ => ()
+        }
+      }
+      _ => ()
+    }
+  }
+  false
+}
+
+fn refs_equal(lhs: TypedRef, rhs: TypedRef) -> Bool {
+  match (lhs, rhs) {
+    (Id(lhs_id, ..), Id(rhs_id, ..)) => lhs_id == rhs_id
+    (StaticIndexing(lhs=lhs_lhs, index=lhs_index, ..), StaticIndexing(lhs=rhs_lhs, index=rhs_index, ..)) => {
+      lhs_index == rhs_index && refs_equal(lhs_lhs, rhs_lhs)
+    }
+    (FieldAccess(lhs=lhs_lhs, field=lhs_field, ..), FieldAccess(lhs=rhs_lhs, field=rhs_field, ..)) => {
+      lhs_field == rhs_field && refs_equal(lhs_lhs, rhs_lhs)
+    }
+    _ => false
+  }
+}
+
+fn rewrite_stmt(
+  stmt: TypedStmt,
+  aliases: AliasMap,
+  lhs_aliases: AliasMap,
+  removed: Set[TypedRef],
+  renames: Map[Id, Id],
+  inside_when: Bool,
+) -> TypedStmt? {
   match stmt {
     Node(id~, expr~) => Some(Node(id~, expr=rewrite_expr(expr, aliases, renames)))
     Wire(..) => Some(stmt)
@@ -230,15 +276,30 @@ fn rewrite_stmt(stmt: TypedStmt, aliases: AliasMap, removed: Set[TypedRef], rena
       init=rewrite_expr(init, aliases, renames),
     ))
     Connect(lhs, rhs) => {
-      if is_direct_field(lhs) && removed.contains(lhs) {
-        None
+      let lhs = if is_direct_field(lhs) && removed.contains(lhs) {
+        if !inside_when {
+          return None
+        }
+        let replacement = match lhs_aliases.get(lhs) {
+          Some(replacement) => Some(replacement)
+          None => alias_for(aliases, lhs)
+        }
+        match replacement {
+          Some(Reference(reference, ..)) => rename_ref(reference, renames)
+          _ => return None
+        }
       } else {
-        Some(Connect(rename_ref(lhs, renames), rewrite_expr(rhs, aliases, renames)))
+        rename_ref(lhs, renames)
+      }
+      let rhs = rewrite_expr(rhs, aliases, renames)
+      match rhs {
+        Reference(reference, ..) if refs_equal(lhs, reference) => None
+        _ => Some(Connect(lhs, rhs))
       }
     }
     When({ cond, body, otherwise }) => {
-      let new_body = body.filter_map(stmt => rewrite_stmt(stmt, aliases, removed, renames))
-      let new_otherwise = otherwise.map(body => body.filter_map(stmt => rewrite_stmt(stmt, aliases, removed, renames)))
+      let new_body = body.filter_map(stmt => rewrite_stmt(stmt, aliases, lhs_aliases, removed, renames, true))
+      let new_otherwise = otherwise.map(body => body.filter_map(stmt => rewrite_stmt(stmt, aliases, lhs_aliases, removed, renames, true)))
       Some(When({
         cond: rewrite_expr(cond, aliases, renames),
         body: new_body,
@@ -270,6 +331,7 @@ fn rewrite_stmt(stmt: TypedStmt, aliases: AliasMap, removed: Set[TypedRef], rena
 fn simplify_module(mod: TypedModule) -> TypedModule {
   let aggregate_fields: Map[Id, Array[TypedRef]] = Map([])
   let hardware_decls: Set[Id] = Set([])
+  let register_decls: Set[Id] = Set([])
 
   for stmt in mod.body {
     match stmt {
@@ -283,7 +345,11 @@ fn simplify_module(mod: TypedModule) -> TypedModule {
         }
         _ => ()
       }
-      Inst(id~, ..) | Reg(id~, ..) | RegReset(id~, ..) => hardware_decls.add(id)
+      Inst(id~, ..) => hardware_decls.add(id)
+      Reg(id~, ..) | RegReset(id~, ..) => {
+        hardware_decls.add(id)
+        register_decls.add(id)
+      }
       _ => ()
     }
   }
@@ -305,19 +371,19 @@ fn simplify_module(mod: TypedModule) -> TypedModule {
   let drivers: AliasMap = Map([])
   let nested_writes: Set[TypedRef] = Set([])
 
-  fn collect_nested_writes(stmts: Array[TypedStmt], field_refs: Set[TypedRef], nested_writes: Set[TypedRef]) -> Unit {
+  fn collect_nested_writes(
+    stmts: Array[TypedStmt],
+    field_refs: Set[TypedRef],
+    nested_writes: Set[TypedRef],
+    inside_when: Bool,
+  ) -> Unit {
     for stmt in stmts {
       match stmt {
+        Connect(lhs, _) if inside_when && is_direct_field(lhs) && field_refs.contains(lhs) => nested_writes.add(lhs)
         When({ body, otherwise, .. }) => {
-          for nested in body {
-            match nested {
-              Connect(lhs, _) if is_direct_field(lhs) && field_refs.contains(lhs) => nested_writes.add(lhs)
-              _ => ()
-            }
-          }
-          collect_nested_writes(body, field_refs, nested_writes)
+          collect_nested_writes(body, field_refs, nested_writes, true)
           match otherwise {
-            Some(body) => collect_nested_writes(body, field_refs, nested_writes)
+            Some(body) => collect_nested_writes(body, field_refs, nested_writes, true)
             None => ()
           }
         }
@@ -332,17 +398,69 @@ fn simplify_module(mod: TypedModule) -> TypedModule {
       _ => ()
     }
   }
-  collect_nested_writes(mod.body, field_refs, nested_writes)
+  collect_nested_writes(mod.body, field_refs, nested_writes, false)
 
-  let candidates: AliasMap = Map([])
+  // Build a provisional map including conditionally written fields. This lets
+  // us recognize the common register proxy shape (`d` aliases `q`, which
+  // aliases the physical register) without treating conditionally overridden
+  // instance inputs as aliases to their source expression.
+  let provisional_candidates: AliasMap = Map([])
   for reference, driver in drivers {
     match reference {
       FieldAccess(lhs=Id(id, ..), ..) => {
-        if !whole_used.contains(id) && !nested_writes.contains(reference) && driver.ty().is_ground() {
-          candidates[reference] = driver
+        if !whole_used.contains(id) && driver.ty().is_ground() {
+          provisional_candidates[reference] = driver
         }
       }
       _ => ()
+    }
+  }
+
+  let provisional_aliases: AliasMap = Map([])
+  for reference, _ in provisional_candidates {
+    match resolve_expr(provisional_candidates[reference], provisional_candidates, Set([])) {
+      Some(replacement) => provisional_aliases[reference] = replacement
+      None => ()
+    }
+  }
+
+  let register_proxy_lhs_aliases: AliasMap = Map([])
+  for id, refs in aggregate_fields {
+    if !whole_used.contains(id) {
+      let mut q_ref: TypedRef? = None
+      let mut d_ref: TypedRef? = None
+      for reference in refs {
+        match direct_field_id(reference) {
+          Some(field) if field == Id::from("q") => q_ref = Some(reference)
+          Some(field) if field == Id::from("d") => d_ref = Some(reference)
+          _ => ()
+        }
+      }
+      let is_register_proxy = refs.all(reference => {
+        match direct_field_id(reference) {
+          Some(field) => field == Id::from("d") || field == Id::from("q")
+          None => false
+        }
+      })
+      match (q_ref, d_ref, is_register_proxy) {
+        (Some(q_ref), Some(d_ref), true) => {
+          match provisional_aliases.get(q_ref).bind(root_decl_id) {
+            Some(root) if register_decls.contains(root) && has_reg_input_connection(mod.body, root, d_ref) => {
+              register_proxy_lhs_aliases[d_ref] = Reference(Id(root, ty=d_ref.ty()), ty=d_ref.ty())
+            }
+            _ => ()
+          }
+        }
+        _ => ()
+      }
+    }
+  }
+
+  let candidates: AliasMap = Map([])
+  for reference, driver in provisional_candidates {
+    let is_register_alias = provisional_aliases.get(reference).bind(root_decl_id).map(root => register_decls.contains(root)).unwrap_or(false)
+    if !nested_writes.contains(reference) || is_register_alias || register_proxy_lhs_aliases.contains(reference) {
+      candidates[reference] = driver
     }
   }
 
@@ -403,14 +521,30 @@ fn simplify_module(mod: TypedModule) -> TypedModule {
   for stmt in mod.body {
     match stmt {
       Wire(id~, ..) if removable_wires.contains(id) => ()
-      _ => match rewrite_stmt(stmt, aliases, removed, renames) {
+      _ => match rewrite_stmt(stmt, aliases, register_proxy_lhs_aliases, removed, renames, false) {
         Some(stmt) => new_body.push(stmt)
         None => ()
       }
     }
   }
 
-  { ..mod, body: new_body }
+  // FIRRTL requires declarations to precede references in their block. When
+  // an aggregate proxy is removed, its physical declaration can otherwise be
+  // left after the first rewritten connection that used the proxy. Preserve
+  // connection order, but hoist declarations to the start of the module.
+  let declarations = Array::new(capacity=new_body.length())
+  let connections = Array::new(capacity=new_body.length())
+  for stmt in new_body {
+    match stmt {
+      Node(..) | Wire(..) | Inst(..) | Reg(..) | RegReset(..) | Mem(_) => declarations.push(stmt)
+      _ => connections.push(stmt)
+    }
+  }
+  let ordered_body = Array::new(capacity=new_body.length())
+  ordered_body.push_iter(declarations.iter())
+  ordered_body.push_iter(connections.iter())
+
+  { ..mod, body: ordered_body }
 }
 
 pub impl FIRRTLPass for SimplifyAggregateWiresPass with run(_, circuit: TypedCircuit) -> TypedCircuit {
