@@ -9,11 +9,7 @@ circuit Top:
     output out_x: UInt<8>
     output out_y: UInt<8>
 
-    wire muxbundle0$_x: UInt<8>
-    wire muxbundle0$_y: UInt<8>
     node muxcond1$ = sel
-    connect out_x, muxbundle0$_x
-    connect out_y, muxbundle0$_y
-    connect muxbundle0$_x, mux(muxcond1$, a_x, b_x)
-    connect muxbundle0$_y, mux(muxcond1$, a_y, b_y)
+    connect out_x, mux(muxcond1$, a_x, b_x)
+    connect out_y, mux(muxcond1$, a_y, b_y)
 

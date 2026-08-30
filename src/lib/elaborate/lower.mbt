@@ -400,8 +400,30 @@ fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindin
 }
 
 fn Elaborator::connect(self: Elaborator, lhs~: FRef, value~: Value, scope~: &ScopeLike) -> Unit raise {
-  if !(lhs is Id(lhs_id, ..) && value is Expr(expr=Reference(Id(rhs_id, ..), ty=_), ..) && lhs_id.inner() == rhs_id.inner()) {
-    scope.add_stmt(Connect(lhs, value.as_expr(self, scope~)))
+  // Materialize aggregates directly into a simple destination when possible.
+  // This avoids a second temporary (for example, `wire x` followed by
+  // `wire vec_0$` and `connect x, vec_0$`).
+  let rhs = value.as_expr(self, scope~, binding=Some(lhs))
+  let is_self_connection = match rhs {
+    Reference(rhs_ref, ..) => same_ref(lhs, rhs_ref)
+    _ => false
+  }
+
+  if !is_self_connection {
+    scope.add_stmt(Connect(lhs, rhs))
+  }
+}
+
+fn same_ref(lhs: FRef, rhs: FRef) -> Bool {
+  match (lhs, rhs) {
+    (Id(lhs_id, ..), Id(rhs_id, ..)) => lhs_id.inner() == rhs_id.inner()
+    (StaticIndexing(lhs=lhs_lhs, index=lhs_index, ..), StaticIndexing(lhs=rhs_lhs, index=rhs_index, ..)) => {
+      lhs_index == rhs_index && same_ref(lhs_lhs, rhs_lhs)
+    }
+    (FieldAccess(lhs=lhs_lhs, field=lhs_field, ..), FieldAccess(lhs=rhs_lhs, field=rhs_field, ..)) => {
+      lhs_field == rhs_field && same_ref(lhs_lhs, rhs_lhs)
+    }
+    _ => false
   }
 }
 
@@ -425,8 +447,14 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
   match self {
     Expr(expr~, ..) => expr
     Vector(elems~, ty~, span=_) => {
-      let id = elaborator.gen_id("vec")
-      scope.add_stmt(Wire(id~, ty~))
+      let id = match binding {
+        Some(Id(id, ..)) => id
+        _ => elaborator.gen_id("vec")
+      }
+
+      if !(binding is Some(Id(_, ..))) {
+        scope.add_stmt(Wire(id~, ty~))
+      }
       
       for i, elem in elems {
         elaborator.connect(lhs=mk_static_indexing(lhs=mk_id(id), index=i), value=elem, scope~)
@@ -435,9 +463,12 @@ fn Value::as_expr(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindi
       mk_ref(mk_id(id))
     }
     Struct(fields~, ty~, span=_) => {
-      let id = elaborator.binding_name(binding, "struct")
+      let id = match binding {
+        Some(Id(id, ..)) => id
+        _ => elaborator.gen_id("struct")
+      }
 
-      if binding is None {
+      if !(binding is Some(Id(_, ..))) {
         scope.add_stmt(Wire(id~, ty~))
       }
 
@@ -879,13 +910,18 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         }
       }
  
-      // connect ports with inline expressions which are written to afterwards
-      for port_name, access in accessed_ports {
-        if (access == Write || access == ReadWrite) && inline_connections.get(port_name) is Some(inline_expr) {
-          scope.add_stmt(Connect(
-            mk_field_access(lhs=inst_ref, field=Id::from(port_name)),
-            inline_expr
-          ))
+      // Keep inline values visible through the instance binding as soon as a
+      // port is accessed. Reads of an inline-connected input must observe the
+      // same value that is sent to the physical instance.
+      for port_name, _ in accessed_ports {
+        match (ports_sig.get(port_name), inline_connections.get(port_name)) {
+          (Some(sig), Some(inline_expr)) if sig.dir == Input => {
+            scope.add_stmt(Connect(
+              mk_field_access(lhs=inst_ref, field=Id::from(port_name)),
+              inline_expr
+            ))
+          }
+          _ => ()
         }
       }
 
@@ -1082,7 +1118,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
               rhss.push(Expr(expr=mk_ref(mk_field_access(lhs=inst_ref, field=Id::from(port_name))), ty=sig.ty, span~))
             }
             
-            if inline_connections.contains(port_name) {
+            if inline_connections.contains(port_name) && !accessed_ports.contains(port_name) {
               rhss.push(Expr(expr=get_port(port_name), ty=sig.ty, span~))
             }
 
@@ -1096,6 +1132,22 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
                 }
               }
             }
+          }
+        }
+
+        // Inline output connections are assignment targets. Forward the
+        // physical instance output through the binding before writing them.
+        for port_name, _ in accessed_ports {
+          match (ports_sig.get(port_name), inline_connections.get(port_name)) {
+            (Some(sig), Some(inline_expr)) => match sig.dir {
+              Output | InOut => {
+                let target = self.expr_as_ref(inline_expr, scope~)
+                let output = mk_field_access(lhs=inst_ref, field=Id::from(port_name))
+                scope.add_stmt(Connect(target, mk_ref(output)))
+              }
+              Input => ()
+            }
+            _ => ()
           }
         }
       }

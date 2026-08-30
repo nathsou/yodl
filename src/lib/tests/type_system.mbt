@@ -578,10 +578,11 @@ test "instance aliases preserve identity while port usage stays outside types" {
   let first = compile_stage(source, "write_low_firrtl")
   let second = compile_stage(source, "write_low_firrtl")
   assert_eq(first, second)
-  assert_true(first.contains("wire child_input: UInt<8>"))
-  assert_true(first.contains("wire child_output: UInt<8>"))
-  assert_true(first.contains("connect inst_0$.input, child_input"))
-  assert_true(first.contains("connect child_output, inst_0$.output"))
+  assert_true(first.contains("inst alias of Child"))
+  assert_true(first.contains("connect alias.input, value"))
+  assert_true(first.contains("connect result, alias.output"))
+  assert_false(first.contains("wire child_input: UInt<8>"))
+  assert_false(first.contains("wire child_output: UInt<8>"))
 }
 
 ///|
@@ -598,8 +599,9 @@ test "explicitly typed instance aliases retain identity" {
     #|  result = alias.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("wire child_input: UInt<8>"))
-  assert_true(firrtl.contains("wire child_output: UInt<8>"))
+  assert_true(firrtl.contains("inst alias of Child"))
+  assert_false(firrtl.contains("wire child_input: UInt<8>"))
+  assert_false(firrtl.contains("wire child_output: UInt<8>"))
 }
 
 ///|
@@ -617,10 +619,9 @@ test "instance aliases assigned after declaration retain identity" {
     #|  result = alias.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("wire child_input: UInt<8>"))
-  assert_true(firrtl.contains("wire child_output: UInt<8>"))
-  assert_true(firrtl.contains("wire alias_input: UInt<8>"))
-  assert_true(firrtl.contains("wire alias_output: UInt<8>"))
+  assert_true(firrtl.contains("inst alias of Child"))
+  assert_false(firrtl.contains("wire child_input: UInt<8>"))
+  assert_false(firrtl.contains("wire alias_input: UInt<8>"))
 }
 
 ///|
@@ -638,8 +639,8 @@ test "instance aliases assigned through aggregates retain identity" {
     #|  result = holder.child.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("wire child_input: UInt<8>"))
-  assert_true(firrtl.contains("wire child_output: UInt<8>"))
+  assert_false(firrtl.contains("wire child_input: UInt<8>"))
+  assert_false(firrtl.contains("wire child_output: UInt<8>"))
   assert_true(firrtl.contains("wire holder_child_input: UInt<8>"))
   assert_true(firrtl.contains("wire holder_child_output: UInt<8>"))
 }
@@ -657,9 +658,43 @@ test "instance input assignments are tracked as writes without spurious reads" {
     #|  result = child.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("connect child_input, second"))
-  assert_true(firrtl.contains("connect inst_0$.input, child_input"))
-  assert_false(firrtl.contains("connect inst_0$.input, first"))
+  assert_true(firrtl.contains("inst child of Child"))
+  assert_true(firrtl.contains("connect child.input, second"))
+  assert_false(firrtl.contains("wire child_input: UInt<8>"))
+  assert_false(firrtl.contains("connect child.input, first"))
+}
+
+///|
+test "inline instance inputs remain driven when read back" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u8) -> (result: u8) {
+    #|  let child = Child(input: value)
+    #|  let seen = child.input
+    #|  result = child.output
+    #|}
+  let firrtl = compile_stage(source, "write_firrtl")
+  assert_true(firrtl.contains("connect child.input, value"))
+  assert_true(firrtl.contains("connect seen, value"))
+}
+
+///|
+test "inline instance outputs remain driven when read back" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u8) -> (captured: u8, result: u8) {
+    #|  let child = Child(input: value, output: captured)
+    #|  result = child.output
+    #|}
+  let firrtl = compile_stage(source, "write_firrtl")
+  assert_true(firrtl.contains("connect captured, child.output"))
+  assert_true(firrtl.contains("connect result, child.output"))
 }
 
 ///|
@@ -678,8 +713,24 @@ test "lvalue checking preserves reads used by dynamic indices" {
     #|  result = child.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("wire index_output: UInt<1>"))
-  assert_true(firrtl.contains("mux(eq(index_output, UInt<1>(0)), second"))
+  assert_true(firrtl.contains("inst index of Index"))
+  assert_true(firrtl.contains("mux(eq(index.output, UInt<1>(0)), second"))
+  let high_firrtl = compile_stage(source, "write_firrtl")
+  assert_true(high_firrtl.contains("child.input[index.output]"))
+}
+
+///|
+test "aggregate fields used as dynamic indices remain live" {
+  let source =
+    #|module Top(select: bool, first: u8, second: u8) -> (result: u8) {
+    #|  let holder: (index: bool)
+    #|  holder.index = select
+    #|  let values = [first, second]
+    #|  result = values[holder.index]
+    #|}
+  let firrtl = compile_stage(source, "write_firrtl")
+  assert_true(firrtl.contains("wire holder: { index: UInt<1> }"))
+  assert_true(firrtl.contains("values[holder.index]"))
 }
 
 ///|
@@ -696,8 +747,9 @@ test "instance branches union actual port demand deterministically" {
     #|  result = selected.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("wire left_output: UInt<8>"))
-  assert_true(firrtl.contains("wire right_output: UInt<8>"))
+  assert_false(firrtl.contains("wire left_output: UInt<8>"))
+  assert_false(firrtl.contains("wire right_output: UInt<8>"))
+  assert_true(firrtl.contains("connect result, mux("))
 }
 
 ///|
@@ -720,10 +772,14 @@ test "if branches and nested records union instance identities" {
     #|  nested = wrapped.child.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("wire if_left_output: UInt<8>"))
-  assert_true(firrtl.contains("wire if_right_output: UInt<8>"))
-  assert_true(firrtl.contains("wire record_left_output: UInt<8>"))
-  assert_true(firrtl.contains("wire record_right_output: UInt<8>"))
+  assert_true(firrtl.contains("inst if_left of Child"))
+  assert_true(firrtl.contains("inst if_right of Child"))
+  assert_true(firrtl.contains("inst record_left of Child"))
+  assert_true(firrtl.contains("inst record_right of Child"))
+  assert_false(firrtl.contains("wire if_left_output: UInt<8>"))
+  assert_false(firrtl.contains("wire if_right_output: UInt<8>"))
+  assert_false(firrtl.contains("wire record_left_output: UInt<8>"))
+  assert_false(firrtl.contains("wire record_right_output: UInt<8>"))
 }
 
 ///|
@@ -750,8 +806,9 @@ test "instance static type arguments are resolved before Core" {
     #|  result = reg.q
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("wire reg_d: UInt<1>"))
-  assert_true(firrtl.contains("wire reg_q: UInt<1>"))
+  assert_true(firrtl.contains("reg reg: UInt<1>"))
+  assert_false(firrtl.contains("wire reg_d: UInt<1>"))
+  assert_false(firrtl.contains("wire reg_q: UInt<1>"))
 }
 
 ///|
@@ -781,8 +838,9 @@ test "source module type annotations use the monomorphized nominal type" {
     #|  result = alias.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("wire cell_input: UInt<8>"))
-  assert_true(firrtl.contains("wire cell_output: UInt<8>"))
+  assert_true(firrtl.contains("inst alias of Cell$0"))
+  assert_false(firrtl.contains("wire cell_input: UInt<8>"))
+  assert_false(firrtl.contains("wire cell_output: UInt<8>"))
 }
 
 ///|

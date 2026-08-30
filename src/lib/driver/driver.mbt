@@ -157,6 +157,7 @@ pub fn run(
         let firrtl_circuit = lower_firrtl(firrtl, passes=[
           @firrtl.ExpandConnectsPass::new(),
           @firrtl.ExpandWhensPass::new(),
+          @firrtl.SimplifyAggregateWiresPass::new(),
           @firrtl.FlattenMemoriesPass::new(),
           @firrtl.LowerAggregateTypesPass::new(split_memories=false),
         ])
@@ -206,7 +207,7 @@ const VERSION: String = "0.3.1"
 pub fn cli(ext: @utils.Externals) -> Unit {
   match (ext.get_args)() {
     [_, path] => {
-      try run(path~, commands=[WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")), passes=[])], ext~) catch {
+      try run(path~, commands=[WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")), passes=[@firrtl.SimplifyAggregateWiresPass::new()])], ext~) catch {
         Failure::Failure(error) => {
           (ext.println)("\{error}")
           (ext.exit)(1)

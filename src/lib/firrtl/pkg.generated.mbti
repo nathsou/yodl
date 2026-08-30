@@ -287,6 +287,10 @@ pub fn[T] Reference::ty(Self[T]) -> T
 pub impl[T] Show for Reference[T]
 pub impl[T] @debug.Debug for Reference[T]
 
+pub struct SimplifyAggregateWiresPass(Unit)
+pub fn SimplifyAggregateWiresPass::new() -> Self
+pub impl FIRRTLPass for SimplifyAggregateWiresPass
+
 pub(all) enum Stmt[T] {
   Node(id~ : Id, expr~ : Expr[T])
   Wire(id~ : Id, ty~ : Type)
