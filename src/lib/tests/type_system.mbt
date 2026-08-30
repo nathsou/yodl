@@ -1009,6 +1009,35 @@ test "size-function diagnostics use the failing call span" {
 }
 
 ///|
+test "size-function spans do not affect semantic type equality" {
+  let source =
+    #|module Box[N: Nat](input: uint[clog2!(N)]) -> (output: uint[clog2!(N)]) {
+    #|  output = input
+    #|}
+  let decls = parse_source(source)
+  let (input_width, output_width) = match decls[0] {
+    @parse.Decl::Module(mod) => match (mod.ports[0].ty, mod.ports[1].ty) {
+      (@parse.Type::UInt(input_width), @parse.Type::UInt(output_width)) =>
+        (input_width, output_width)
+      _ => @utils.fail("expected integer module ports")
+    }
+    _ => @utils.fail("expected a module declaration")
+  }
+  assert_true(input_width == output_width)
+}
+
+///|
+test "zero multiplication preserves domains through declared instantiation" {
+  let source =
+    #|declare module Cell[N: Nat](unused: uint[0 * clog2!(N - 2)]) -> ()
+    #|module Top() -> () {
+    #|  let cell = Cell[N: 1]()
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Invalid negative clog2 argument -1"))
+}
+
+///|
 test "invalid size-function diagnostics preserve the inner call span" {
   let source =
     #|module Child[N: Nat]() -> () {}

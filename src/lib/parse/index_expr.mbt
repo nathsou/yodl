@@ -6,7 +6,21 @@ pub(all) enum IndexExpr {
   Mul(IndexExpr, IndexExpr)
   Clog2(IndexExpr, Span)
   CDiv(IndexExpr, IndexExpr, Span)
-} derive(Eq)
+}
+
+// Source provenance is needed for diagnostics, but it is not part of the
+// semantic identity of a size expression.
+pub impl Eq for IndexExpr with equal(self, other) {
+  match (self, other) {
+    (Lit(a), Lit(b)) => a == b
+    (Var(a), Var(b)) => a == b
+    (Add(a1, b1), Add(a2, b2)) | (Sub(a1, b1), Sub(a2, b2)) | (Mul(a1, b1), Mul(a2, b2)) =>
+      a1 == a2 && b1 == b2
+    (Clog2(a, _), Clog2(b, _)) => a == b
+    (CDiv(a1, b1, _), CDiv(a2, b2, _)) => a1 == a2 && b1 == b2
+    _ => false
+  }
+}
 
 // Size functions are defined over natural values. `clog2!(0)` is zero;
 // ceiling division requires a nonnegative dividend and a positive divisor.

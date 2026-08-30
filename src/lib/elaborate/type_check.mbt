@@ -10,6 +10,7 @@ struct TypeChecker {
     top_env: Scope[Path, Ref[Type?]]
     port_usage: PortUsage
     size_constraints: Array[SizeConstraint]
+    declared_size_constraints: Map[Path, Array[SizeConstraint]]
     mut next_instance_id: Int
 }
 
@@ -19,6 +20,7 @@ pub fn TypeChecker::new() -> TypeChecker {
         top_env: Scope::new(),
         port_usage: PortUsage::new(),
         size_constraints: [],
+        declared_size_constraints: {},
         next_instance_id: 0,
     }
 }
@@ -264,6 +266,31 @@ fn Size::eval(self: Size) -> Int? {
                 Some(a / b + (if a % b == 0 { 0 } else { 1 }))
             _ => None
         }
+    }
+}
+
+fn Size::substitute(self: Size, params: Map[String, Int]) -> Size {
+    match self {
+        Affine(constant~, terms~) => {
+            let mut constant = constant
+            let remaining: Map[String, Int] = Map([])
+            for name, coefficient in terms {
+                match params.get(name) {
+                    Some(value) => constant += coefficient * value
+                    None => remaining[name] = coefficient
+                }
+            }
+            Affine(constant~, terms=remaining)
+        }
+        Add(lhs, rhs) => Add(lhs.substitute(params), rhs.substitute(params))
+        Sub(lhs, rhs) => Sub(lhs.substitute(params), rhs.substitute(params))
+        Mul(lhs, rhs) => Mul(lhs.substitute(params), rhs.substitute(params))
+        Clog2(arg, span) => Clog2(arg.substitute(params), span)
+        CDiv(dividend, divisor, span) => CDiv(
+            dividend.substitute(params),
+            divisor.substitute(params),
+            span,
+        )
     }
 }
 
@@ -944,6 +971,7 @@ fn TypeChecker::check_expr_in_context(
                     let params_env: Map[String, StaticArg] = Map([])
                     let instance_id = self.fresh_instance_id()
                     let params_map = params.as_resolved_map(names=sig.params.map(p => p.name))
+                    let nat_params: Map[String, Int] = Map([])
 
                     // check monomorphized (erased) parameters
                     for param in params.instantiated {
@@ -958,7 +986,9 @@ fn TypeChecker::check_expr_in_context(
 
                         match (param, param_sig) {
                             (NatParam(value~, ..) as cnst_param, Some({ sort: NatSort, .. })) => {
-                                subst[name] = Int(self.check_static_nat(value.as_expr(), env))
+                                let nat_value = self.check_static_nat(value.as_expr(), env)
+                                subst[name] = Int(nat_value)
+                                nat_params[name] = nat_value
 
                                 params_env[name] = cnst_param
                             }
@@ -980,6 +1010,20 @@ fn TypeChecker::check_expr_in_context(
                                 )
                             }
                         }
+                    }
+
+                    match self.declared_size_constraints.get(path) {
+                        Some(constraints) => {
+                            for constraint in constraints {
+                                self.require_size(
+                                    constraint.size.substitute(nat_params),
+                                    constraint.kind,
+                                    constraint.description,
+                                    constraint.span,
+                                )
+                            }
+                        }
+                        None => ()
                     }
 
                     // Declared-module signatures retain symbolic Nat parameters until
@@ -1611,6 +1655,7 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
         }
         ModuleDeclaration(sig) => {
             let type_params = Set::from_iter(sig.params.iter().filter_map(param => if param.sort == TypeSort { Some(param.name) } else { None }))
+            let constraint_start = self.size_constraints.length()
             let sig: ModuleSignature = {
                 path: sig.path,
                 params: sig.params,
@@ -1618,6 +1663,11 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
                 ports: sig.ports.map(port => self.resolve_port(port, type_params~)),
                 span: sig.span,
             }
+            let constraints = Array::new(capacity=self.size_constraints.length() - constraint_start)
+            for index in constraint_start..<self.size_constraints.length() {
+                constraints.push(self.size_constraints[index])
+            }
+            self.declared_size_constraints[sig.path] = constraints
             check_attributes(sig.attributes, signatures=module_attribute_signatures)
             
             for port in sig.ports {
