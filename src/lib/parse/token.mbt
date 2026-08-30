@@ -134,7 +134,7 @@ pub impl Show for Span with output(self, logger) {
 pub fn Span::context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool = false) -> String {
   let content = self.file_content
   let content_len = content.length()
-  let window = StringBuilder::new(size_hint=window_size * 2)
+  let window = StringBuilder(size_hint=window_size * 2)
   let max_line_number_digits = (self.end.line + 1).to_string().length()
 
   // Walk backward from start.index counting window_size newlines to find the

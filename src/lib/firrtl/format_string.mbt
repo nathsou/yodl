@@ -74,7 +74,7 @@ pub fn FormatString::parse(fmt: String) -> FormatString raise {
         }
         c => {
           index += 1
-          let part = StringBuilder::new()
+          let part = StringBuilder()
           part.write_char(c)
 
           while index < fmt.length() {

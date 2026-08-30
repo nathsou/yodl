@@ -168,7 +168,7 @@ fn RTLILLowering::lower_stmt(
 
 fn RTLILLowering::lower_format_string(fmt: String, args: Array[@firrtl.TypedExpr]) -> String raise {
   let parsed = @firrtl.FormatString::parse(fmt)
-  let rtlil_fmt = StringBuilder::new()
+  let rtlil_fmt = StringBuilder()
   let mut arg_index = 0
 
   for part in parsed.parts {

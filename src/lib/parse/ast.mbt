@@ -406,7 +406,7 @@ pub(open) trait Spanned {
 
 impl Spanned with show_context(self, use_ansi_colors~: Bool) -> String {
   let span = self.span()
-  let builder = StringBuilder::new()
+  let builder = StringBuilder()
 
   builder.write_string(", ")
 

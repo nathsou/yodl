@@ -139,7 +139,7 @@ pub fn log_b_2(base: Int) -> Double {
 }
 
 pub fn show_nat(n: BigInt, base~: Int, width~: Int? = None) -> String {
-  let builder = StringBuilder::new()
+  let builder = StringBuilder()
   let is_neg = n < 0
   let n = abs(n)
   let base_b = BigInt::from_int(base)

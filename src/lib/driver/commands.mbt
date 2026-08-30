@@ -65,7 +65,7 @@ fn lex_commands(source: String) -> Array[CommandToken] raise CommandParserError 
       }
       _ => {
         if is_valid_literal_char(char) {
-          let literal = StringBuilder::new()
+          let literal = StringBuilder()
 
           while idx < source.length() && is_valid_literal_char(@utils.char_at(source, idx)) {
             literal.write_char(@utils.char_at(source, idx))

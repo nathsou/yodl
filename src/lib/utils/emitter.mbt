@@ -5,7 +5,7 @@ pub(all) struct Emitter {
 }
 
 pub fn Emitter::new() -> Emitter {
-  { indent: 0, builder: StringBuilder::new() }
+  { indent: 0, builder: StringBuilder() }
 }
 
 pub impl Show for Emitter with output(self, logger) {

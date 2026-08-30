@@ -11,7 +11,7 @@ fn Serializer::write(self: Self, s: String) -> Unit {
 }
 
 pub fn Serializer::new(design: Design) -> Serializer {
-  { design, builder: StringBuilder::new(), indent: 0 }
+  { design, builder: StringBuilder(), indent: 0 }
 }
 
 pub impl Show for Value with output(self, logger) {

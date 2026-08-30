@@ -24,7 +24,7 @@ pub fn[T: @utils.BinaryLike] parse_mem_file(content: String, base~: Int, start~:
     let mut char_idx = 0
     let mut found_value = false
     let mut value_index = 0
-    let lexeme = StringBuilder::new()
+    let lexeme = StringBuilder()
 
     while char_idx < content.length() {
       let mut char = @utils.char_at(content, char_idx)

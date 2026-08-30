@@ -6,7 +6,7 @@ pub(all) struct AstEmitter {
 }
 
 pub fn AstEmitter::new(show_expr_types~: Bool = false) -> AstEmitter {
-  { indent: 0, builder: StringBuilder::new(), show_expr_types }
+  { indent: 0, builder: StringBuilder(), show_expr_types }
 }
 
 pub impl Show for AstEmitter with output(self, logger) {
@@ -100,7 +100,7 @@ pub impl Show for Param with output(param, logger) {
 pub fn show_natural(value~: BigInt, base~: Int, width~: Int?) -> String {
   match width {
     Some(width) => {
-      let builder = StringBuilder::new()
+      let builder = StringBuilder()
       builder.write_string(width.to_string())
       builder.write_char('\'')
 

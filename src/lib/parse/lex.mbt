@@ -110,7 +110,7 @@ fn Lexer::skip_whitespaces(self: Lexer) -> Unit {
 }
 
 fn Lexer::parse_identifier(self: Lexer) -> String {
-  let builder = StringBuilder::new()
+  let builder = StringBuilder()
   
   for i in self.index..<self.input.length() {
     let char = @utils.char_at(self.input, i)
@@ -158,7 +158,7 @@ fn Lexer::span(self: Lexer, start: SourceLoc) -> Span {
 } 
 
 fn Lexer::parse_integer(self: Lexer) -> ParsedInteger {
-  let builder = StringBuilder::new()
+  let builder = StringBuilder()
   let mut base = 10
   let mut width = None
 
@@ -411,7 +411,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
       }
     }
     '"' => {
-      let builder = StringBuilder::new()
+      let builder = StringBuilder()
       self.advance()
 
       while self.index < self.input.length() && self.peek() != '"' {

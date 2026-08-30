@@ -415,7 +415,7 @@ pub fn[T] FIRRTLEmitter::emit_stmt(self: Self, stmt: Stmt[T], glued~: Bool = fal
 }
 
 fn show_format_string(fmt: String) -> String {
-  let result = StringBuilder::new()
+  let result = StringBuilder()
   
   for c in fmt {
     match c {
