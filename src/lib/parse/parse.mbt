@@ -867,14 +867,14 @@ fn Parser::parse_index_expr_primary(self: Parser) -> IndexExpr raise {
         "clog2" => {
           let arg = self.parse_index_expr()
           self.expect(Rparen, start_idx)
-          Clog2(arg)
+          Clog2(arg, self.span(start_idx))
         }
         "cdiv" => {
           let dividend = self.parse_index_expr()
           self.expect(Comma, start_idx)
           let divisor = self.parse_index_expr()
           self.expect(Rparen, start_idx)
-          CDiv(dividend, divisor)
+          CDiv(dividend, divisor, self.span(start_idx))
         }
         _ => raise ExpectedExpr(received=BuiltinFunction(name), span=self.span(start_idx))
       }

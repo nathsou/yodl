@@ -4,27 +4,45 @@ pub(all) enum IndexExpr {
   Add(IndexExpr, IndexExpr)
   Sub(IndexExpr, IndexExpr)
   Mul(IndexExpr, IndexExpr)
-  Clog2(IndexExpr)
-  CDiv(IndexExpr, IndexExpr)
-} derive(Eq)
+  Clog2(IndexExpr, Span)
+  CDiv(IndexExpr, IndexExpr, Span)
+}
 
-// Evaluate a closed IndexExpr to an Int, or return None if it contains unresolved variables.
+// Source provenance is needed for diagnostics, but it is not part of the
+// semantic identity of a size expression.
+pub impl Eq for IndexExpr with equal(self, other) {
+  match (self, other) {
+    (Lit(a), Lit(b)) => a == b
+    (Var(a), Var(b)) => a == b
+    (Add(a1, b1), Add(a2, b2)) | (Sub(a1, b1), Sub(a2, b2)) | (Mul(a1, b1), Mul(a2, b2)) =>
+      a1 == a2 && b1 == b2
+    (Clog2(a, _), Clog2(b, _)) => a == b
+    (CDiv(a1, b1, _), CDiv(a2, b2, _)) => a1 == a2 && b1 == b2
+    _ => false
+  }
+}
+
+// Size functions are defined over natural values. `clog2!(0)` is zero;
+// ceiling division requires a nonnegative dividend and a positive divisor.
+// Evaluate a closed, domain-valid IndexExpr to an Int. Returns None for unresolved
+// variables or invalid `clog2`/ceiling-division domains.
 pub fn IndexExpr::eval(self: IndexExpr) -> Int? {
   match self {
     Lit(n) => Some(n)
     Var(_) => None
-    Add(a, b) | Sub(a, b) | Mul(a, b) | CDiv(a, b) => match (a.eval(), b.eval()) {
+    Add(a, b) | Sub(a, b) | Mul(a, b) | CDiv(a, b, _) => match (a.eval(), b.eval()) {
       (Some(x), Some(y)) => match self {
         Add(_, _) => Some(x + y)
         Sub(_, _) => Some(x - y)
         Mul(_, _) => Some(x * y)
-        CDiv(_, _) if y != 0 => Some((x + y - 1) / y)
+        CDiv(_, _, _) if x >= 0 && y > 0 => Some(x / y + (if x % y == 0 { 0 } else { 1 }))
         _ => None
       }
       _ => None
     }
-    Clog2(a) => match a.eval() {
-      Some(n) => Some(@utils.clog2_int(n))
+    Clog2(a, _) => match a.eval() {
+      Some(n) if n >= 0 => Some(@utils.clog2_int(n))
+      Some(_) => None
       None => None
     }
   }
@@ -48,13 +66,13 @@ pub fn[E : Error] IndexExpr::map_vars(self : IndexExpr, f : (String) -> IndexExp
       (Lit(x), Lit(y)) => Lit(x * y)
       (a2, b2) => Mul(a2, b2)
     }
-    Clog2(a) => match a.map_vars(f) {
-      Lit(n) => Lit(@utils.clog2_int(n))
-      a2 => Clog2(a2)
+    Clog2(a, span) => match a.map_vars(f) {
+      Lit(n) if n >= 0 => Lit(@utils.clog2_int(n))
+      a2 => Clog2(a2, span)
     }
-    CDiv(a, b) => match (a.map_vars(f), b.map_vars(f)) {
-      (Lit(x), Lit(y)) if y != 0 => Lit((x + y - 1) / y)
-      (a2, b2) => CDiv(a2, b2)
+    CDiv(a, b, span) => match (a.map_vars(f), b.map_vars(f)) {
+      (Lit(x), Lit(y)) if x >= 0 && y > 0 => Lit(x / y + (if x % y == 0 { 0 } else { 1 }))
+      (a2, b2) => CDiv(a2, b2, span)
     }
   }
 }
@@ -79,13 +97,13 @@ pub fn IndexExpr::substitute(self: IndexExpr, params_env: Map[String, StaticArg]
       (Lit(x), Lit(y)) => Lit(x * y)
       (a2, b2) => Mul(a2, b2)
     }
-    Clog2(a) => match a.substitute(params_env) {
-      Lit(n) => Lit(@utils.clog2_int(n))
-      a2 => Clog2(a2)
+    Clog2(a, span) => match a.substitute(params_env) {
+      Lit(n) if n >= 0 => Lit(@utils.clog2_int(n))
+      a2 => Clog2(a2, span)
     }
-    CDiv(a, b) => match (a.substitute(params_env), b.substitute(params_env)) {
-      (Lit(x), Lit(y)) if y != 0 => Lit((x + y - 1) / y)
-      (a2, b2) => CDiv(a2, b2)
+    CDiv(a, b, span) => match (a.substitute(params_env), b.substitute(params_env)) {
+      (Lit(x), Lit(y)) if x >= 0 && y > 0 => Lit(x / y + (if x % y == 0 { 0 } else { 1 }))
+      (a2, b2) => CDiv(a2, b2, span)
     }
   }
 }

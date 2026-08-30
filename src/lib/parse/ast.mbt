@@ -298,6 +298,7 @@ pub suberror AstError {
   NonStorableType(ty~: Type, span~: Span)
   InvalidCoreType(ty~: Type, span~: Span)
   InvalidCoreDimension(kind~: String, value~: Int, span~: Span)
+  InvalidSizeFunctionDomain(message~: String, span~: Span)
 }
 
 pub impl Show for AstError with output(self, logger) {
@@ -324,6 +325,7 @@ pub impl Show for AstError with output(self, logger) {
     NonStorableType(ty~, ..) => logger.write_string("Type '\{ty}' is not storable")
     InvalidCoreType(ty~, ..) => logger.write_string("Surface-only or symbolic type '\{ty}' reached Core construction")
     InvalidCoreDimension(kind~, value~, ..) => logger.write_string("Invalid negative \{kind} \{value} at Core construction")
+    InvalidSizeFunctionDomain(message~, ..) => logger.write_string(message)
   }
 
   logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
@@ -347,6 +349,7 @@ pub impl Spanned for AstError with span(self) -> Span {
     NonStorableType(span~, ..) => span
     InvalidCoreType(span~, ..) => span
     InvalidCoreDimension(span~, ..) => span
+    InvalidSizeFunctionDomain(span~, ..) => span
   }
 }
 

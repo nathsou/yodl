@@ -39,6 +39,7 @@ pub suberror AstError {
   NonStorableType(ty~ : Type, span~ : Span)
   InvalidCoreType(ty~ : Type, span~ : Span)
   InvalidCoreDimension(kind~ : String, value~ : Int, span~ : Span)
+  InvalidSizeFunctionDomain(message~ : String, span~ : Span)
 }
 pub impl Show for AstError
 pub impl Spanned for AstError
@@ -304,13 +305,14 @@ pub(all) enum IndexExpr {
   Add(IndexExpr, IndexExpr)
   Sub(IndexExpr, IndexExpr)
   Mul(IndexExpr, IndexExpr)
-  Clog2(IndexExpr)
-  CDiv(IndexExpr, IndexExpr)
-} derive(Eq)
+  Clog2(IndexExpr, Span)
+  CDiv(IndexExpr, IndexExpr, Span)
+}
 pub fn IndexExpr::eval(Self) -> Int?
 pub fn IndexExpr::expect_lit(Self, Span) -> Int raise AstError
 pub fn[E : Error] IndexExpr::map_vars(Self, (String) -> Self raise E) -> Self raise E
 pub fn IndexExpr::substitute(Self, Map[String, StaticArg]) -> Self
+pub impl Eq for IndexExpr
 pub impl Show for IndexExpr
 
 pub(all) struct InstanceId {

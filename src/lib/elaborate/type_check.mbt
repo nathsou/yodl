@@ -9,6 +9,8 @@ struct TypeChecker {
     modules: Map[Path, ModuleSignature]
     top_env: Scope[Path, Ref[Type?]]
     port_usage: PortUsage
+    mut size_constraints: Array[SizeConstraint]
+    declared_size_constraints: Map[Path, Array[SizeConstraint]]
     mut next_instance_id: Int
 }
 
@@ -17,6 +19,8 @@ pub fn TypeChecker::new() -> TypeChecker {
         modules: {},
         top_env: Scope::new(),
         port_usage: PortUsage::new(),
+        size_constraints: [],
+        declared_size_constraints: {},
         next_instance_id: 0,
     }
 }
@@ -104,6 +108,298 @@ fn type_error(message: String, span: Span) -> TypeCheckerError {
 
 fn negative_unsigned_literal_error(width: Int, span: Span) -> TypeCheckerError {
     type_error("Negative literal cannot be represented as unsigned type u\{width}", span)
+}
+
+priv enum Size {
+    Affine(constant~: Int, terms~: Map[String, Int])
+    Add(Size, Size)
+    Sub(Size, Size)
+    Mul(Size, Size)
+    Clog2(Size, Span)
+    CDiv(Size, Size, Span)
+}
+
+priv enum SizeConstraintKind {
+    NonNegative
+    Positive
+} derive(Eq)
+
+priv struct SizeConstraint {
+    size: Size
+    kind: SizeConstraintKind
+    description: String
+    span: Span
+}
+
+fn affine_constant(value: Int) -> Size {
+    Affine(constant=value, terms={})
+}
+
+fn merge_affine(
+    lhs_constant: Int,
+    lhs_terms: Map[String, Int],
+    rhs_constant: Int,
+    rhs_terms: Map[String, Int],
+    rhs_factor: Int,
+) -> Size {
+    let terms = Map::from_iter(lhs_terms.iter())
+    for name, coefficient in rhs_terms {
+        let coefficient = terms.get(name).unwrap_or(0) + rhs_factor * coefficient
+        if coefficient == 0 {
+            terms.remove(name)
+        } else {
+            terms[name] = coefficient
+        }
+    }
+    Affine(constant=lhs_constant + rhs_factor * rhs_constant, terms~)
+}
+
+fn scale_size(size: Size, factor: Int) -> Size {
+    match size {
+        Affine(constant~, terms~) => {
+            let scaled_terms = Map([], capacity=terms.length())
+            for name, coefficient in terms {
+                let coefficient = factor * coefficient
+                if coefficient != 0 {
+                    scaled_terms[name] = coefficient
+                }
+            }
+            Affine(constant=factor * constant, terms=scaled_terms)
+        }
+        Mul(Affine(constant=inner_factor, terms~), inner) if terms.is_empty() =>
+            scale_size(inner, factor * inner_factor)
+        _ if factor == 1 => size
+        _ => Mul(affine_constant(factor), size)
+    }
+}
+
+fn normalize_size(index: @parse.IndexExpr) -> Size {
+    match index {
+        Lit(value) => affine_constant(value)
+        Var(name) => {
+            let terms: Map[String, Int] = Map([])
+            terms[name] = 1
+            Affine(constant=0, terms~)
+        }
+        Add(lhs, rhs) => match (normalize_size(lhs), normalize_size(rhs)) {
+            (Affine(constant=lc, terms=lt), Affine(constant=rc, terms=rt)) =>
+                merge_affine(lc, lt, rc, rt, 1)
+            (lhs, rhs) => Add(lhs, rhs)
+        }
+        Sub(lhs, rhs) => match (normalize_size(lhs), normalize_size(rhs)) {
+            (Affine(constant=lc, terms=lt), Affine(constant=rc, terms=rt)) =>
+                merge_affine(lc, lt, rc, rt, -1)
+            (lhs, rhs) => Sub(lhs, rhs)
+        }
+        Mul(lhs, rhs) => match (normalize_size(lhs), normalize_size(rhs)) {
+            (Affine(constant~, terms~), rhs) if terms.is_empty() => scale_size(rhs, constant)
+            (lhs, Affine(constant~, terms~)) if terms.is_empty() => scale_size(lhs, constant)
+            (lhs, rhs) => Mul(lhs, rhs)
+        }
+        Clog2(arg, span) => Clog2(normalize_size(arg), span)
+        CDiv(dividend, divisor, span) => CDiv(normalize_size(dividend), normalize_size(divisor), span)
+    }
+}
+
+fn affine_term(name: String, coefficient: Int) -> @parse.IndexExpr {
+    if coefficient == 1 {
+        Var(name)
+    } else {
+        Mul(Lit(coefficient), Var(name))
+    }
+}
+
+fn affine_to_index_expr(constant: Int, terms: Map[String, Int]) -> @parse.IndexExpr {
+    let names = terms.keys().collect()
+    names.sort()
+    let mut result: @parse.IndexExpr? = None
+    for name in names {
+        let coefficient = terms[name]
+        if coefficient > 0 {
+            let term = affine_term(name, coefficient)
+            result = Some(match result {
+                Some(lhs) => Add(lhs, term)
+                None => term
+            })
+        }
+    }
+    if result is None {
+        result = Some(Lit(if constant > 0 { constant } else { 0 }))
+    } else if constant > 0 {
+        result = Some(Add(result.unwrap(), Lit(constant)))
+    }
+    if constant < 0 {
+        result = Some(Sub(result.unwrap(), Lit(-constant)))
+    }
+    for name in names {
+        let coefficient = terms[name]
+        if coefficient < 0 {
+            result = Some(Sub(result.unwrap(), affine_term(name, -coefficient)))
+        }
+    }
+    result.unwrap()
+}
+
+fn Size::eval(self: Size) -> Int? {
+    match self {
+        Affine(constant~, terms~) if terms.is_empty() => Some(constant)
+        Affine(_) => None
+        Add(lhs, rhs) | Sub(lhs, rhs) => match (lhs.eval(), rhs.eval()) {
+            (Some(a), Some(b)) => match self {
+                Add(_) => Some(a + b)
+                Sub(_) => Some(a - b)
+                _ => None
+            }
+            _ => None
+        }
+        Mul(lhs, rhs) => match (lhs.eval(), rhs.eval()) {
+            (Some(0), _) | (_, Some(0)) => Some(0)
+            (Some(a), Some(b)) => Some(a * b)
+            _ => None
+        }
+        Clog2(arg, _) => match arg.eval() {
+            Some(value) if value >= 0 => Some(@utils.clog2_int(value))
+            _ => None
+        }
+        CDiv(dividend, divisor, _) => match (dividend.eval(), divisor.eval()) {
+            (Some(a), Some(b)) if a >= 0 && b > 0 =>
+                Some(a / b + (if a % b == 0 { 0 } else { 1 }))
+            _ => None
+        }
+    }
+}
+
+fn Size::substitute(self: Size, params: Map[String, Int]) -> Size {
+    match self {
+        Affine(constant~, terms~) => {
+            let mut constant = constant
+            let remaining: Map[String, Int] = Map([])
+            for name, coefficient in terms {
+                match params.get(name) {
+                    Some(value) => constant += coefficient * value
+                    None => remaining[name] = coefficient
+                }
+            }
+            Affine(constant~, terms=remaining)
+        }
+        Add(lhs, rhs) => Add(lhs.substitute(params), rhs.substitute(params))
+        Sub(lhs, rhs) => Sub(lhs.substitute(params), rhs.substitute(params))
+        Mul(lhs, rhs) => Mul(lhs.substitute(params), rhs.substitute(params))
+        Clog2(arg, span) => Clog2(arg.substitute(params), span)
+        CDiv(dividend, divisor, span) => CDiv(
+            dividend.substitute(params),
+            divisor.substitute(params),
+            span,
+        )
+    }
+}
+
+fn Size::depends_only_on(self: Size, names: Set[String]) -> Bool {
+    match self {
+        Affine(terms~, ..) => {
+            for name, _ in terms {
+                if !names.contains(name) {
+                    return false
+                }
+            }
+            true
+        }
+        Add(lhs, rhs) | Sub(lhs, rhs) | Mul(lhs, rhs) =>
+            lhs.depends_only_on(names) && rhs.depends_only_on(names)
+        Clog2(arg, _) => arg.depends_only_on(names)
+        CDiv(dividend, divisor, _) =>
+            dividend.depends_only_on(names) && divisor.depends_only_on(names)
+    }
+}
+
+fn Size::to_index_expr(self: Size) -> @parse.IndexExpr {
+    if self.eval() is Some(value) {
+        return Lit(value)
+    }
+    match self {
+        Affine(constant~, terms~) => affine_to_index_expr(constant, terms)
+        Add(lhs, rhs) => Add(lhs.to_index_expr(), rhs.to_index_expr())
+        Sub(lhs, rhs) => Sub(lhs.to_index_expr(), rhs.to_index_expr())
+        Mul(lhs, rhs) => Mul(lhs.to_index_expr(), rhs.to_index_expr())
+        Clog2(arg, span) => @parse.IndexExpr::Clog2(arg.to_index_expr(), span)
+        CDiv(dividend, divisor, span) => @parse.IndexExpr::CDiv(
+            dividend.to_index_expr(),
+            divisor.to_index_expr(),
+            span,
+        )
+    }
+}
+
+fn TypeChecker::require_size(
+    self: Self,
+    size: Size,
+    kind: SizeConstraintKind,
+    description: String,
+    span: Span,
+) -> Unit raise TypeCheckerError {
+    match size.eval() {
+        Some(value) => match kind {
+            NonNegative if value < 0 =>
+                raise type_error("Invalid negative \{description} \{value}", span)
+            Positive if value <= 0 =>
+                raise type_error("\{description} must be positive, got \{value}", span)
+            _ => ()
+        }
+        None => {
+            let normalized = size.to_index_expr()
+            if !self.size_constraints.iter().any(constraint =>
+                constraint.kind == kind &&
+                constraint.description == description &&
+                constraint.span == span &&
+                constraint.size.to_index_expr() == normalized
+            ) {
+                self.size_constraints.push({ size, kind, description, span })
+            }
+        }
+    }
+}
+
+pub fn TypeChecker::finalize(self: Self) -> Unit raise {
+    for constraint in self.size_constraints.iter() {
+        if constraint.size.eval() is None {
+            raise type_error(
+                "Unresolved \{constraint.description}; expected a concrete size",
+                constraint.span,
+            )
+        }
+    }
+}
+
+fn TypeChecker::validate_size(self: Self, size: Size, span: Span) -> Unit raise TypeCheckerError {
+    match size {
+        Affine(_) => ()
+        Add(lhs, rhs) | Sub(lhs, rhs) | Mul(lhs, rhs) => {
+            self.validate_size(lhs, span)
+            self.validate_size(rhs, span)
+        }
+        Clog2(arg, function_span) => {
+            self.validate_size(arg, span)
+            self.require_size(arg, NonNegative, "clog2 argument", function_span)
+        }
+        CDiv(dividend, divisor, function_span) => {
+            self.validate_size(dividend, span)
+            self.validate_size(divisor, span)
+            self.require_size(dividend, NonNegative, "ceiling-division dividend", function_span)
+            self.require_size(divisor, Positive, "ceiling-division divisor", function_span)
+        }
+    }
+}
+
+fn TypeChecker::resolve_size(
+    self: Self,
+    index: @parse.IndexExpr,
+    description: String,
+    span: Span,
+) -> @parse.IndexExpr raise TypeCheckerError {
+    let size = normalize_size(index)
+    self.validate_size(size, span)
+    self.require_size(size, NonNegative, description, span)
+    size.to_index_expr()
 }
 
 priv enum TypeEqualityParam {
@@ -401,10 +697,13 @@ fn TypeChecker::check_static_nat(
 
 fn TypeChecker::resolve_ty(self: Self, ty: Type, span~: Span, type_params~: Set[String] = Set([])) -> Type raise {
     match ty {
-        UInt(width) => UInt(width)
-        SInt(width) => SInt(width)
+        UInt(width) => UInt(self.resolve_size(width, "integer width", span))
+        SInt(width) => SInt(self.resolve_size(width, "integer width", span))
         Clock => Clock
-        Vector(ty=inner_ty, len~) => Vector(ty=self.resolve_ty(inner_ty, span~, type_params~), len~)
+        Vector(ty=inner_ty, len~) => Vector(
+            ty=self.resolve_ty(inner_ty, span~, type_params~),
+            len=self.resolve_size(len, "vector length", span),
+        )
         Instance(_) => ty
         Name(path~, params~) => {
             if path.packages.is_empty() && type_params.contains(path.elem) {
@@ -680,7 +979,7 @@ fn TypeChecker::check_expr_in_context(
                             if record_port_reads {
                                 self.port_usage.record_read(ids, port)
                             }
-                            port_def.ty.substitute(params, span~)
+                            self.resolve_ty(port_def.ty.substitute(params, span~), span~)
                         }
                         None => raise UnknownModulePort(module_path=sig.path, port_name=port, span~)
                     }
@@ -701,6 +1000,7 @@ fn TypeChecker::check_expr_in_context(
                     let params_env: Map[String, StaticArg] = Map([])
                     let instance_id = self.fresh_instance_id()
                     let params_map = params.as_resolved_map(names=sig.params.map(p => p.name))
+                    let nat_params: Map[String, Int] = Map([])
 
                     // check monomorphized (erased) parameters
                     for param in params.instantiated {
@@ -715,7 +1015,9 @@ fn TypeChecker::check_expr_in_context(
 
                         match (param, param_sig) {
                             (NatParam(value~, ..) as cnst_param, Some({ sort: NatSort, .. })) => {
-                                subst[name] = Int(self.check_static_nat(value.as_expr(), env))
+                                let nat_value = self.check_static_nat(value.as_expr(), env)
+                                subst[name] = Int(nat_value)
+                                nat_params[name] = nat_value
 
                                 params_env[name] = cnst_param
                             }
@@ -739,10 +1041,36 @@ fn TypeChecker::check_expr_in_context(
                         }
                     }
 
+                    match self.declared_size_constraints.get(path) {
+                        Some(constraints) => {
+                            for constraint in constraints {
+                                self.require_size(
+                                    constraint.size.substitute(nat_params),
+                                    constraint.kind,
+                                    constraint.description,
+                                    constraint.span,
+                                )
+                            }
+                        }
+                        None => ()
+                    }
+
+                    // Declared-module signatures retain symbolic Nat parameters until
+                    // instantiation. Re-resolve every substituted port now so invalid
+                    // size-function domains are reported even for ports that are unused.
+                    let instantiated_port_tys: Map[String, Type] = Map([], capacity=sig.ports.length())
+                    for port_def in sig.ports {
+                        let port_ty = self.resolve_ty(
+                            port_def.ty.substitute(params_env, span=port_def.span),
+                            span=port_def.span,
+                        )
+                        instantiated_port_tys[port_def.name] = port_ty
+                    }
+
                     for port_name, port_expr in ports {
                         match sig.get_port(port_name) {
                             Some(port_def) => {
-                                let port_ty = port_def.ty.substitute(params_env, span~)
+                                let port_ty = instantiated_port_tys[port_name]
                                 if port_def.dir == Input {
                                     let _ = self.check_expr(port_expr, env, expected_ty=port_ty)
                                 } else {
@@ -1356,6 +1684,8 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
         }
         ModuleDeclaration(sig) => {
             let type_params = Set::from_iter(sig.params.iter().filter_map(param => if param.sort == TypeSort { Some(param.name) } else { None }))
+            let nat_params = Set::from_iter(sig.params.iter().filter_map(param => if param.sort == NatSort { Some(param.name) } else { None }))
+            let constraint_start = self.size_constraints.length()
             let sig: ModuleSignature = {
                 path: sig.path,
                 params: sig.params,
@@ -1363,6 +1693,17 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
                 ports: sig.ports.map(port => self.resolve_port(port, type_params~)),
                 span: sig.span,
             }
+            let deferred = Array::new(capacity=self.size_constraints.length() - constraint_start)
+            let retained = Array::new(capacity=self.size_constraints.length())
+            for index, constraint in self.size_constraints.iter2() {
+                if index >= constraint_start && constraint.size.depends_only_on(nat_params) {
+                    deferred.push(constraint)
+                } else {
+                    retained.push(constraint)
+                }
+            }
+            self.declared_size_constraints[sig.path] = deferred
+            self.size_constraints = retained
             check_attributes(sig.attributes, signatures=module_attribute_signatures)
             
             for port in sig.ports {

@@ -829,7 +829,7 @@ test "Unit-valued let bindings lower their effects without hardware wires" {
 }
 
 ///|
-test "negative hardware dimensions are rejected at the Core boundary" {
+test "negative hardware dimensions are rejected during type resolution" {
   let invalid = [
     "module Top() -> (out: uint[1 - 2]) {}",
     "module Top() -> (out: [1 - 2]u8) {}",
@@ -837,6 +837,251 @@ test "negative hardware dimensions are rejected at the Core boundary" {
   for source in invalid {
     assert_true(compile_error(source).contains("Invalid negative"))
   }
+}
+
+///|
+test "size expressions reject invalid function domains during type resolution" {
+  let invalid = [
+    (
+      "module Top() -> (out: uint[clog2!(1 - 2)]) {}",
+      "Invalid negative clog2 argument -1",
+    ),
+    (
+      "module Top() -> (out: uint[cdiv!(1 - 2, 4)]) {}",
+      "Invalid negative ceiling-division dividend -1",
+    ),
+    (
+      "module Top() -> (out: uint[cdiv!(8, 0)]) {}",
+      "ceiling-division divisor must be positive, got 0",
+    ),
+  ]
+  for case in invalid {
+    let (source, expected) = case
+    let diagnostic = compile_error(source)
+    assert_true(diagnostic.contains(expected))
+    assert_true(diagnostic.contains("fixture.yodl:1"))
+  }
+}
+
+///|
+test "size expressions define zero behavior for clog2 and ceiling division" {
+  let source =
+    #|module Top() -> (log: uint[clog2!(0)], div: uint[cdiv!(0, 4)]) {}
+  let simplified = compile_stage(source, "write_simplified")
+  assert_true(simplified.contains("log: u0"))
+  assert_true(simplified.contains("div: u0"))
+}
+
+///|
+test "ceiling division handles maximum integers without overflow" {
+  let span: @parse.Span = {
+    file: "type-system-test.yodl",
+    file_content: ""[:],
+    start: { index: 0, line: 0, column: 0 },
+    end: { index: 0, line: 0, column: 0 },
+  }
+  let expression = @parse.IndexExpr::CDiv(
+    @parse.IndexExpr::Lit(@int.MAX_VALUE),
+    @parse.IndexExpr::Lit(@int.MAX_VALUE - 1),
+    span,
+  )
+  assert_eq(expression.eval(), Some(2))
+}
+
+///|
+test "symbolic affine sizes are canonicalized during type resolution" {
+  let source =
+    #|declare module Shapes[M: Nat, N: Nat](
+    #|  a: uint[N + 1],
+    #|  b: uint[1 + N],
+    #|  c: uint[2 * N + 2],
+    #|  d: uint[N + N + 2],
+    #|  e: uint[cdiv!(N, 4)],
+    #|  f: uint[N * 0],
+    #|  g: uint[N + M],
+    #|  h: uint[M + N],
+    #|) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("a: uint<N + 1>"))
+  assert_true(typed.contains("b: uint<N + 1>"))
+  assert_true(typed.contains("c: uint<2 * N + 2>"))
+  assert_true(typed.contains("d: uint<2 * N + 2>"))
+  assert_true(typed.contains("e: uint<cdiv!(N, 4)>"))
+  assert_true(typed.contains("f: u0"))
+  assert_true(typed.contains("g: uint<M + N>"))
+  assert_true(typed.contains("h: uint<M + N>"))
+}
+
+///|
+test "declared module ports revalidate size domains after Nat substitution" {
+  let source =
+    #|declare module Cell[N: Nat](unused: uint[cdiv!(8, N)]) -> ()
+    #|
+    #|module Top() -> () {
+    #|  let cell = Cell[N: 0]()
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("ceiling-division divisor must be positive, got 0"))
+  assert_true(diagnostic.contains("fixture.yodl:1"))
+  assert_false(diagnostic.contains("reached Core construction"))
+}
+
+///|
+test "ordinary module unresolved sizes are rejected before Core construction" {
+  let source =
+    #|module Top() -> (out: uint[Unknown]) {}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Unresolved integer width"))
+  assert_false(diagnostic.contains("reached Core construction"))
+}
+
+///|
+test "declared module unresolved non-parameter sizes are rejected" {
+  let source =
+    #|declare module Cell(input: uint[Unknown]) -> ()
+    #|module Top() -> () {}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Unresolved integer width"))
+  assert_false(diagnostic.contains("reached Core construction"))
+}
+
+///|
+test "declared module signatures resolve global size constants" {
+  let source =
+    #|const D = 0
+    #|
+    #|declare module Cell(unused: uint[cdiv!(8, D)]) -> ()
+    #|
+    #|module Top() -> () {
+    #|  let cell = Cell()
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("ceiling-division divisor must be positive, got 0"))
+  assert_true(diagnostic.contains("fixture.yodl:3"))
+  assert_false(diagnostic.contains("reached Core construction"))
+}
+
+///|
+test "declared module Nat parameters shadow global size constants" {
+  let source =
+    #|const N = 4
+    #|
+    #|declare module Cell[N: Nat](input: uint[N]) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("input: uint<N>"))
+  assert_false(typed.contains("input: u4"))
+}
+
+///|
+test "non-affine size identity multiplication is canonicalized" {
+  let source =
+    #|declare module Shapes[N: Nat](
+    #|  multiplied: uint[1 * clog2!(N)],
+    #|  direct: uint[clog2!(N)],
+    #|) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("multiplied: uint<clog2!(N)>"))
+  assert_true(typed.contains("direct: uint<clog2!(N)>"))
+}
+
+///|
+test "nested non-affine constant multiplication is canonicalized" {
+  let source =
+    #|declare module Shapes[N: Nat](
+    #|  nested: uint[2 * (3 * clog2!(N))],
+    #|  combined: uint[6 * clog2!(N)],
+    #|) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("nested: uint<6 * clog2!(N)>"))
+  assert_true(typed.contains("combined: uint<6 * clog2!(N)>"))
+}
+
+///|
+test "zero multiplication of non-affine sizes is canonicalized" {
+  let source =
+    #|declare module Shapes[N: Nat, M: Nat](
+    #|  left: uint[0 * clog2!(N)],
+    #|  right: uint[clog2!(N) * 0],
+    #|  nested: uint[(N * M) * 0],
+    #|) -> ()
+    #|
+    #|module Top() -> () {}
+  let typed = compile_stage(source, "write_typed")
+  assert_true(typed.contains("left: u0"))
+  assert_true(typed.contains("right: u0"))
+  assert_true(typed.contains("nested: u0"))
+}
+
+///|
+test "zero multiplication still validates non-affine size domains" {
+  let invalid = [
+    "module Top() -> (out: uint[0 * clog2!(1 - 2)]) {}",
+    "module Top() -> (out: uint[0 * cdiv!(8, 0)]) {}",
+  ]
+  for source in invalid {
+    let diagnostic = compile_error(source)
+    assert_true(diagnostic.contains("Invalid negative") || diagnostic.contains("must be positive"))
+    assert_true(diagnostic.contains("fixture.yodl:1"))
+  }
+}
+
+///|
+test "size-function diagnostics use the failing call span" {
+  let source =
+    #|module Top() -> (
+    #|  out: uint[1 +
+    #|    cdiv!(8, 0)]) {}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("fixture.yodl:3.5-3.15"))
+}
+
+///|
+test "size-function spans do not affect semantic type equality" {
+  let source =
+    #|module Box[N: Nat](input: uint[clog2!(N)]) -> (output: uint[clog2!(N)]) {
+    #|  output = input
+    #|}
+  let decls = parse_source(source)
+  let (input_width, output_width) = match decls[0] {
+    @parse.Decl::Module(mod) => match (mod.ports[0].ty, mod.ports[1].ty) {
+      (@parse.Type::UInt(input_width), @parse.Type::UInt(output_width)) =>
+        (input_width, output_width)
+      _ => @utils.fail("expected integer module ports")
+    }
+    _ => @utils.fail("expected a module declaration")
+  }
+  assert_true(input_width == output_width)
+}
+
+///|
+test "zero multiplication preserves domains through declared instantiation" {
+  let source =
+    #|declare module Cell[N: Nat](unused: uint[0 * clog2!(N - 2)]) -> ()
+    #|module Top() -> () {
+    #|  let cell = Cell[N: 1]()
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Invalid negative clog2 argument -1"))
+}
+
+///|
+test "invalid size-function diagnostics preserve the inner call span" {
+  let source =
+    #|module Child[N: Nat]() -> () {}
+    #|module Top() -> () {
+    #|  let child = Child[N: 1 + cdiv!(8, 0)]()
+    #|}
+  let diagnostic = compile_error(source, cmd_str="write_mono")
+  assert_true(diagnostic.contains("fixture.yodl:3.32-3.38"))
+  assert_false(diagnostic.contains("fixture.yodl:3.24-3.38"))
 }
 
 ///|
