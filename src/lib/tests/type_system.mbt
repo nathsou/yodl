@@ -922,6 +922,16 @@ test "ordinary module unresolved sizes are rejected before Core construction" {
 }
 
 ///|
+test "declared module unresolved non-parameter sizes are rejected" {
+  let source =
+    #|declare module Cell(input: uint[Unknown]) -> ()
+    #|module Top() -> () {}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Unresolved integer width"))
+  assert_false(diagnostic.contains("reached Core construction"))
+}
+
+///|
 test "declared module signatures resolve global size constants" {
   let source =
     #|const D = 0

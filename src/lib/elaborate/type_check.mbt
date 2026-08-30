@@ -9,7 +9,7 @@ struct TypeChecker {
     modules: Map[Path, ModuleSignature]
     top_env: Scope[Path, Ref[Type?]]
     port_usage: PortUsage
-    size_constraints: Array[SizeConstraint]
+    mut size_constraints: Array[SizeConstraint]
     declared_size_constraints: Map[Path, Array[SizeConstraint]]
     mut next_instance_id: Int
 }
@@ -291,6 +291,24 @@ fn Size::substitute(self: Size, params: Map[String, Int]) -> Size {
             divisor.substitute(params),
             span,
         )
+    }
+}
+
+fn Size::depends_only_on(self: Size, names: Set[String]) -> Bool {
+    match self {
+        Affine(terms~, ..) => {
+            for name, _ in terms {
+                if !names.contains(name) {
+                    return false
+                }
+            }
+            true
+        }
+        Add(lhs, rhs) | Sub(lhs, rhs) | Mul(lhs, rhs) =>
+            lhs.depends_only_on(names) && rhs.depends_only_on(names)
+        Clog2(arg, _) => arg.depends_only_on(names)
+        CDiv(dividend, divisor, _) =>
+            dividend.depends_only_on(names) && divisor.depends_only_on(names)
     }
 }
 
@@ -1666,6 +1684,7 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
         }
         ModuleDeclaration(sig) => {
             let type_params = Set::from_iter(sig.params.iter().filter_map(param => if param.sort == TypeSort { Some(param.name) } else { None }))
+            let nat_params = Set::from_iter(sig.params.iter().filter_map(param => if param.sort == NatSort { Some(param.name) } else { None }))
             let constraint_start = self.size_constraints.length()
             let sig: ModuleSignature = {
                 path: sig.path,
@@ -1674,14 +1693,17 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
                 ports: sig.ports.map(port => self.resolve_port(port, type_params~)),
                 span: sig.span,
             }
-            let constraints = Array::new(capacity=self.size_constraints.length() - constraint_start)
-            for index in constraint_start..<self.size_constraints.length() {
-                constraints.push(self.size_constraints[index])
+            let deferred = Array::new(capacity=self.size_constraints.length() - constraint_start)
+            let retained = Array::new(capacity=self.size_constraints.length())
+            for index, constraint in self.size_constraints.iter2() {
+                if index >= constraint_start && constraint.size.depends_only_on(nat_params) {
+                    deferred.push(constraint)
+                } else {
+                    retained.push(constraint)
+                }
             }
-            self.declared_size_constraints[sig.path] = constraints
-            while self.size_constraints.length() > constraint_start {
-                let _ = self.size_constraints.pop()
-            }
+            self.declared_size_constraints[sig.path] = deferred
+            self.size_constraints = retained
             check_attributes(sig.attributes, signatures=module_attribute_signatures)
             
             for port in sig.ports {
