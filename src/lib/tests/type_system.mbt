@@ -734,6 +734,20 @@ test "aggregate fields used as dynamic indices remain live" {
 }
 
 ///|
+test "partially simplified aggregates retain remaining field drivers" {
+  let source =
+    #|module Top(a: u8, b: u8) -> (out: u8) {
+    #|  let holder: (x: u8, nested: (y: u8))
+    #|  holder.x = a
+    #|  holder.nested.y = b
+    #|  out = holder.x
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("wire holder_x: UInt<8>"))
+  assert_true(firrtl.contains("connect holder_x, a"))
+}
+
+///|
 test "instance branches union actual port demand deterministically" {
   let source =
     #|module Child(value: u8) -> (output: u8) {

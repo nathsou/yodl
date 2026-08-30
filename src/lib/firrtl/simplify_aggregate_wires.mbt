@@ -358,15 +358,23 @@ fn simplify_module(mod: TypedModule) -> TypedModule {
     return mod
   }
 
-  let removed: Set[TypedRef] = Set([])
-  for reference, _ in aliases {
-    removed.add(reference)
-  }
-
   let removable_wires: Set[Id] = Set([])
   for id, refs in aggregate_fields {
     if !whole_used.contains(id) && refs.iter().all(reference => aliases.contains(reference)) {
       removable_wires.add(id)
+    }
+  }
+
+  // A field alias can be used for rewriting even when its aggregate still has
+  // live fields, but its driver must remain until the whole proxy disappears.
+  let removed: Set[TypedRef] = Set([])
+  for id, refs in aggregate_fields {
+    if removable_wires.contains(id) {
+      for reference in refs {
+        if aliases.contains(reference) {
+          removed.add(reference)
+        }
+      }
     }
   }
 
