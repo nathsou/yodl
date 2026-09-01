@@ -1,6 +1,8 @@
+import { chapterLessons } from '../docs/links.ts';
 import { examples, files, tour, stages, blankPath, initialSelection, validSelection, encodeShare, decodeShare, diagnosticLocation } from './playground-model.ts';
 import type { Selection, Stage, Mode } from './playground-model.ts';
-import type { CompileResult } from './playground-compiler.ts';
+import { CompilerClient } from './compiler-client.ts';
+import { setupTheme } from './theme.ts';
 import { loadEditors, monaco } from './playground-editor.ts';
 
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -27,24 +29,22 @@ function setStatus(message: string, state = 'idle') {
     element('compile-status').textContent = message;
     element('compile-status').dataset.state = state;
 }
-const systemTheme = matchMedia('(prefers-color-scheme: dark)');
-function updateTheme() {
-    const choice = select('theme-select').value;
-    const dark = choice === 'dark' || (choice === 'system' && systemTheme.matches);
-    document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+const updateTheme = setupTheme(select('theme-select'), dark => {
     if (monaco) monaco.editor.setTheme(dark ? 'yodl-dark' : 'yodl-light');
-}
-const savedTheme = readStorage('theme');
-select('theme-select').value = ['light', 'dark', 'system'].includes(savedTheme ?? '') ? savedTheme! : 'system';
-updateTheme();
-select('theme-select').addEventListener('change', () => { writeStorage('theme', select('theme-select').value); updateTheme(); });
-systemTheme.addEventListener('change', updateTheme);
+});
 
 let selection: Selection = { ...initialSelection };
 try {
     const saved = JSON.parse(readStorage('selection') ?? 'null');
     if (validSelection(saved)) selection = saved;
 } catch { /* Ignore incompatible saved preferences. */ }
+const params = new URLSearchParams(location.search);
+const requestedLesson = tour.find(lesson => lesson.id === params.get('lesson'));
+if (requestedLesson) selection = { mode: 'tour', path: `tour/${requestedLesson.file}`, stage: requestedLesson.stage as Stage };
+else if (params.get('mode') === 'examples') selection = { mode: 'examples', path: blankPath, stage: 'write_firrtl' };
+let sharedFiles: Record<string, string> = {};
+let sharedEntryPath: string | undefined;
+let sharedOrigin: string | undefined;
 let sharedSource: string | null = null;
 let sharedDraftKey = '';
 try {
@@ -52,6 +52,9 @@ try {
     if (shared) {
         selection = { mode: shared.mode, path: shared.path, stage: shared.stage };
         sharedSource = shared.source;
+        sharedFiles = shared.files ?? {};
+        sharedEntryPath = shared.entryPath;
+        sharedOrigin = shared.origin;
         // Sharing never overwrites the recipient's ordinary lesson/example draft.
         sharedDraftKey = `shared:${location.hash.slice(6)}`;
         notice('Shared circuit opened. Your existing lesson and example drafts are kept separately.');
@@ -63,9 +66,7 @@ let revision = 0;
 let lastOutput = '';
 let outputRevision = -1;
 let timer: ReturnType<typeof setTimeout> | undefined;
-let timeout: ReturnType<typeof setTimeout> | undefined;
-let worker: Worker | undefined;
-let busy = false;
+const compiler = new CompilerClient();
 let requestId = 0;
 let latestRequest = 0;
 let errorRange: ReturnType<typeof diagnosticLocation> = null;
@@ -73,6 +74,7 @@ const auto = element<HTMLInputElement>('auto-compile');
 auto.checked = readStorage('auto') !== 'false';
 const defaultBlank = '// Start a new circuit here.\nmodule Top(a: bool) -> (q: bool) {\n    q = a\n}\n';
 const originals = (path: string) => files[path] ?? defaultBlank;
+const originalSource = () => sharedEntryPath && sharedSource !== null ? sharedSource : originals(selection.path);
 const draftKey = () => sharedDraftKey || `draft:${selection.path}`;
 
 function lessonIndex() { return tour.findIndex(lesson => `tour/${lesson.file}` === selection.path); }
@@ -80,10 +82,11 @@ function saveDraft() {
     writeStorage(draftKey(), editors.input.getValue());
     if (!sharedDraftKey) writeStorage('selection', JSON.stringify(selection));
     element('save-status').textContent = storageAvailable ? 'Draft saved locally' : 'Draft not saved · storage unavailable';
-    element('draft-badge').hidden = editors.input.getValue() === originals(selection.path);
+    element('draft-badge').hidden = editors.input.getValue() === originalSource();
 }
 function renderSelection() {
     const isTour = selection.mode === 'tour';
+    element('site-section').textContent = isTour ? 'tour' : 'playground';
     button('tour-mode').setAttribute('aria-pressed', String(isTour));
     button('examples-mode').setAttribute('aria-pressed', String(!isTour));
     element('guide').hidden = !isTour;
@@ -95,8 +98,12 @@ function renderSelection() {
     ];
     for (const choice of choices) picker.add(new Option(choice.label, choice.value));
     picker.value = selection.path;
-    element('input-filename').textContent = selection.path.split('/').at(-1)!;
-    element('input-filename').title = selection.path;
+    element('input-filename').textContent = (sharedEntryPath ?? selection.path).split('/').at(-1)!;
+    element('input-filename').title = sharedEntryPath ?? selection.path;
+    const docLink = element<HTMLAnchorElement>('related-docs');
+    const doc = Object.entries(chapterLessons).find(([, lessons]) => lessons.some(l => l.id === tour[lessonIndex()]?.id));
+    docLink.hidden = !doc && !sharedOrigin;
+    docLink.href = `./book/${sharedOrigin ?? (doc ? doc[0] + '.html' : '')}`;
     if (isTour) {
         const index = lessonIndex();
         const lesson = tour[index];
@@ -129,6 +136,7 @@ function clearDiagnostics() {
     monaco.editor.setModelMarkers(editors.input.getModel(), 'yodl', []);
 }
 function markChanged() {
+    compiler.cancel('playground');
     revision++;
     latestRequest = ++requestId;
     clearTimeout(timer);
@@ -142,6 +150,7 @@ function choose(next: Selection) {
     saveDraft();
     sharedDraftKey = '';
     sharedSource = null;
+    sharedFiles = {}; sharedEntryPath = undefined; sharedOrigin = undefined;
     if (location.hash.startsWith('#code=')) history.replaceState(null, '', location.pathname + location.search);
     selection = next;
     loadingSource = true;
@@ -152,6 +161,9 @@ function choose(next: Selection) {
     lastOutput = '';
     outputRevision = -1;
     renderSelection();
+    const url = new URL(location.href);
+    url.searchParams.delete('lesson'); url.searchParams.delete('mode');
+    history.replaceState(null, '', url);
     saveDraft();
     markChanged();
 }
@@ -180,7 +192,7 @@ function setMobileView(view: string) {
 function showError(message: string) {
     element('problems').hidden = false;
     element('error-message').textContent = message;
-    errorRange = diagnosticLocation(message, selection.path);
+    errorRange = diagnosticLocation(message, sharedEntryPath ?? selection.path);
     button('jump-error').hidden = errorRange === null;
     if (errorRange) {
         const range = editors.input.getModel().validateRange(errorRange);
@@ -189,51 +201,23 @@ function showError(message: string) {
     }
     setStatus(lastOutput ? 'Compilation failed · showing previous output' : 'Compilation failed · check diagnostics', 'error');
 }
-function runCompile() {
+async function runCompile() {
     clearTimeout(timer);
-    clearTimeout(timeout);
-    // Cancel a superseded compile by replacing its worker. This also makes
-    // explicit Compile useful if a previous program takes too long to lower.
-    if (busy) { worker?.terminate(); worker = undefined; }
-    busy = true;
     const id = ++requestId;
     latestRequest = id;
     const compiledRevision = revision;
     clearDiagnostics();
     setStatus('Compiling…', 'loading');
-    try {
-        if (!worker) worker = new Worker(new URL('./playground-worker.js', import.meta.url), { type: 'module' });
-        worker.onmessage = (event: MessageEvent<CompileResult>) => {
-            if (event.data.id !== id) return;
-            busy = false;
-            clearTimeout(timeout);
-            if (id !== latestRequest) return;
-            const result = event.data;
-            if (result.error !== undefined) { showError(result.error); return; }
-            lastOutput = result.output ?? '';
-            outputRevision = compiledRevision;
-            editors.output.setValue(lastOutput);
-            renderStage();
-            button('copy-output').disabled = !lastOutput;
-            button('download-output').disabled = !lastOutput;
-            setStatus(`✓ Compiled · ${Math.round(result.duration)} ms`, 'success');
-        };
-        worker.onerror = () => {
-            busy = false;
-            clearTimeout(timeout);
-            worker?.terminate(); worker = undefined;
-            if (id === latestRequest) showError('The compiler worker could not run. Reload the page or try Compile again.');
-        };
-        worker.postMessage({ id, source: editors.input.getValue(), path: selection.path, stage: selection.stage });
-        timeout = setTimeout(() => {
-            worker?.terminate(); worker = undefined; busy = false;
-            if (id === latestRequest) showError('Compilation exceeded 15 seconds. Try a smaller design or reduce compile-time loop bounds, then compile again.');
-        }, 15_000);
-    } catch (error) {
-        busy = false;
-        worker?.terminate(); worker = undefined;
-        showError(`Could not start the compiler: ${(error as Error).message}`);
-    }
+    const result = await compiler.compile('playground', { source: editors.input.getValue(), path: sharedEntryPath ?? selection.path, stage: selection.stage, files: { ...files, ...sharedFiles } });
+    if (!result || id !== latestRequest) return;
+    if (result.error !== undefined) { showError(result.error); return; }
+    lastOutput = result.output ?? '';
+    outputRevision = compiledRevision;
+    editors.output.setValue(lastOutput);
+    renderStage();
+    button('copy-output').disabled = !lastOutput;
+    button('download-output').disabled = !lastOutput;
+    setStatus(`✓ Compiled · ${Math.round(result.duration)} ms`, 'success');
 }
 function download(name: string, content: string) {
     const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
@@ -302,7 +286,7 @@ async function start() {
     };
     button('reset-button').onclick = () => element<HTMLDialogElement>('reset-dialog').showModal();
     element<HTMLDialogElement>('reset-dialog').addEventListener('close', () => {
-        if (element<HTMLDialogElement>('reset-dialog').returnValue === 'reset') editors.input.setValue(originals(selection.path));
+        if (element<HTMLDialogElement>('reset-dialog').returnValue === 'reset') editors.input.setValue(originalSource());
     });
     button('download-source').onclick = () => download(selection.path.split('/').at(-1)!, editors.input.getValue());
     button('download-output').onclick = () => {
@@ -311,7 +295,7 @@ async function start() {
     button('copy-output').onclick = () => { if (outputRevision === revision) void copy(lastOutput, button('copy-output')); };
     button('share-button').onclick = () => {
         const url = new URL(location.href);
-        url.hash = `code=${encodeShare({ ...selection, source: editors.input.getValue() })}`;
+        url.hash = `code=${encodeShare({ ...selection, source: editors.input.getValue(), files: sharedFiles, entryPath: sharedEntryPath, origin: sharedOrigin })}`;
         if (url.href.length > 32_000) { notice('This circuit is too large for a reliable share link. Use Save to download the source instead.'); return; }
         element<HTMLInputElement>('share-url').value = url.href;
         element<HTMLDialogElement>('share-dialog').showModal();

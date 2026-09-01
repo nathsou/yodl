@@ -1,14 +1,31 @@
 export let monaco: any;
 
-export async function loadEditors() {
+let loading: Promise<void> | undefined;
+
+// One loader and language registration for every editor on a page. Failed loads
+// can be retried without leaving the static documentation unreadable.
+export function loadMonaco(): Promise<void> {
+    if (monaco) return Promise.resolve();
+    return loading ??= initialise().catch(error => { loading = undefined; throw error; });
+}
+async function initialise() {
+    if (!(window as any).require) {
+        await new Promise<void>((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.56.0/min/vs/loader.min.js';
+            script.integrity = 'sha384-5Ubp2dzZW9MAJXGpSFXLlurRaPg3+ktYfisBzghShdarxz8R37mhDy2svDenxogJ';
+            script.crossOrigin = 'anonymous';
+            const timeout = setTimeout(() => { script.remove(); reject(new Error('The editor took too long to load. Try Edit again.')); }, 15_000);
+            script.onload = () => { clearTimeout(timeout); resolve(); };
+            script.onerror = () => { clearTimeout(timeout); script.remove(); reject(new Error('Could not load the editor. Check your connection and try Edit again.')); };
+            document.head.append(script);
+        });
+    }
     await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('The code editor took too long to load. Check your connection and reload.')), 15_000);
-        const ready = () => { clearTimeout(timeout); resolve(); };
-        const failed = (error: unknown) => { clearTimeout(timeout); reject(error); };
+        const timeout = setTimeout(() => reject(new Error('The code editor took too long to load. Try again.')), 15_000);
         const loader = (window as any).require;
-        if (!loader) return failed(new Error('The code editor could not load. Check your connection and reload.'));
         loader.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.56.0/min/vs' } });
-        loader(['vs/editor/editor.main'], ready, failed);
+        loader(['vs/editor/editor.main'], () => { clearTimeout(timeout); resolve(); }, (error: unknown) => { clearTimeout(timeout); reject(error); });
     });
     monaco = (window as any).monaco;
     monaco.languages.register({ id: 'yodl' });
@@ -125,15 +142,24 @@ export async function loadEditors() {
             ] },
         });
     }
-    const common = {
+    monaco.editor.setTheme(document.documentElement.dataset.theme === 'dark' ? 'yodl-dark' : 'yodl-light');
+}
+
+export async function createEditor(container: HTMLElement, options: Record<string, unknown> = {}) {
+    await loadMonaco();
+    const common =  {
         automaticLayout: true, minimap: { enabled: false }, scrollBeyondLastLine: false,
         fontSize: 14, lineHeight: 23, fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
         padding: { top: 20, bottom: 20 }, renderLineHighlight: 'gutter',
         scrollbar: { useShadows: false, verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
         tabSize: 4, insertSpaces: true, fixedOverflowWidgets: true,
     };
-    document.getElementById('input-panel')!.replaceChildren();
-    const input = monaco.editor.create(document.getElementById('input-panel'), { ...common, language: 'yodl', ariaLabel: 'Yodl source code' });
-    const output = monaco.editor.create(document.getElementById('output-panel'), { ...common, readOnly: true, language: 'firrtl', ariaLabel: 'Compiled output' });
+    container.replaceChildren();
+    return monaco.editor.create(container, { ...common, language: 'yodl', ariaLabel: 'Yodl source code', ...options });
+}
+
+export async function loadEditors() {
+    const input = await createEditor(document.getElementById('input-panel')!);
+    const output = await createEditor(document.getElementById('output-panel')!, { readOnly: true, language: 'firrtl', ariaLabel: 'Compiled output' });
     return { input, output };
 }

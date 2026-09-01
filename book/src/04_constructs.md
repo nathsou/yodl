@@ -5,7 +5,7 @@
 
 Packages group related top-level declarations under a common namespace.
 
-```yodl
+```yodl live id=ex-packages
 package VGA {
     const SCREEN_WIDTH = 640
     const SCREEN_HEIGHT = 480
@@ -50,7 +50,7 @@ module Top(
 
 Constants are named fixed values known at compile-time.
 
-```yodl
+```yodl live id=ex-constant-declarations
 const BAUD_RATE = 115200
 const CLOCK_FREQ = 100 * 1_000_000 // 100 MHz
 const CYCLES_PER_BIT = CLOCK_FREQ / BAUD_RATE
@@ -61,7 +61,7 @@ const CYCLES_PER_BIT = CLOCK_FREQ / BAUD_RATE
 
 Type aliases are used to give a name to a commonly used type.
 
-```yodl
+```yodl live id=ex-type-alias-declarations
 type U8 = u8
 type RGB = (r: U8, g: U8, b: U8)
 # module Top() -> () {}
@@ -71,7 +71,7 @@ type RGB = (r: U8, g: U8, b: U8)
 
 Type aliases can be parameterised by providing a list of type parameters.
 
-```yodl
+```yodl live id=ex-parameterised-type-aliases stage=write_mono
 type Triplet[T] = (T, T, T)
 
 module Top() -> () {
@@ -85,7 +85,7 @@ module Top() -> () {
 
 - A module is defined by a name, an optional list of parameters, and a list of input and output ports.
 
-```yodl
+```yodl live id=ex-module-declarations
 module FullAdder(
     a: bool,
     b: bool,
@@ -106,7 +106,7 @@ module FullAdder(
 
 Modules can be parameterised by specifying a list of parameters surrounded by `[` and `]` after the module name.
 
-```yodl
+```yodl live id=ex-parameterised-modules stage=write_mono
 module Adder[N: Nat](
     a: uint[N],
     b: uint[N],
@@ -144,7 +144,7 @@ module Adder[N: Nat](
 
 - Parameter names can be omitted if the parameters are specified in the same order as the declaration.
 
-```yodl
+```yodl live id=ex-module-instances
 module Adder[N: Nat](
     a: uint[N],
     b: uint[N],
@@ -176,7 +176,7 @@ module Top(clk: clock) -> () {
 
 All three `Reg` instances in the following example are equivalent.
 
-```yodl
+```yodl live id=ex-module-instances-2
 module Top(clk: clock, rst: bool) -> () {
     let reg1 = Reg[u32](clk: clk, rst: rst)
     let reg2 = Reg[u32](clk, rst)
@@ -194,7 +194,7 @@ module Top(clk: clock, rst: bool) -> () {
 - The type of the binding is inferred from the right-hand side of the assignment if present
     otherwise, the type must be explicitly specified.
 
-```yodl
+```yodl live id=ex-let-bindings
 # module Test() -> () {
     let message1: [3]u8
     message1 = "Yo!"
@@ -207,7 +207,7 @@ module Top(clk: clock, rst: bool) -> () {
 
 If a binding is assigned multiple times, only the last assignment is used.
 
-```yodl
+```yodl live id=ex-assignments
 # module Test() -> () {
     let a = true // this first assignment is ignored
     a = false
@@ -218,7 +218,7 @@ If a binding is assigned multiple times, only the last assignment is used.
 
 Block expressions group multiple statements in a new lexical scope and optionally return a value:
 
-```yodl
+```yodl live id=ex-block-expressions unsupported=write_rtlil
 # module Test(clk: clock) -> () {
     let result = {
         let a = 5

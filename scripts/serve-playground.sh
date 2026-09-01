@@ -1,22 +1,11 @@
 #!/bin/bash
-
-# Exit on error
 set -e
-
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
-
 PORT="${PORT:-8080}"
-
-echo "Building MoonBit driver (JS target)..."
 moon build src/lib/driver --target=js --release
-
-echo "Bundling playground JS..."
-bun build src/main/playground.ts src/main/playground-worker.ts --outdir src/main/bundle --minify
-
-echo ""
-echo "Playground ready. Open http://localhost:${PORT}/src/main/playground.html"
-echo "Press Ctrl+C to stop."
-echo ""
-
-python3 -m http.server "$PORT"
+bun src/docs/build.ts
+echo "Documentation: http://localhost:${PORT}/book/"
+echo "Playground: http://localhost:${PORT}/playground.html"
+echo "Restart after edits to rebuild. Press Ctrl+C to stop."
+python3 -m http.server "$PORT" --directory dist

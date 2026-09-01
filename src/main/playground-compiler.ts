@@ -1,8 +1,7 @@
 import { unwrap, yodl, ext, createInMemoryFileSystem } from './yodl.ts';
-import { files } from './playground-model.ts';
-import type { Stage } from './playground-model.ts';
+import type { Stage } from './compiler-stages.ts';
 
-export type CompileRequest = { id: number; source: string; path: string; stage: Stage };
+export type CompileRequest = { id: number; source: string; path: string; stage: Stage; files?: Record<string, string> };
 export type CompileResult = { id: number; output?: string; error?: string; duration: number };
 
 export function compile(request: CompileRequest): CompileResult {
@@ -11,7 +10,7 @@ export function compile(request: CompileRequest): CompileResult {
     try {
         // Each request starts with pristine dependencies. Editing an example
         // must not change imports in a different example compiled afterwards.
-        const fs = createInMemoryFileSystem(files);
+        const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source });
         unwrap(fs.write_string_to_file(request.path, request.source));
         const commands = unwrap(yodl.parse_commands(request.stage));
         unwrap(yodl.run(request.path, commands, { ...ext, fs, println: (text: string) => { output += text; } }));

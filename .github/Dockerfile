@@ -1,5 +1,7 @@
 FROM ubuntu:24.04
 WORKDIR /app
+ARG YODL_REVISION=local
+ENV YODL_REVISION=${YODL_REVISION}
 
 # Copy files
 COPY book/ ./book
@@ -25,27 +27,16 @@ RUN tar -xzf firrtl-bin-linux-x64.tar.gz
 RUN mv firtool-1.149.0/bin/firtool /usr/local/bin/firtool
 RUN rm -rf firrtl-bin-linux-x64.tar.gz firtool-1.149.0
 
+# Bun powers the site build and the shared documentation test extractor.
+RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.0"
+ENV PATH="/root/.bun/bin:${PATH}"
+
 # Run checks and tests
 RUN moon check
 RUN moon test
 RUN bash scripts/test.sh
 
-# Install Bun (needed to bundle the playground)
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:${PATH}"
-
-# Install mdbook
-RUN wget https://github.com/rust-lang/mdBook/releases/download/v0.4.45/mdbook-v0.4.45-x86_64-unknown-linux-gnu.tar.gz
-RUN tar -xzf mdbook-v0.4.45-x86_64-unknown-linux-gnu.tar.gz
-RUN mv mdbook /usr/local/bin/mdbook
-RUN rm mdbook-v0.4.45-x86_64-unknown-linux-gnu.tar.gz
-
-# Build
-RUN moon build src/lib/driver --target=js --release
-RUN bun build src/main/playground.ts src/main/playground-worker.ts --outdir bundle --minify
-RUN cd book && mdbook build
-RUN mkdir artifacts
-RUN cp -r book/book artifacts/book
-RUN cp -r bundle artifacts/bundle
-RUN cp src/main/playground.html artifacts/playground.html
-RUN cp src/main/playground.css artifacts/playground.css
+# Build the static documentation and playground.
+RUN bun test src/docs
+RUN bun src/docs/build.ts
+RUN mv dist artifacts

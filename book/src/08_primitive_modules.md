@@ -8,7 +8,7 @@ Registers are fundamental storage elements in digital circuits. They store data 
 
 ### Basic Register
 
-```yodl
+```yodl live id=ex-basic-register
 module Counter(clk: clock) -> (value: u8) {
     let counter = Reg[u8](clk)
     counter.d = counter.q + 1'b1
@@ -34,7 +34,7 @@ module Counter(clk: clock) -> (value: u8) {
 
 ### Register with Reset
 
-```yodl
+```yodl live id=ex-register-with-reset
 module Counter(clk: clock, rst: bool) -> (value: u8) {
     let counter = Reg[u8](clk, rst)
     counter.d = counter.q + 1'b1
@@ -46,7 +46,7 @@ When `rst` is asserted, the register's value is synchronously reset to 0.
 
 ### Register with Enable
 
-```yodl
+```yodl live id=ex-register-with-enable
 module Counter(clk: clock, enable: bool) -> (value: u8) {
     let counter = Reg[u8](clk, en: enable)
     counter.d = counter.q + 1'b1
@@ -58,7 +58,7 @@ The register only updates its value when `enable` is asserted.
 
 The same behaviour can be obtained using the `d` port only:
 
-```yodl
+```yodl live id=ex-register-with-enable-2
 module Counter(clk: clock, enable: bool) -> (value: u8) {
     let counter = Reg[u8](clk)
     counter.d = enable ? counter.q + 1'b1 : counter.q
@@ -68,7 +68,7 @@ module Counter(clk: clock, enable: bool) -> (value: u8) {
 
 ### Register with Asynchronous Reset
 
-```yodl
+```yodl live id=ex-register-with-asynchronous-reset
 # module Test(clk: clock, rst: bool) -> () {
     let state = RegAsyncReset[u2](clk, rst)
 # }
@@ -103,7 +103,7 @@ Some configurations may be synthesised as block RAMs in FPGAs.
 
 ### Basic Memory
 
-```yodl
+```yodl live id=ex-basic-memory
 module RAM(
     clk: clock,
     addr: u10,
@@ -132,7 +132,7 @@ module RAM(
 
 Write masking allows selective updates to parts of a memory word:
 
-```yodl
+```yodl live id=ex-memory-with-write-masking
 module ByteAddressableRAM(
     clk: clock,
     addr: u10,

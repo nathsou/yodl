@@ -17,10 +17,16 @@
     },
     "scripts": {
         "prepublishOnly": "moon build src/main --target=js --release && bunx esbuild@0.27.2 _build/js/release/build/main/main.js --minify --outfile=_build/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' _build/js/release/build/main/main.min.js",
-        "build-wasi": "moon build src/main-wasi/ --target=wasm --release && cp _build/wasm/release/build/main-wasi/main-wasi.wasm ./res/yodl-wasi.wasm"
+        "build-wasi": "moon build src/main-wasi/ --target=wasm --release && cp _build/wasm/release/build/main-wasi/main-wasi.wasm ./res/yodl-wasi.wasm",
+        "build:site": "moon build src/lib/driver --target=js --release && bun src/docs/build.ts",
+        "dev:site": "bash scripts/serve-playground.sh",
+        "test:docs": "moon build src/lib/driver --target=js --release && bun test src/docs && bun src/docs/validate.ts"
     },
     "repository": {
         "type": "git",
         "url": "git+https://github.com/nathsou/yodl.git"
+    },
+    "engines": {
+        "bun": "1.4.0"
     }
 }

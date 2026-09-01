@@ -8,7 +8,7 @@ Yodl supports several control flow constructs that help express complex behaviou
 
 If expressions evaluate a condition and execute one of two branches based on the result:
 
-```yodl
+```yodl live id=ex-if-expressions
 # module Test(a: u8, b: u8) -> () {
     let max = if a > b {
         a
@@ -24,7 +24,7 @@ If expressions always return a value. When used as statements (without assigning
 
 Match expressions provide a compact way of handling multiple conditions based on a single value:
 
-```yodl
+```yodl live id=ex-match-expressions
 # module Cell(clk: clock) -> () {
 #   let alive = Reg[bool](clk);
 #   const count = 2
@@ -45,7 +45,7 @@ A match expression must handle all possible values of the match condition, eithe
 
 The `for` loop duplicates its body a fixed number of times, substituting the loop variable with the current iteration index.
 
-```yodl
+```yodl live id=ex-for-loops stage=write_simplified
 // Simple parallel hexadecimal to character decoder
 module Hex[Bits: Nat](n: uint[Bits]) -> (chars: [cdiv!(Bits, 4)]u8) {
     const Len = cdiv!(Bits, 4)
@@ -91,3 +91,12 @@ The range syntax uses:
 ## Control Flow in Hardware Context
 
 In hardware description languages, control flow constructs don't create sequential execution as in software, they describe hardware structures that implement the specified behavior. Yodl's compiler unrolls loops and elaborates conditional statements into multiplexers.
+
+## Explore loop expansion
+
+This example is shared with the guided tour. Change `Lanes` from 4 to 8 and
+compile the **Simplified** output to see the assignments generated for each
+lane. Use **Compare output with original** to inspect the difference.
+
+```yodl live id=ex-parallel-lanes stage=write_simplified src=tour/05-vectors.yodl
+```
