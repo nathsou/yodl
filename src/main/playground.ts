@@ -86,6 +86,7 @@ function saveDraft() {
 }
 function renderSelection() {
     const isTour = selection.mode === 'tour';
+    element('site-section').textContent = isTour ? 'tour' : 'playground';
     button('tour-mode').setAttribute('aria-pressed', String(isTour));
     button('examples-mode').setAttribute('aria-pressed', String(!isTour));
     element('guide').hidden = !isTour;

@@ -1,4 +1,4 @@
-import { siteNavigation } from '../main/site-navigation.ts';
+import { siteHeader } from '../main/site-navigation.ts';
 import { mkdir, cp, readFile, writeFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { loadChapters, escapeHTML as e, plainText } from './content.ts';
@@ -24,7 +24,7 @@ function page(chapter: Chapter, index: number) {
     return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${e(chapter.title)} · Yodl</title><meta name="description" content="${e(description)}"><meta property="og:title" content="${e(chapter.title)} · Yodl"><meta property="og:description" content="${e(description)}"><meta property="og:type" content="article"><meta name="color-scheme" content="light dark"><link rel="stylesheet" href="../docs.css"><script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('yodl-playground-v2:theme');document.documentElement.dataset.theme=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light'}catch{}</script></head>
 <body><a class="skip-link" href="#content">Skip to content</a>
-<header class="site-header"><a class="brand" href="./index.html">yodl<span>/</span><small>documentation</small></a>${siteNavigation('docs')}<label class="theme-label js-only"><span class="sr-only">Color theme</span><select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label></header>
+${siteHeader('docs')}
 <div class="docs-layout"><aside class="sidebar"><details class="chapter-menu" open><summary>Chapters</summary><div class="sidebar-inner"><button id="search-open" class="search-trigger js-only">Search documentation <kbd>/</kbd></button><p class="eyebrow">THE LANGUAGE</p><nav aria-label="Chapters">${nav}</nav><div class="sidebar-footer"><a href="https://github.com/nathsou/yodl">GitHub ↗</a><span>Yodl ${e(version)} · ${e(revision)}</span></div></div></details></aside>
 <main id="content" tabindex="-1"><div class="chapter-meta"><span class="eyebrow">LANGUAGE GUIDE</span><span>${String(index + 1).padStart(2, '0')} / ${String(chapters.length).padStart(2, '0')}</span></div><article>${chapter.html}</article>
 ${lessons.length ? `<section class="related-lessons"><p class="eyebrow">PUT IT INTO PRACTICE</p><h2>Explore in the guided tour</h2>${lessons.map(l => `<a href="../playground.html?lesson=${l.id}">${e(l.title)} <span>→</span></a>`).join('')}</section>` : ''}
@@ -52,6 +52,6 @@ const result = await Bun.build({ entrypoints: [`${root}/src/main/playground.ts`,
 if (!result.success) throw new AggregateError(result.logs, 'Browser build failed');
 for (const name of ['playground.css', 'theme.css', 'site-navigation.css']) await cp(`${root}/src/main/${name}`, `${destination}/${name}`);
 const playground = await readFile(`${root}/src/main/playground.html`, 'utf8');
-await writeFile(`${destination}/playground.html`, playground.replace('<!-- site-navigation -->', siteNavigation('playground')));
+await writeFile(`${destination}/playground.html`, playground.replace('<!-- site-header -->', siteHeader('playground')));
 await cp(`${root}/src/docs/docs.css`, `${destination}/docs.css`);
 console.log(`Built ${chapters.length} chapters and ${chapters.reduce((n, c) => n + c.examples.length, 0)} examples in dist/`);

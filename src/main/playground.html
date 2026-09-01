@@ -9,16 +9,7 @@
 
 </head>
 <body>
-    <header class="app-header">
-        <a class="brand" href="./book/" aria-label="Yodl home">yodl<span class="brand-divider">/</span><span class="brand-caption">playground</span></a>
-        <!-- site-navigation -->
-        <div class="header-actions">
-            <a id="related-docs" href="./book/" hidden>Related chapter</a>
-            <button id="share-button" disabled>Share</button>
-            <label class="sr-only" for="theme-select">Color theme</label>
-            <select id="theme-select" title="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
-        </div>
-    </header>
+    <!-- site-header -->
     <div id="notice" class="notice" role="status" hidden></div>
     <div class="workspace-toolbar">
         <div class="file-picker">
@@ -26,6 +17,8 @@
             <select id="source-selector" disabled><option>Loading tour…</option></select>
         </div>
         <div class="compile-controls">
+            <a id="related-docs" href="./book/" hidden>Related chapter</a>
+            <button id="share-button" disabled>Share</button>
             <label class="auto-label"><input type="checkbox" id="auto-compile" checked> Auto-compile</label>
             <button class="primary" id="compile-button" disabled>Compile <kbd id="compile-shortcut">Ctrl ↵</kbd></button>
         </div>
