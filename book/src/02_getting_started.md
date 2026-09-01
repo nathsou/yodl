@@ -46,7 +46,7 @@ A syntax-highlighting extension is embedded in the repository, to install it, do
 
 Create a file called `Blink.yodl` and insert the following text:
 
-```yodl
+```yodl live id=ex-your-first-yodl-design
 module Top(
   // inputs
   clk: clock,

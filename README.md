@@ -40,7 +40,7 @@ Install [Moonbit](https://www.moonbitlang.com/):
 $ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.10.11+8f8e8db1e'
 ```
 
-### Playground and tour
+### Documentation, playground, and tour
 
 The playground includes a [12-lesson tour](tour/README.md), separate from the
 larger designs under `examples/`. Start with a logic gate, then explore types,
@@ -48,16 +48,26 @@ combinational logic, reusable modules, registers, and memory. Each lesson offers
 an explanation, a suggested compiler output to inspect, and a small experiment.
 Drafts are saved locally, and circuits can be shared by link or downloaded.
 
-With MoonBit, Bun, and Python 3 installed, start a local playground:
+With MoonBit, Bun **1.4.0**, and Python 3 installed, start the documentation and playground:
 
 ```bash
 bash scripts/serve-playground.sh
 ```
 
-Open `http://localhost:8080/src/main/playground.html`. After editing browser code
-or tour content, restart the script to rebuild the bundles, then reload the page.
+Open `http://localhost:8080/book/` for documentation or
+`http://localhost:8080/playground.html` for the playground. After editing Markdown,
+browser code, or tour content, restart the script to rebuild, then reload the page.
 The editor loads Monaco from a CDN, so its initial load requires internet access.
 
+The book is built from Markdown using Bun's built-in parser and shares the
+playground's themes, Monaco editor, and browser compiler. Examples support local
+drafts, compiler stages, expected errors, output comparison, and share links.
+See [documentation authoring](book/README.md) for example metadata and validation.
+
+Build the complete static site into `dist/` with `bun run build:site`.
+GitHub Pages deployment uses this same build; no application server is required.
+
+Validate the browser components and documentation with `bun run test:docs`.
 Validate the tour and backend output with:
 
 ```bash

@@ -6,7 +6,7 @@ Yodl allows you to integrate existing Verilog modules into your designs through 
 
 External modules are declared using the `@external` attribute followed by a module declaration:
 
-```yodl
+```yodl live id=ex-external-module-declaration unsupported=write_rtlil
 @external("module_name", "file.v")
 @parameters({ PARAM1: 0, PARAM2: "true" })
 declare module ExternalModule(

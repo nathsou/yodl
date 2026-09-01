@@ -1,6 +1,5 @@
 import type * as MoonBit from "../../_build/js/release/build/lib/driver/moonbit.d.ts";
 export * as yodl from "../../_build/js/release/build/lib/driver/driver.js";
-import { getExampleFiles, getTourFiles } from "./examples.ts" with { type: "macro" };
 
 type Result<T> = MoonBit.Result<T, string>;
 
@@ -213,7 +212,7 @@ export function unwrap<T>(result: MoonBit.Result<T, any>): T {
 }
 
 export const ext: Externals = {
-    fs: createInMemoryFileSystem({ ...getExampleFiles(), ...getTourFiles() }),
+    fs: createInMemoryFileSystem({}),
     println: str => console.log(str),
     get_args: () => [],
     exit: code => {

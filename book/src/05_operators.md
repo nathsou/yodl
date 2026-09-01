@@ -14,7 +14,7 @@
 
 Reduction operators apply the corresponding logic operation across all bits of the operand, returning a single bit result.
 
-```yodl
+```yodl live id=ex-reduction-operators unsupported=write_rtlil
 # module Test(clk: clock) -> () {
     let all_ones = andr 8'b11111111
     assert!(all_ones == 1)
@@ -71,7 +71,7 @@ Note 2: The `and`, `or`, `xor`, `nand`, `nor`, and `xnor` operators are used bot
 
 The ternary operator is a concise way to express conditional expressions, generally spanning a single line.
 
-```yodl
+```yodl live id=ex-ternary-operator
 # module Test(a: u8, b: u8) -> () {
     let max = a >= b ? a : b
 # }
@@ -81,7 +81,7 @@ The ternary operator is a concise way to express conditional expressions, genera
 
 Integer concatenation is performed with the `cat!` built-in function:
 
-```yodl
+```yodl live id=ex-concatenation unsupported=write_rtlil
 # module Test(clk: clock) -> () {
     let upper_nibble = 8'hAB
     let lower_nibble = 8'hCD
@@ -92,7 +92,7 @@ Integer concatenation is performed with the `cat!` built-in function:
 
 `cat!` also accepts Vectors of integers, which it flattens automatically.
 
-```yodl
+```yodl live id=ex-concatenation-2 unsupported=write_rtlil
 # module Test(clk: clock) -> () {
     let value = cat!([1'1, 1'0, 1'0, 1'0]) // 4'b1000
     assert!(value == 4'b1000)
@@ -103,7 +103,7 @@ Integer concatenation is performed with the `cat!` built-in function:
 
 Elements of vectors and bits of integers can be accessed using the `[]` operator:
 
-```yodl
+```yodl live id=ex-slicing-and-indexing unsupported=write_rtlil
 # module Test(clk: clock) -> () {
     let bits = [..8'd233]
     let first = bits[0]      // Access the first element
@@ -134,7 +134,7 @@ Note:
 When a bit vector (`[N]bool` i.e. `[N]u1`) is used as the argument of the `uint` and `sint` built-in functions,
 the first element of the vector becomes the MSB of the resulting integer:
 
-```yodl
+```yodl live id=ex-slicing-and-indexing-2 unsupported=write_rtlil
 # module Test(clk: clock) -> () {
     let n = uint!([1'b1, 1'b0, 1'b0])
     assert!(n == 3'b0001)
@@ -145,7 +145,7 @@ the first element of the vector becomes the MSB of the resulting integer:
 
 The `fill!(n, x)` built-in produces a vector `[n]T` of `n` copies of `x`:
 
-```yodl
+```yodl live id=ex-replication unsupported=write_rtlil
 # const a = 1'b1
 # const b = 1'b0
 # module Test(clk: clock) -> () {
@@ -159,7 +159,7 @@ The `fill!(n, x)` built-in produces a vector `[n]T` of `n` copies of `x`:
 
 The repeated expressions can contain any value, including instances:
 
-```yodl
+```yodl live id=ex-replication-2
 # module Cell(clk: clock, rst: bool) -> () {}
 # const Rows = 1
 # const Cols = 1
@@ -177,7 +177,7 @@ The width of the result is the sum of the widths of the operands.
 
 If any operand is a signed integer (sint), then all operands are required to be signed.
 
-```yodl
+```yodl live id=ex-concatenation-3 unsupported=write_rtlil
 # module Test(clk: clock) -> () {
     let concat_args = cat!(16'hBABA, 16'hFABE)
     let concat_vec  = cat!([16'hBABA, 16'hFABE])
@@ -191,7 +191,7 @@ If any operand is a signed integer (sint), then all operands are required to be 
 
 The spread operator `..` can only appear inside a vector expression and is used to decompose a value into its individual elements.
 
-```yodl
+```yodl live id=ex-spread unsupported=write_rtlil
 # module Test(clk: clock) -> () {
     let bits: [4]u1 = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
     let chars: [3]u8 = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]

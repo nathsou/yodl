@@ -56,6 +56,10 @@ markers; diagnostics without a matching source span remain in the error panel.
 
 The browser application is in `src/main/playground.ts`, with styles in
 `playground.css`, editor configuration in `playground-editor.ts`, and compilation
-in `playground-compiler.ts` / `playground-worker.ts`. Content, stage metadata, and
-share serialization live in `playground-model.ts`. The Bun build embeds tour and
+in `playground-compiler.ts` / `playground-worker.ts`. The worker lifecycle is shared
+with documentation examples through `compiler-client.ts`. Content and selection live in `playground-model.ts`; compiler stages, themes,
+diagnostics, and share encoding have shared modules beside it.
+Documentation links use `?lesson=<stable-id>`; `?mode=examples` opens the free
+playground. Documentation handoffs carry the original entry path and explicit
+source dependencies, and include a link back to the chapter. The Bun build embeds tour and
 example sources; no filesystem or compiler service is needed at runtime.
