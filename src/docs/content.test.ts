@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test';
-import { extractExamples, exampleHTML, highlight, loadChapters } from './content.ts';
+import { dedentDisplay, extractExamples, exampleHTML, highlight, loadChapters } from './content.ts';
 import { encodeProgram, decodeProgram, validFiles, validSourcePath } from '../main/share-codec.ts';
 import { diagnosticLocation } from '../main/diagnostics.ts';
 import { chapterLessons } from './links.ts';
@@ -10,9 +10,22 @@ describe('documentation content contract', () => {
     test('hidden supporting lines preserve compiler indentation and line locations', () => {
         const { examples } = extractExamples(fence('# module Top() -> () {\n#     let support = true\n    let q = support\n# }', 'live id=ex-test'), 'test');
         expect(examples[0].source).toBe('module Top() -> () {\n    let support = true\n    let q = support\n}\n');
-        expect(examples[0].display).toBe('    let q = support');
+        expect(examples[0].display).toBe('let q = support');
         expect(examples[0].line).toBe(1);
         expect(examples[0].source.split('\n')).toHaveLength(5);
+    });
+    test('display dedenting preserves nested blocks, tabs and complete modules', () => {
+        expect(dedentDisplay('    if ready {\n        q = true\n    }\n')).toBe('if ready {\n    q = true\n}');
+        expect(dedentDisplay('\n\tlet a = true\n\n\tif a {\n\t\tq = a\n\t}\n')).toBe('let a = true\n\nif a {\n\tq = a\n}');
+        const whole = 'module Top() -> () {\n    let a = true\n}';
+        expect(dedentDisplay(whole)).toBe(whole);
+        expect(dedentDisplay('\n  \n')).toBe('');
+    });
+    test('named regions dedent every line evenly while retaining full source', () => {
+        const source = 'module Top() -> () {\n// region body\n    if true {\n        let a = true\n    }\n// endregion body\n}';
+        const example = extractExamples(fence(source, 'region=body'), 'test').examples[0];
+        expect(example.display).toBe('if true {\n    let a = true\n}');
+        expect(example.source).toBe(source + '\n');
     });
     test('tilde fences, CRLF, indented fences and longer fence delimiters', () => {
         const result = extractExamples('  ~~~~yodl live id=ex-tilde\r\n  module Top() -> () {}\r\n  ~~~~', 'test');

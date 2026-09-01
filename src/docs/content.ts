@@ -14,6 +14,19 @@ export type Chapter = { slug: string; title: string; markdown: string; html: str
 export const escapeHTML = (value: string) => value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 export const plainText = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/&(?:amp|lt|gt|quot|#39);/g, value => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" })[value]!).replace(/\s+/g, ' ').trim();
 
+// Dedent only the reading view. Keep the full source (and its spans) intact.
+export function dedentDisplay(source: string): string {
+    const lines = source.split('\n');
+    while (lines.length && !lines[0].trim()) lines.shift();
+    while (lines.length && !lines.at(-1)!.trim()) lines.pop();
+    const indents = lines.filter(line => line.trim()).map(line => /^[ \t]*/.exec(line)![0]);
+    let common = indents[0] ?? '';
+    for (const indent of indents) {
+        while (!indent.startsWith(common)) common = common.slice(0, -1);
+    }
+    return lines.map(line => line.trim() ? line.slice(common.length) : '').join('\n');
+}
+
 function sourceFile(root: string, path: string) {
     const full = resolve(root, path);
     const name = relative(resolve(root), full).replaceAll('\\', '/');
@@ -81,9 +94,9 @@ export function extractExamples(markdown: string, slug: string, root = process.c
             const begin = `// region ${config.region}`;
             const end = `// endregion ${config.region}`;
             if (!raw.includes(begin) || !raw.includes(end) || raw.indexOf(end) < raw.indexOf(begin)) throw new Error(`${slug}: missing region ${config.region}`);
-            display = raw.slice(raw.indexOf(begin) + begin.length, raw.indexOf(end)).trim();
+            display = raw.slice(raw.indexOf(begin) + begin.length, raw.indexOf(end));
         }
-        examples.push({ id, title: id.replace(/^ex-/, '').replaceAll('-', ' '), source, display: display.trimEnd(), path, files, stage: stage as Stage,
+        examples.push({ id, title: id.replace(/^ex-/, '').replaceAll('-', ' '), source, display: dedentDisplay(display), path, files, stage: stage as Stage,
             unsupported, hash: createHash('sha256').update(JSON.stringify({ source, files })).digest('hex').slice(0, 16),
             live: !config.static && expect !== 'skip', expect: expect as Example['expect'], diagnostic: config.diagnostic, line: begin + 1 });
         output.push('', `<div data-yodl-example="${examples.length - 1}"></div>`, '');
@@ -108,7 +121,7 @@ export function highlight(source: string) {
 export function exampleHTML(example: Example) {
     const e = escapeHTML;
     return `<section class="code-example" id="${example.id}" aria-label="Example: ${e(example.title)}">
-    <div class="example-header"><a class="example-title" href="#${example.id}"><span class="file-dot"></span>Yodl <span class="example-number">/ ${e(example.title)}</span></a><div class="example-actions">${example.live ? '<button data-action="edit" class="js-only">Edit & compile</button>' : '<span class="muted">Read-only</span>'}<button data-action="copy" class="js-only">Copy</button>${example.live ? '<button data-action="playground" class="js-only">Playground ↗</button>' : ''}</div></div>
+    <div class="example-header"><a class="example-title" href="#${example.id}"><span class="file-dot"></span>Yodl <span class="example-number">/ ${e(example.title)}</span></a><div class="example-actions">${example.live ? '<button data-action="edit" class="js-only">Edit & compile</button>' : '<span class="muted">Read-only</span>'}<button data-action="copy" class="js-only">Copy</button>${example.live ? '<button data-action="playground" class="js-only">Playground</button>' : ''}</div></div>
     <pre class="example-static"><code>${highlight(example.display)}</code></pre>
     ${example.expect === 'error' ? '<p class="example-note">This example intentionally produces a compiler error. Edit it to explore the diagnostic.</p>' : ''}
     <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>`;

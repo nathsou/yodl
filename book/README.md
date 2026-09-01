@@ -10,7 +10,9 @@ bun run dev:site
 ```
 
 The preview serves `/book/` and `/playground.html`. Restart after source changes.
-The result in `dist/` is entirely static and is also the GitHub Pages artifact.
+The result in `dist/` is one static site and one GitHub Pages artifact.
+Documentation and the playground are pages within that site, with shared
+Docs / Tour / Playground navigation; they are not deployed separately.
 Bun is needed only at build time. Reading and copying text requires no compiler;
 Monaco loads from its pinned CDN only when an editor is activated.
 
@@ -29,7 +31,8 @@ IDs must be unique within a chapter and must not collide with heading IDs.
 
 A leading `#` marks supporting code hidden in the reading view. The extractor
 removes the marker and at most one following space, preserving indentation and
-line numbers. Editing reveals the complete program, and compiler diagnostics
+line numbers. The reading view removes the common leading whitespace from visible
+lines, retaining indentation inside nested blocks. Editing reveals the complete program, and compiler diagnostics
 refer to that complete program. The same extracted source is used in CI.
 
 Options are whitespace-separated `name=value` pairs (values cannot contain

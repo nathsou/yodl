@@ -1,4 +1,5 @@
 @import './theme.css';
+@import './site-navigation.css';
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 :root { scroll-padding-top: 96px; }
@@ -21,9 +22,6 @@ html:not(.js) .js-only { display: none; }
 .brand { display: flex; align-items: center; gap: 14px; color: var(--text); font-size: 28px; font-weight: 650; letter-spacing: -1.2px; text-decoration: none; }
 .brand span { color: var(--border); font-weight: 400; }
 .brand small { font-size: 14px; font-weight: 400; color: var(--muted); letter-spacing: 0; }
-.top-nav { display: flex; gap: 22px; align-items: center; margin-left: auto; font-size: 13px; }
-.top-nav a { color: var(--muted); text-decoration: none; }
-.top-nav a[aria-current] { color: var(--accent); }
 .docs-layout { display: grid; grid-template-columns: 230px minmax(0, 800px) 190px; gap: 48px; max-width: 1410px; margin: 0 auto; padding: 0 30px; }
 .sidebar { position: sticky; top: 72px; align-self: start; height: calc(100dvh - 72px); border-right: 1px solid var(--border); padding-right: 24px; overflow: auto; }
 .sidebar-inner { padding: 32px 0; }
@@ -135,7 +133,7 @@ dialog input { width: 100%; min-width: 0; color: var(--text); background: var(--
 @media (max-width: 820px) {
     .site-header { height: auto; min-height: 66px; gap: 18px; padding: 12px 20px; flex-wrap: wrap; }
     .brand { font-size: 25px; gap: 10px; } .brand small { font-size: 12px; }
-    .top-nav { gap: 14px; font-size: 12px; } .theme-label { margin-left: auto; }
+    .site-navigation { gap: 14px; font-size: 12px; } .theme-label { margin-left: auto; }
     .docs-layout { display: block; padding: 0 24px; }
     .sidebar { position: static; height: auto; border: 0; padding: 0; }
     .chapter-menu summary { display: block; cursor: pointer; border-bottom: 1px solid var(--border); padding: 15px 0; font-size: 12px; color: var(--muted); }
@@ -147,7 +145,7 @@ dialog input { width: 100%; min-width: 0; color: var(--text); background: var(--
 }
 @media (max-width: 540px) {
     :root { scroll-padding-top: 125px; }
-    .site-header { gap: 10px; padding: 10px 16px; } .brand { width: 100%; } .top-nav { margin-left: 0; }
+    .site-header { gap: 10px; padding: 10px 16px; } .brand { width: 100%; } .site-navigation { margin-left: 0; }
     .docs-layout { padding: 0 18px; } .sidebar nav { display: flex; }
     body { font-size: 15px; } h1 { font-size: 31px; }
     .example-header { flex-wrap: wrap; gap: 5px; padding: 9px 11px; } .example-actions { margin-left: auto; }

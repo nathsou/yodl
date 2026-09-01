@@ -1,4 +1,5 @@
 @import "./theme.css";
+@import "./site-navigation.css";
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--background); color: var(--text); font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow: hidden; }
@@ -14,10 +15,8 @@ a:hover { color: var(--accent); }
 .brand { display: inline-flex; align-items: center; gap: 14px; color: var(--text); font-size: 27px; font-weight: 650; letter-spacing: -1.2px; white-space: nowrap; }
 .brand-divider { color: var(--border); font-weight: 400; }
 .brand-caption { color: var(--muted); font-size: 14px; font-weight: 400; letter-spacing: 0; }
-.mode-switch { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; }
-.mode-switch button { background: transparent; border-color: transparent; min-height: 29px; padding: 3px 15px; }
-.mode-switch button[aria-pressed="true"], .mobile-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
-.header-actions { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 13px; }
+.mobile-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.header-actions { margin-left: 0; display: flex; align-items: center; gap: 16px; font-size: 13px; }
 .header-actions select { max-width: 95px; }
 .workspace-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 24px; border-bottom: 1px solid var(--border); }
 .file-picker, .compile-controls { display: flex; align-items: center; gap: 12px; min-width: 0; }
@@ -112,7 +111,7 @@ dialog input { display: block; width: 100%; padding: 10px; margin: 8px 0; border
 }
 @media (max-width: 580px) {
     .app-header { gap: 12px; }
-    .mode-switch { margin-left: auto; }
+    .site-navigation { margin-left: auto; }
     .header-actions { width: 100%; margin: 0; }
     .header-actions a { margin-right: auto; }
     .workspace-toolbar { flex-wrap: wrap; gap: 9px; }
@@ -130,5 +129,5 @@ dialog input { display: block; width: 100%; padding: 10px; margin: 8px 0; border
 }
 @media (pointer: coarse) {
     button, select { min-height: 40px; }
-    .panel-actions button, .mode-switch button { min-height: 36px; }
+    .panel-actions button, .site-navigation button { min-height: 36px; }
 }

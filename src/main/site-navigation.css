@@ -1,0 +1,6 @@
+.site-navigation { display: flex; align-items: center; gap: 4px; margin-left: auto; }
+.site-navigation a, .site-navigation button { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 5px 11px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); background: transparent; font: inherit; font-size: 13px; text-decoration: none; white-space: nowrap; }
+.site-navigation a:hover, .site-navigation button:hover { background: var(--surface-soft); color: var(--accent); text-decoration: none; }
+.site-navigation [aria-current="page"], .site-navigation [aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+@media (max-width: 580px) { .site-navigation a, .site-navigation button { padding: 5px 9px; font-size: 12px; } }
+@media (pointer: coarse) { .site-navigation a, .site-navigation button { min-height: 40px; } }
