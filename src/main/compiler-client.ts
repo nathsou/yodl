@@ -1,5 +1,9 @@
 import type { CompileRequest, CompileResult } from './playground-compiler.ts';
 
+// Replaced by the site build with the content-hashed worker filename.
+declare const __YODL_COMPILER_WORKER__: string;
+const workerFile = typeof __YODL_COMPILER_WORKER__ === 'undefined' ? './playground-worker.js' : __YODL_COMPILER_WORKER__;
+
 type Job = { owner: string; request: CompileRequest; resolve: (result: CompileResult | null) => void };
 
 // A page has at most one compiler worker. Each example owns its queued request;
@@ -55,7 +59,7 @@ export class CompilerClient {
             this.finish({ id: job.request.id, error, duration: 0 });
         };
         try {
-            this.worker ??= new Worker(new URL('./playground-worker.js', import.meta.url), { type: 'module' });
+            this.worker ??= new Worker(new URL(workerFile, import.meta.url), { type: 'module' });
             this.worker.onmessage = (event: MessageEvent<CompileResult>) => {
                 if (this.active === job && event.data.id === job.request.id) this.finish(event.data);
             };

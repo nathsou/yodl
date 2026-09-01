@@ -1,3 +1,4 @@
+import { buildBrowserAssets } from './bundle.ts';
 import { siteHeader } from '../main/site-navigation.ts';
 import { mkdir, cp, readFile, writeFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -14,6 +15,7 @@ const revision = process.env.YODL_REVISION?.slice(0, 7) || Bun.spawnSync(['git',
 await rm(destination, { recursive: true, force: true });
 await mkdir(`${destination}/book`, { recursive: true });
 await mkdir(`${destination}/bundle`, { recursive: true });
+const assets = await buildBrowserAssets(root, `${destination}/bundle`);
 
 function page(chapter: Chapter, index: number) {
     const description = `${chapter.title} in Yodl. Learn the language with editable examples and inspect the hardware compiler output.`;
@@ -33,7 +35,7 @@ ${lessons.length ? `<section class="related-lessons"><p class="eyebrow">PUT IT I
 <dialog id="search-dialog"><div class="search-header"><label for="search-input" class="sr-only">Search documentation</label><input id="search-input" type="search" placeholder="Search concepts, syntax, and examples…" autocomplete="off"><button id="search-close" aria-label="Close search">Esc</button></div><p id="search-status" role="status">Type to search all chapters.</p><div id="search-results"></div></dialog>
 <dialog id="confirm-dialog"><h2 id="confirm-title">Reset this example?</h2><p id="confirm-message">Your local edits will be replaced by the original source.</p><form method="dialog"><button value="cancel">Keep edits</button><button value="reset" class="primary">Reset source</button></form></dialog>
 <dialog id="share-dialog"><h2>Share this example</h2><p>The link includes your edits and selected compiler stage. It uses the deployed compiler version.</p><input id="share-url" aria-label="Share URL" readonly><form method="dialog"><button>Close</button><button type="button" id="share-copy" class="primary">Copy link</button></form></dialog>
-<script id="chapter-data" type="application/json">${JSON.stringify({ slug: chapter.slug, version, revision, examples: chapter.examples }).replaceAll('<', '\\u003c')}</script><script type="module" src="../bundle/docs.js"></script></body></html>`;
+<script id="chapter-data" type="application/json">${JSON.stringify({ slug: chapter.slug, version, revision, examples: chapter.examples }).replaceAll('<', '\\u003c')}</script><script type="module" src="../bundle/${assets.docs}"></script></body></html>`;
 }
 for (let i = 0; i < chapters.length; i++) await writeFile(`${destination}/book/${chapters[i].slug}.html`, page(chapters[i], i));
 await writeFile(`${destination}/book/index.html`, page(chapters[0], 0));
@@ -48,10 +50,8 @@ const search = chapters.flatMap(chapter => {
 });
 await writeFile(`${destination}/book/search.json`, JSON.stringify(search));
 await writeFile(`${destination}/book/examples.json`, JSON.stringify(chapters.flatMap(c => c.examples.map(ex => ({ chapter: c.slug, ...ex })))));
-const result = await Bun.build({ entrypoints: [`${root}/src/main/playground.ts`, `${root}/src/main/playground-worker.ts`, `${root}/src/docs/docs.ts`], outdir: `${destination}/bundle`, naming: '[name].[ext]', splitting: true, minify: true, target: 'browser' });
-if (!result.success) throw new AggregateError(result.logs, 'Browser build failed');
 for (const name of ['playground.css', 'theme.css', 'site-navigation.css']) await cp(`${root}/src/main/${name}`, `${destination}/${name}`);
 const playground = await readFile(`${root}/src/main/playground.html`, 'utf8');
-await writeFile(`${destination}/playground.html`, playground.replace('<!-- site-header -->', siteHeader('playground')));
+await writeFile(`${destination}/playground.html`, playground.replace('<!-- site-header -->', siteHeader('playground')).replace('./bundle/playground.js', `./bundle/${assets.playground}`));
 await cp(`${root}/src/docs/docs.css`, `${destination}/docs.css`);
 console.log(`Built ${chapters.length} chapters and ${chapters.reduce((n, c) => n + c.examples.length, 0)} examples in dist/`);
