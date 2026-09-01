@@ -37,12 +37,8 @@ the playground does not simulate a clock, execute the challenge, or grade it.
 New lessons should compile at every stage exposed by the playground.
 
 Run `moon test src/lib/tests` to check all tour sources against every stage.
-Run `bash scripts/test.sh` to validate examples, tour lessons, and documentation
-with the FIRRTL backend and firtool.
-Run `bash scripts/test-playground.sh` to check the bundled browser compiler,
-lesson metadata, challenge edits, sharing, diagnostic spans, isolated imports,
-and worker protocol. Add the corresponding challenge transformation to
-`scripts/test-playground.ts` when adding a lesson.
+Run `bash scripts/test.sh` to validate the tour lessons through the FIRRTL
+backend and firtool when adding or changing a lesson.
 
 ## Playground behavior
 

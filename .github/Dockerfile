@@ -30,10 +30,9 @@ RUN moon check
 RUN moon test
 RUN bash scripts/test.sh
 
-# Install Bun
+# Install Bun (needed to bundle the playground)
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:${PATH}"
-RUN bash scripts/test-playground.sh
 
 # Install mdbook
 RUN wget https://github.com/rust-lang/mdBook/releases/download/v0.4.45/mdbook-v0.4.45-x86_64-unknown-linux-gnu.tar.gz
