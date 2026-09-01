@@ -1,193 +1,58 @@
-<!DOCTYPE HTML>
-<html lang="en" class="light sidebar-visible" dir="ltr">
-    <head>
-        <!-- Book generated using mdBook -->
-        <meta charset="UTF-8">
-        <title>Data Types - yodl</title>
-
-
-        <!-- Custom HTML head -->
-
-        <meta name="description" content="">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="theme-color" content="#ffffff">
-
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
-
-        <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
-
-        <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" href="highlight.css">
-        <link rel="stylesheet" href="tomorrow-night.css">
-        <link rel="stylesheet" href="ayu-highlight.css">
-
-        <!-- Custom theme stylesheets -->
-
-
-        <!-- Provide site root to javascript -->
-        <script>
-            var path_to_root = "";
-            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
-        </script>
-        <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
-    </head>
-    <body>
-    <div id="body-container">
-        <!-- Work around some values being stored in localStorage wrapped in quotes -->
-        <script>
-            try {
-                var theme = localStorage.getItem('mdbook-theme');
-                var sidebar = localStorage.getItem('mdbook-sidebar');
-
-                if (theme.startsWith('"') && theme.endsWith('"')) {
-                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
-                }
-
-                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
-                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
-                }
-            } catch (e) { }
-        </script>
-
-        <!-- Set the theme before any content is loaded, prevents flash -->
-        <script>
-            var theme;
-            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
-            if (theme === null || theme === undefined) { theme = default_theme; }
-            const html = document.documentElement;
-            html.classList.remove('light')
-            html.classList.add(theme);
-            html.classList.add("js");
-        </script>
-
-        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
-
-        <!-- Hide / unhide sidebar before it is displayed -->
-        <script>
-            var sidebar = null;
-            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
-            if (document.body.clientWidth >= 1080) {
-                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
-                sidebar = sidebar || 'visible';
-            } else {
-                sidebar = 'hidden';
-            }
-            sidebar_toggle.checked = sidebar === 'visible';
-            html.classList.remove('sidebar-visible');
-            html.classList.add("sidebar-" + sidebar);
-        </script>
-
-        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
-            <!-- populated by js -->
-            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
-            <noscript>
-                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
-            </noscript>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
-                <div class="sidebar-resize-indicator"></div>
-            </div>
-        </nav>
-
-        <div id="page-wrapper" class="page-wrapper">
-
-            <div class="page">
-                <div id="menu-bar-hover-placeholder"></div>
-                <div id="menu-bar" class="menu-bar sticky">
-                    <div class="left-buttons">
-                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
-                            <i class="fa fa-bars"></i>
-                        </label>
-                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
-                            <i class="fa fa-paint-brush"></i>
-                        </button>
-                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
-                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
-                        </ul>
-                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
-                            <i class="fa fa-search"></i>
-                        </button>
-                    </div>
-
-                    <h1 class="menu-title">yodl</h1>
-
-                    <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
-                            <i id="print-button" class="fa fa-print"></i>
-                        </a>
-                        <a href="https://github.com/nathsou/yodl" title="Git repository" aria-label="Git repository">
-                            <i id="git-repository-button" class="fa fa-github"></i>
-                        </a>
-
-                    </div>
-                </div>
-
-                <div id="search-wrapper" class="hidden">
-                    <form id="searchbar-outer" class="searchbar-outer">
-                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
-                    </form>
-                    <div id="searchresults-outer" class="searchresults-outer hidden">
-                        <div id="searchresults-header" class="searchresults-header"></div>
-                        <ul id="searchresults">
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
-                <script>
-                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
-                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
-                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
-                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
-                    });
-                </script>
-
-                <div id="content" class="content">
-                    <main>
-                        <h1 id="data-types"><a class="header" href="#data-types">Data Types</a></h1>
-<h2 id="ground-types"><a class="header" href="#ground-types">Ground Types</a></h2>
-<h3 id="integer-types"><a class="header" href="#integer-types">Integer types</a></h3>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Data Types · Yodl</title><meta name="description" content="Data Types in Yodl. Learn the language with editable examples and inspect the hardware compiler output."><meta property="og:title" content="Data Types · Yodl"><meta property="og:description" content="Data Types in Yodl. Learn the language with editable examples and inspect the hardware compiler output."><meta property="og:type" content="article"><meta name="color-scheme" content="light dark"><link rel="stylesheet" href="../docs.css"><script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('yodl-playground-v2:theme');document.documentElement.dataset.theme=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light'}catch{}</script></head>
+<body><a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header">
+<a class="site-brand" href="../book/" aria-label="Yodl home">yodl<span class="site-brand-divider">/</span><span class="site-section" id="site-section">documentation</span></a>
+<nav class="site-navigation" aria-label="Yodl">
+<a href="../book/" aria-current="page">Docs</a>
+<a href="../playground.html?lesson=gates">Tour</a><a href="../playground.html?mode=examples">Playground</a>
+</nav>
+<label class="site-theme"><span class="sr-only">Color theme</span><select id="theme-select" title="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+</header>
+<div class="docs-layout"><aside class="sidebar"><details class="chapter-menu" open><summary>Chapters</summary><div class="sidebar-inner"><button id="search-open" class="search-trigger js-only">Search documentation <kbd>/</kbd></button><p class="eyebrow">THE LANGUAGE</p><nav aria-label="Chapters"><a href="./01_presentation.html" ><span>01</span>Presentation</a><a href="./02_getting_started.html" ><span>02</span>Getting Started</a><a href="./03_data_types.html" aria-current="page"><span>03</span>Data Types</a><a href="./04_constructs.html" ><span>04</span>Language Constructs</a><a href="./05_operators.html" ><span>05</span>Operators</a><a href="./06_control_flow.html" ><span>06</span>Control Flow</a><a href="./07_built_in_functions.html" ><span>07</span>Built-in Functions</a><a href="./08_primitive_modules.html" ><span>08</span>Primitive Modules</a><a href="./09_external_modules.html" ><span>09</span>External Modules</a></nav><div class="sidebar-footer"><a href="https://github.com/nathsou/yodl">GitHub ↗</a><span>Yodl 0.3.1 · ba5bac6</span></div></div></details></aside>
+<main id="content" tabindex="-1"><div class="chapter-meta"><span class="eyebrow">LANGUAGE GUIDE</span><span>03 / 09</span></div><article><h1 id="data-types"><a class="heading-anchor" href="#data-types">Data Types</a></h1>
+<h2 id="ground-types"><a class="heading-anchor" href="#ground-types">Ground Types</a></h2>
+<h3 id="integer-types"><a class="heading-anchor" href="#integer-types">Integer types</a></h3>
 <p>Yodl supports two integer types, which require a width specifier:</p>
-<div class="table-wrapper"><table><thead><tr><th>Form</th><th>Example</th><th>When to use</th></tr></thead><tbody>
+<table>
+<thead>
+<tr><th>Form</th><th>Example</th><th>When to use</th></tr>
+</thead>
+<tbody>
 <tr><td><code>uN</code> / <code>sN</code></td><td><code>u8</code>, <code>u32</code>, <code>s7</code></td><td>Width is a literal</td></tr>
-<tr><td><code>uint[expr]</code> / <code>sint[expr]</code></td><td><code>uint[clog2!(N)]</code>, <code>sint[W + 1], uint&lt;8&gt;</code></td><td>Width is a compile-time expression</td></tr>
-</tbody></table>
-</div>
-<h4 id="unsigned-integers"><a class="header" href="#unsigned-integers">Unsigned Integers</a></h4>
-<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    // a 16-bit unsigned integer
-    let a: u16
-    a = 16'd1721
-<span class="boring"> }
-</span></code></pre>
-<h4 id="signed-integers"><a class="header" href="#signed-integers">Signed Integers</a></h4>
-<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    // a 7-bit signed ingeger
-    let b: s7 = -6'd8
-    let c: s32 = sint!(32'd11)
-<span class="boring"> }
-</span></code></pre>
+<tr><td><code>uint[expr]</code> / <code>sint[expr]</code></td><td><code>uint[clog2!(N)]</code>, <code>sint[W + 1]</code></td><td>Width is a compile-time expression</td></tr>
+</tbody>
+</table>
+<h4 id="unsigned-integers"><a class="heading-anchor" href="#unsigned-integers">Unsigned Integers</a></h4>
+<section class="code-example" id="ex-unsigned-integers" aria-label="Example: unsigned integers">
+    <div class="example-header"><a class="example-title" href="#ex-unsigned-integers"><span class="file-dot"></span>Yodl <span class="example-number">/ unsigned integers</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-comment">// a 16-bit unsigned integer</span>
+<span class="token-keyword">let</span> a: <span class="token-type">u16</span>
+a = <span class="token-number">16&#39;d1721</span></code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h4 id="signed-integers"><a class="heading-anchor" href="#signed-integers">Signed Integers</a></h4>
+<section class="code-example" id="ex-signed-integers" aria-label="Example: signed integers">
+    <div class="example-header"><a class="example-title" href="#ex-signed-integers"><span class="file-dot"></span>Yodl <span class="example-number">/ signed integers</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-comment">// a 7-bit signed integer</span>
+<span class="token-keyword">let</span> b: <span class="token-type">s7</span> = -<span class="token-number">6&#39;d8</span>
+<span class="token-keyword">let</span> c: <span class="token-type">s32</span> = <span class="token-function">sint!</span>(<span class="token-number">32&#39;d11</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
 <p>Integer literals can be specified in decimal, binary, octal, or hexadecimal format.
 The syntax is <code>&lt;width in bits&gt;'[base prefix]&lt;value&gt;</code></p>
 <p>The decimal value <code>1621</code> which requires at least 11 bits can be represented as follows:</p>
-<div class="table-wrapper"><table><thead><tr><th>prefix</th><th>base</th><th>example</th></tr></thead><tbody>
+<table>
+<thead>
+<tr><th>prefix</th><th>base</th><th>example</th></tr>
+</thead>
+<tbody>
 <tr><td><code>b</code></td><td>2</td><td><code>11'b11001010101</code></td></tr>
 <tr><td><code>o</code></td><td>8</td><td><code>11'o3125</code></td></tr>
 <tr><td><code>d</code></td><td>10</td><td><code>11'd1621</code></td></tr>
 <tr><td><code>h</code></td><td>16</td><td><code>11'h655</code></td></tr>
-</tbody></table>
-</div>
+</tbody>
+</table>
 <p>When an integer value is assigned to a same-signed integer type, Yodl resizes
 it to the destination width. Widening an unsigned value zero-extends it,
 widening a signed value sign-extends it, and narrowing keeps the least
@@ -201,152 +66,185 @@ that exact type. Negative values are rejected by unsigned contexts and must fit
 the two's-complement range of a signed context. Static <code>Nat</code> parameters and
 width expressions are evaluated in the separate static/index language; they
 are not runtime signal types.</p>
-<h3 id="booleans"><a class="header" href="#booleans">Booleans</a></h3>
+<h3 id="try-a-width-error"><a class="heading-anchor" href="#try-a-width-error">Try a width error</a></h3>
+<p>An unsized literal must fit the width supplied by its context. Compile this example to see the
+error, then change <code>u8</code> to <code>u9</code> so that the value fits.</p>
+<section class="code-example" id="ex-literal-overflow" aria-label="Example: literal overflow">
+    <div class="example-header"><a class="example-title" href="#ex-literal-overflow"><span class="file-dot"></span>Yodl <span class="example-number">/ literal overflow</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">module</span> WidthError() -&gt; (value: <span class="token-type">u8</span>) {
+    value = <span class="token-number">256</span>
+}</code></pre>
+    <p class="example-note">This example intentionally produces a compiler error. Edit it to explore the diagnostic.</p>
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h3 id="booleans"><a class="heading-anchor" href="#booleans">Booleans</a></h3>
 <p>The <code>bool</code> type is an alias for the <code>u1</code> type.</p>
 <p>For readability, the <code>true</code> and <code>false</code> keywords are supported and correspond to <code>1'b1</code> and <code>1'b0</code> respectively.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let is_yodl_neat: bool = true
-<span class="boring"> }
-</span></code></pre>
-<h3 id="clocks"><a class="header" href="#clocks">Clocks</a></h3>
+<section class="code-example" id="ex-booleans" aria-label="Example: booleans">
+    <div class="example-header"><a class="example-title" href="#ex-booleans"><span class="file-dot"></span>Yodl <span class="example-number">/ booleans</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> is_yodl_neat: <span class="token-type">bool</span> = <span class="token-keyword">true</span></code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h3 id="clocks"><a class="heading-anchor" href="#clocks">Clocks</a></h3>
 <p>The <code>clock</code> type is required for clock signals used in <code>Reg</code> and <code>Memory</code> module instances.</p>
-<pre><code class="language-yodl">module Counter(clk: clock) -&gt; (count: u24) {
-    let counter = Reg[u24](clk)
-    counter.d = counter.q + 1'd1
+<section class="code-example" id="ex-clocks" aria-label="Example: clocks">
+    <div class="example-header"><a class="example-title" href="#ex-clocks"><span class="file-dot"></span>Yodl <span class="example-number">/ clocks</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">module</span> Counter(clk: <span class="token-type">clock</span>) -&gt; (count: <span class="token-type">u24</span>) {
+    <span class="token-keyword">let</span> counter = Reg[<span class="token-type">u24</span>](clk)
+    counter.d = counter.q + <span class="token-number">1&#39;d1</span>
     count = counter.q
-}
-</code></pre>
-<h2 id="aggregate-types"><a class="header" href="#aggregate-types">Aggregate Types</a></h2>
+}</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="aggregate-types"><a class="heading-anchor" href="#aggregate-types">Aggregate Types</a></h2>
 <p>Ground types can be combined to create more complex data structures.</p>
-<h2 id="vectors"><a class="header" href="#vectors">Vectors</a></h2>
+<h2 id="vectors"><a class="heading-anchor" href="#vectors">Vectors</a></h2>
 <p>Vectors are ordered and sized collections of elements.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    // a vector of eight booleans
-    let neighbours: [8]bool = [false, false, true, false, true, false, true, false]
+<section class="code-example" id="ex-vectors" aria-label="Example: vectors">
+    <div class="example-header"><a class="example-title" href="#ex-vectors"><span class="file-dot"></span>Yodl <span class="example-number">/ vectors</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-comment">// a vector of eight booleans</span>
+<span class="token-keyword">let</span> neighbours: [<span class="token-number">8</span>]<span class="token-type">bool</span> = [<span class="token-keyword">false</span>, <span class="token-keyword">false</span>, <span class="token-keyword">true</span>, <span class="token-keyword">false</span>, <span class="token-keyword">true</span>, <span class="token-keyword">false</span>, <span class="token-keyword">true</span>, <span class="token-keyword">false</span>]
 
-    // a vector of four 16-bit unsigned integers
-    let ints: [4]u16 = [16'd1, 16'd12, 16'd3, 16'd4]
-<span class="boring"> }
-</span></code></pre>
+<span class="token-comment">// a vector of four 16-bit unsigned integers</span>
+<span class="token-keyword">let</span> ints: [<span class="token-number">4</span>]<span class="token-type">u16</span> = [<span class="token-number">16&#39;d1</span>, <span class="token-number">16&#39;d12</span>, <span class="token-number">16&#39;d3</span>, <span class="token-number">16&#39;d4</span>]</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
 <blockquote>
 <p><strong>Note</strong>: Instead of storing multiple register instances in a vector, define a single register instance with a vector type:</p>
 </blockquote>
-<pre><code class="language-yodl">module RegisterFile(
-    clk: clock,
-    rst: bool,
-    write_enable: bool,
-    write_dest: u3,
-    write_data: u16,
-    read_src1: u3,
-    read_src2: u3,
+<section class="code-example" id="ex-vectors-2" aria-label="Example: vectors 2">
+    <div class="example-header"><a class="example-title" href="#ex-vectors-2"><span class="file-dot"></span>Yodl <span class="example-number">/ vectors 2</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">module</span> RegisterFile(
+    clk: <span class="token-type">clock</span>,
+    rst: <span class="token-type">bool</span>,
+    write_enable: <span class="token-type">bool</span>,
+    write_dest: <span class="token-type">u3</span>,
+    write_data: <span class="token-type">u16</span>,
+    read_src1: <span class="token-type">u3</span>,
+    read_src2: <span class="token-type">u3</span>,
 ) -&gt; (
-    read_data1: u16,
-    read_data2: u16,
+    read_data1: <span class="token-type">u16</span>,
+    read_data2: <span class="token-type">u16</span>,
 ) {
-    // A register storing a vector of eight 16-bit unsigned integers
-    let regs = Reg[[8]u16](clk, rst)
+    <span class="token-comment">// A register storing a vector of eight 16-bit unsigned integers</span>
+    <span class="token-keyword">let</span> regs = Reg[[<span class="token-number">8</span>]<span class="token-type">u16</span>](clk, rst)
 
-    if write_enable {
+    <span class="token-keyword">if</span> write_enable {
         regs.d[write_dest] = write_data
     }
 
     read_data1 = regs.q[read_src1]
     read_data2 = regs.q[read_src2]
-}
-</code></pre>
-<h2 id="characters-and-strings"><a class="header" href="#characters-and-strings">Characters and Strings</a></h2>
+}</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="characters-and-strings"><a class="heading-anchor" href="#characters-and-strings">Characters and Strings</a></h2>
 <p>Characters use the ISO 8601 encoding (extended ASCII).</p>
-<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let char: u8 = 'a'
-<span class="boring"> }
-</span></code></pre>
-<h3 id="escape-sequences"><a class="header" href="#escape-sequences">Escape sequences</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Sequence</th><th>Description</th></tr></thead><tbody>
+<section class="code-example" id="ex-characters-and-strings" aria-label="Example: characters and strings">
+    <div class="example-header"><a class="example-title" href="#ex-characters-and-strings"><span class="file-dot"></span>Yodl <span class="example-number">/ characters and strings</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> char: <span class="token-type">u8</span> = &#39;a&#39;</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h3 id="escape-sequences"><a class="heading-anchor" href="#escape-sequences">Escape sequences</a></h3>
+<table>
+<thead>
+<tr><th>Sequence</th><th>Description</th></tr>
+</thead>
+<tbody>
 <tr><td><code>\n</code></td><td>Newline</td></tr>
 <tr><td><code>\t</code></td><td>Tab</td></tr>
 <tr><td><code>\\</code></td><td>Backslash</td></tr>
 <tr><td><code>\'</code></td><td>Single quote</td></tr>
-</tbody></table>
-</div>
-<h3 id="strings"><a class="header" href="#strings">Strings</a></h3>
+</tbody>
+</table>
+<h3 id="strings"><a class="heading-anchor" href="#strings">Strings</a></h3>
 <p>Strings are fixed-length vectors of characters.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let message: [9]u8 = "Yo, Yodl!"
-<span class="boring"> }
-</span></code></pre>
+<section class="code-example" id="ex-strings" aria-label="Example: strings">
+    <div class="example-header"><a class="example-title" href="#ex-strings"><span class="file-dot"></span>Yodl <span class="example-number">/ strings</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> message: [<span class="token-number">9</span>]<span class="token-type">u8</span> = <span class="token-string">&quot;Yo, Yodl!&quot;</span></code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
 <p>Individual characters can be accessed using the following syntax:</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let first_char = "Yo!"[0]
-    assert!(first_char == 'Y')
-<span class="boring"> }
-</span></code></pre>
-<h2 id="records"><a class="header" href="#records">Records</a></h2>
+<section class="code-example" id="ex-strings-2" aria-label="Example: strings 2">
+    <div class="example-header"><a class="example-title" href="#ex-strings-2"><span class="file-dot"></span>Yodl <span class="example-number">/ strings 2</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> first_char = <span class="token-string">&quot;Yo!&quot;</span>[<span class="token-number">0</span>]
+<span class="token-function">assert!</span>(first_char == &#39;Y&#39;)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="records"><a class="heading-anchor" href="#records">Records</a></h2>
 <p>Records group a fixed number of values, accessed either by position or by name.
 They subsume what other languages call <em>tuples</em> (positional) and <em>structs</em> /
 <em>bundles</em> (named).</p>
-<h3 id="positional-records-tuples"><a class="header" href="#positional-records-tuples">Positional records (tuples)</a></h3>
+<span id="tuples"></span><h3 id="positional-records-tuples"><a class="heading-anchor" href="#positional-records-tuples">Positional records (tuples)</a></h3>
 <p>Fields are accessed by their index (<code>.0</code>, <code>.1</code>, ...). A 1-element positional
 record requires a trailing comma to distinguish it from a parenthesised
 expression.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let pair: (bool, u8) = (true, 8'hFF)
-    let single: (u8,) = (8'hFF,)
-    let nested: ((a: [1]u4, b: bool), (bool, u8), u1) =
-        ((a: [4'd1], b: false), pair, 1'b0)
+<section class="code-example" id="ex-positional-records-tuples" aria-label="Example: positional records tuples">
+    <div class="example-header"><a class="example-title" href="#ex-positional-records-tuples"><span class="file-dot"></span>Yodl <span class="example-number">/ positional records tuples</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> pair: (<span class="token-type">bool</span>, <span class="token-type">u8</span>) = (<span class="token-keyword">true</span>, <span class="token-number">8&#39;hFF</span>)
+<span class="token-keyword">let</span> single: (<span class="token-type">u8</span>,) = (<span class="token-number">8&#39;hFF</span>,)
+<span class="token-keyword">let</span> nested: ((a: [<span class="token-number">1</span>]<span class="token-type">u4</span>, b: <span class="token-type">bool</span>), (<span class="token-type">bool</span>, <span class="token-type">u8</span>), <span class="token-type">u1</span>) =
+    ((a: [<span class="token-number">4&#39;d1</span>], b: <span class="token-keyword">false</span>), pair, <span class="token-number">1&#39;b0</span>)
 
-    let first: bool = pair.0 // true
-    let second: u8 = pair.1 // 8'hFF
-<span class="boring"> }
-</span></code></pre>
-<h3 id="named-records-structs--bundles"><a class="header" href="#named-records-structs--bundles">Named records (structs / bundles)</a></h3>
+<span class="token-keyword">let</span> first: <span class="token-type">bool</span> = pair.<span class="token-number">0</span> <span class="token-comment">// true</span>
+<span class="token-keyword">let</span> second: <span class="token-type">u8</span> = pair.<span class="token-number">1</span> <span class="token-comment">// 8&#39;hFF</span></code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<span id="structs"></span><h3 id="named-records-structs-bundles"><a class="heading-anchor" href="#named-records-structs-bundles">Named records (structs / bundles)</a></h3>
 <p>Fields are named. This is what other HDLs call a <em>bundle</em> (Chisel/FIRRTL) or
 <em>struct</em> (SystemVerilog).</p>
-<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let colour: (r: u8, g: u8, b: u8) = (r: 8'd17, g: 8'd128, b: 8'd211)
-    let red = colour.r
-<span class="boring"> }
-</span></code></pre>
+<section class="code-example" id="ex-named-records-structs-bundles" aria-label="Example: named records structs bundles">
+    <div class="example-header"><a class="example-title" href="#ex-named-records-structs-bundles"><span class="file-dot"></span>Yodl <span class="example-number">/ named records structs bundles</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> colour: (r: <span class="token-type">u8</span>, g: <span class="token-type">u8</span>, b: <span class="token-type">u8</span>) = (r: <span class="token-number">8&#39;d17</span>, g: <span class="token-number">8&#39;d128</span>, b: <span class="token-number">8&#39;d211</span>)
+<span class="token-keyword">let</span> red = colour.r</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
 <p>A named record can be partially updated by spreading another record with <code>..base</code>
 followed by overriding fields. Spread is only allowed in named records.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test() -&gt; () {
-</span>    let base = (r: 8'd17, g: 8'd128, b: 8'd211)
-    let darker = (..base, r: 8'd0)
-<span class="boring"> }
-</span></code></pre>
+<section class="code-example" id="ex-named-records-structs-bundles-2" aria-label="Example: named records structs bundles 2">
+    <div class="example-header"><a class="example-title" href="#ex-named-records-structs-bundles-2"><span class="file-dot"></span>Yodl <span class="example-number">/ named records structs bundles 2</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> base = (r: <span class="token-number">8&#39;d17</span>, g: <span class="token-number">8&#39;d128</span>, b: <span class="token-number">8&#39;d211</span>)
+<span class="token-keyword">let</span> darker = (..base, r: <span class="token-number">8&#39;d0</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
 <p>Mixing positional and named fields in a single record is not allowed: a record
 is either fully positional or fully named.</p>
-<h3 id="records-and-module-signatures"><a class="header" href="#records-and-module-signatures">Records and module signatures</a></h3>
+<h3 id="records-and-module-signatures"><a class="heading-anchor" href="#records-and-module-signatures">Records and module signatures</a></h3>
 <p>Because a module's input and output port lists use the same <code>(name: type, ...)</code>
 syntax as named record types, a module signature is literally a function from a
 record of inputs to a record of outputs. Module instantiation passes a record of
 named ports:</p>
-<pre><code class="language-yodl"><span class="boring"> module Adder(a: u8, b: u8) -&gt; (sum: u9) {
-</span><span class="boring">     sum = a + b
-</span><span class="boring"> }
-</span><span class="boring"> module Test() -&gt; () {
-</span>    let r = Adder(a: 8'd1, b: 8'd2)
-<span class="boring"> }
-</span></code></pre>
-<h3 id="instance-types"><a class="header" href="#instance-types">Instance Types</a></h3>
+<section class="code-example" id="ex-records-and-module-signatures" aria-label="Example: records and module signatures">
+    <div class="example-header"><a class="example-title" href="#ex-records-and-module-signatures"><span class="file-dot"></span>Yodl <span class="example-number">/ records and module signatures</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> r = Adder(a: <span class="token-number">8&#39;d1</span>, b: <span class="token-number">8&#39;d2</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h3 id="instance-types"><a class="heading-anchor" href="#instance-types">Instance Types</a></h3>
 <p>The type of a module instance behaves like a named record corresponding to the
 port signature of the module.</p>
 <p>Note: Instance types are not compatible with named record types because only the
 ports which are accessed on a particular instance are included in the resulting
 type.</p>
-<pre><code class="language-yodl">module Adder(a: u8, b: u8) -&gt; (sum: u9) {
+<section class="code-example" id="ex-instance-types" aria-label="Example: instance types">
+    <div class="example-header"><a class="example-title" href="#ex-instance-types"><span class="file-dot"></span>Yodl <span class="example-number">/ instance types</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">module</span> Adder(a: <span class="token-type">u8</span>, b: <span class="token-type">u8</span>) -&gt; (sum: <span class="token-type">u9</span>) {
     sum = a + b;
 }
 
-module Top() -&gt; () {
-    let adder = Adder()
-    adder.a = 8'd1
-    adder.b = 8'd2
-    let sum = adder.sum
-}
-</code></pre>
-<h1 id="structural-typing"><a class="header" href="#structural-typing">Structural Typing</a></h1>
+<span class="token-keyword">module</span> Top() -&gt; () {
+    <span class="token-keyword">let</span> adder = Adder()
+    adder.a = <span class="token-number">8&#39;d1</span>
+    adder.b = <span class="token-number">8&#39;d2</span>
+    <span class="token-keyword">let</span> sum = adder.sum
+}</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="structural-typing"><a class="heading-anchor" href="#structural-typing">Structural Typing</a></h2>
 <p>Yodl's type system is structural (except for instance types), which means that two types are compatible if they have the same shape.</p>
-<div class="table-wrapper"><table><thead><tr><th>Type A</th><th>Type B</th><th>Compatible?</th></tr></thead><tbody>
+<table>
+<thead>
+<tr><th>Type A</th><th>Type B</th><th>Compatible?</th></tr>
+</thead>
+<tbody>
 <tr><td><code>u8</code></td><td><code>u8</code></td><td>Yes</td></tr>
 <tr><td><code>u1</code></td><td><code>bool</code></td><td>Yes</td></tr>
 <tr><td><code>(a: u16, b: bool)</code></td><td><code>(b: bool, a: u16)</code></td><td>Yes</td></tr>
@@ -355,57 +253,13 @@ module Top() -&gt; () {
 <tr><td><code>[8][8]u8</code></td><td><code>[64]u8</code></td><td>No</td></tr>
 <tr><td><code>Adder</code></td><td><code>Adder</code></td><td>Yes</td></tr>
 <tr><td><code>Adder</code></td><td><code>(a: u8, b: u8, sum: u9)</code></td><td>No</td></tr>
-</tbody></table>
-</div>
-                    </main>
-
-                    <nav class="nav-wrapper" aria-label="Page navigation">
-                        <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="02_getting_started.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
-                                <i class="fa fa-angle-left"></i>
-                            </a>
-
-                            <a rel="next prefetch" href="04_constructs.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
-
-                        <div style="clear: both"></div>
-                    </nav>
-                </div>
-            </div>
-
-            <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="02_getting_started.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
-                        <i class="fa fa-angle-left"></i>
-                    </a>
-
-                    <a rel="next prefetch" href="04_constructs.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
-            </nav>
-
-        </div>
-
-
-
-
-        <script>
-            window.playground_copyable = true;
-        </script>
-
-
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
-
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
-
-        <!-- Custom JS scripts -->
-        <script src="theme/yodl-highlight.js"></script>
-
-
-    </div>
-    </body>
-</html>
+</tbody>
+</table>
+</article>
+<section class="related-lessons"><p class="eyebrow">PUT IT INTO PRACTICE</p><h2>Explore in the guided tour</h2><a href="../playground.html?lesson=widths">Give every bit a place <span>→</span></a><a href="../playground.html?lesson=records">Name a group of signals <span>→</span></a></section>
+<nav class="page-navigation" aria-label="Previous and next chapters"><a href="./02_getting_started.html"><small>← Previous</small>Getting Started</a><a href="./04_constructs.html"><small>Next →</small>Language Constructs</a></nav><footer class="article-footer"><a href="https://github.com/nathsou/yodl/edit/main/book/src/03_data_types.md">Edit this page ↗</a><span>Examples compile locally in your browser.</span></footer></main>
+<aside class="page-toc"><p class="eyebrow">ON THIS PAGE</p><nav aria-label="On this page"><a href="#ground-types" class="toc-level-2">Ground Types</a><a href="#integer-types" class="toc-level-3">Integer types</a><a href="#try-a-width-error" class="toc-level-3">Try a width error</a><a href="#booleans" class="toc-level-3">Booleans</a><a href="#clocks" class="toc-level-3">Clocks</a><a href="#aggregate-types" class="toc-level-2">Aggregate Types</a><a href="#vectors" class="toc-level-2">Vectors</a><a href="#characters-and-strings" class="toc-level-2">Characters and Strings</a><a href="#escape-sequences" class="toc-level-3">Escape sequences</a><a href="#strings" class="toc-level-3">Strings</a><a href="#records" class="toc-level-2">Records</a><a href="#positional-records-tuples" class="toc-level-3">Positional records (tuples)</a><a href="#named-records-structs-bundles" class="toc-level-3">Named records (structs / bundles)</a><a href="#records-and-module-signatures" class="toc-level-3">Records and module signatures</a><a href="#instance-types" class="toc-level-3">Instance Types</a><a href="#structural-typing" class="toc-level-2">Structural Typing</a></nav><a class="back-top" href="#content">Back to top ↑</a></aside></div>
+<dialog id="search-dialog"><div class="search-header"><label for="search-input" class="sr-only">Search documentation</label><input id="search-input" type="search" placeholder="Search concepts, syntax, and examples…" autocomplete="off"><button id="search-close" aria-label="Close search">Esc</button></div><p id="search-status" role="status">Type to search all chapters.</p><div id="search-results"></div></dialog>
+<dialog id="confirm-dialog"><h2 id="confirm-title">Reset this example?</h2><p id="confirm-message">Your local edits will be replaced by the original source.</p><form method="dialog"><button value="cancel">Keep edits</button><button value="reset" class="primary">Reset source</button></form></dialog>
+<dialog id="share-dialog"><h2>Share this example</h2><p>The link includes your edits and selected compiler stage. It uses the deployed compiler version.</p><input id="share-url" aria-label="Share URL" readonly><form method="dialog"><button>Close</button><button type="button" id="share-copy" class="primary">Copy link</button></form></dialog>
+<script id="chapter-data" type="application/json">{"slug":"03_data_types","version":"0.3.1","revision":"ba5bac6","examples":[{"id":"ex-unsigned-integers","title":"unsigned integers","source":"module Test() -> () {\n    // a 16-bit unsigned integer\n    let a: u16\n    a = 16'd1721\n}\n","display":"// a 16-bit unsigned integer\nlet a: u16\na = 16'd1721","path":"book/src/03_data_types/ex-unsigned-integers.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"32a8eed934f30409","live":true,"expect":"success","line":16},{"id":"ex-signed-integers","title":"signed integers","source":"module Test() -> () {\n    // a 7-bit signed integer\n    let b: s7 = -6'd8\n    let c: s32 = sint!(32'd11)\n}\n","display":"// a 7-bit signed integer\nlet b: s7 = -6'd8\nlet c: s32 = sint!(32'd11)","path":"book/src/03_data_types/ex-signed-integers.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"6081936c0c540c3d","live":true,"expect":"success","line":26},{"id":"ex-literal-overflow","title":"literal overflow","source":"module WidthError() -> (value: u8) {\n    value = 256\n}\n","display":"module WidthError() -> (value: u8) {\n    value = 256\n}","path":"book/src/03_data_types/ex-literal-overflow.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"0fb33d382a5dfd94","live":true,"expect":"error","line":66},{"id":"ex-booleans","title":"booleans","source":"module Test() -> () {\n    let is_yodl_neat: bool = true\n}\n","display":"let is_yodl_neat: bool = true","path":"book/src/03_data_types/ex-booleans.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"ec512f68ce59b5fe","live":true,"expect":"success","line":78},{"id":"ex-clocks","title":"clocks","source":"module Counter(clk: clock) -> (count: u24) {\n    let counter = Reg[u24](clk)\n    counter.d = counter.q + 1'd1\n    count = counter.q\n}\n","display":"module Counter(clk: clock) -> (count: u24) {\n    let counter = Reg[u24](clk)\n    counter.d = counter.q + 1'd1\n    count = counter.q\n}","path":"book/src/03_data_types/ex-clocks.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"14aa6809056f2be4","live":true,"expect":"success","line":88},{"id":"ex-vectors","title":"vectors","source":"module Test() -> () {\n    // a vector of eight booleans\n    let neighbours: [8]bool = [false, false, true, false, true, false, true, false]\n\n    // a vector of four 16-bit unsigned integers\n    let ints: [4]u16 = [16'd1, 16'd12, 16'd3, 16'd4]\n}\n","display":"// a vector of eight booleans\nlet neighbours: [8]bool = [false, false, true, false, true, false, true, false]\n\n// a vector of four 16-bit unsigned integers\nlet ints: [4]u16 = [16'd1, 16'd12, 16'd3, 16'd4]","path":"book/src/03_data_types/ex-vectors.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"de7e2ad3a95ab1ce","live":true,"expect":"success","line":104},{"id":"ex-vectors-2","title":"vectors 2","source":"module RegisterFile(\n    clk: clock,\n    rst: bool,\n    write_enable: bool,\n    write_dest: u3,\n    write_data: u16,\n    read_src1: u3,\n    read_src2: u3,\n) -> (\n    read_data1: u16,\n    read_data2: u16,\n) {\n    // A register storing a vector of eight 16-bit unsigned integers\n    let regs = Reg[[8]u16](clk, rst)\n\n    if write_enable {\n        regs.d[write_dest] = write_data\n    }\n\n    read_data1 = regs.q[read_src1]\n    read_data2 = regs.q[read_src2]\n}\n","display":"module RegisterFile(\n    clk: clock,\n    rst: bool,\n    write_enable: bool,\n    write_dest: u3,\n    write_data: u16,\n    read_src1: u3,\n    read_src2: u3,\n) -> (\n    read_data1: u16,\n    read_data2: u16,\n) {\n    // A register storing a vector of eight 16-bit unsigned integers\n    let regs = Reg[[8]u16](clk, rst)\n\n    if write_enable {\n        regs.d[write_dest] = write_data\n    }\n\n    read_data1 = regs.q[read_src1]\n    read_data2 = regs.q[read_src2]\n}","path":"book/src/03_data_types/ex-vectors-2.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"96497f7b3ea3066a","live":true,"expect":"success","line":116},{"id":"ex-characters-and-strings","title":"characters and strings","source":"module Test() -> () {\n    let char: u8 = 'a'\n}\n","display":"let char: u8 = 'a'","path":"book/src/03_data_types/ex-characters-and-strings.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"b6154ea3d801147c","live":true,"expect":"success","line":145},{"id":"ex-strings","title":"strings","source":"module Test() -> () {\n    let message: [9]u8 = \"Yo, Yodl!\"\n}\n","display":"let message: [9]u8 = \"Yo, Yodl!\"","path":"book/src/03_data_types/ex-strings.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"fe10bc98002eea63","live":true,"expect":"success","line":164},{"id":"ex-strings-2","title":"strings 2","source":"module Test(clk: clock) -> () {\n    let first_char = \"Yo!\"[0]\n    assert!(first_char == 'Y')\n}\n","display":"let first_char = \"Yo!\"[0]\nassert!(first_char == 'Y')","path":"book/src/03_data_types/ex-strings-2.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"2868a0b315b95a88","live":true,"expect":"success","line":172},{"id":"ex-positional-records-tuples","title":"positional records tuples","source":"module Test() -> () {\n    let pair: (bool, u8) = (true, 8'hFF)\n    let single: (u8,) = (8'hFF,)\n    let nested: ((a: [1]u4, b: bool), (bool, u8), u1) =\n        ((a: [4'd1], b: false), pair, 1'b0)\n\n    let first: bool = pair.0 // true\n    let second: u8 = pair.1 // 8'hFF\n}\n","display":"let pair: (bool, u8) = (true, 8'hFF)\nlet single: (u8,) = (8'hFF,)\nlet nested: ((a: [1]u4, b: bool), (bool, u8), u1) =\n    ((a: [4'd1], b: false), pair, 1'b0)\n\nlet first: bool = pair.0 // true\nlet second: u8 = pair.1 // 8'hFF","path":"book/src/03_data_types/ex-positional-records-tuples.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"bf49bc1d7014711b","live":true,"expect":"success","line":191},{"id":"ex-named-records-structs-bundles","title":"named records structs bundles","source":"module Test() -> () {\n    let colour: (r: u8, g: u8, b: u8) = (r: 8'd17, g: 8'd128, b: 8'd211)\n    let red = colour.r\n}\n","display":"let colour: (r: u8, g: u8, b: u8) = (r: 8'd17, g: 8'd128, b: 8'd211)\nlet red = colour.r","path":"book/src/03_data_types/ex-named-records-structs-bundles.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"ad2fbeb4fa24b27d","live":true,"expect":"success","line":208},{"id":"ex-named-records-structs-bundles-2","title":"named records structs bundles 2","source":"module Test() -> () {\n    let base = (r: 8'd17, g: 8'd128, b: 8'd211)\n    let darker = (..base, r: 8'd0)\n}\n","display":"let base = (r: 8'd17, g: 8'd128, b: 8'd211)\nlet darker = (..base, r: 8'd0)","path":"book/src/03_data_types/ex-named-records-structs-bundles-2.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"ce52fef606d1438f","live":true,"expect":"success","line":218},{"id":"ex-records-and-module-signatures","title":"records and module signatures","source":"module Adder(a: u8, b: u8) -> (sum: u9) {\n    sum = a + b\n}\nmodule Test() -> () {\n    let r = Adder(a: 8'd1, b: 8'd2)\n}\n","display":"let r = Adder(a: 8'd1, b: 8'd2)","path":"book/src/03_data_types/ex-records-and-module-signatures.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"c3f9a8bc7d33f2e1","live":true,"expect":"success","line":235},{"id":"ex-instance-types","title":"instance types","source":"module Adder(a: u8, b: u8) -> (sum: u9) {\n    sum = a + b;\n}\n\nmodule Top() -> () {\n    let adder = Adder()\n    adder.a = 8'd1\n    adder.b = 8'd2\n    let sum = adder.sum\n}\n","display":"module Adder(a: u8, b: u8) -> (sum: u9) {\n    sum = a + b;\n}\n\nmodule Top() -> () {\n    let adder = Adder()\n    adder.a = 8'd1\n    adder.b = 8'd2\n    let sum = adder.sum\n}","path":"book/src/03_data_types/ex-instance-types.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"2de066461ab7c338","live":true,"expect":"success","line":253}]}</script><script type="module" src="../bundle/docs.js"></script></body></html>

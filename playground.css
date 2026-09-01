@@ -1,33 +1,5 @@
-:root {
-    color-scheme: light;
-    --background: #f7f9f6;
-    --surface: #ffffff;
-    --surface-soft: #f0f4ef;
-    --text: #25362b;
-    --muted: #647168;
-    --border: #dce3dc;
-    --accent: #286446;
-    --accent-soft: #e4efe5;
-    --button-text: #ffffff;
-    --error: #a63730;
-    --error-bg: #fff4f1;
-    --focus: #42866a;
-}
-[data-theme="dark"] {
-    color-scheme: dark;
-    --background: #171d19;
-    --surface: #1d241f;
-    --surface-soft: #242e27;
-    --text: #e1e9e2;
-    --muted: #a3b1a6;
-    --border: #354139;
-    --accent: #9ad7af;
-    --accent-soft: #283f30;
-    --button-text: #16261c;
-    --error: #ffb3a6;
-    --error-bg: #352622;
-    --focus: #9ad7af;
-}
+@import "./theme.css";
+@import "./site-navigation.css";
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; height: 100vh; height: 100dvh; display: flex; flex-direction: column; background: var(--background); color: var(--text); font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; overflow: hidden; }
@@ -39,20 +11,13 @@ button:disabled, select:disabled { cursor: default; opacity: .45; }
 button:focus-visible, select:focus-visible, input:focus-visible, summary:focus-visible, a:focus-visible, [role="separator"]:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
 a { color: var(--muted); text-decoration: none; }
 a:hover { color: var(--accent); }
-.app-header { min-height: 68px; padding: 14px 24px; display: flex; align-items: center; gap: 28px; border-bottom: 1px solid var(--border); }
-.brand { display: inline-flex; align-items: center; gap: 14px; color: var(--text); font-size: 27px; font-weight: 650; letter-spacing: -1.2px; white-space: nowrap; }
-.brand-divider { color: var(--border); font-weight: 400; }
-.brand-caption { color: var(--muted); font-size: 14px; font-weight: 400; letter-spacing: 0; }
-.mode-switch { display: flex; gap: 3px; padding: 3px; border: 1px solid var(--border); border-radius: 8px; }
-.mode-switch button { background: transparent; border-color: transparent; min-height: 29px; padding: 3px 15px; }
-.mode-switch button[aria-pressed="true"], .mobile-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
-.header-actions { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 13px; }
-.header-actions select { max-width: 95px; }
+.mobile-tabs button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
 .workspace-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 24px; border-bottom: 1px solid var(--border); }
 .file-picker, .compile-controls { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .file-picker label { color: var(--muted); font-size: 12px; }
 .file-picker select { min-width: 260px; max-width: 100%; }
-.compile-controls { font-size: 12px; }
+.compile-controls { font-size: 12px; flex-wrap: wrap; }
+.workspace-toolbar { flex-wrap: wrap; }
 .auto-label { display: flex; align-items: center; gap: 7px; color: var(--muted); white-space: nowrap; }
 input[type="checkbox"] { accent-color: var(--accent); }
 .primary { background: var(--accent); color: var(--button-text); border-color: var(--accent); font-weight: 550; }
@@ -121,15 +86,10 @@ dialog input { display: block; width: 100%; padding: 10px; margin: 8px 0; border
 @media (max-width: 1100px) {
     .guide { width: 245px; flex-basis: 245px; }
     .guide-content { padding: 18px; }
-    .app-header { gap: 18px; }
     .panel-header { padding: 8px 10px; }
     .status-bar #save-status { display: none; }
 }
 @media (max-width: 820px) {
-    .app-header { flex-wrap: wrap; padding: 12px 16px; gap: 12px; }
-    .header-actions { gap: 10px; }
-    .brand { font-size: 23px; gap: 9px; }
-    .brand-caption { font-size: 12px; }
     .workspace-toolbar { padding: 10px 16px; }
     .main-layout { flex-direction: column; }
     .guide { width: 100%; flex: 0 0 auto; max-height: 42%; border-right: 0; border-bottom: 1px solid var(--border); }
@@ -140,10 +100,6 @@ dialog input { display: block; width: 100%; padding: 10px; margin: 8px 0; border
     .auto-label { font-size: 11px; }
 }
 @media (max-width: 580px) {
-    .app-header { gap: 12px; }
-    .mode-switch { margin-left: auto; }
-    .header-actions { width: 100%; margin: 0; }
-    .header-actions a { margin-right: auto; }
     .workspace-toolbar { flex-wrap: wrap; gap: 9px; }
     .file-picker { width: 100%; }
     .file-picker select { max-width: none; flex: 1; }
@@ -159,5 +115,5 @@ dialog input { display: block; width: 100%; padding: 10px; margin: 8px 0; border
 }
 @media (pointer: coarse) {
     button, select { min-height: 40px; }
-    .panel-actions button, .mode-switch button { min-height: 36px; }
+    .panel-actions button { min-height: 36px; }
 }

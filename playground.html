@@ -6,23 +6,17 @@
     <meta name="description" content="Learn Yodl step by step, experiment with hardware designs, and explore their compiler output in your browser.">
     <title>Yodl Playground</title>
     <link rel="stylesheet" href="./playground.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.56.0/min/vs/loader.min.js"
-        integrity="sha384-5Ubp2dzZW9MAJXGpSFXLlurRaPg3+ktYfisBzghShdarxz8R37mhDy2svDenxogJ" crossorigin="anonymous"></script>
+
 </head>
 <body>
-    <header class="app-header">
-        <a class="brand" href="https://nathsou.github.io/yodl/" aria-label="Yodl home">yodl<span class="brand-divider">/</span><span class="brand-caption">playground</span></a>
-        <nav class="mode-switch" aria-label="Workspace">
-            <button id="tour-mode" aria-pressed="true">Tour</button>
-            <button id="examples-mode" aria-pressed="false">Examples</button>
-        </nav>
-        <div class="header-actions">
-            <a href="https://nathsou.github.io/yodl/book/" target="_blank" rel="noopener">Docs ↗</a>
-            <button id="share-button" disabled>Share</button>
-            <label class="sr-only" for="theme-select">Color theme</label>
-            <select id="theme-select" title="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
-        </div>
-    </header>
+    <header class="site-header">
+<a class="site-brand" href="./book/" aria-label="Yodl home">yodl<span class="site-brand-divider">/</span><span class="site-section" id="site-section">playground</span></a>
+<nav class="site-navigation" aria-label="Yodl">
+<a href="./book/">Docs</a>
+<button id="tour-mode" aria-pressed="true">Tour</button><button id="examples-mode" aria-pressed="false">Playground</button>
+</nav>
+<label class="site-theme"><span class="sr-only">Color theme</span><select id="theme-select" title="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+</header>
     <div id="notice" class="notice" role="status" hidden></div>
     <div class="workspace-toolbar">
         <div class="file-picker">
@@ -30,6 +24,8 @@
             <select id="source-selector" disabled><option>Loading tour…</option></select>
         </div>
         <div class="compile-controls">
+            <a id="related-docs" href="./book/" hidden>Related chapter</a>
+            <button id="share-button" disabled>Share</button>
             <label class="auto-label"><input type="checkbox" id="auto-compile" checked> Auto-compile</label>
             <button class="primary" id="compile-button" disabled>Compile <kbd id="compile-shortcut">Ctrl ↵</kbd></button>
         </div>

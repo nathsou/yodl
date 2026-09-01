@@ -1,195 +1,63 @@
-<!DOCTYPE HTML>
-<html lang="en" class="light sidebar-visible" dir="ltr">
-    <head>
-        <!-- Book generated using mdBook -->
-        <meta charset="UTF-8">
-        <title>Operators - yodl</title>
-
-
-        <!-- Custom HTML head -->
-
-        <meta name="description" content="">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta name="theme-color" content="#ffffff">
-
-        <link rel="icon" href="favicon.svg">
-        <link rel="shortcut icon" href="favicon.png">
-        <link rel="stylesheet" href="css/variables.css">
-        <link rel="stylesheet" href="css/general.css">
-        <link rel="stylesheet" href="css/chrome.css">
-        <link rel="stylesheet" href="css/print.css" media="print">
-
-        <!-- Fonts -->
-        <link rel="stylesheet" href="FontAwesome/css/font-awesome.css">
-        <link rel="stylesheet" href="fonts/fonts.css">
-
-        <!-- Highlight.js Stylesheets -->
-        <link rel="stylesheet" href="highlight.css">
-        <link rel="stylesheet" href="tomorrow-night.css">
-        <link rel="stylesheet" href="ayu-highlight.css">
-
-        <!-- Custom theme stylesheets -->
-
-
-        <!-- Provide site root to javascript -->
-        <script>
-            var path_to_root = "";
-            var default_theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "navy" : "light";
-        </script>
-        <!-- Start loading toc.js asap -->
-        <script src="toc.js"></script>
-    </head>
-    <body>
-    <div id="body-container">
-        <!-- Work around some values being stored in localStorage wrapped in quotes -->
-        <script>
-            try {
-                var theme = localStorage.getItem('mdbook-theme');
-                var sidebar = localStorage.getItem('mdbook-sidebar');
-
-                if (theme.startsWith('"') && theme.endsWith('"')) {
-                    localStorage.setItem('mdbook-theme', theme.slice(1, theme.length - 1));
-                }
-
-                if (sidebar.startsWith('"') && sidebar.endsWith('"')) {
-                    localStorage.setItem('mdbook-sidebar', sidebar.slice(1, sidebar.length - 1));
-                }
-            } catch (e) { }
-        </script>
-
-        <!-- Set the theme before any content is loaded, prevents flash -->
-        <script>
-            var theme;
-            try { theme = localStorage.getItem('mdbook-theme'); } catch(e) { }
-            if (theme === null || theme === undefined) { theme = default_theme; }
-            const html = document.documentElement;
-            html.classList.remove('light')
-            html.classList.add(theme);
-            html.classList.add("js");
-        </script>
-
-        <input type="checkbox" id="sidebar-toggle-anchor" class="hidden">
-
-        <!-- Hide / unhide sidebar before it is displayed -->
-        <script>
-            var sidebar = null;
-            var sidebar_toggle = document.getElementById("sidebar-toggle-anchor");
-            if (document.body.clientWidth >= 1080) {
-                try { sidebar = localStorage.getItem('mdbook-sidebar'); } catch(e) { }
-                sidebar = sidebar || 'visible';
-            } else {
-                sidebar = 'hidden';
-            }
-            sidebar_toggle.checked = sidebar === 'visible';
-            html.classList.remove('sidebar-visible');
-            html.classList.add("sidebar-" + sidebar);
-        </script>
-
-        <nav id="sidebar" class="sidebar" aria-label="Table of contents">
-            <!-- populated by js -->
-            <mdbook-sidebar-scrollbox class="sidebar-scrollbox"></mdbook-sidebar-scrollbox>
-            <noscript>
-                <iframe class="sidebar-iframe-outer" src="toc.html"></iframe>
-            </noscript>
-            <div id="sidebar-resize-handle" class="sidebar-resize-handle">
-                <div class="sidebar-resize-indicator"></div>
-            </div>
-        </nav>
-
-        <div id="page-wrapper" class="page-wrapper">
-
-            <div class="page">
-                <div id="menu-bar-hover-placeholder"></div>
-                <div id="menu-bar" class="menu-bar sticky">
-                    <div class="left-buttons">
-                        <label id="sidebar-toggle" class="icon-button" for="sidebar-toggle-anchor" title="Toggle Table of Contents" aria-label="Toggle Table of Contents" aria-controls="sidebar">
-                            <i class="fa fa-bars"></i>
-                        </label>
-                        <button id="theme-toggle" class="icon-button" type="button" title="Change theme" aria-label="Change theme" aria-haspopup="true" aria-expanded="false" aria-controls="theme-list">
-                            <i class="fa fa-paint-brush"></i>
-                        </button>
-                        <ul id="theme-list" class="theme-popup" aria-label="Themes" role="menu">
-                            <li role="none"><button role="menuitem" class="theme" id="light">Light</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="rust">Rust</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="coal">Coal</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="navy">Navy</button></li>
-                            <li role="none"><button role="menuitem" class="theme" id="ayu">Ayu</button></li>
-                        </ul>
-                        <button id="search-toggle" class="icon-button" type="button" title="Search. (Shortkey: s)" aria-label="Toggle Searchbar" aria-expanded="false" aria-keyshortcuts="S" aria-controls="searchbar">
-                            <i class="fa fa-search"></i>
-                        </button>
-                    </div>
-
-                    <h1 class="menu-title">yodl</h1>
-
-                    <div class="right-buttons">
-                        <a href="print.html" title="Print this book" aria-label="Print this book">
-                            <i id="print-button" class="fa fa-print"></i>
-                        </a>
-                        <a href="https://github.com/nathsou/yodl" title="Git repository" aria-label="Git repository">
-                            <i id="git-repository-button" class="fa fa-github"></i>
-                        </a>
-
-                    </div>
-                </div>
-
-                <div id="search-wrapper" class="hidden">
-                    <form id="searchbar-outer" class="searchbar-outer">
-                        <input type="search" id="searchbar" name="searchbar" placeholder="Search this book ..." aria-controls="searchresults-outer" aria-describedby="searchresults-header">
-                    </form>
-                    <div id="searchresults-outer" class="searchresults-outer hidden">
-                        <div id="searchresults-header" class="searchresults-header"></div>
-                        <ul id="searchresults">
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- Apply ARIA attributes after the sidebar and the sidebar toggle button are added to the DOM -->
-                <script>
-                    document.getElementById('sidebar-toggle').setAttribute('aria-expanded', sidebar === 'visible');
-                    document.getElementById('sidebar').setAttribute('aria-hidden', sidebar !== 'visible');
-                    Array.from(document.querySelectorAll('#sidebar a')).forEach(function(link) {
-                        link.setAttribute('tabIndex', sidebar === 'visible' ? 0 : -1);
-                    });
-                </script>
-
-                <div id="content" class="content">
-                    <main>
-                        <h1 id="operators"><a class="header" href="#operators">Operators</a></h1>
-<h2 id="unary-operators"><a class="header" href="#unary-operators">Unary Operators</a></h2>
-<div class="table-wrapper"><table><thead><tr><th>Operator</th><th>Description</th><th>Example</th></tr></thead><tbody>
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Operators · Yodl</title><meta name="description" content="Operators in Yodl. Learn the language with editable examples and inspect the hardware compiler output."><meta property="og:title" content="Operators · Yodl"><meta property="og:description" content="Operators in Yodl. Learn the language with editable examples and inspect the hardware compiler output."><meta property="og:type" content="article"><meta name="color-scheme" content="light dark"><link rel="stylesheet" href="../docs.css"><script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('yodl-playground-v2:theme');document.documentElement.dataset.theme=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light'}catch{}</script></head>
+<body><a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header">
+<a class="site-brand" href="../book/" aria-label="Yodl home">yodl<span class="site-brand-divider">/</span><span class="site-section" id="site-section">documentation</span></a>
+<nav class="site-navigation" aria-label="Yodl">
+<a href="../book/" aria-current="page">Docs</a>
+<a href="../playground.html?lesson=gates">Tour</a><a href="../playground.html?mode=examples">Playground</a>
+</nav>
+<label class="site-theme"><span class="sr-only">Color theme</span><select id="theme-select" title="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+</header>
+<div class="docs-layout"><aside class="sidebar"><details class="chapter-menu" open><summary>Chapters</summary><div class="sidebar-inner"><button id="search-open" class="search-trigger js-only">Search documentation <kbd>/</kbd></button><p class="eyebrow">THE LANGUAGE</p><nav aria-label="Chapters"><a href="./01_presentation.html" ><span>01</span>Presentation</a><a href="./02_getting_started.html" ><span>02</span>Getting Started</a><a href="./03_data_types.html" ><span>03</span>Data Types</a><a href="./04_constructs.html" ><span>04</span>Language Constructs</a><a href="./05_operators.html" aria-current="page"><span>05</span>Operators</a><a href="./06_control_flow.html" ><span>06</span>Control Flow</a><a href="./07_built_in_functions.html" ><span>07</span>Built-in Functions</a><a href="./08_primitive_modules.html" ><span>08</span>Primitive Modules</a><a href="./09_external_modules.html" ><span>09</span>External Modules</a></nav><div class="sidebar-footer"><a href="https://github.com/nathsou/yodl">GitHub ↗</a><span>Yodl 0.3.1 · ba5bac6</span></div></div></details></aside>
+<main id="content" tabindex="-1"><div class="chapter-meta"><span class="eyebrow">LANGUAGE GUIDE</span><span>05 / 09</span></div><article><h1 id="operators"><a class="heading-anchor" href="#operators">Operators</a></h1>
+<h2 id="unary-operators"><a class="heading-anchor" href="#unary-operators">Unary Operators</a></h2>
+<table>
+<thead>
+<tr><th>Operator</th><th>Description</th><th>Example</th></tr>
+</thead>
+<tbody>
 <tr><td><code>-</code></td><td>Arithmetic negation</td><td><code>-x</code></td></tr>
 <tr><td><code>not</code></td><td>Bitwise NOT</td><td><code>not x</code></td></tr>
 <tr><td><code>andr</code></td><td>AND reduction</td><td><code>andr x</code></td></tr>
 <tr><td><code>orr</code></td><td>OR reduction</td><td><code>orr x</code></td></tr>
 <tr><td><code>xorr</code></td><td>XOR reduction</td><td><code>xorr x</code></td></tr>
-</tbody></table>
-</div>
-<h3 id="reduction-operators"><a class="header" href="#reduction-operators">Reduction Operators</a></h3>
+</tbody>
+</table>
+<h3 id="reduction-operators"><a class="heading-anchor" href="#reduction-operators">Reduction Operators</a></h3>
 <p>Reduction operators apply the corresponding logic operation across all bits of the operand, returning a single bit result.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let all_ones = andr 8'b11111111
-    assert!(all_ones == 1)
+<section class="code-example" id="ex-reduction-operators" aria-label="Example: reduction operators">
+    <div class="example-header"><a class="example-title" href="#ex-reduction-operators"><span class="file-dot"></span>Yodl <span class="example-number">/ reduction operators</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> all_ones = andr <span class="token-number">8&#39;b11111111</span>
+<span class="token-function">assert!</span>(all_ones == <span class="token-number">1</span>)
 
-    let any_one = orr 8'b00000001
-    assert!(any_one == 1)
+<span class="token-keyword">let</span> any_one = orr <span class="token-number">8&#39;b00000001</span>
+<span class="token-function">assert!</span>(any_one == <span class="token-number">1</span>)
 
-    let parity = xorr 8'b10101010
-    assert!(parity == 0)
-<span class="boring"> }
-</span></code></pre>
-<h2 id="binary-operators"><a class="header" href="#binary-operators">Binary Operators</a></h2>
-<h3 id="arithmetic-operators"><a class="header" href="#arithmetic-operators">Arithmetic Operators</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Operator</th><th>Description</th><th>Example</th></tr></thead><tbody>
+<span class="token-keyword">let</span> parity = xorr <span class="token-number">8&#39;b10101010</span>
+<span class="token-function">assert!</span>(parity == <span class="token-number">0</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="binary-operators"><a class="heading-anchor" href="#binary-operators">Binary Operators</a></h2>
+<h3 id="arithmetic-operators"><a class="heading-anchor" href="#arithmetic-operators">Arithmetic Operators</a></h3>
+<table>
+<thead>
+<tr><th>Operator</th><th>Description</th><th>Example</th></tr>
+</thead>
+<tbody>
 <tr><td><code>+</code></td><td>Addition</td><td><code>a + b</code></td></tr>
 <tr><td><code>-</code></td><td>Subtraction</td><td><code>a - b</code></td></tr>
 <tr><td><code>*</code></td><td>Multiplication</td><td><code>a * b</code></td></tr>
 <tr><td><code>/</code></td><td>Division</td><td><code>a / b</code></td></tr>
 <tr><td><code>mod</code></td><td>Modulo</td><td><code>a mod b</code></td></tr>
-</tbody></table>
-</div>
-<h3 id="bitwise-operators"><a class="header" href="#bitwise-operators">Bitwise Operators</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Operator</th><th>Description</th><th>Example</th></tr></thead><tbody>
+</tbody>
+</table>
+<h3 id="bitwise-operators"><a class="heading-anchor" href="#bitwise-operators">Bitwise Operators</a></h3>
+<table>
+<thead>
+<tr><th>Operator</th><th>Description</th><th>Example</th></tr>
+</thead>
+<tbody>
 <tr><td><code>and</code></td><td>Bitwise AND</td><td><code>a and b</code></td></tr>
 <tr><td><code>or</code></td><td>Bitwise OR</td><td><code>a or b</code></td></tr>
 <tr><td><code>xor</code></td><td>Bitwise XOR</td><td><code>a xor b</code></td></tr>
@@ -198,56 +66,64 @@
 <tr><td><code>xnor</code></td><td>Bitwise XNOR</td><td><code>a xnor b</code></td></tr>
 <tr><td><code>shl</code></td><td>Shift Left</td><td><code>a shl b</code></td></tr>
 <tr><td><code>shr</code></td><td>Shift Right</td><td><code>a shr b</code></td></tr>
-</tbody></table>
-</div>
+</tbody>
+</table>
 <p>Note 1: When the shift amount (the right hand side) in a <code>shr</code> operation is signed (<code>sint</code> type), the operation corresponds to an arithmetic shift right.</p>
 <p>Note 2: The <code>and</code>, <code>or</code>, <code>xor</code>, <code>nand</code>, <code>nor</code>, and <code>xnor</code> operators are used both to perform bitwise and logical operations.</p>
-<h3 id="comparison-operators"><a class="header" href="#comparison-operators">Comparison Operators</a></h3>
-<div class="table-wrapper"><table><thead><tr><th>Operator</th><th>Description</th><th>Example</th></tr></thead><tbody>
+<h3 id="comparison-operators"><a class="heading-anchor" href="#comparison-operators">Comparison Operators</a></h3>
+<table>
+<thead>
+<tr><th>Operator</th><th>Description</th><th>Example</th></tr>
+</thead>
+<tbody>
 <tr><td><code>==</code></td><td>Equal</td><td><code>a == b</code></td></tr>
 <tr><td><code>!=</code></td><td>Not Equal</td><td><code>a != b</code></td></tr>
 <tr><td><code>&lt;</code></td><td>Less Than</td><td><code>a &lt; b</code></td></tr>
 <tr><td><code>&gt;</code></td><td>Greater Than</td><td><code>a &gt; b</code></td></tr>
 <tr><td><code>&lt;=</code></td><td>Less Than or Equal</td><td><code>a &lt;= b</code></td></tr>
 <tr><td><code>&gt;=</code></td><td>Greater Than or Equal</td><td><code>a &gt;= b</code></td></tr>
-</tbody></table>
-</div>
-<h2 id="ternary-operator"><a class="header" href="#ternary-operator">Ternary Operator</a></h2>
+</tbody>
+</table>
+<h2 id="ternary-operator"><a class="heading-anchor" href="#ternary-operator">Ternary Operator</a></h2>
 <p>The ternary operator is a concise way to express conditional expressions, generally spanning a single line.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(a: u8, b: u8) -&gt; () {
-</span>    let max = a &gt;= b ? a : b
-<span class="boring"> }
-</span></code></pre>
-<h2 id="concatenation"><a class="header" href="#concatenation">Concatenation</a></h2>
+<section class="code-example" id="ex-ternary-operator" aria-label="Example: ternary operator">
+    <div class="example-header"><a class="example-title" href="#ex-ternary-operator"><span class="file-dot"></span>Yodl <span class="example-number">/ ternary operator</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> max = a &gt;= b ? a : b</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="concatenation"><a class="heading-anchor" href="#concatenation">Concatenation</a></h2>
 <p>Integer concatenation is performed with the <code>cat!</code> built-in function:</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let upper_nibble = 8'hAB
-    let lower_nibble = 8'hCD
-    let word = cat!(upper_nibble, lower_nibble)
-    assert!(word == 16'hABCD)
-<span class="boring"> }
-</span></code></pre>
+<section class="code-example" id="ex-concatenation" aria-label="Example: concatenation">
+    <div class="example-header"><a class="example-title" href="#ex-concatenation"><span class="file-dot"></span>Yodl <span class="example-number">/ concatenation</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> upper_nibble = <span class="token-number">8&#39;hAB</span>
+<span class="token-keyword">let</span> lower_nibble = <span class="token-number">8&#39;hCD</span>
+<span class="token-keyword">let</span> word = <span class="token-function">cat!</span>(upper_nibble, lower_nibble)
+<span class="token-function">assert!</span>(word == <span class="token-number">16&#39;hABCD</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
 <p><code>cat!</code> also accepts Vectors of integers, which it flattens automatically.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let value = cat!([1'1, 1'0, 1'0, 1'0]) // 4'b1000
-    assert!(value == 4'b1000)
-<span class="boring"> }
-</span></code></pre>
-<h2 id="slicing-and-indexing"><a class="header" href="#slicing-and-indexing">Slicing and Indexing</a></h2>
+<section class="code-example" id="ex-concatenation-2" aria-label="Example: concatenation 2">
+    <div class="example-header"><a class="example-title" href="#ex-concatenation-2"><span class="file-dot"></span>Yodl <span class="example-number">/ concatenation 2</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> value = <span class="token-function">cat!</span>([<span class="token-number">1&#39;1</span>, <span class="token-number">1&#39;0</span>, <span class="token-number">1&#39;0</span>, <span class="token-number">1&#39;0</span>]) <span class="token-comment">// 4&#39;b1000</span>
+<span class="token-function">assert!</span>(value == <span class="token-number">4&#39;b1000</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="slicing-and-indexing"><a class="heading-anchor" href="#slicing-and-indexing">Slicing and Indexing</a></h2>
 <p>Elements of vectors and bits of integers can be accessed using the <code>[]</code> operator:</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let bits = [..8'd233]
-    let first = bits[0]      // Access the first element
-    let nibble = bits[7:4]   // Extract a range of bits (inclusive)
-    let byte_desc = bits[7-:8] // 8 bits ending at bit 7 (equivalent to bits[7:0])
-    let byte_asc = bits[0+:8]  // 8 bits starting at bit 0 (equivalent to bits[7:0])
+<section class="code-example" id="ex-slicing-and-indexing" aria-label="Example: slicing and indexing">
+    <div class="example-header"><a class="example-title" href="#ex-slicing-and-indexing"><span class="file-dot"></span>Yodl <span class="example-number">/ slicing and indexing</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> bits = [..<span class="token-number">8&#39;d233</span>]
+<span class="token-keyword">let</span> first = bits[<span class="token-number">0</span>]      <span class="token-comment">// Access the first element</span>
+<span class="token-keyword">let</span> nibble = bits[<span class="token-number">7</span>:<span class="token-number">4</span>]   <span class="token-comment">// Extract a range of bits (inclusive)</span>
+<span class="token-keyword">let</span> byte_desc = bits[<span class="token-number">7</span>-:<span class="token-number">8</span>] <span class="token-comment">// 8 bits ending at bit 7 (equivalent to bits[7:0])</span>
+<span class="token-keyword">let</span> byte_asc = bits[<span class="token-number">0</span>+:<span class="token-number">8</span>]  <span class="token-comment">// 8 bits starting at bit 0 (equivalent to bits[7:0])</span>
 
-    assert!(first == 1'b1)
-    assert!(uint!(nibble) == 4'hE)
-    assert!(uint!(byte_desc) == 8'hE9)
-    assert!(uint!(byte_asc) == 8'hE9)
-<span class="boring"> }
-</span></code></pre>
+<span class="token-function">assert!</span>(first == <span class="token-number">1&#39;b1</span>)
+<span class="token-function">assert!</span>(<span class="token-function">uint!</span>(nibble) == <span class="token-number">4&#39;hE</span>)
+<span class="token-function">assert!</span>(<span class="token-function">uint!</span>(byte_desc) == <span class="token-number">8&#39;hE9</span>)
+<span class="token-function">assert!</span>(<span class="token-function">uint!</span>(byte_asc) == <span class="token-number">8&#39;hE9</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
 <p>There are three forms of bit slicing:</p>
 <ol>
 <li><code>[high:low]</code> - Extract bits from position <code>high</code> down to <code>low</code> (inclusive)</li>
@@ -262,65 +138,64 @@
 </ul>
 <p>When a bit vector (<code>[N]bool</code> i.e. <code>[N]u1</code>) is used as the argument of the <code>uint</code> and <code>sint</code> built-in functions,
 the first element of the vector becomes the MSB of the resulting integer:</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let n = uint!([1'b1, 1'b0, 1'b0])
-    assert!(n == 3'b0001)
-<span class="boring"> }
-</span></code></pre>
-<h2 id="replication"><a class="header" href="#replication">Replication</a></h2>
+<section class="code-example" id="ex-slicing-and-indexing-2" aria-label="Example: slicing and indexing 2">
+    <div class="example-header"><a class="example-title" href="#ex-slicing-and-indexing-2"><span class="file-dot"></span>Yodl <span class="example-number">/ slicing and indexing 2</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> n = <span class="token-function">uint!</span>([<span class="token-number">1&#39;b1</span>, <span class="token-number">1&#39;b0</span>, <span class="token-number">1&#39;b0</span>])
+<span class="token-function">assert!</span>(n == <span class="token-number">3&#39;b0001</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="replication"><a class="heading-anchor" href="#replication">Replication</a></h2>
 <p>The <code>fill!(n, x)</code> built-in produces a vector <code>[n]T</code> of <code>n</code> copies of <code>x</code>:</p>
-<pre><code class="language-yodl"><span class="boring"> const a = 1'b1
-</span><span class="boring"> const b = 1'b0
-</span><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let zeros = fill!(4, 1'b0)        // [1'b0, 1'b0, 1'b0, 1'b0]
-    let ones  = cat!(fill!(3, 1'b1))  // Concat-replicate: 3'b111
+<section class="code-example" id="ex-replication" aria-label="Example: replication">
+    <div class="example-header"><a class="example-title" href="#ex-replication"><span class="file-dot"></span>Yodl <span class="example-number">/ replication</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> zeros = <span class="token-function">fill!</span>(<span class="token-number">4</span>, <span class="token-number">1&#39;b0</span>)        <span class="token-comment">// [1&#39;b0, 1&#39;b0, 1&#39;b0, 1&#39;b0]</span>
+<span class="token-keyword">let</span> ones  = <span class="token-function">cat!</span>(<span class="token-function">fill!</span>(<span class="token-number">3</span>, <span class="token-number">1&#39;b1</span>))  <span class="token-comment">// Concat-replicate: 3&#39;b111</span>
 
-    assert!(uint!(zeros) == 4'd0)
-    assert!(ones == 3'b111)
-<span class="boring"> }
-</span></code></pre>
+<span class="token-function">assert!</span>(<span class="token-function">uint!</span>(zeros) == <span class="token-number">4&#39;d0</span>)
+<span class="token-function">assert!</span>(ones == <span class="token-number">3&#39;b111</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
 <p>The repeated expressions can contain any value, including instances:</p>
-<pre><code class="language-yodl"><span class="boring"> module Cell(clk: clock, rst: bool) -&gt; () {}
-</span><span class="boring"> const Rows = 1
-</span><span class="boring"> const Cols = 1
-</span>
-<span class="boring"> module Test(clk: clock, rst: bool) -&gt; () {
-</span>    // initialise a Rows by Cols grid of cells
-    let cells = fill!(Cols, fill!(Rows, Cell(clk, rst)))
-<span class="boring"> }
-</span></code></pre>
-<h2 id="concatenation-1"><a class="header" href="#concatenation-1">Concatenation</a></h2>
+<section class="code-example" id="ex-replication-2" aria-label="Example: replication 2">
+    <div class="example-header"><a class="example-title" href="#ex-replication-2"><span class="file-dot"></span>Yodl <span class="example-number">/ replication 2</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-comment">// initialise a Rows by Cols grid of cells</span>
+<span class="token-keyword">let</span> cells = <span class="token-function">fill!</span>(Cols, <span class="token-function">fill!</span>(Rows, Cell(clk, rst)))</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="concatenation-1"><a class="heading-anchor" href="#concatenation-1">Concatenation</a></h2>
 <p>The <code>cat!</code> built-in concatenates a list of integers (or integer vectors) into a single integer.
 The width of the result is the sum of the widths of the operands.</p>
 <p>If any operand is a signed integer (sint), then all operands are required to be signed.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let concat_args = cat!(16'hBABA, 16'hFABE)
-    let concat_vec  = cat!([16'hBABA, 16'hFABE])
+<section class="code-example" id="ex-concatenation-3" aria-label="Example: concatenation 3">
+    <div class="example-header"><a class="example-title" href="#ex-concatenation-3"><span class="file-dot"></span>Yodl <span class="example-number">/ concatenation 3</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> concat_args = <span class="token-function">cat!</span>(<span class="token-number">16&#39;hBABA</span>, <span class="token-number">16&#39;hFABE</span>)
+<span class="token-keyword">let</span> concat_vec  = <span class="token-function">cat!</span>([<span class="token-number">16&#39;hBABA</span>, <span class="token-number">16&#39;hFABE</span>])
 
-    assert!(concat_args == 32'hBABAFABE)
-    assert!(concat_vec == 32'hBABAFABE)
-<span class="boring"> }
-</span></code></pre>
-<h2 id="spread"><a class="header" href="#spread">Spread</a></h2>
+<span class="token-function">assert!</span>(concat_args == <span class="token-number">32&#39;hBABAFABE</span>)
+<span class="token-function">assert!</span>(concat_vec == <span class="token-number">32&#39;hBABAFABE</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="spread"><a class="heading-anchor" href="#spread">Spread</a></h2>
 <p>The spread operator <code>..</code> can only appear inside a vector expression and is used to decompose a value into its individual elements.</p>
-<pre><code class="language-yodl"><span class="boring"> module Test(clk: clock) -&gt; () {
-</span>    let bits: [4]u1 = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]
-    let chars: [3]u8 = [.."Yo!"] // [8'h59, 8'h6F, 8'h21]
-    let flat: [3]u2 = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]
+<section class="code-example" id="ex-spread" aria-label="Example: spread">
+    <div class="example-header"><a class="example-title" href="#ex-spread"><span class="file-dot"></span>Yodl <span class="example-number">/ spread</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">let</span> bits: [<span class="token-number">4</span>]<span class="token-type">u1</span> = [..<span class="token-number">4&#39;b1100</span>] <span class="token-comment">// [1&#39;b0, 1&#39;b0, 1&#39;b1, 1&#39;b1]</span>
+<span class="token-keyword">let</span> chars: [<span class="token-number">3</span>]<span class="token-type">u8</span> = [..<span class="token-string">&quot;Yo!&quot;</span>] <span class="token-comment">// [8&#39;h59, 8&#39;h6F, 8&#39;h21]</span>
+<span class="token-keyword">let</span> flat: [<span class="token-number">3</span>]<span class="token-type">u2</span> = [..[<span class="token-number">2&#39;d1</span>, <span class="token-number">2&#39;d2</span>], <span class="token-number">2&#39;d3</span>] <span class="token-comment">// [2&#39;d1, 2&#39;d2, 2&#39;d3]</span>
 
-    assert!(bits[0] == 1'b0)
-    assert!(bits[1] == 1'b0)
-    assert!(bits[2] == 1'b1)
-    assert!(bits[3] == 1'b1)
-    assert!(chars[0] == 8'h59)
-    assert!(chars[1] == 8'h6F)
-    assert!(chars[2] == 8'h21)
-    assert!(flat[0] == 2'd1)
-    assert!(flat[1] == 2'd2)
-    assert!(flat[2] == 2'd3)
-<span class="boring"> }
-</span></code></pre>
-<h2 id="operator-precedence"><a class="header" href="#operator-precedence">Operator Precedence</a></h2>
+<span class="token-function">assert!</span>(bits[<span class="token-number">0</span>] == <span class="token-number">1&#39;b0</span>)
+<span class="token-function">assert!</span>(bits[<span class="token-number">1</span>] == <span class="token-number">1&#39;b0</span>)
+<span class="token-function">assert!</span>(bits[<span class="token-number">2</span>] == <span class="token-number">1&#39;b1</span>)
+<span class="token-function">assert!</span>(bits[<span class="token-number">3</span>] == <span class="token-number">1&#39;b1</span>)
+<span class="token-function">assert!</span>(chars[<span class="token-number">0</span>] == <span class="token-number">8&#39;h59</span>)
+<span class="token-function">assert!</span>(chars[<span class="token-number">1</span>] == <span class="token-number">8&#39;h6F</span>)
+<span class="token-function">assert!</span>(chars[<span class="token-number">2</span>] == <span class="token-number">8&#39;h21</span>)
+<span class="token-function">assert!</span>(flat[<span class="token-number">0</span>] == <span class="token-number">2&#39;d1</span>)
+<span class="token-function">assert!</span>(flat[<span class="token-number">1</span>] == <span class="token-number">2&#39;d2</span>)
+<span class="token-function">assert!</span>(flat[<span class="token-number">2</span>] == <span class="token-number">2&#39;d3</span>)</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<h2 id="operator-precedence"><a class="heading-anchor" href="#operator-precedence">Operator Precedence</a></h2>
 <p>Operators are evaluated in the following order (from highest to lowest precedence):</p>
 <ol>
 <li>Unary operators (<code>not</code>, <code>-</code>, <code>andr</code>, <code>orr</code>, <code>xorr</code>)</li>
@@ -334,11 +209,15 @@ The width of the result is the sum of the widths of the operands.</p>
 <li>Bitwise OR and NOR (<code>or</code>, <code>nor</code>)</li>
 </ol>
 <p>Parentheses can be used to override the default precedence order.</p>
-<h2 id="resulting-type"><a class="header" href="#resulting-type">Resulting Type</a></h2>
+<h2 id="resulting-type"><a class="heading-anchor" href="#resulting-type">Resulting Type</a></h2>
 <p>The output type of a binary operation is determined by the types of the operands and the operation being performed.</p>
-<p>It matches the <a href="https://github.com/chipsalliance/firrtl-spec/blob/main/spec.md#primitive-operations-primitive-operations">FIRRTL specification</a></p>
+<p>It matches the <a href="https://github.com/chipsalliance/firrtl-spec/blob/main/spec.html#primitive-operations-primitive-operations">FIRRTL specification</a></p>
 <p>The following table summarises the resulting type for each operation:</p>
-<div class="table-wrapper"><table><thead><tr><th>operation</th><th>lhs type</th><th>rhs type</th><th>output type</th></tr></thead><tbody>
+<table>
+<thead>
+<tr><th>operation</th><th>lhs type</th><th>rhs type</th><th>output type</th></tr>
+</thead>
+<tbody>
 <tr><td><code>+</code>, <code>-</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;max(A, B) + 1&gt;</code></td></tr>
 <tr><td><code>+</code>, <code>-</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>sint&lt;max(A, B) + 1&gt;</code></td></tr>
 <tr><td><code>*</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;A + B&gt;</code></td></tr>
@@ -351,74 +230,38 @@ The width of the result is the sum of the widths of the operands.</p>
 <tr><td><code>==</code>, <code>!=</code>, <code>&lt;</code>, <code>&gt;</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>u1</code></td></tr>
 <tr><td><code>and</code>, <code>nand</code>, <code>or</code>, <code>nor</code>, <code>xor</code>, <code>xnor</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;max(A, B)&gt;</code></td></tr>
 <tr><td><code>and</code>, <code>nand</code>, <code>or</code>, <code>nor</code>, <code>xor</code>, <code>xnor</code></td><td><code>sint&lt;A&gt;</code></td><td><code>sint&lt;B&gt;</code></td><td><code>uint&lt;max(A, B)&gt;</code></td></tr>
-</tbody></table>
-</div>
-<h3 id="shift-operations"><a class="header" href="#shift-operations">Shift Operations</a></h3>
+</tbody>
+</table>
+<h3 id="shift-operations"><a class="heading-anchor" href="#shift-operations">Shift Operations</a></h3>
 <p>When the shift amount is known at compile time, the output type is determined as follows:</p>
-<div class="table-wrapper"><table><thead><tr><th>operation</th><th>lhs type</th><th>shift amount</th><th>output type</th></tr></thead><tbody>
+<table>
+<thead>
+<tr><th>operation</th><th>lhs type</th><th>shift amount</th><th>output type</th></tr>
+</thead>
+<tbody>
 <tr><td><code>shl</code></td><td><code>uint&lt;A&gt;</code></td><td><code>n</code></td><td><code>uint&lt;A + n&gt;</code></td></tr>
 <tr><td><code>shl</code></td><td><code>sint&lt;A&gt;</code></td><td><code>n</code></td><td><code>sint&lt;A + n&gt;</code></td></tr>
 <tr><td><code>shr</code></td><td><code>uint&lt;A&gt;</code></td><td><code>n</code></td><td><code>uint&lt;max(A - n, 0)&gt;</code></td></tr>
 <tr><td><code>shr</code></td><td><code>sint&lt;A&gt;</code></td><td><code>n</code></td><td><code>sint&lt;max(A - n, 1)&gt;</code></td></tr>
-</tbody></table>
-</div>
+</tbody>
+</table>
 <p>When the shift amount is not known at compile time, the output type is determined as follows:</p>
-<div class="table-wrapper"><table><thead><tr><th>operation</th><th>lhs type</th><th>rhs type</th><th>output type</th></tr></thead><tbody>
+<table>
+<thead>
+<tr><th>operation</th><th>lhs type</th><th>rhs type</th><th>output type</th></tr>
+</thead>
+<tbody>
 <tr><td><code>shl</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;A + 2^B - 1&gt;</code></td></tr>
 <tr><td><code>shl</code></td><td><code>sint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>sint&lt;A + 2^B - 1&gt;</code></td></tr>
 <tr><td><code>shr</code></td><td><code>uint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>uint&lt;A&gt;</code></td></tr>
 <tr><td><code>shr</code></td><td><code>sint&lt;A&gt;</code></td><td><code>uint&lt;B&gt;</code></td><td><code>sint&lt;A&gt;</code></td></tr>
-</tbody></table>
-</div>
-                    </main>
-
-                    <nav class="nav-wrapper" aria-label="Page navigation">
-                        <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="04_constructs.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
-                                <i class="fa fa-angle-left"></i>
-                            </a>
-
-                            <a rel="next prefetch" href="06_control_flow.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                                <i class="fa fa-angle-right"></i>
-                            </a>
-
-                        <div style="clear: both"></div>
-                    </nav>
-                </div>
-            </div>
-
-            <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="04_constructs.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
-                        <i class="fa fa-angle-left"></i>
-                    </a>
-
-                    <a rel="next prefetch" href="06_control_flow.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
-                        <i class="fa fa-angle-right"></i>
-                    </a>
-            </nav>
-
-        </div>
-
-
-
-
-        <script>
-            window.playground_copyable = true;
-        </script>
-
-
-        <script src="elasticlunr.min.js"></script>
-        <script src="mark.min.js"></script>
-        <script src="searcher.js"></script>
-
-        <script src="clipboard.min.js"></script>
-        <script src="highlight.js"></script>
-        <script src="book.js"></script>
-
-        <!-- Custom JS scripts -->
-        <script src="theme/yodl-highlight.js"></script>
-
-
-    </div>
-    </body>
-</html>
+</tbody>
+</table>
+</article>
+<section class="related-lessons"><p class="eyebrow">PUT IT INTO PRACTICE</p><h2>Explore in the guided tour</h2><a href="../playground.html?lesson=bits">Take signals apart <span>→</span></a></section>
+<nav class="page-navigation" aria-label="Previous and next chapters"><a href="./04_constructs.html"><small>← Previous</small>Language Constructs</a><a href="./06_control_flow.html"><small>Next →</small>Control Flow</a></nav><footer class="article-footer"><a href="https://github.com/nathsou/yodl/edit/main/book/src/05_operators.md">Edit this page ↗</a><span>Examples compile locally in your browser.</span></footer></main>
+<aside class="page-toc"><p class="eyebrow">ON THIS PAGE</p><nav aria-label="On this page"><a href="#unary-operators" class="toc-level-2">Unary Operators</a><a href="#reduction-operators" class="toc-level-3">Reduction Operators</a><a href="#binary-operators" class="toc-level-2">Binary Operators</a><a href="#arithmetic-operators" class="toc-level-3">Arithmetic Operators</a><a href="#bitwise-operators" class="toc-level-3">Bitwise Operators</a><a href="#comparison-operators" class="toc-level-3">Comparison Operators</a><a href="#ternary-operator" class="toc-level-2">Ternary Operator</a><a href="#concatenation" class="toc-level-2">Concatenation</a><a href="#slicing-and-indexing" class="toc-level-2">Slicing and Indexing</a><a href="#replication" class="toc-level-2">Replication</a><a href="#concatenation-1" class="toc-level-2">Concatenation</a><a href="#spread" class="toc-level-2">Spread</a><a href="#operator-precedence" class="toc-level-2">Operator Precedence</a><a href="#resulting-type" class="toc-level-2">Resulting Type</a><a href="#shift-operations" class="toc-level-3">Shift Operations</a></nav><a class="back-top" href="#content">Back to top ↑</a></aside></div>
+<dialog id="search-dialog"><div class="search-header"><label for="search-input" class="sr-only">Search documentation</label><input id="search-input" type="search" placeholder="Search concepts, syntax, and examples…" autocomplete="off"><button id="search-close" aria-label="Close search">Esc</button></div><p id="search-status" role="status">Type to search all chapters.</p><div id="search-results"></div></dialog>
+<dialog id="confirm-dialog"><h2 id="confirm-title">Reset this example?</h2><p id="confirm-message">Your local edits will be replaced by the original source.</p><form method="dialog"><button value="cancel">Keep edits</button><button value="reset" class="primary">Reset source</button></form></dialog>
+<dialog id="share-dialog"><h2>Share this example</h2><p>The link includes your edits and selected compiler stage. It uses the deployed compiler version.</p><input id="share-url" aria-label="Share URL" readonly><form method="dialog"><button>Close</button><button type="button" id="share-copy" class="primary">Copy link</button></form></dialog>
+<script id="chapter-data" type="application/json">{"slug":"05_operators","version":"0.3.1","revision":"ba5bac6","examples":[{"id":"ex-reduction-operators","title":"reduction operators","source":"module Test(clk: clock) -> () {\n    let all_ones = andr 8'b11111111\n    assert!(all_ones == 1)\n\n    let any_one = orr 8'b00000001\n    assert!(any_one == 1)\n\n    let parity = xorr 8'b10101010\n    assert!(parity == 0)\n}\n","display":"let all_ones = andr 8'b11111111\nassert!(all_ones == 1)\n\nlet any_one = orr 8'b00000001\nassert!(any_one == 1)\n\nlet parity = xorr 8'b10101010\nassert!(parity == 0)","path":"book/src/05_operators/ex-reduction-operators.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"85f2a67a0f469582","live":true,"expect":"success","line":17},{"id":"ex-ternary-operator","title":"ternary operator","source":"module Test(a: u8, b: u8) -> () {\n    let max = a >= b ? a : b\n}\n","display":"let max = a >= b ? a : b","path":"book/src/05_operators/ex-ternary-operator.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"8bace7b2597ca954","live":true,"expect":"success","line":74},{"id":"ex-concatenation","title":"concatenation","source":"module Test(clk: clock) -> () {\n    let upper_nibble = 8'hAB\n    let lower_nibble = 8'hCD\n    let word = cat!(upper_nibble, lower_nibble)\n    assert!(word == 16'hABCD)\n}\n","display":"let upper_nibble = 8'hAB\nlet lower_nibble = 8'hCD\nlet word = cat!(upper_nibble, lower_nibble)\nassert!(word == 16'hABCD)","path":"book/src/05_operators/ex-concatenation.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"f28ccd9ce116455f","live":true,"expect":"success","line":84},{"id":"ex-concatenation-2","title":"concatenation 2","source":"module Test(clk: clock) -> () {\n    let value = cat!([1'1, 1'0, 1'0, 1'0]) // 4'b1000\n    assert!(value == 4'b1000)\n}\n","display":"let value = cat!([1'1, 1'0, 1'0, 1'0]) // 4'b1000\nassert!(value == 4'b1000)","path":"book/src/05_operators/ex-concatenation-2.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"51a1082fbbcb1190","live":true,"expect":"success","line":95},{"id":"ex-slicing-and-indexing","title":"slicing and indexing","source":"module Test(clk: clock) -> () {\n    let bits = [..8'd233]\n    let first = bits[0]      // Access the first element\n    let nibble = bits[7:4]   // Extract a range of bits (inclusive)\n    let byte_desc = bits[7-:8] // 8 bits ending at bit 7 (equivalent to bits[7:0])\n    let byte_asc = bits[0+:8]  // 8 bits starting at bit 0 (equivalent to bits[7:0])\n\n    assert!(first == 1'b1)\n    assert!(uint!(nibble) == 4'hE)\n    assert!(uint!(byte_desc) == 8'hE9)\n    assert!(uint!(byte_asc) == 8'hE9)\n}\n","display":"let bits = [..8'd233]\nlet first = bits[0]      // Access the first element\nlet nibble = bits[7:4]   // Extract a range of bits (inclusive)\nlet byte_desc = bits[7-:8] // 8 bits ending at bit 7 (equivalent to bits[7:0])\nlet byte_asc = bits[0+:8]  // 8 bits starting at bit 0 (equivalent to bits[7:0])\n\nassert!(first == 1'b1)\nassert!(uint!(nibble) == 4'hE)\nassert!(uint!(byte_desc) == 8'hE9)\nassert!(uint!(byte_asc) == 8'hE9)","path":"book/src/05_operators/ex-slicing-and-indexing.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"6a6b3ec4e5a456c7","live":true,"expect":"success","line":106},{"id":"ex-slicing-and-indexing-2","title":"slicing and indexing 2","source":"module Test(clk: clock) -> () {\n    let n = uint!([1'b1, 1'b0, 1'b0])\n    assert!(n == 3'b0001)\n}\n","display":"let n = uint!([1'b1, 1'b0, 1'b0])\nassert!(n == 3'b0001)","path":"book/src/05_operators/ex-slicing-and-indexing-2.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"6d8071d545fc5073","live":true,"expect":"success","line":137},{"id":"ex-replication","title":"replication","source":"const a = 1'b1\nconst b = 1'b0\nmodule Test(clk: clock) -> () {\n    let zeros = fill!(4, 1'b0)        // [1'b0, 1'b0, 1'b0, 1'b0]\n    let ones  = cat!(fill!(3, 1'b1))  // Concat-replicate: 3'b111\n\n    assert!(uint!(zeros) == 4'd0)\n    assert!(ones == 3'b111)\n}\n","display":"let zeros = fill!(4, 1'b0)        // [1'b0, 1'b0, 1'b0, 1'b0]\nlet ones  = cat!(fill!(3, 1'b1))  // Concat-replicate: 3'b111\n\nassert!(uint!(zeros) == 4'd0)\nassert!(ones == 3'b111)","path":"book/src/05_operators/ex-replication.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"e9afccb020b77770","live":true,"expect":"success","line":148},{"id":"ex-replication-2","title":"replication 2","source":"module Cell(clk: clock, rst: bool) -> () {}\nconst Rows = 1\nconst Cols = 1\n\nmodule Test(clk: clock, rst: bool) -> () {\n    // initialise a Rows by Cols grid of cells\n    let cells = fill!(Cols, fill!(Rows, Cell(clk, rst)))\n}\n","display":"// initialise a Rows by Cols grid of cells\nlet cells = fill!(Cols, fill!(Rows, Cell(clk, rst)))","path":"book/src/05_operators/ex-replication-2.yodl","files":{},"stage":"write_typed","unsupported":[],"hash":"f52bf3b719503886","live":true,"expect":"success","line":162},{"id":"ex-concatenation-3","title":"concatenation 3","source":"module Test(clk: clock) -> () {\n    let concat_args = cat!(16'hBABA, 16'hFABE)\n    let concat_vec  = cat!([16'hBABA, 16'hFABE])\n\n    assert!(concat_args == 32'hBABAFABE)\n    assert!(concat_vec == 32'hBABAFABE)\n}\n","display":"let concat_args = cat!(16'hBABA, 16'hFABE)\nlet concat_vec  = cat!([16'hBABA, 16'hFABE])\n\nassert!(concat_args == 32'hBABAFABE)\nassert!(concat_vec == 32'hBABAFABE)","path":"book/src/05_operators/ex-concatenation-3.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"8d27b73564e7541e","live":true,"expect":"success","line":180},{"id":"ex-spread","title":"spread","source":"module Test(clk: clock) -> () {\n    let bits: [4]u1 = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]\n    let chars: [3]u8 = [..\"Yo!\"] // [8'h59, 8'h6F, 8'h21]\n    let flat: [3]u2 = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]\n\n    assert!(bits[0] == 1'b0)\n    assert!(bits[1] == 1'b0)\n    assert!(bits[2] == 1'b1)\n    assert!(bits[3] == 1'b1)\n    assert!(chars[0] == 8'h59)\n    assert!(chars[1] == 8'h6F)\n    assert!(chars[2] == 8'h21)\n    assert!(flat[0] == 2'd1)\n    assert!(flat[1] == 2'd2)\n    assert!(flat[2] == 2'd3)\n}\n","display":"let bits: [4]u1 = [..4'b1100] // [1'b0, 1'b0, 1'b1, 1'b1]\nlet chars: [3]u8 = [..\"Yo!\"] // [8'h59, 8'h6F, 8'h21]\nlet flat: [3]u2 = [..[2'd1, 2'd2], 2'd3] // [2'd1, 2'd2, 2'd3]\n\nassert!(bits[0] == 1'b0)\nassert!(bits[1] == 1'b0)\nassert!(bits[2] == 1'b1)\nassert!(bits[3] == 1'b1)\nassert!(chars[0] == 8'h59)\nassert!(chars[1] == 8'h6F)\nassert!(chars[2] == 8'h21)\nassert!(flat[0] == 2'd1)\nassert!(flat[1] == 2'd2)\nassert!(flat[2] == 2'd3)","path":"book/src/05_operators/ex-spread.yodl","files":{},"stage":"write_typed","unsupported":["write_rtlil"],"hash":"3fd4fd5ccd327d6d","live":true,"expect":"success","line":194}]}</script><script type="module" src="../bundle/docs.js"></script></body></html>
