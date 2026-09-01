@@ -1,0 +1,9 @@
+module Top(a: u8, b: u8, offset: s8) -> (
+    sum: u9,
+    product: u16,
+    adjusted: s9,
+) {
+    sum = a + b
+    product = a * b
+    adjusted = offset + sint!(8'd1)
+}

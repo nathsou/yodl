@@ -1,0 +1,15 @@
+module Mask[Width: Nat](value: uint[Width], mask: uint[Width]) -> (
+    q: uint[Width],
+) {
+    q = value and mask
+}
+
+module Identity[T: Type](value: T) -> (q: T) {
+    q = value
+}
+
+module Top(small: u8, wide: u16, flag: bool) -> (a: u8, b: u16, c: bool) {
+    a = Mask[8](value: small, mask: 8'h0F).q
+    b = Mask[16](value: wide, mask: 16'h00FF).q
+    c = Identity[bool](value: flag).q
+}

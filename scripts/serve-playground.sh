@@ -12,7 +12,7 @@ echo "Building MoonBit driver (JS target)..."
 moon build src/lib/driver --target=js --release
 
 echo "Bundling playground JS..."
-bun build src/main/yodl.ts --outdir src/main/bundle --minify
+bun build src/main/playground.ts src/main/playground-worker.ts --outdir src/main/bundle --minify
 
 echo ""
 echo "Playground ready. Open http://localhost:${PORT}/src/main/playground.html"

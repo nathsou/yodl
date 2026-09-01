@@ -1,0 +1,6 @@
+module Top(word: u8) -> (swapped: u8, parity: bool) {
+    let high = word[7:4]
+    let low = word[3:0]
+    swapped = cat!(low, high)
+    parity = xorr word
+}

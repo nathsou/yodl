@@ -10,8 +10,8 @@ moon test src/lib/tests
 echo "All snapshot tests passed."
 
 EXAMPLES_PATH=examples
-# all examples except files starting with underscore
-EXAMPLES=$(ls $EXAMPLES_PATH/*.yodl | grep -v '/_')
+# all examples and standalone tour lessons except files starting with underscore
+EXAMPLES=$(ls $EXAMPLES_PATH/*.yodl tour/*.yodl | grep -v '/_')
 OUTPUT_PATH=examples/output
 
 mkdir -p $OUTPUT_PATH
@@ -30,7 +30,7 @@ do
     firtool --format=fir -O=debug --verilog $fir_path -o $sv_path
 done
 
-echo "All examples compiled successfully."
+echo "All examples and tour lessons compiled successfully."
 
 counter=0
 

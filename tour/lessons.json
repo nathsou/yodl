@@ -1,0 +1,170 @@
+[
+  {
+    "id": "gates",
+    "title": "Your first circuit",
+    "topic": "Signals & modules",
+    "intro": "A Yodl program describes hardware. A module connects named inputs to named outputs; the connections operate continuously.",
+    "concepts": [
+      "bool is a one-bit signal.",
+      "The expression a and b describes a logic gate. It does not wait for a clock."
+    ],
+    "observe": "In FIRRTL, find the two input ports, the output port, and the and operation.",
+    "challenge": "Change and to xor. The output will describe a gate that is high when exactly one input is high.",
+    "stage": "write_firrtl",
+    "file": "01-gates.yodl"
+  },
+  {
+    "id": "widths",
+    "title": "Give every bit a place",
+    "topic": "Integers & arithmetic",
+    "intro": "Hardware signals have fixed widths. u8 is an unsigned eight-bit integer; s8 is a signed eight-bit integer. Choose the output width to retain the bits you need.",
+    "concepts": [
+      "Adding two eight-bit unsigned values can require nine bits.",
+      "Sized literals spell out width and base: 8'hFF is eight bits of hexadecimal FF. Signedness changes require an explicit cast."
+    ],
+    "observe": "Inspect the nine-bit sum and sixteen-bit product ports. Switch to Typed to see expression types.",
+    "challenge": "Change sum from u9 to u8. Narrowing keeps the low eight bits, so a carry no longer fits in the output.",
+    "stage": "write_firrtl",
+    "file": "02-widths.yodl"
+  },
+  {
+    "id": "selection",
+    "title": "Choose a signal",
+    "topic": "Conditions & multiplexers",
+    "intro": "Conditions select between signals. Both alternatives describe hardware; a condition does not make the circuit execute one software branch at a time.",
+    "concepts": [
+      "Use if for a two-way choice.",
+      "Use match for several cases, with _ as the default."
+    ],
+    "observe": "Look for mux operations in FIRRTL: these are the signal selectors described by the conditions.",
+    "challenge": "Add a 2 case to match that returns a xor b. Keep the default case.",
+    "stage": "write_firrtl",
+    "file": "03-selection.yodl"
+  },
+  {
+    "id": "bits",
+    "title": "Take signals apart",
+    "topic": "Slices & built-ins",
+    "intro": "Individual bits and slices let you work with the representation of a value. Built-in functions have names ending in !.",
+    "concepts": [
+      "word[7:4] takes bits seven through four, inclusive.",
+      "cat! joins bit strings in order; xorr reduces a signal to its parity bit."
+    ],
+    "observe": "Find bits, cat, and xorr operations in the FIRRTL output.",
+    "challenge": "Change swapped to cat!(low, low). Both halves of the output now come from the same four input bits.",
+    "stage": "write_firrtl",
+    "file": "04-bits.yodl"
+  },
+  {
+    "id": "vectors",
+    "title": "Build parallel hardware",
+    "topic": "Vectors & loops",
+    "intro": "A vector groups a fixed number of values. A for loop creates repeated hardware at compile time, so the loop bounds must be known before the circuit runs.",
+    "concepts": [
+      "[4]u8 is four eight-bit elements.",
+      "0..<Lanes excludes the upper bound. All four lanes exist in parallel."
+    ],
+    "observe": "The Simplified output expands the loop into individual assignments. Switch to FIRRTL to see the vector ports.",
+    "challenge": "Change Lanes from 4 to 8. Compile again and count the expanded assignments.",
+    "stage": "write_simplified",
+    "file": "05-vectors.yodl"
+  },
+  {
+    "id": "records",
+    "title": "Name a group of signals",
+    "topic": "Records & type aliases",
+    "intro": "Records collect related signals into named fields. A type alias gives the collection a reusable name without allocating storage.",
+    "concepts": [
+      "Access a field with . followed by its name.",
+      "A record spread copies fields; later fields override the copied values."
+    ],
+    "observe": "Find the r, g, and b fields in the output ports. They remain individual signals within a bundle.",
+    "challenge": "Also override b with 0 in muted. Only the red channel will pass through.",
+    "stage": "write_firrtl",
+    "file": "06-records.yodl"
+  },
+  {
+    "id": "modules",
+    "title": "Connect reusable circuits",
+    "topic": "Instances & ports",
+    "intro": "Define a module once and instantiate it wherever you need that hardware. Each instance is a separate circuit with its own connections.",
+    "concepts": [
+      "Named arguments connect inputs when creating an instance.",
+      "Access an instance output with .sum. Top is the entry circuit in this design."
+    ],
+    "observe": "Find two Adder instances under Top. They share a definition but connect to different inputs.",
+    "challenge": "Connect the second adder to a and c instead of b and c.",
+    "stage": "write_firrtl",
+    "file": "07-modules.yodl"
+  },
+  {
+    "id": "generics",
+    "title": "Parameterise a design",
+    "topic": "Compile-time parameters",
+    "intro": "Generic parameters configure hardware before it runs. Nat parameters describe sizes; Type parameters let a module work with different signal types.",
+    "concepts": [
+      "uint[Width] uses a compile-time width.",
+      "Instantiation specialises each generic module with concrete parameters. These parameters are not input ports."
+    ],
+    "observe": "Monomorphised output shows concrete versions of the generic modules. Compare it with Source.",
+    "challenge": "Change the wide input and output from u16 to u12, and change Mask[16] to Mask[12].",
+    "stage": "write_mono",
+    "file": "08-generics.yodl"
+  },
+  {
+    "id": "registers",
+    "title": "Remember a value",
+    "topic": "Clocked state",
+    "intro": "Combinational logic has no memory. Reg adds state: q is the current value and d is the value sampled at the next rising clock edge.",
+    "concepts": [
+      "Reg[u8] stores eight bits.",
+      "rst resets the register to zero synchronously. en controls whether it captures a new value."
+    ],
+    "observe": "Find the register and its clock, reset, and enable logic in FIRRTL. The output reads the stored q value.",
+    "challenge": "Connect en to true instead of enable. The register will capture data on every rising edge unless reset is asserted.",
+    "stage": "write_firrtl",
+    "file": "09-registers.yodl"
+  },
+  {
+    "id": "counter",
+    "title": "Describe the next state",
+    "topic": "Feedback & constants",
+    "intro": "A counter feeds its current register value through combinational logic to compute the next value. The register breaks the feedback path into clock cycles.",
+    "concepts": [
+      "clog2!(Limit) computes the number of address bits needed for Limit values.",
+      "The comparison makes the counter wrap after Limit - 1. Reset establishes the initial zero state."
+    ],
+    "observe": "Follow the register output through the increment and selection logic back to its input.",
+    "challenge": "Change Limit from 10 to 16. The width stays four bits, but the wrap comparison changes.",
+    "stage": "write_firrtl",
+    "file": "10-counter.yodl"
+  },
+  {
+    "id": "packages",
+    "title": "Organise a design",
+    "topic": "Packages & names",
+    "intro": "Packages group declarations under a namespace. Qualified names make it clear where a reusable module belongs.",
+    "concepts": [
+      "Use :: to access a declaration inside a package.",
+      "A file brought in with import is also wrapped in a package named after the file. Larger examples demonstrate imports."
+    ],
+    "observe": "Find the qualified Logic::Invert name in Source, then switch to FIRRTL to inspect its instance.",
+    "challenge": "Add another Invert instance after the first and connect q to its output. Two inversions restore the original signal.",
+    "stage": "write_source",
+    "file": "11-packages.yodl"
+  },
+  {
+    "id": "memory",
+    "title": "Store a small table",
+    "topic": "Memory & latency",
+    "intro": "Memory describes indexed storage with explicit read and write ports. Latency is part of the interface: this design requests a read latency of one cycle.",
+    "concepts": [
+      "Depth is the number of stored words; T is the type of each word.",
+      "Read and write ports carry clocks, addresses, and enables. A true write mask enables the whole byte."
+    ],
+    "observe": "Find the memory depth, read latency, and write latency in FIRRTL. Compilation shows structure; the playground does not simulate clock cycles.",
+    "challenge": "Increase Depth to 32 and change addr from u4 to u5 so every word remains addressable.",
+    "stage": "write_firrtl",
+    "file": "12-memory.yodl"
+  }
+]

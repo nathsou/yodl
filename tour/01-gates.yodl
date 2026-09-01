@@ -1,0 +1,4 @@
+// Two inputs, one gate, one output.
+module Top(a: bool, b: bool) -> (q: bool) {
+    q = a and b
+}

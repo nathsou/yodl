@@ -40,6 +40,31 @@ Install [Moonbit](https://www.moonbitlang.com/):
 $ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.10.11+8f8e8db1e'
 ```
 
+### Playground and tour
+
+The playground includes a [12-lesson tour](tour/README.md), separate from the
+larger designs under `examples/`. Start with a logic gate, then explore types,
+combinational logic, reusable modules, registers, and memory. Each lesson offers
+an explanation, a suggested compiler output to inspect, and a small experiment.
+Drafts are saved locally, and circuits can be shared by link or downloaded.
+
+With MoonBit, Bun, and Python 3 installed, start a local playground:
+
+```bash
+bash scripts/serve-playground.sh
+```
+
+Open `http://localhost:8080/src/main/playground.html`. After editing browser code
+or tour content, restart the script to rebuild the bundles, then reload the page.
+The editor loads Monaco from a CDN, so its initial load requires internet access.
+
+Validate the tour and backend output with:
+
+```bash
+moon test src/lib/tests
+bash scripts/test.sh
+```
+
 ## Checklist
 
 - [x] [FIRRTL](https://github.com/chipsalliance/firrtl-spec) export
