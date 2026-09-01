@@ -1,0 +1,15 @@
+module Top(a: u8, b: u8, select: bool, operation: u2) -> (
+    chosen: u8,
+    result: u8,
+) {
+    chosen = if select {
+        a
+    } else {
+        b
+    }
+    result = match operation {
+        0 => a and b
+        1 => a or b
+        _ => 0
+    }
+}

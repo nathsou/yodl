@@ -1,0 +1,5 @@
+module Top(clk: clock, rst: bool, enable: bool, data: u8) -> (q: u8) {
+    let state = Reg[u8](clk, rst, en: enable)
+    state.d = data
+    q = state.q
+}

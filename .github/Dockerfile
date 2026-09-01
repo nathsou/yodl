@@ -6,6 +6,7 @@ COPY book/ ./book
 COPY src/ ./src
 COPY moon.mod.json ./
 COPY examples/ ./examples
+COPY tour/ ./tour
 COPY scripts/ ./scripts
 
 # Install dependencies
@@ -32,6 +33,7 @@ RUN bash scripts/test.sh
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:${PATH}"
+RUN bash scripts/test-playground.sh
 
 # Install mdbook
 RUN wget https://github.com/rust-lang/mdBook/releases/download/v0.4.45/mdbook-v0.4.45-x86_64-unknown-linux-gnu.tar.gz
@@ -41,9 +43,10 @@ RUN rm mdbook-v0.4.45-x86_64-unknown-linux-gnu.tar.gz
 
 # Build
 RUN moon build src/lib/driver --target=js --release
-RUN bun build src/main/yodl.ts --outdir bundle --minify
+RUN bun build src/main/playground.ts src/main/playground-worker.ts --outdir bundle --minify
 RUN cd book && mdbook build
 RUN mkdir artifacts
 RUN cp -r book/book artifacts/book
 RUN cp -r bundle artifacts/bundle
 RUN cp src/main/playground.html artifacts/playground.html
+RUN cp src/main/playground.css artifacts/playground.css

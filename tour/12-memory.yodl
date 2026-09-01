@@ -1,0 +1,14 @@
+module Top(clk: clock, addr: u4, data: u8, write_enable: bool) -> (q: u8) {
+    let memory = Memory[
+        T: u8,
+        Depth: 16,
+        ReadPorts: 1,
+        WritePorts: 1,
+        ReadLatency: 1,
+        WriteLatency: 1,
+    ](
+        read: [(clk: clk, en: true, addr: addr)],
+        write: [(clk: clk, en: write_enable, addr: addr, data: data, mask: true)],
+    )
+    q = memory.q[0]
+}

@@ -1,0 +1,10 @@
+module Adder(a: u8, b: u8) -> (sum: u9) {
+    sum = a + b
+}
+
+module Top(a: u8, b: u8, c: u8) -> (ab: u9, bc: u9) {
+    let first = Adder(a: a, b: b)
+    let second = Adder(a: b, b: c)
+    ab = first.sum
+    bc = second.sum
+}

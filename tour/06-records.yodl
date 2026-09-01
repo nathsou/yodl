@@ -1,0 +1,6 @@
+type Color = (r: u8, g: u8, b: u8)
+
+module Top(color: Color) -> (muted: Color, red: u8) {
+    muted = (..color, g: 0)
+    red = color.r
+}

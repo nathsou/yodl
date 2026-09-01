@@ -1,0 +1,11 @@
+const Limit = 10
+
+module Top(clk: clock, rst: bool) -> (count: uint[clog2!(Limit)]) {
+    let state = Reg[uint[clog2!(Limit)]](clk, rst)
+    state.d = if state.q == Limit - 1 {
+        0
+    } else {
+        (state.q + 1)
+    }
+    count = state.q
+}

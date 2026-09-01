@@ -1,6 +1,6 @@
 import type * as MoonBit from "../../_build/js/release/build/lib/driver/moonbit.d.ts";
 export * as yodl from "../../_build/js/release/build/lib/driver/driver.js";
-import { getExampleFiles } from "./examples.ts" with { type: "macro" };
+import { getExampleFiles, getTourFiles } from "./examples.ts" with { type: "macro" };
 
 type Result<T> = MoonBit.Result<T, string>;
 
@@ -96,7 +96,7 @@ function dirName(path: string): string | undefined {
     return parsePath(path).at(-1);
 }
 
-function createInMemoryFileSystem(files: Record<string, string>): FileSystem & { root: DirectoryNode } {
+export function createInMemoryFileSystem(files: Record<string, string>): FileSystem & { root: DirectoryNode } {
     const root = createTree(files);
 
     return {
@@ -213,7 +213,7 @@ export function unwrap<T>(result: MoonBit.Result<T, any>): T {
 }
 
 export const ext: Externals = {
-    fs: createInMemoryFileSystem(getExampleFiles()),
+    fs: createInMemoryFileSystem({ ...getExampleFiles(), ...getTourFiles() }),
     println: str => console.log(str),
     get_args: () => [],
     exit: code => {

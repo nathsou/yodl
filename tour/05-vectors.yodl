@@ -1,0 +1,7 @@
+const Lanes = 4
+
+module Top(values: [Lanes]u8, mask: u8) -> (result: [Lanes]u8) {
+    for i in 0..<Lanes {
+        result[i] = values[i] xor mask
+    }
+}

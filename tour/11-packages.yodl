@@ -1,0 +1,10 @@
+package Logic {
+    module Invert(value: bool) -> (q: bool) {
+        q = not value
+    }
+}
+
+module Top(value: bool) -> (q: bool) {
+    let inverter = Logic::Invert(value: value)
+    q = inverter.q
+}
