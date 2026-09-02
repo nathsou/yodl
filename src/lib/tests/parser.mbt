@@ -33,6 +33,29 @@ test "parser accepts mod as a modulo operator" {
   assert_eq(is_mod, true)
 }
 
+test "parser accepts an unparenthesized binary final expression in an if branch" {
+  let source =
+    "module Top() -> () {\n" +
+    "  out = if cond {\n" +
+    "    0\n" +
+    "  } else {\n" +
+    "    state.q + 1\n" +
+    "  }\n" +
+    "}\n"
+  let body = module_body(parse_source(source))
+  let else_is_addition = match body[0] {
+    @parse.Stmt::Assign(
+      rhs=@parse.Expr::If(
+        else_=Some(@parse.Expr::Block(last=Some(@parse.Expr::Binary(op=@parse.BinaryOp::Add, ..)), ..)),
+        ..,
+      ),
+      ..,
+    ) => true
+    _ => false
+  }
+  assert_eq(else_is_addition, true)
+}
+
 test "parser accepts empty attribute dictionaries" {
   let source = "@foo({})\nmodule Top() -> () {}\n"
   assert_eq(parse_source(source).length(), 1)

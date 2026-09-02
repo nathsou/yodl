@@ -5,7 +5,7 @@ module Top(clk: clock, rst: bool) -> (count: uint[clog2!(Limit)]) {
     state.d = if state.q == Limit - 1 {
         0
     } else {
-        (state.q + 1)
+        state.q + 1
     }
     count = state.q
 }

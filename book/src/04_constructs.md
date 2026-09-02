@@ -223,7 +223,7 @@ Block expressions group multiple statements in a new lexical scope and optionall
     let result = {
         let a = 5
         let b = 10
-        (a + b)  // Last expression becomes the block's value
+        a + b  // Last expression becomes the block's value
     }
 
     assert!(result == 15)

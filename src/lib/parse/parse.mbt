@@ -197,7 +197,15 @@ fn Parser::expect_end(self: Parser) -> Unit raise ParserError {
 }
 
 fn Parser::precedence_climbing(self: Parser, min_precedence: Int) -> Expr raise {
-  let mut lhs = self.parse_indexing_expr()
+  let lhs = self.parse_indexing_expr()
+  self.precedence_climbing_from(lhs, min_precedence)
+}
+
+// Continue parsing binary operators after a caller has already consumed the
+// primary/indexing portion of an expression. Statement parsing uses this after
+// checking whether that portion is the left-hand side of an assignment.
+fn Parser::precedence_climbing_from(self: Parser, initial_lhs: Expr, min_precedence: Int) -> Expr raise {
+  let mut lhs = initial_lhs
 
   while self.index < self.tokens.length() {
     match self.peek().to_binop() {
@@ -678,16 +686,23 @@ fn Parser::parse_assignment_stmt(self: Parser) -> Stmt raise {
     let rhs = self.parse_expr()
     self.expect(Semicolon, self.index)
     Assign(lhs~, rhs~, span=self.span(start_idx))
-  } else if self.consumes(Semicolon) {
-    Expr(expr=lhs, span=self.span(start_idx))
   } else {
-    match lhs {
-      Match(_) | If(_) | Block(_) => {
-        // accept match, if and block expressions without a semicolon
-        Expr(expr=lhs, span=self.span(start_idx))
-      }
-      _ => {
-        raise ExpectedStmt(received=self.peek(), span=self.span(start_idx))
+    // We parse the indexing expression first so that an assignment target can
+    // be recognized without accepting arbitrary expressions on the left of
+    // `=`. When it is not an assignment, continue with binary operators: this
+    // is essential for final expressions in `if` and block expressions.
+    let expr = self.precedence_climbing_from(lhs, 0)
+    if self.consumes(Semicolon) {
+      Expr(expr~, span=self.span(start_idx))
+    } else {
+      match expr {
+        Match(_) | If(_) | Block(_) => {
+          // accept match, if and block expressions without a semicolon
+          Expr(expr~, span=self.span(start_idx))
+        }
+        _ => {
+          raise ExpectedStmt(received=self.peek(), span=self.span(start_idx))
+        }
       }
     }
   }
