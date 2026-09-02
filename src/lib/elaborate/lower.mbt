@@ -587,6 +587,20 @@ fn flatten_int(reference: FRef, ty: @firrtl.Type, span~: Span) -> FExpr raise {
   }
 }
 
+fn Elaborator::direct_instance_binding(
+  self: Elaborator,
+  expr: CoreExpr,
+) -> Bool {
+  match expr {
+    Instance(ty~, ..) => match ty.val {
+      Some(Instance(sig~, ids~, ..)) =>
+        !sig.attributes.contains("internal") && !self.port_usage.escapes(ids)
+      _ => false
+    }
+    _ => false
+  }
+}
+
 fn Elaborator::lower_stmt(self: Elaborator, stmt: CoreStmt, scope~: &ScopeLike, env~: ElaboratorEnv) -> Unit raise {
   match stmt {
     Expr(expr~, span=_) => {
@@ -604,7 +618,10 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: CoreStmt, scope~: &ScopeLike, 
       } else {
         let ty = lower_type(core_ty, span~, port_usage=self.port_usage)
         let id = Id::from(name)
-        scope.add_stmt(Wire(id~, ty~))
+        let direct_instance = expr.map_or(false, expr => self.direct_instance_binding(expr))
+        if !direct_instance {
+          scope.add_stmt(Wire(id~, ty~))
+        }
         let variable = mk_id(id)
         let val = match expr {
           Some(expr) => Some(self.lower_expr(expr, scope~, env~, binding=Some(variable)))
@@ -612,9 +629,10 @@ fn Elaborator::lower_stmt(self: Elaborator, stmt: CoreStmt, scope~: &ScopeLike, 
         }
 
         match val {
-          Some(val) => {
+          Some(val) if !direct_instance => {
             self.connect(lhs=variable, value=val, scope~)
           }
+          Some(_) => ()
           None => ()
         }
 
@@ -953,6 +971,10 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       }
       let params_map = typed_params
       let attributes = core_sig.attributes
+      let direct_instance =
+        !attributes.contains("internal") &&
+        !self.port_usage.escapes(instance_ids) &&
+        binding.bind(FRef::as_id) is Some(_)
 
       let inline_connections: Map[String, Value] = Map([])
       let connections: Map[String, Value] = Map([])
@@ -1019,7 +1041,10 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
  
       // connect ports with inline expressions which are written to afterwards
       for port_name, access in accessed_ports {
-        if (access == Write || access == ReadWrite) && inline_connections.get(port_name) is Some(inline_expr) {
+        if
+          !direct_instance &&
+          (access == Write || access == ReadWrite) &&
+          inline_connections.get(port_name) is Some(inline_expr) {
           self.connect(
             lhs=mk_field_access(lhs=inst_ref, field=Id::from(port_name)),
             value=inline_expr,
@@ -1209,15 +1234,33 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
           _ => raise ElaborationError(message="Module '\{path.to_string()}' is marked as internal but has no elaboration handler", span~)
         }
       } else {
-        let inst_id = Id::from("inst_\{self.next_idx()}$")
+        let inst_id = if direct_instance {
+          inst_ref.as_id().unwrap()
+        } else {
+          Id::from("inst_\{self.next_idx()}$")
+        }
         scope.add_stmt(Inst(id=inst_id, of=id_of_path(path), sig={ ports: ports_sig }))
+
+        if direct_instance {
+          for port_name, access in accessed_ports {
+            if
+              (access == Write || access == ReadWrite) &&
+              inline_connections.get(port_name) is Some(inline_expr) {
+              self.connect(
+                lhs=mk_field_access(lhs=inst_ref, field=Id::from(port_name)),
+                value=inline_expr,
+                scope~,
+              )
+            }
+          }
+        }
 
         for port_name, sig in ports_sig {
           if uses_port(port_name) {
             let lhs = Value::Expr(expr=mk_ref(mk_field_access(lhs=mk_id(inst_id), field=Id::from(port_name))), ty=sig.ty, span~)
             let rhss = Array::new(capacity=2)
 
-            if accessed_ports.contains(port_name) {
+            if accessed_ports.contains(port_name) && !direct_instance {
               rhss.push(Value::Expr(expr=mk_ref(mk_field_access(lhs=inst_ref, field=Id::from(port_name))), ty=sig.ty, span~))
             }
             

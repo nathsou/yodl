@@ -67,10 +67,8 @@ pub(all) struct Circuit[T] {
 }
 
 pub struct CleanupPass {
-  partial_instance_shells : Bool
 }
 pub fn CleanupPass::new() -> Self
-pub fn CleanupPass::with_partial_instance_shells() -> Self
 pub impl FIRRTLPass for CleanupPass
 
 pub(all) enum Command[T] {

@@ -5,6 +5,7 @@ import {
   "moonbitlang/core/bigint",
   "moonbitlang/core/debug",
   "moonbitlang/core/ref",
+  "moonbitlang/core/set",
   "nathsou/yodl/lib/utils",
 }
 
@@ -449,12 +450,15 @@ pub impl Show for PortDir
 
 pub struct PortUsage {
   instances : Map[Int, Map[String, PortAccess]]
+  escaped_instances : @set.Set[Int]
 }
 pub fn PortUsage::contains(Self, Array[InstanceId], String) -> Bool
+pub fn PortUsage::escapes(Self, Array[InstanceId]) -> Bool
 pub fn PortUsage::for_instances(Self, Array[InstanceId]) -> Map[String, PortAccess]
 pub fn PortUsage::is_written_to(Self, Array[InstanceId], String) -> Bool
 pub fn PortUsage::new() -> Self
 pub fn PortUsage::record(Self, Array[InstanceId], String, PortAccess) -> Unit
+pub fn PortUsage::record_escape(Self, Array[InstanceId]) -> Unit
 pub fn PortUsage::record_read(Self, Array[InstanceId], String) -> Unit
 pub fn PortUsage::record_write(Self, Array[InstanceId], String) -> Unit
 
