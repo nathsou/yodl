@@ -3,10 +3,19 @@
 /// This pass deliberately avoids general propagation. In particular, a
 /// connection may resize its source, so a wire can become a node only when
 /// both types are exactly equal and the wire has one unconditional driver.
-pub struct CleanupPass {}
+pub struct CleanupPass {
+  partial_instance_shells: Bool
+}
 
 pub fn CleanupPass::new() -> CleanupPass {
-  CleanupPass::{}
+  CleanupPass::{ partial_instance_shells: false }
+}
+
+/// Enables the more aggressive instance-name cleanup used for high FIRRTL.
+/// Low FIRRTL flattens aggregate references after this pass, so it retains
+/// partial instance shells to keep that lowering's namespace stable.
+pub fn CleanupPass::with_partial_instance_shells() -> CleanupPass {
+  CleanupPass::{ partial_instance_shells: true }
 }
 
 pub impl FIRRTLPass for CleanupPass with run(self, circuit) -> TypedCircuit {
@@ -20,7 +29,7 @@ pub impl FIRRTLPass for CleanupPass with run(self, circuit) -> TypedCircuit {
 }
 
 fn CleanupPass::cleanup_module(self: Self, mod: TypedModule) -> TypedModule {
-  let mod = self.cleanup_instance_shells(mod)
+  let mod = self.cleanup_instance_shells(mod, allow_partial=self.partial_instance_shells)
   let mod = self.cleanup_register_shells(mod)
   let writes: Map[Id, Int] = Map([])
   count_writes(mod.body, writes)
@@ -55,6 +64,20 @@ fn instance_bridge(
     Some((lhs_root, lhs_field))
   } else {
     None
+  }
+}
+
+fn is_instance_projection(proxy_ty: Type, instance_ty: Type) -> Bool {
+  match (proxy_ty, instance_ty) {
+    (Bundle(proxy_fields), Bundle(instance_fields)) =>
+      !proxy_fields.is_empty() && proxy_fields.all(proxy_field =>
+        instance_fields.any(instance_field =>
+          proxy_field.id == instance_field.id &&
+          proxy_field.flip == instance_field.flip &&
+          proxy_field.ty == instance_field.ty
+        )
+      )
+    _ => false
   }
 }
 
@@ -152,7 +175,11 @@ fn rewrite_instance_expr(
   }
 }
 
-fn CleanupPass::cleanup_instance_shells(_self: Self, mod: TypedModule) -> TypedModule {
+fn CleanupPass::cleanup_instance_shells(
+  _self: Self,
+  mod: TypedModule,
+  allow_partial~: Bool,
+) -> TypedModule {
   let instances: Map[Id, Type] = Map([])
   for stmt in mod.body {
     if stmt is Inst(id~, sig~, ..) {
@@ -187,7 +214,9 @@ fn CleanupPass::cleanup_instance_shells(_self: Self, mod: TypedModule) -> TypedM
     }
     guard !inconsistent && instance is Some(instance) else { continue }
     guard instances.get(instance) is Some(instance_ty) else { continue }
-    guard proxy_ty == instance_ty else { continue }
+    guard
+      proxy_ty == instance_ty || (allow_partial && is_instance_projection(proxy_ty, instance_ty))
+    else { continue }
     // A matching field name is not sufficient: unrelated aggregate wires can
     // legitimately connect to one field of an instance. A generated shell,
     // however, has exactly one bridge for every field it exposes.

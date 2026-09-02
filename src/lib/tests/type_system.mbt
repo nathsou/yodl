@@ -662,6 +662,63 @@ test "instance input assignments are tracked as writes without spurious reads" {
 }
 
 ///|
+test "high FIRRTL uses source names for non-escaping partial instance shells" {
+  let source =
+    #|module Adder(a: u8, b: u8) -> (sum: u9) {
+    #|  sum = a + b
+    #|}
+    #|
+    #|module Top(a: u8, b: u8, c: u8) -> (ab: u9, bc: u9) {
+    #|  let first = Adder(a: a, b: b)
+    #|  let second = Adder(a: b, b: c)
+    #|  ab = first.sum
+    #|  bc = second.sum
+    #|}
+  let firrtl = compile_stage(source, "write_firrtl")
+  assert_true(firrtl.contains("inst first of Adder"))
+  assert_true(firrtl.contains("inst second of Adder"))
+  assert_true(firrtl.contains("connect ab, first.sum"))
+  assert_true(firrtl.contains("connect bc, second.sum"))
+  assert_false(firrtl.contains("wire first:"))
+  assert_false(firrtl.contains("wire second:"))
+  assert_false(firrtl.contains("inst inst_0$ of Adder"))
+}
+
+///|
+test "high FIRRTL retains partial instance shells which escape through aliases" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u8) -> (result: u8) {
+    #|  let child = Child()
+    #|  let alias = child
+    #|  alias.input = value
+    #|  result = alias.output
+    #|}
+  let firrtl = compile_stage(source, "write_firrtl")
+  assert_true(firrtl.contains("wire child: { flip input: UInt<8>, output: UInt<8> }"))
+  assert_true(firrtl.contains("inst inst_0$ of Child"))
+}
+
+///|
+test "low FIRRTL retains partial instance shells for aggregate lowering" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u8) -> (result: u8) {
+    #|  let child = Child(input: value)
+    #|  result = child.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("wire child_output: UInt<8>"))
+  assert_true(firrtl.contains("inst inst_0$ of Child"))
+}
+
+///|
 test "lvalue checking preserves reads used by dynamic indices" {
   let source =
     #|module Index(value: bool) -> (output: bool) {
