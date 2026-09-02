@@ -191,7 +191,7 @@ fn lower_firrtl(firrtl : @elaborate.Elaborator, passes~ : Array[&@firrtl.FIRRTLP
   }
 
   let circuit : @firrtl.TypedCircuit = @firrtl.type_check_circuit(circuit)
-  let mut circ = circuit
+  let mut circ = @firrtl.CleanupPass::new().run(circuit)
 
   for pass in passes {
     circ = pass.run(circ)

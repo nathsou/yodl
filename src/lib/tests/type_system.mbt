@@ -657,9 +657,83 @@ test "instance input assignments are tracked as writes without spurious reads" {
     #|  result = child.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("connect child_input, second"))
-  assert_true(firrtl.contains("connect inst_0$.input, child_input"))
-  assert_false(firrtl.contains("connect inst_0$.input, first"))
+  assert_true(firrtl.contains("connect child.input, second"))
+  assert_false(firrtl.contains("connect child.input, first"))
+}
+
+///|
+test "high FIRRTL uses source names for non-escaping partial instance shells" {
+  let source =
+    #|module Adder(a: u8, b: u8) -> (sum: u9) {
+    #|  sum = a + b
+    #|}
+    #|
+    #|module Top(a: u8, b: u8, c: u8) -> (ab: u9, bc: u9) {
+    #|  let first = Adder(a: a, b: b)
+    #|  let second = Adder(a: b, b: c)
+    #|  ab = first.sum
+    #|  bc = second.sum
+    #|}
+  let firrtl = compile_stage(source, "write_firrtl")
+  assert_true(firrtl.contains("inst first of Adder"))
+  assert_true(firrtl.contains("inst second of Adder"))
+  assert_true(firrtl.contains("connect ab, first.sum"))
+  assert_true(firrtl.contains("connect bc, second.sum"))
+  assert_false(firrtl.contains("wire first:"))
+  assert_false(firrtl.contains("wire second:"))
+  assert_false(firrtl.contains("inst inst_0$ of Adder"))
+}
+
+///|
+test "high FIRRTL retains partial instance shells which escape through aliases" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u8) -> (result: u8) {
+    #|  let child = Child()
+    #|  let alias = child
+    #|  alias.input = value
+    #|  result = alias.output
+    #|}
+  let firrtl = compile_stage(source, "write_firrtl")
+  assert_true(firrtl.contains("wire child: { flip input: UInt<8>, output: UInt<8> }"))
+  assert_true(firrtl.contains("inst inst_0$ of Child"))
+}
+
+///|
+test "low FIRRTL directly lowers non-escaping instances" {
+  let source =
+    #|module Child(input: u8) -> (output: u8) {
+    #|  output = input
+    #|}
+    #|
+    #|module Top(value: u8) -> (result: u8) {
+    #|  let child = Child(input: value)
+    #|  result = child.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("inst child of Child"))
+  assert_true(firrtl.contains("connect result, child.output"))
+  assert_false(firrtl.contains("wire child_output: UInt<8>"))
+}
+
+///|
+test "aggregate lowering rewrites uniquified direct instance references" {
+  let source =
+    #|module Child() -> (output: u8) {
+    #|  output = 42
+    #|}
+    #|
+    #|module Top() -> (child_output: u8) {
+    #|  let child = Child()
+    #|  child_output = child.output
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("inst child_0 of Child"))
+  assert_true(firrtl.contains("connect child_output, child_0.output"))
+  assert_false(firrtl.contains("connect child_output, child.output"))
 }
 
 ///|
@@ -678,8 +752,8 @@ test "lvalue checking preserves reads used by dynamic indices" {
     #|  result = child.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("wire index_output: UInt<1>"))
-  assert_true(firrtl.contains("mux(eq(index_output, UInt<1>(0)), second"))
+  assert_true(firrtl.contains("inst index of Index"))
+  assert_true(firrtl.contains("mux(eq(index.output, UInt<1>(0)), second"))
 }
 
 ///|

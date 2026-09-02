@@ -614,6 +614,32 @@ fn assigned_instance_port(lhs: Expr) -> (ModuleSignature, Array[InstanceId], Str
     }
 }
 
+fn instance_ids_in_type(ty: Type) -> Array[InstanceId] {
+    let ids: Array[InstanceId] = []
+
+    fn collect(ty: Type) -> Unit {
+        match ty {
+            Instance(ids=instance_ids, ..) => {
+                for id in instance_ids {
+                    if !ids.contains(id) {
+                        ids.push(id)
+                    }
+                }
+            }
+            Vector(ty~, ..) => collect(ty)
+            Struct(fields) => {
+                for _, field_ty in fields {
+                    collect(field_ty)
+                }
+            }
+            _ => ()
+        }
+    }
+
+    collect(ty)
+    ids
+}
+
 fn type_equal(ty1: Type, ty2: Type, span~: Span, subst~: Map[String, TypeEqualityParam] = {}) -> Map[String, TypeEqualityParam] raise TypeCheckerError {
     type_equal_aux([(ty1, ty2)], span~, subst~)
 }
@@ -1072,9 +1098,11 @@ fn TypeChecker::check_expr_in_context(
                             Some(port_def) => {
                                 let port_ty = instantiated_port_tys[port_name]
                                 if port_def.dir == Input {
-                                    let _ = self.check_expr(port_expr, env, expected_ty=port_ty)
+                                    let expr_ty = self.check_expr(port_expr, env, expected_ty=port_ty)
+                                    self.port_usage.record_escape(instance_ids_in_type(expr_ty))
                                 } else {
                                     let expr_ty = self.synth_expr(port_expr, env)
+                                    self.port_usage.record_escape(instance_ids_in_type(expr_ty))
                                     let _ = type_equal(port_ty, expr_ty, span=port_expr.span())
                                     if !is_valid_assignment_target(port_expr) {
                                         raise InvalidAssignmentTarget(span=port_expr.span())
@@ -1479,13 +1507,14 @@ fn TypeChecker::check_expr_in_context(
 fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]]) -> Unit raise {
     match stmt {
         Expr(expr~, ..) => {
-            let _ = self.synth_expr(expr, env)
+            let ty = self.synth_expr(expr, env)
+            self.port_usage.record_escape(instance_ids_in_type(ty))
         }
         Let(name~, ty~, expr~, span~) => {
             let path = Path::new([], name)
             let binding = ty
 
-            binding.val = Some(match (binding.val, expr) {
+            let binding_ty = match (binding.val, expr) {
                 (Some(ty), Some(expr)) => {
                     let ty = self.resolve_ty(ty, span~)
                     declare_name(env~, path~, ty~, span~, binding=Some(binding))
@@ -1507,7 +1536,15 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
                 (None, None) => {
                     raise type_error("Let statement must have a type or value", span)
                 }
-            })
+            }
+            binding.val = Some(binding_ty)
+
+            // A constructor assigned to its original binding can be lowered
+            // directly as a named FIRRTL instance. Every other whole-value
+            // use needs a materialized proxy to preserve instance identity.
+            if expr is Some(expr) && !(expr is Instance(..)) {
+                self.port_usage.record_escape(instance_ids_in_type(binding_ty))
+            }
         }
         Assign(lhs~, rhs~, span~) => {
             let lhs_ty = self.synth_expr(lhs, env, record_port_reads=false)
@@ -1528,6 +1565,7 @@ fn TypeChecker::check_stmt(self: Self, stmt: Stmt, env: Scope[Path, Ref[Type?]])
             }
 
             let rhs_ty = self.check_expr(rhs, env, expected_ty=lhs_ty)
+            self.port_usage.record_escape(instance_ids_in_type(rhs_ty))
             merge_assignment_target(lhs, rhs_ty, env)
         }
         Scope(body~, ..) => {

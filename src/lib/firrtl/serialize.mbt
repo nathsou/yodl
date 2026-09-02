@@ -245,27 +245,37 @@ pub fn[T] FIRRTLEmitter::emit_stmt(self: Self, stmt: Stmt[T], glued~: Bool = fal
       self.0.write(":\n")
       self.0.indent += 1
 
-      for stmt in body {
+      for idx, stmt in body {
         self.emit_stmt(stmt)
-        self.0.write("\n")
+        if idx < body.length() - 1 {
+          self.0.write("\n")
+        }
       }
 
       self.0.indent -= 1
 
       match otherwise {
         Some([When(otherwise)]) => {
+          if !body.is_empty() {
+            self.0.write("\n")
+          }
           self.0.write_indent()
           self.0.write("else ")
           self.emit_stmt(When(otherwise), glued=true)
         }
         Some(otherwise) => {
+          if !body.is_empty() {
+            self.0.write("\n")
+          }
           self.0.write_indent()
           self.0.write("else:\n")
           self.0.indent += 1
 
-          for stmt in otherwise {
+          for idx, stmt in otherwise {
             self.emit_stmt(stmt)
-            self.0.write("\n")
+            if idx < otherwise.length() - 1 {
+              self.0.write("\n")
+            }
           }
 
           self.0.indent -= 1
@@ -371,7 +381,7 @@ pub fn[T] FIRRTLEmitter::emit_stmt(self: Self, stmt: Stmt[T], glued~: Bool = fal
             }
           }
 
-          self.0.write(")\n")
+          self.0.write(")")
         }
         Assert(clk~, pred~, en~, fmt~, args~) => {
           self.0.write_indent()
@@ -397,7 +407,7 @@ pub fn[T] FIRRTLEmitter::emit_stmt(self: Self, stmt: Stmt[T], glued~: Bool = fal
             }
           }
 
-          self.0.write(")\n")
+          self.0.write(")")
         }
         Stop(clk~, en~, code~) => {
           self.0.write_indent()
@@ -407,7 +417,7 @@ pub fn[T] FIRRTLEmitter::emit_stmt(self: Self, stmt: Stmt[T], glued~: Bool = fal
           self.0.write(en)
           self.0.write(", ")
           self.0.write(code)
-          self.0.write(")\n")
+          self.0.write(")")
         }
       }
     }

@@ -16,12 +16,10 @@ circuit Top:
     input q_y: UInt<8>
     output dot: UInt<17>
 
-    wire d_result: UInt<17>
-    inst inst_0$ of Dot
-    connect dot, d_result
-    connect d_result, inst_0$.result
-    connect inst_0$.a_x, p_x
-    connect inst_0$.a_y, p_y
-    connect inst_0$.b_x, q_x
-    connect inst_0$.b_y, q_y
+    inst d of Dot
+    connect dot, d.result
+    connect d.a_x, p_x
+    connect d.a_y, p_y
+    connect d.b_x, q_x
+    connect d.b_y, q_y
 

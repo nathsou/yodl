@@ -23,11 +23,32 @@ pub fn InstanceId::new(value : Int) -> InstanceId {
 /// table and the elaborator consumes it when materialising instance bundles.
 pub struct PortUsage {
   instances : Map[Int, Map[String, PortAccess]]
+  escaped_instances : Set[Int]
 }
 
 ///|
 pub fn PortUsage::new() -> PortUsage {
-  { instances: {} }
+  { instances: {}, escaped_instances: Set([]) }
+}
+
+///|
+/// Records that an instance identity is used as a whole value rather than
+/// solely through direct port accesses.
+pub fn PortUsage::record_escape(
+  self : PortUsage,
+  ids : Array[InstanceId],
+) -> Unit {
+  for id in ids {
+    self.escaped_instances.add(id.value)
+  }
+}
+
+///|
+pub fn PortUsage::escapes(
+  self : PortUsage,
+  ids : Array[InstanceId],
+) -> Bool {
+  ids.any(id => self.escaped_instances.contains(id.value))
 }
 
 ///|
