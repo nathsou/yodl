@@ -14,25 +14,13 @@ circuit Top:
     wire base_r: UInt<3>
     wire base_g: UInt<3>
     wire base_b: UInt<3>
-    wire struct_0$_r: UInt<3>
-    wire struct_0$_g: UInt<3>
-    wire struct_0$_b: UInt<3>
-    wire struct_1$_r: UInt<3>
-    wire struct_1$_g: UInt<3>
-    wire struct_1$_b: UInt<3>
     connect out_r, base_r
     connect out_g, base_g
     connect out_b, base_b
-    connect copy_r, struct_1$_r
-    connect copy_g, struct_1$_g
-    connect copy_b, struct_1$_b
-    connect base_r, struct_0$_r
-    connect base_g, struct_0$_g
-    connect base_b, struct_0$_b
-    connect struct_0$_r, rin
-    connect struct_0$_g, gin
-    connect struct_0$_b, bin
-    connect struct_1$_r, base_r
-    connect struct_1$_g, UInt<3>(0)
-    connect struct_1$_b, base_b
+    connect copy_r, base_r
+    connect copy_g, UInt<3>(0)
+    connect copy_b, base_b
+    connect base_r, rin
+    connect base_g, gin
+    connect base_b, bin
 

@@ -66,6 +66,11 @@ pub(all) struct Circuit[T] {
   decls : Array[Decl[T]]
 }
 
+pub struct CleanupPass {
+}
+pub fn CleanupPass::new() -> Self
+pub impl FIRRTLPass for CleanupPass
+
 pub(all) enum Command[T] {
   Printf(clk~ : Expr[T], en~ : Expr[T], fmt~ : String, args~ : Array[Expr[T]])
   Assert(clk~ : Expr[T], pred~ : Expr[T], en~ : Expr[T], fmt~ : String, args~ : Array[Expr[T]])

@@ -16,30 +16,16 @@ circuit Top:
     wire vec_0$_1: UInt<1>
     wire vec_0$_2: UInt<1>
     wire vec_0$_3: UInt<1>
-    wire vec_1$_0: UInt<8>
-    wire vec_1$_1: UInt<8>
-    wire vec_1$_2: UInt<8>
-    wire vec_2$_0: UInt<1>
-    wire vec_2$_1: UInt<1>
-    wire vec_2$_2: UInt<1>
-    wire vec_2$_3: UInt<1>
-    connect bools4_0, vec_0$_0
-    connect bools4_1, vec_0$_1
-    connect bools4_2, vec_0$_2
-    connect bools4_3, vec_0$_3
-    connect bytes3_0, vec_1$_0
-    connect bytes3_1, vec_1$_1
-    connect bytes3_2, vec_1$_2
-    connect bits4, cat(vec_2$_0, cat(vec_2$_1, cat(vec_2$_2, vec_2$_3)))
+    connect bools4_0, b
+    connect bools4_1, b
+    connect bools4_2, b
+    connect bools4_3, b
+    connect bytes3_0, byte
+    connect bytes3_1, byte
+    connect bytes3_2, byte
+    connect bits4, cat(vec_0$_0, cat(vec_0$_1, cat(vec_0$_2, vec_0$_3)))
     connect vec_0$_0, b
     connect vec_0$_1, b
     connect vec_0$_2, b
     connect vec_0$_3, b
-    connect vec_1$_0, byte
-    connect vec_1$_1, byte
-    connect vec_1$_2, byte
-    connect vec_2$_0, b
-    connect vec_2$_1, b
-    connect vec_2$_2, b
-    connect vec_2$_3, b
 

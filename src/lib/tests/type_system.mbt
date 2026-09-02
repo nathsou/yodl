@@ -657,9 +657,8 @@ test "instance input assignments are tracked as writes without spurious reads" {
     #|  result = child.output
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
-  assert_true(firrtl.contains("connect child_input, second"))
-  assert_true(firrtl.contains("connect inst_0$.input, child_input"))
-  assert_false(firrtl.contains("connect inst_0$.input, first"))
+  assert_true(firrtl.contains("connect child.input, second"))
+  assert_false(firrtl.contains("connect child.input, first"))
 }
 
 ///|

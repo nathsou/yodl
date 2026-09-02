@@ -400,8 +400,27 @@ fn Value::as_ref(self: Value, elaborator: Elaborator, scope~: &ScopeLike, bindin
 }
 
 fn Elaborator::connect(self: Elaborator, lhs~: FRef, value~: Value, scope~: &ScopeLike) -> Unit raise {
-  if !(lhs is Id(lhs_id, ..) && value is Expr(expr=Reference(Id(rhs_id, ..), ty=_), ..) && lhs_id.inner() == rhs_id.inner()) {
-    scope.add_stmt(Connect(lhs, value.as_expr(self, scope~)))
+  match value {
+    Vector(elems~, ..) => {
+      for i, elem in elems {
+        self.connect(
+          lhs=mk_static_indexing(lhs~, index=i),
+          value=elem,
+          scope~,
+        )
+      }
+    }
+    Struct(fields~, ..) => {
+      for name, field_value in fields {
+        self.connect(
+          lhs=mk_field_access(lhs~, field=Id::from(name)),
+          value=field_value,
+          scope~,
+        )
+      }
+    }
+    Expr(expr=Reference(Id(rhs_id, ..), ty=_), ..) if lhs is Id(lhs_id, ..) && lhs_id.inner() == rhs_id.inner() => ()
+    _ => scope.add_stmt(Connect(lhs, value.as_expr(self, scope~)))
   }
 }
 
@@ -455,6 +474,68 @@ fn Value::as_int(self: Value) -> BigInt raise {
   match self {
     Expr(expr=Literal(UInt(value~, ..) | SInt(value~, ..), ty=_), ..) => value
     _ => raise ElaborationError(message="Expected integer literal", span=Spanned::span(self))
+  }
+}
+
+fn Elaborator::mux_values(
+  self: Elaborator,
+  cond: FExpr,
+  tval: Value,
+  fval: Value,
+  scope~: &ScopeLike,
+  span~: Span,
+) -> Value raise {
+  match (tval, fval) {
+    (Expr(expr=tval, ty~, ..), Expr(expr=fval, ..)) => {
+      Expr(expr=Mux(cond~, tval~, fval~, ty=()), ty~, span~)
+    }
+    (
+      Vector(elems=true_elems, ty~, ..),
+      Vector(elems=false_elems, ..),
+    ) if true_elems.length() == false_elems.length() => {
+      let elems = []
+      for true_elem, false_elem in @utils.zip2(true_elems, false_elems) {
+        elems.push(self.mux_values(cond, true_elem, false_elem, scope~, span~))
+      }
+      Vector(elems~, ty~, span~)
+    }
+    (
+      Struct(fields=true_fields, ty~, ..),
+      Struct(fields=false_fields, ..),
+    ) if true_fields.length() == false_fields.length() => {
+      let fields = Map([], capacity=true_fields.length())
+      for name, true_field in true_fields {
+        match false_fields.get(name) {
+          Some(false_field) => {
+            fields[name] = self.mux_values(
+              cond,
+              true_field,
+              false_field,
+              scope~,
+              span~,
+            )
+          }
+          None => raise ElaborationError::Unreachable(
+            message="Mismatched struct fields in conditional",
+            span~,
+          )
+        }
+      }
+      Struct(fields~, ty~, span~)
+    }
+    _ => {
+      let ty = tval.ty()
+      Expr(
+        expr=Mux(
+          cond~,
+          tval=tval.as_expr(self, scope~),
+          fval=fval.as_expr(self, scope~),
+          ty=(),
+        ),
+        ty~,
+        span~,
+      )
+    }
   }
 }
 
@@ -697,6 +778,57 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
     Match(subject~, cases~, default~, span~, ty=match_ty) => {
       let has_value = unwrap_type(match_ty, span~) != CoreType::Unit
 
+      // `if` expressions simplify to one- or two-case matches on UInt<1>.
+      // Keep those as native FIRRTL control flow instead of introducing a
+      // temporary subject node followed by `eq(subject, UInt<1>(1))`.
+      if
+        !has_value &&
+        subject.ty().val is Some(UInt(1)) &&
+        default is None &&
+        (cases.length() == 1 || cases.length() == 2) {
+        let case_bodies: Map[Int, Array[FStmt]] = Map([])
+        let mut is_boolean_match = true
+
+        for case in cases {
+          let (pattern, body_expr) = case
+          let pattern_value = pattern.as_int()
+          if pattern_value != 0 && pattern_value != 1 {
+            is_boolean_match = false
+          } else if case_bodies.contains(pattern_value) {
+            is_boolean_match = false
+          } else {
+            let case_scope = StmtContainer::new()
+            let _ = self.lower_expr(body_expr, scope=case_scope, env~)
+            case_bodies[pattern_value] = case_scope.0
+          }
+        }
+
+        if is_boolean_match {
+          let cond = self.lower_expr(subject, scope~, env~).as_expr(self, scope~)
+          match (case_bodies.get(1), case_bodies.get(0)) {
+            (Some(true_body), Some(false_body)) => {
+              scope.add_stmt(When({
+                cond,
+                body: true_body,
+                otherwise: Some(false_body),
+              }))
+            }
+            (Some(true_body), None) => {
+              scope.add_stmt(When({ cond, body: true_body, otherwise: None }))
+            }
+            (None, Some(false_body)) => {
+              scope.add_stmt(When({
+                cond: mk_prim(Not, [cond]),
+                body: false_body,
+                otherwise: None,
+              }))
+            }
+            _ => ()
+          }
+          return Empty(span~)
+        }
+      }
+
       if
         has_value &&
         subject.ty().val is Some(UInt(1)) &&
@@ -704,18 +836,18 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         // Require both cases to be simple expressions without statements
         !cases.iter().any(case => case.1.contains_statements()) {
         // Rewrite 1-bit match with two cases as a mux
-        let cases_map: Map[Int, FExpr] = Map([])
+        let cases_map: Map[Int, Value] = Map([])
 
         for case in cases {
           let int_val = case.0.as_int()
-          cases_map[int_val] = self.lower_expr(case.1, scope~, env~).as_expr(self, scope~)
+          cases_map[int_val] = self.lower_expr(case.1, scope~, env~)
         }
 
         let tval = cases_map.get(1).unwrap_or_error(ElaborationError::Unreachable(message="Missing true case in 1-bit match", span~))
         let fval = cases_map.get(0).unwrap_or_error(ElaborationError::Unreachable(message="Missing false case in 1-bit match", span~))
         let cond = self.lower_expr(subject, scope~, env~).as_expr(self, scope~)
 
-        Expr(expr=Mux(cond~, tval~, fval~, ty=()), ty~, span~)
+        self.mux_values(cond, tval, fval, scope~, span~)
       } else {
         let res_id = if has_value {
           let res_id = self.binding_name(binding, "match")
@@ -822,8 +954,8 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       let params_map = typed_params
       let attributes = core_sig.attributes
 
-      let inline_connections: Map[String, FExpr] = Map([])
-      let connections: Map[String, FExpr] = Map([])
+      let inline_connections: Map[String, Value] = Map([])
+      let connections: Map[String, Value] = Map([])
       let accessed_ports = self.port_usage.for_instances(instance_ids)
 
       let extra_ports: Array[String] = []
@@ -847,7 +979,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
           extra_ports.push(port_name)
         }
 
-        inline_connections[port_name] = self.lower_expr(expr, scope~, env~).as_expr(self, scope~)
+        inline_connections[port_name] = self.lower_expr(expr, scope~, env~)
       }
       
       if !extra_ports.is_empty() {
@@ -864,17 +996,23 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             if uses_port(port_name) && !accessed_ports.contains(port_name) {
               let port_id = self.gen_id(port_name)
               scope.add_stmt(Wire(id=port_id, ty=port_sig.ty))
-              connections[port_name] = mk_ref(mk_id(port_id))
+              connections[port_name] = Value::Expr(
+                expr=mk_ref(mk_id(port_id)), ty=port_sig.ty, span~,
+              )
             }
           }
         }
       }
 
-      fn get_port(port_name: String) -> FExpr {
+      fn get_port(port_name: String) -> Value {
         match connections.get(port_name) {
           Some(expr) => expr
           None => {
-            mk_ref(mk_field_access(lhs=inst_ref, field=Id::from(port_name)))
+            Value::Expr(
+              expr=mk_ref(mk_field_access(lhs=inst_ref, field=Id::from(port_name))),
+              ty=ports_sig[port_name].ty,
+              span~,
+            )
           }
         }
       }
@@ -882,10 +1020,11 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
       // connect ports with inline expressions which are written to afterwards
       for port_name, access in accessed_ports {
         if (access == Write || access == ReadWrite) && inline_connections.get(port_name) is Some(inline_expr) {
-          scope.add_stmt(Connect(
-            mk_field_access(lhs=inst_ref, field=Id::from(port_name)),
-            inline_expr
-          ))
+          self.connect(
+            lhs=mk_field_access(lhs=inst_ref, field=Id::from(port_name)),
+            value=inline_expr,
+            scope~,
+          )
         }
       }
 
@@ -905,7 +1044,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             let uses_rst = uses_port("rst")
             let uses_en = uses_port("en")
             let reg_id = Id::from("reg_\{self.next_idx()}")
-            let clk = get_port("clk")
+            let clk = get_port("clk").as_expr(self, scope~)
 
             let reg_stmt = if uses_rst {
               let init = default_value(reg_ty, span~).as_expr(self, scope~)
@@ -915,7 +1054,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
                 ty=reg_ty,
                 clock=clk,
                 reset={
-                  let rst = get_port("rst")
+                  let rst = get_port("rst").as_expr(self, scope~)
                   
                   if sync_reset {
                     rst
@@ -935,12 +1074,12 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
             scope.add_stmt(reg_stmt)
 
-            let d_ref = Value::Expr(expr=get_port("d"), ty=reg_ty, span~).as_ref(self, scope~)
+            let d_ref = get_port("d").as_ref(self, scope~)
 
             if uses_port("q") {
               match connections.get("q") {
                 Some(expr) => {
-                  let q_ref = Value::Expr(expr~, ty=reg_ty, span~).as_ref(self, scope~)
+                  let q_ref = expr.as_ref(self, scope~)
                   scope.add_stmt(Connect(q_ref, mk_ref(mk_id(reg_id))))
                 }
                 None => ()
@@ -954,7 +1093,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             if uses_port("d") {
               let en_stmt: FStmt = if uses_en {
                 FStmt::When({
-                  cond: get_port("en"),
+                  cond: get_port("en").as_expr(self, scope~),
                   body: [Connect(mk_id(reg_id), mk_ref(d_ref))],
                   otherwise: None,
                 })
@@ -1035,7 +1174,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             let data_out = Array::new(capacity=read_ports)
 
             {
-              let ports = self.expr_as_ref(get_port("read"), scope~)
+              let ports = get_port("read").as_ref(self, scope~)
 
               for i in 0..<read_ports {
                 let reader = mk_static_indexing(lhs=ports, index=i)
@@ -1048,7 +1187,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
             }
 
             {
-              let ports = self.expr_as_ref(get_port("write"), scope~)
+              let ports = get_port("write").as_ref(self, scope~)
 
               for i in 0..<write_ports {
                 let writer = mk_static_indexing(lhs=ports, index=i)
@@ -1061,7 +1200,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
               }
             }
 
-            let q = self.expr_as_ref(get_port("q"), scope~)
+            let q = get_port("q").as_ref(self, scope~)
 
             for i, data in data_out {
               scope.add_stmt(Connect(mk_static_indexing(lhs=q, index=i), mk_ref(data)))
@@ -1075,15 +1214,15 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
 
         for port_name, sig in ports_sig {
           if uses_port(port_name) {
-            let lhs = Expr(expr=mk_ref(mk_field_access(lhs=mk_id(inst_id), field=Id::from(port_name))), ty=sig.ty, span~)
+            let lhs = Value::Expr(expr=mk_ref(mk_field_access(lhs=mk_id(inst_id), field=Id::from(port_name))), ty=sig.ty, span~)
             let rhss = Array::new(capacity=2)
 
             if accessed_ports.contains(port_name) {
-              rhss.push(Expr(expr=mk_ref(mk_field_access(lhs=inst_ref, field=Id::from(port_name))), ty=sig.ty, span~))
+              rhss.push(Value::Expr(expr=mk_ref(mk_field_access(lhs=inst_ref, field=Id::from(port_name))), ty=sig.ty, span~))
             }
             
             if inline_connections.contains(port_name) {
-              rhss.push(Expr(expr=get_port(port_name), ty=sig.ty, span~))
+              rhss.push(get_port(port_name))
             }
 
             for rhs in rhss {
