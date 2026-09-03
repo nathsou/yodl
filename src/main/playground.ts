@@ -324,6 +324,7 @@ function renderSimulationFrames(frames: Array<{ width: number; height: number; p
     draw();
 }
 async function runSimulation(action: SimulationRequest['action'] = 'run') {
+    setMobileView('output');
     const id = ++requestId;
     latestRequest = id;
     const cycles = Math.max(0, Math.min(100000, Number(element<HTMLInputElement>('simulation-cycles').value) || 0));
