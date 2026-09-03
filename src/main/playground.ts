@@ -369,7 +369,7 @@ function annotatedSimulation(source: string, requestedTop: string): VisualSimula
 
 function visualSimulation(path: string, requestedTop: string, source = ''): VisualSimulation {
     const annotated = annotatedSimulation(source, requestedTop);
-    if (annotated && (!requestedTop || annotated.top === requestedTop)) return annotated;
+    if (annotated && (!requestedTop || annotated.top?.toLowerCase() === requestedTop.toLowerCase())) return annotated;
     const name = path.split('/').at(-1)?.toLowerCase() ?? '';
     const top = requestedTop.toLowerCase();
     if (top === 'lifesim' || ((name === 'sim.yodl' || name === 'life.yodl') && !requestedTop)) {
