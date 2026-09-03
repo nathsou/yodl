@@ -132,8 +132,17 @@ struct MemoryState {
   read_latency: Int
   write_latency: Int
   read_under_write: @firrtl.ReadUnderWrite
+  readers: Array[String]
+  writers: Array[String]
+  readwriters: Array[String]
   data: Array[SimValue]
   read_data: Map[String, SimValue]
+}
+
+priv struct MemoryWrite {
+  address: Int
+  data: SimValue
+  mask: SimValue
 }
 
 pub(all) struct Simulator {
@@ -181,6 +190,7 @@ pub fn Simulator::from_circuit_with_models(
   top: String,
   primitive_models: Map[String, PrimitiveModel],
 ) -> Simulator raise SimulatorError {
+  let top = if top.is_empty() { circuit.id.inner() } else { top }
   let modules: Map[String, TypedModule] = Map([])
   for decl in circuit.decls {
     match decl {
@@ -195,7 +205,18 @@ pub fn Simulator::from_circuit_with_models(
   }
   let design = match modules.get(top) {
     Some(design) => design
-    None => raise MissingSignal(name="top module " + top)
+    None => {
+      // Imported modules are namespace-qualified by elaboration (for example
+      // `LifeSim` becomes `Life_LifeSim`).  Accept the source-level leaf name
+      // when it resolves unambiguously so playground users do not need to
+      // know the compiler's internal prefix.
+      let suffix = "_" + top
+      let matches = modules.values().filter(mod => mod.id.inner().has_suffix(suffix)).collect()
+      match matches {
+        [design] => design
+        _ => raise MissingSignal(name="top module " + top)
+      }
+    }
   }
   Simulator::new_with_modules(design, modules~, primitive_models~, primitive_model=None)
 }
@@ -269,6 +290,9 @@ fn Simulator::new_with_modules(
           read_latency: mem.read_latency,
           write_latency: mem.write_latency,
           read_under_write: mem.read_under_write,
+          readers: mem.readers.map(id => id.inner()),
+          writers: mem.writers.map(id => id.inner()),
+          readwriters: mem.readwriters.map(id => id.inner()),
           data,
           read_data: Map([]),
         }
@@ -289,7 +313,30 @@ fn Simulator::new_with_modules(
         let instance = id.inner()
         let child_design = match modules.get(of.inner()) {
           Some(child) => child
-          None => raise Unsupported(message="external or unknown module '{of.inner()}' has no simulation model")
+          None => match primitive_models.get(of.inner()) {
+            Some(_) => {
+              // Some frontends omit ExtModule declarations from the circuit
+              // and leave only the instance signature. Build a synthetic leaf
+              // module so the registered primitive model can still service it.
+              let ports: Array[@firrtl.Port] = []
+              for name, port in sig.ports.iter2() {
+                ports.push({
+                  dir: port.dir,
+                  id: @firrtl.Id::from(name),
+                  ty: port.ty,
+                })
+              }
+              let synthetic: @firrtl.TypedModule = {
+                public: false,
+                id: @firrtl.Id::from(of.inner()),
+                ports,
+                body: [],
+              }
+              modules[of.inner()] = synthetic
+              synthetic
+            }
+            None => raise Unsupported(message="external or unknown module '{of.inner()}' has no simulation model")
+          }
         }
         let model = primitive_models.get(of.inner())
         if child_design.body.is_empty() && model is None {
@@ -447,7 +494,7 @@ fn compile_ref(reference: @firrtl.TypedRef, width: Int) -> SimExpr {
       ),
       field=data,
       ..
-    ) if data.inner() == "data" => SimExpr::MemoryData(
+    ) if data.inner() == "data" || data.inner() == "rdata" => SimExpr::MemoryData(
       memory=memory_id.inner(),
       reader=reader.inner(),
       width~,
@@ -751,24 +798,12 @@ fn find_signal_source(design: TypedModule, target: String) -> String? {
 
 fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise SimulatorError {
   for id, memory in self.memories {
-    let prefix = id + "."
-    let reader_prefixes = memory_port_prefixes(self.design, id, "reader")
-    for reader in reader_prefixes {
-      let port = prefix + reader
-      let port_clock = self.signal_or_zero(port + ".clk")
-      if self.memory_clocks.get(port) is Some(source) && source != clock { continue }
-      if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
-      let address = self.signal_or_zero(port + ".addr").raw.to_int()
-      if address < 0 || address >= memory.depth { continue }
-      if memory.read_latency > 0 {
-        let value = memory.data[address]
-        memory.read_data[reader] = value
-        self.enqueue_signal(port + ".data")
-      }
+    if memory.read_latency < 0 || memory.read_latency > 1 || memory.write_latency < 0 || memory.write_latency > 1 {
+      raise Unsupported(message="memory '{id}' latencies above one cycle are not supported")
     }
-
-    let writer_prefixes = memory_port_prefixes(self.design, id, "writer")
-    for writer in writer_prefixes {
+    let prefix = id + "."
+    let writes : Array[MemoryWrite] = []
+    for writer in memory.writers {
       let port = prefix + writer
       let port_clock = self.signal_or_zero(port + ".clk")
       if self.memory_clocks.get(port) is Some(source) && source != clock { continue }
@@ -777,12 +812,65 @@ fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise Simu
       if address < 0 || address >= memory.depth { continue }
       let data = self.signal_or_zero(port + ".data")
       let mask_value = self.signal_or_zero(port + ".mask")
-      if memory.width == 0 { continue }
-      memory.data[address] = masked_write(memory.data[address], data, mask_value, memory.width)
-      for reader in reader_prefixes {
-        self.enqueue_signal(prefix + reader + ".data")
+      if memory.width > 0 { writes.push({ address, data, mask: mask_value }) }
+    }
+
+    for readwriter in memory.readwriters {
+      let port = prefix + readwriter
+      let port_clock = self.signal_or_zero(port + ".clk")
+      if self.memory_clocks.get(port) is Some(source) && source != clock { continue }
+      if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
+      let address = self.signal_or_zero(port + ".addr").raw.to_int()
+      if address < 0 || address >= memory.depth { continue }
+      if self.signal_or_zero(port + ".wmode").raw != 0 {
+        let data = self.signal_or_zero(port + ".wdata")
+        let mask_value = self.signal_or_zero(port + ".wmask")
+        if memory.width > 0 { writes.push({ address, data, mask: mask_value }) }
+      } else if memory.read_latency > 0 {
+        memory.read_data[readwriter] = memory.read_value(address, writes)
+        self.enqueue_signal(port + ".rdata")
       }
     }
+
+    for reader in memory.readers {
+      let port = prefix + reader
+      let port_clock = self.signal_or_zero(port + ".clk")
+      if self.memory_clocks.get(port) is Some(source) && source != clock { continue }
+      if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
+      let address = self.signal_or_zero(port + ".addr").raw.to_int()
+      if address < 0 || address >= memory.depth { continue }
+      if memory.read_latency > 0 {
+        memory.read_data[reader] = memory.read_value(address, writes)
+        self.enqueue_signal(port + ".data")
+      }
+    }
+
+    for write in writes {
+      memory.data[write.address] = masked_write(memory.data[write.address], write.data, write.mask, memory.width)
+    }
+    // Zero-latency readers observe writes after the edge.  Queue their users
+    // even when no read-data register was updated.
+    for reader in memory.readers {
+      self.enqueue_signal(prefix + reader + ".data")
+    }
+    for readwriter in memory.readwriters {
+      self.enqueue_signal(prefix + readwriter + ".rdata")
+    }
+  }
+}
+
+fn MemoryState::read_value(self: MemoryState, address: Int, writes: Array[MemoryWrite]) -> SimValue {
+  let old = self.data[address]
+  let matching = writes.filter(write => write.address == address)
+  if matching.is_empty() { return old }
+  if matching.length() > 1 {
+    return SimValue::new(self.width, 0, known=false)
+  }
+  let write = matching[0]
+  match self.read_under_write {
+    @firrtl.ReadUnderWrite::Old => old
+    @firrtl.ReadUnderWrite::New => masked_write(old, write.data, write.mask, self.width)
+    @firrtl.ReadUnderWrite::Undefined => SimValue::new(self.width, 0, known=false)
   }
 }
 
@@ -799,20 +887,6 @@ fn Simulator::live_memory_read(self: Simulator, memory_id: String, memory: Memor
 
 fn Simulator::signal_or_zero(self: Simulator, name: String) -> SimValue {
   self.signals.get(name).unwrap_or(SimValue::zero(1))
-}
-
-fn memory_port_prefixes(design: TypedModule, id: String, kind: String) -> Array[String] {
-  let result = []
-  for stmt in design.body {
-    match stmt {
-      @firrtl.Stmt::Mem(mem) if mem.id.inner() == id => {
-        let ports = if kind == "reader" { mem.readers } else { mem.writers }
-        for port in ports { result.push(port.inner()) }
-      }
-      _ => ()
-    }
-  }
-  result
 }
 
 fn masked_write(old: SimValue, value: SimValue, mask_value: SimValue, width: Int) -> SimValue {

@@ -51,6 +51,18 @@ fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> Ty
   let new_decls = Array::new(capacity=circuit.decls.length())
   let module_tables: Map[Id, LoweringTable] = Map([])
 
+  // Populate every module signature before rewriting any body. Modules are not
+  // required to appear after the declarations they instantiate (in
+  // particular, an external module may be listed after its parent), so a
+  // single declaration-order pass can otherwise miss the instance's target.
+  for decl in circuit.decls {
+    let ports = match decl {
+      Module(mod) => mod.ports
+      ExtModule(extmod) => extmod.ports
+    }
+    self.module_signatures[decl.id()] = self.signature_for_ports(ports)
+  }
+
   for decl in circuit.decls {
     let module_table = LoweringTable::new()
     self.table = module_table
@@ -64,6 +76,16 @@ fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> Ty
     id: circuit.id,
     annotations: rewrite_annotations(module_tables, circuit.annotations),
     decls: new_decls,
+  }
+}
+
+fn LowerAggregateTypesPass::signature_for_ports(self: Self, ports: Array[Port]) -> ModuleSignature {
+  // Use a fresh lowering table so collecting signatures does not affect the
+  // reference mappings of the declaration currently being rewritten.
+  let helper = LowerAggregateTypesPass::new(split_memories=self.split_memories)
+  let flat_ports = helper.flatten_ports(ports)
+  {
+    ports: Map::from_array(flat_ports.map(port => (port.id.inner(), PortSignature::from(port))))
   }
 }
 
@@ -227,7 +249,10 @@ fn LowerAggregateTypesPass::process_stmt(self: Self, stmt: TypedStmt, body: Arra
       let new_name = self.uniquify(id.value(), inst_ty)
       let old_inst_ref = Id(id, ty=inst_ty)
       let new_inst_ref = Id(Id::from(new_name), ty=inst_ty)
-      let new_sig = self.module_signatures[of]
+      // External declarations may not be present in the lowered circuit
+      // (they are represented by the instance signature alone). Preserve that
+      // signature when there is no declaration to look up.
+      let new_sig = self.module_signatures.get(of).unwrap_or(sig)
 
       if inst_ty is Bundle(fields) {
         for field in fields {

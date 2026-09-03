@@ -116,3 +116,33 @@ test "hierarchical instances share clocked state with their parent" {
   sim.step_clock("clk")
   assert_eq(sim.peek("value").as_bigint().to_int(), 2)
 }
+
+test "external module instances can use a host primitive model" {
+  let source =
+    #|declare module Box(a: u8) -> (y: u8)
+    #|
+    #|module Top(a: u8) -> (y: u8) {
+    #|  let box = Box(a)
+    #|  y = box.y
+    #|}
+  let files : Map[String, String] = Map([])
+  files["fixture.yodl"] = source
+  let ext : @utils.Externals = {
+    fs: make_vfs(files),
+    println: fn(_) { () },
+    get_args: fn() { [] },
+    exit: fn(_) { () },
+  }
+  let circuit = @driver.compile_simulation(path="fixture.yodl", ext~)
+  let models : Map[String, @simulator.PrimitiveModel] = Map([])
+  models["Box"] = {
+    eval: (sim) => {
+      let value = sim.peek("a").as_bigint().to_int()
+      sim.poke("y", @simulator.SimValue::from_int(8, value + 1))
+    },
+  }
+  let sim = @simulator.Simulator::from_circuit_with_models(circuit, "Top", models)
+  sim.poke("a", @simulator.SimValue::from_int(8, 41))
+  sim.settle()
+  assert_eq(sim.peek("y").as_bigint().to_int(), 42)
+}
