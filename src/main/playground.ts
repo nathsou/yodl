@@ -228,28 +228,73 @@ function parseSimulationInputs(source: string): Record<string, { width: number; 
     }
     return inputs;
 }
+function renderSimulationFrames(frames: Array<{ width: number; height: number; pixels: number[] }>) {
+    const canvas = element<HTMLCanvasElement>('simulation-framebuffer');
+    if (framebufferAnimation !== undefined) cancelAnimationFrame(framebufferAnimation);
+    framebufferAnimation = undefined;
+    if (frames.length === 0) { canvas.hidden = true; return; }
+    canvas.hidden = false;
+    canvas.width = frames[0].width;
+    canvas.height = frames[0].height;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const image = context.createImageData(canvas.width, canvas.height);
+    let frame = 0;
+    const draw = () => {
+        for (let i = 0; i < frames[frame].pixels.length; i++) {
+            const color = frames[frame].pixels[i] >>> 0;
+            image.data[i * 4] = (color >>> 16) & 255;
+            image.data[i * 4 + 1] = (color >>> 8) & 255;
+            image.data[i * 4 + 2] = color & 255;
+            image.data[i * 4 + 3] = 255;
+        }
+        context.putImageData(image, 0, 0);
+        if (frames.length > 1) {
+            frame = (frame + 1) % frames.length;
+            framebufferAnimation = requestAnimationFrame(draw);
+        }
+    };
+    draw();
+}
+let framebufferAnimation: number | undefined;
 async function runSimulation() {
     const id = ++requestId;
     latestRequest = id;
     const cycles = Math.max(0, Math.min(100000, Number(element<HTMLInputElement>('simulation-cycles').value) || 0));
+    const requestedTop = element<HTMLInputElement>('simulation-top').value.trim();
     const clock = element<HTMLInputElement>('simulation-clock').value.trim() || undefined;
     const inputs = parseSimulationInputs(element<HTMLInputElement>('simulation-inputs').value);
+    const isLife = (requestedTop || '').toLowerCase() === 'lifesim' || (selection.path.endsWith('/Sim.yodl') || selection.path === 'examples/Sim.yodl') && requestedTop === '';
+    const top = requestedTop || (isLife ? 'LifeSim' : undefined);
+    const framebuffer = isLife ? {
+        width: 40,
+        height: 30,
+        statePrefix: 'state',
+        initSignal: 'init',
+        initCycles: 1,
+        onColor: 0x1f6a4,
+        offColor: 0x000000,
+    } : undefined;
+    const frameCount = isLife ? Math.max(1, Math.min(600, cycles || 60)) : undefined;
     setStatus('Simulating…', 'loading');
     const result = await compiler.compile('simulation', {
         source: editors.input.getValue(),
         path: sharedEntryPath ?? selection.path,
         stage: 'write_low_firrtl',
         files: { ...files, ...sharedFiles },
-        simulate: { top: 'Top', clock, cycles, inputs },
+        simulate: { top, clock, cycles, inputs, frames: frameCount, frameCycles: isLife ? 1 : undefined, framebuffer },
     });
     if (!result || id !== latestRequest) return;
     if (result.error !== undefined) { showError(result.error); return; }
     const simulation = result.simulation;
     if (!simulation) return;
     const lines = [`cycles: ${simulation.cycles}`];
-    for (const [name, value] of Object.entries(simulation.outputs)) lines.push(`${name} = ${value}`);
+    const outputEntries = Object.entries(simulation.outputs).filter(([name]) => !simulation.framebuffers || !name.startsWith('state_'));
+    for (const [name, value] of outputEntries.slice(0, 100)) lines.push(`${name} = ${value}`);
+    if (outputEntries.length > 100) lines.push(`… ${outputEntries.length - 100} more outputs`);
     if (simulation.messages.length) { lines.push('', ...simulation.messages); }
     element('simulation-output').textContent = lines.join('\n');
+    renderSimulationFrames(simulation.framebuffers ?? []);
     setStatus(`✓ Simulated · ${Math.round(result.duration)} ms`, 'success');
 }
 function download(name: string, content: string) {

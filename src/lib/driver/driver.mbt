@@ -207,6 +207,7 @@ fn lower_firrtl(firrtl : @elaborate.Elaborator, passes~ : Array[&@firrtl.FIRRTLP
 pub fn compile_simulation(
   path~: String,
   ext~: @utils.Externals,
+  top~: String? = None,
 ) -> @firrtl.TypedCircuit raise {
   if !path.has_suffix(".yodl") {
     raise Failure::Failure("Input file must have a .yodl extension")
@@ -232,7 +233,7 @@ pub fn compile_simulation(
     err => raise Failure::Failure(err.to_string())
   }
   let simplified_decls = @simplify.simplify_decls(resolved_decls)
-  let top = {
+  let inferred_top = {
     let candidates = pkg.body.filter_map(decl => {
       match decl {
         @parse.Decl::Module({ path, params: [], .. }) => Some(path)
@@ -253,6 +254,7 @@ pub fn compile_simulation(
         }
     }
   }
+  let top = top.unwrap_or(inferred_top)
   let elaborator = @elaborate.Elaborator::new(top, port_usage=checker.port_usage())
   try elaborator.lower(simplified_decls.iter()) catch {
     err => raise Failure::Failure(err.to_string())

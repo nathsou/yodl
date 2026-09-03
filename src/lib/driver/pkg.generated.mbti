@@ -10,7 +10,7 @@ import {
 // Values
 pub fn cli(@utils.Externals) -> Unit
 
-pub fn compile_simulation(path~ : String, ext~ : @utils.Externals) -> @firrtl.Circuit[@firrtl.Type] raise
+pub fn compile_simulation(path~ : String, ext~ : @utils.Externals, top? : String?) -> @firrtl.Circuit[@firrtl.Type] raise
 
 pub fn parse_commands(String) -> Array[Command] raise CommandParserError
 

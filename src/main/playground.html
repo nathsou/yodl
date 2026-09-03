@@ -54,7 +54,8 @@
                     <div id="output-panel" class="editor"></div>
                     <section id="problems" class="problems" aria-label="Compilation diagnostics" hidden><div class="problems-header"><strong>Compilation error</strong><button id="jump-error" hidden>Go to source ↗</button></div><pre id="error-message"></pre></section>
                     <section id="simulation-panel" class="simulation-panel" aria-label="Simulation">
-                        <div class="simulation-header"><strong>Simulation</strong><div class="simulation-controls"><label>Clock <input id="simulation-clock" placeholder="auto" size="5"></label><label>Cycles <input id="simulation-cycles" type="number" value="1" min="0" max="100000" size="7"></label><label>Inputs <input id="simulation-inputs" placeholder="rst=0, en=1" size="18"></label></div></div>
+                        <div class="simulation-header"><strong>Simulation</strong><div class="simulation-controls"><label>Top <input id="simulation-top" placeholder="auto" size="8"></label><label>Clock <input id="simulation-clock" placeholder="auto" size="5"></label><label>Cycles / frames <input id="simulation-cycles" type="number" value="60" min="0" max="100000" size="7"></label><label>Inputs <input id="simulation-inputs" placeholder="rst=0, en=1" size="18"></label></div></div>
+                        <canvas id="simulation-framebuffer" hidden aria-label="Simulation framebuffer"></canvas>
                         <pre id="simulation-output">Compile a circuit, then run it here.</pre>
                     </section>
                 </section>
