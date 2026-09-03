@@ -150,6 +150,7 @@ function markChanged() {
 }
 function choose(next: Selection) {
     saveDraft();
+    renderSimulationFrames([]);
     sharedDraftKey = '';
     sharedSource = null;
     sharedFiles = {}; sharedEntryPath = undefined; sharedOrigin = undefined;
@@ -177,6 +178,7 @@ function changeMode(mode: Mode) {
     choose({ mode, path, stage: mode === 'tour' ? tour.find(l => `tour/${l.file}` === path)!.stage as Stage : 'write_firrtl' });
 }
 function changeStage(stage: Stage) {
+    renderSimulationFrames([]);
     selection.stage = stage;
     select('pass-selector').value = stage;
     editors.output.setValue('');
@@ -207,6 +209,7 @@ function showError(message: string) {
 }
 async function runCompile() {
     clearTimeout(timer);
+    renderSimulationFrames([]);
     const id = ++requestId;
     latestRequest = id;
     const compiledRevision = revision;
