@@ -108,6 +108,11 @@ pub(all) struct Simulator {
   children: Map[String, Simulator]
   child_message_offsets: Map[String, Int]
   memory_clocks: Map[String, String]
+  // A reverse dependency index lets settle() revisit only statements affected
+  // by a poke, clock edge, register update, or child output change.
+  dependents: Map[String, Array[Int]]
+  mut pending: Array[Int]
+  mut queued: Array[Bool]
 }
 
 pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
@@ -139,6 +144,10 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
   let children: Map[String, Simulator] = Map([])
   let child_message_offsets: Map[String, Int] = Map([])
   let memory_clocks: Map[String, String] = Map([])
+  let dependents: Map[String, Array[Int]] = Map([])
+  let pending = Array::new(capacity=design.body.length())
+  let queued = Array::new(capacity=design.body.length())
+  for _ in 0..<design.body.length() { queued.push(false) }
 
   for port in design.ports {
     let width = type_width(port.ty)
@@ -220,6 +229,17 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
     }
   }
 
+  for i, stmt in design.body {
+    let refs = []
+    collect_stmt_refs(stmt, refs)
+    for name in refs {
+      add_dependent(dependents, name, i)
+    }
+    // All combinational statements are evaluated once on the first settle.
+    pending.push(i)
+    queued[i] = true
+  }
+
   {
     design,
     signals,
@@ -235,7 +255,75 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
     children,
     child_message_offsets,
     memory_clocks,
+    dependents,
+    pending,
+    queued,
   }
+}
+
+fn add_dependent(dependents: Map[String, Array[Int]], name: String, index: Int) -> Unit {
+  match dependents.get(name) {
+    Some(indices) => if !indices.contains(index) { indices.push(index) }
+    None => dependents[name] = [index]
+  }
+}
+
+fn collect_stmt_refs(stmt: @firrtl.TypedStmt, refs: Array[String]) -> Unit {
+  match stmt {
+    @firrtl.Stmt::Node(expr~, ..) => collect_expr_refs(expr, refs)
+    @firrtl.Stmt::Connect(_, expr) => collect_expr_refs(expr, refs)
+    @firrtl.Stmt::When(when) => {
+      collect_expr_refs(when.cond, refs)
+      for nested in when.body { collect_stmt_refs(nested, refs) }
+      for nested in when.otherwise.unwrap_or([]) { collect_stmt_refs(nested, refs) }
+    }
+    @firrtl.Stmt::Command(command) => match command {
+      @firrtl.Command::Printf(clk~, en~, fmt=_, args~) => {
+        collect_expr_refs(clk, refs)
+        collect_expr_refs(en, refs)
+        for arg in args { collect_expr_refs(arg, refs) }
+      }
+      @firrtl.Command::Assert(clk~, pred~, en~, fmt=_, args~) => {
+        collect_expr_refs(clk, refs)
+        collect_expr_refs(pred, refs)
+        collect_expr_refs(en, refs)
+        for arg in args { collect_expr_refs(arg, refs) }
+      }
+      @firrtl.Command::Stop(clk~, en~, code=_) => {
+        collect_expr_refs(clk, refs)
+        collect_expr_refs(en, refs)
+      }
+    }
+    _ => ()
+  }
+}
+
+fn collect_expr_refs(expr: @firrtl.TypedExpr, refs: Array[String]) -> Unit {
+  match expr {
+    @firrtl.Expr::Reference(reference, ..) => refs.push(ref_name(reference))
+    @firrtl.Expr::Mux(cond~, tval~, fval~, ..) => {
+      collect_expr_refs(cond, refs)
+      collect_expr_refs(tval, refs)
+      collect_expr_refs(fval, refs)
+    }
+    @firrtl.Expr::PrimOp(args~, ..) => {
+      for arg in args { collect_expr_refs(arg, refs) }
+    }
+    @firrtl.Expr::Literal(_, ..) => ()
+  }
+}
+
+fn Simulator::enqueue_signal(self: Simulator, name: String) -> Unit {
+  match self.dependents.get(name) {
+    Some(indices) => for index in indices { self.enqueue_statement(index) }
+    None => ()
+  }
+}
+
+fn Simulator::enqueue_statement(self: Simulator, index: Int) -> Unit {
+  if index < 0 || index >= self.queued.length() || self.queued[index] { return }
+  self.queued[index] = true
+  self.pending.push(index)
 }
 
 pub fn Simulator::messages(self: Simulator) -> Array[SimMessage] {
@@ -252,7 +340,7 @@ pub fn Simulator::poke(self: Simulator, name: String, value: SimValue) -> Unit r
   if !self.signals.contains(name) {
     raise MissingSignal(name~)
   }
-  self.signals[name] = SimValue::new(type_width_for_name(self, name), value.raw, known=value.known)
+  let _ = self.assign_signal(name, SimValue::new(type_width_for_name(self, name), value.raw, known=value.known))
 }
 
 pub fn Simulator::peek(self: Simulator, name: String) -> SimValue raise SimulatorError {
@@ -262,71 +350,62 @@ pub fn Simulator::peek(self: Simulator, name: String) -> SimValue raise Simulato
   }
 }
 
-/// Re-evaluate all combinational statements until their values stop changing.
-/// Low FIRRTL is normally acyclic; the bounded iteration also makes this safe
-/// for hand-built circuits while avoiding an accidental infinite loop.
+/// Evaluate the dirty combinational worklist and propagate changed child ports.
+/// Low FIRRTL is normally acyclic, so the queue visits each affected statement
+/// once.  A generous bound still catches hand-built combinational loops without
+/// allowing a malformed design to hang a testbench or browser worker.
 pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
   if self.halted { return }
-  let mut changed = true
-  let mut iterations = 0
-  let mut last_changed = ""
-  while changed {
-    changed = false
-    iterations += 1
-    if iterations > 1024 {
-      raise CombinationalLoop(message="last signal: " + last_changed)
+  let mut evaluated = 0
+  while true {
+    while self.pending.length() > 0 {
+      let index = self.pending.pop().unwrap()
+      self.queued[index] = false
+      evaluated += 1
+      if evaluated > 1_000_000 {
+        raise CombinationalLoop(message="dirty worklist exceeded 1,000,000 evaluations")
+      }
+      self.eval_combinational_stmt(self.design.body[index])
     }
+    let child_changed = self.settle_children()
+    if self.pending.length() == 0 && !child_changed { break }
+  }
+}
 
-    for stmt in self.design.body {
-      match stmt {
-        @firrtl.Stmt::Node(id~, expr~) => {
-          let value = self.eval_expr(expr)
-          let did_change = self.assign_signal(id.inner(), value)
-          if did_change { last_changed = id.inner() }
-          changed = did_change || changed
-        }
-        @firrtl.Stmt::Connect(lhs, rhs) => {
-          let value = self.eval_expr(rhs)
-          let did_change = self.assign_lhs(lhs, value, false)
-          if did_change { last_changed = ref_name(lhs) }
-          changed = did_change || changed
-        }
-        @firrtl.Stmt::When(when) => {
-          let cond = self.eval_expr(when.cond)
-          let body = if cond.raw != 0 { when.body } else { when.otherwise.unwrap_or([]) }
-          for nested in body {
-            match nested {
-              @firrtl.Stmt::Connect(lhs, rhs) => {
-                let value = self.eval_expr(rhs)
-                let did_change = self.assign_lhs(lhs, value, false)
-                if did_change { last_changed = ref_name(lhs) }
-                changed = did_change || changed
-              }
-              _ => ()
-            }
-          }
-        }
-        _ => ()
+fn Simulator::eval_combinational_stmt(self: Simulator, stmt: @firrtl.TypedStmt) -> Unit raise SimulatorError {
+  match stmt {
+    @firrtl.Stmt::Node(id~, expr~) => {
+      let _ = self.assign_signal(id.inner(), self.eval_expr(expr))
+    }
+    @firrtl.Stmt::Connect(lhs, rhs) => {
+      let _ = self.assign_lhs(lhs, self.eval_expr(rhs), false)
+    }
+    @firrtl.Stmt::When(when) => {
+      let cond = self.eval_expr(when.cond)
+      let body = if cond.raw != 0 { when.body } else { when.otherwise.unwrap_or([]) }
+      for nested in body {
+        self.eval_combinational_stmt(nested)
       }
     }
-    changed = self.settle_children() || changed
+    _ => ()
   }
 }
 
 fn Simulator::settle_children(self: Simulator) -> Bool raise SimulatorError {
   let mut changed = false
   for instance, child in self.children {
+    let mut input_changed = false
     for port in child.design.ports {
       if port.dir is @parse.PortDir::Input {
         let parent_name = instance + "." + port.id.inner()
         let value = self.signals.get(parent_name).unwrap_or(SimValue::zero(type_width(port.ty)))
-        child.signals[port.id.inner()] = value
+        input_changed = child.assign_signal(port.id.inner(), value) || input_changed
         if port.ty is @firrtl.Type::Clock {
           child.clocks[port.id.inner()] = value.raw != 0
         }
       }
     }
-    child.settle()
+    if input_changed || child.pending.length() > 0 { child.settle() }
     for port in child.design.ports {
       if port.dir is @parse.PortDir::Output {
         let child_value = child.signals.get(port.id.inner()).unwrap_or(SimValue::new(type_width(port.ty), 0, known=false))
@@ -344,7 +423,7 @@ pub fn Simulator::set_clock(self: Simulator, name: String, high: Bool) -> Unit r
   }
   let old = self.clocks.get(name).unwrap()
   self.clocks[name] = high
-  self.signals[name] = SimValue::new(1, BigInt::from_int(high.to_int()))
+  let _ = self.assign_signal(name, SimValue::from_int(1, high.to_int()))
   self.settle()
   if !old && high {
     self.commit_clock(name)
@@ -372,7 +451,7 @@ fn Simulator::commit_clock(self: Simulator, clock: String) -> Unit raise Simulat
     } else {
       self.next_registers.get(name).unwrap_or(self.signals[name])
     }
-    self.signals[name] = value
+    let _ = self.assign_signal(name, value)
     self.next_registers[name] = value
   }
   self.commit_memories(clock)
@@ -562,6 +641,7 @@ fn Simulator::assign_signal(self: Simulator, name: String, value: SimValue) -> B
   let value = SimValue::new(old.width, value.raw, known=value.known)
   if old.raw != value.raw || old.known != value.known {
     self.signals[name] = value
+    self.enqueue_signal(name)
     true
   } else {
     false
@@ -663,6 +743,82 @@ fn eval_prim(
   width: Int,
   signed: Bool,
 ) -> SimValue raise SimulatorError {
+  // Most generated control/data paths (including the playground's VGA and
+  // Game of Life examples) are comfortably within a machine word.  Avoiding
+  // BigInt arithmetic for those paths is the largest single speedup available
+  // to the interpreter while retaining arbitrary-width semantics as a
+  // fallback for software-style designs.
+  if width <= 20 && values.iter().all(v => v.width <= 20) {
+    return eval_prim_fast(op, values, width, signed)
+  }
+  eval_prim_big(op, values, width, signed)
+}
+
+fn eval_prim_fast(
+  op: PrimOp,
+  values: Array[SimValue],
+  width: Int,
+  signed: Bool,
+) -> SimValue {
+  let a = values.get(0).unwrap_or(SimValue::zero(width))
+  let b = values.get(1).unwrap_or(SimValue::zero(width))
+  let ar = a.raw.to_int()
+  let br = b.raw.to_int()
+  let av = if signed { signed_int(a) } else { ar }
+  let bv = if signed { signed_int(b) } else { br }
+  let shift = if br < 0 { 0 } else { br }
+  let result: Int = match op {
+    @firrtl.PrimOp::AsUInt | @firrtl.PrimOp::AsSInt | @firrtl.PrimOp::AsClock | @firrtl.PrimOp::AsAsyncReset | @firrtl.PrimOp::Cvt => ar
+    @firrtl.PrimOp::Neg => -av
+    @firrtl.PrimOp::Not => normalize_int((1 << a.width) - 1 - ar, width)
+    @firrtl.PrimOp::And => ar & br
+    @firrtl.PrimOp::Or => ar | br
+    @firrtl.PrimOp::Xor => ar ^ br
+    @firrtl.PrimOp::Add => av + bv
+    @firrtl.PrimOp::Sub => av - bv
+    @firrtl.PrimOp::Mul => av * bv
+    @firrtl.PrimOp::Div => if bv == 0 { 0 } else { av / bv }
+    @firrtl.PrimOp::Rem => if bv == 0 { 0 } else { av % bv }
+    @firrtl.PrimOp::Lt => (av < bv).to_int()
+    @firrtl.PrimOp::Leq => (av <= bv).to_int()
+    @firrtl.PrimOp::Gt => (av > bv).to_int()
+    @firrtl.PrimOp::Geq => (av >= bv).to_int()
+    @firrtl.PrimOp::Eq => (ar == br).to_int()
+    @firrtl.PrimOp::Neq => (ar != br).to_int()
+    @firrtl.PrimOp::Dshl => if shift >= 31 { 0 } else { ar << shift }
+    @firrtl.PrimOp::Dshr => if shift >= 31 { 0 } else { ar >> shift }
+    @firrtl.PrimOp::Cat => {
+      let mut result = 0
+      for value in values {
+        let amount = value.width
+        result = (result << amount) | value.raw.to_int()
+      }
+      result
+    }
+    @firrtl.PrimOp::Pad => ar
+    @firrtl.PrimOp::Shl => if shift >= 31 { 0 } else { ar << shift }
+    @firrtl.PrimOp::Shr => if shift >= 31 {
+      if signed && av < 0 { -1 } else { 0 }
+    } else if signed { av >> shift } else { ar >> shift }
+    @firrtl.PrimOp::Head => if a.width <= width { ar } else { ar >> (a.width - width) }
+    @firrtl.PrimOp::Tail => ar & mask_int(width)
+    @firrtl.PrimOp::Bits => {
+      let lo = values.get(2).map(v => v.raw.to_int()).unwrap_or(0)
+      if lo >= a.width { 0 } else { (ar >> lo) & mask_int(width) }
+    }
+    @firrtl.PrimOp::Andr => all_bits_fast(a).to_int()
+    @firrtl.PrimOp::Orr => (ar != 0).to_int()
+    @firrtl.PrimOp::Xorr => parity_fast(a)
+  }
+  with_known(SimValue::from_int(width, normalize_int(result, width)), values.iter().all(v => v.known))
+}
+
+fn eval_prim_big(
+  op: PrimOp,
+  values: Array[SimValue],
+  width: Int,
+  signed: Bool,
+) -> SimValue {
   let a = values.get(0).unwrap_or(SimValue::zero(width))
   let b = values.get(1).unwrap_or(SimValue::zero(width))
   let av = if signed { signed_value(a) } else { a.raw }
@@ -744,6 +900,41 @@ fn ref_name(reference: TypedRef) -> String {
 
 fn normalize(value: BigInt, width: Int) -> BigInt {
   if width <= 0 { 0 } else { value & mask(width) }
+}
+
+fn normalize_int(value: Int, width: Int) -> Int {
+  if width <= 0 { 0 } else { value & mask_int(width) }
+}
+
+fn mask_int(width: Int) -> Int {
+  if width <= 0 { 0 } else { (1 << width) - 1 }
+}
+
+fn signed_int(value: SimValue) -> Int {
+  let raw = value.raw.to_int()
+  if value.width > 0 && ((raw >> (value.width - 1)) & 1) != 0 {
+    raw - (1 << value.width)
+  } else {
+    raw
+  }
+}
+
+fn all_bits_fast(value: SimValue) -> Bool {
+  value.raw.to_int() == mask_int(value.width)
+}
+
+fn parity_fast(value: SimValue) -> Int {
+  let mut x = value.raw.to_int()
+  let mut result = false
+  for _ in 0..<value.width {
+    result = if (x & 1) != 0 { !result } else { result }
+    x = x >> 1
+  }
+  result.to_int()
+}
+
+fn with_known(value: SimValue, known: Bool) -> SimValue {
+  { width: value.width, raw: value.raw, known }
 }
 
 fn mask(width: Int) -> BigInt {
