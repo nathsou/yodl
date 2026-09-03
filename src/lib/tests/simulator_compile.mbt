@@ -63,3 +63,31 @@ test "compiled simulator models a synchronous memory" {
   sim.step_clock("clk")
   assert_eq(sim.peek("rdata").as_bigint().to_int(), 99)
 }
+
+test "hierarchical instances share clocked state with their parent" {
+  let source =
+    #|module Child(clk: clock) -> (value: u8) {
+    #|  let state = Reg[u8](clk)
+    #|  state.d = state.q + 1'b1
+    #|  value = state.q
+    #|}
+    #|
+    #|module Top(clk: clock) -> (value: u8) {
+    #|  let child = Child(clk)
+    #|  value = child.value
+    #|}
+  let files : Map[String, String] = Map([])
+  files["fixture.yodl"] = source
+  let ext : @utils.Externals = {
+    fs: make_vfs(files),
+    println: fn(_) { () },
+    get_args: fn() { [] },
+    exit: fn(_) { () },
+  }
+  let circuit = @driver.compile_simulation(path="fixture.yodl", ext~)
+  let sim = @simulator.Simulator::from_circuit(circuit, "Top")
+  sim.step_clock("clk")
+  assert_eq(sim.peek("value").as_bigint().to_int(), 1)
+  sim.step_clock("clk")
+  assert_eq(sim.peek("value").as_bigint().to_int(), 2)
+}

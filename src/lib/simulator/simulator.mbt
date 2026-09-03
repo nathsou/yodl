@@ -7,6 +7,7 @@
 
 using @firrtl {
   type TypedModule,
+  type TypedCircuit,
   type TypedExpr,
   type TypedRef,
   type Type,
@@ -98,14 +99,39 @@ pub(all) struct Simulator {
   mut halted: Bool
   mut exit_code: Int?
   mut failure: String?
+  modules: Map[String, TypedModule]
+  children: Map[String, Simulator]
+  child_message_offsets: Map[String, Int]
 }
 
 pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
+  Simulator::new_with_modules(design, modules=Map([]))
+}
+
+/// Build a hierarchical simulator for one module in a typed FIRRTL circuit.
+pub fn Simulator::from_circuit(circuit: TypedCircuit, top: String) -> Simulator raise SimulatorError {
+  let modules: Map[String, TypedModule] = Map([])
+  for decl in circuit.decls {
+    match decl {
+      @firrtl.Decl::Module(design) => modules[design.id.inner()] = design
+      @firrtl.Decl::ExtModule(_) => ()
+    }
+  }
+  let design = match modules.get(top) {
+    Some(design) => design
+    None => raise MissingSignal(name="top module " + top)
+  }
+  Simulator::new_with_modules(design, modules~)
+}
+
+fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedModule]) -> Simulator raise SimulatorError {
   let signals: Map[String, SimValue] = Map([])
   let registers: Map[String, RegisterState] = Map([])
   let next_registers: Map[String, SimValue] = Map([])
   let memories: Map[String, MemoryState] = Map([])
   let clocks: Map[String, Bool] = Map([])
+  let children: Map[String, Simulator] = Map([])
+  let child_message_offsets: Map[String, Int] = Map([])
 
   for port in design.ports {
     let width = type_width(port.ty)
@@ -160,6 +186,17 @@ pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
           read_data: Map([]),
         }
       }
+      @firrtl.Stmt::Inst(id~, of~, sig~) => {
+        let instance = id.inner()
+        let child_design = match modules.get(of.inner()) {
+          Some(child) => child
+          None => raise Unsupported(message="external or unknown module '{of.inner()}' has no simulation model")
+        }
+        children[instance] = Simulator::new_with_modules(child_design, modules~)
+        for port_name, port in sig.ports {
+          signals[instance + "." + port_name] = SimValue::new(type_width(port.ty), 0, known=false)
+        }
+      }
       _ => ()
     }
   }
@@ -175,6 +212,9 @@ pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
     halted: false,
     exit_code: None,
     failure: None,
+    modules,
+    children,
+    child_message_offsets,
   }
 }
 
@@ -249,7 +289,32 @@ pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
         _ => ()
       }
     }
+    changed = self.settle_children() || changed
   }
+}
+
+fn Simulator::settle_children(self: Simulator) -> Bool raise SimulatorError {
+  let mut changed = false
+  for instance, child in self.children {
+    for port in child.design.ports {
+      if port.dir is @parse.PortDir::Input {
+        let parent_name = instance + "." + port.id.inner()
+        let value = self.signals.get(parent_name).unwrap_or(SimValue::zero(type_width(port.ty)))
+        child.signals[port.id.inner()] = value
+        if port.ty is @firrtl.Type::Clock {
+          child.clocks[port.id.inner()] = value.raw != 0
+        }
+      }
+    }
+    child.settle()
+    for port in child.design.ports {
+      if port.dir is @parse.PortDir::Output {
+        let child_value = child.signals.get(port.id.inner()).unwrap_or(SimValue::new(type_width(port.ty), 0, known=false))
+        changed = self.assign_signal(instance + "." + port.id.inner(), child_value) || changed
+      }
+    }
+  }
+  changed
 }
 
 /// Drive a clock and commit the registers on a rising edge.
@@ -272,6 +337,7 @@ pub fn Simulator::step_clock(self: Simulator, name: String) -> Unit raise Simula
 }
 
 fn Simulator::commit_clock(self: Simulator, clock: String) -> Unit raise SimulatorError {
+  self.commit_children(clock)
   for name, reg in self.registers {
     if reg.clock != clock { continue }
     let reset = match reg.reset {
@@ -292,6 +358,49 @@ fn Simulator::commit_clock(self: Simulator, clock: String) -> Unit raise Simulat
   self.commit_memories(clock)
   self.run_commands(clock)
   self.settle()
+}
+
+fn Simulator::commit_children(self: Simulator, clock: String) -> Unit raise SimulatorError {
+  for instance, child in self.children {
+    for port in child.design.ports {
+      if port.dir is @parse.PortDir::Input && port.ty is @firrtl.Type::Clock {
+        let source = clock_source(self.design, instance, port.id.inner())
+        if source == Some(clock) && child.clocks.get(port.id.inner()).unwrap_or(false) {
+          child.commit_clock(port.id.inner())
+        }
+      }
+    }
+    let offset = self.child_message_offsets.get(instance).unwrap_or(0)
+    let child_messages = child.messages()
+    for i in offset..<child_messages.length() {
+      self.messages.push(child_messages[i])
+    }
+    self.child_message_offsets[instance] = child_messages.length()
+    if child.failure is Some(failure) {
+      self.failure = Some(failure)
+    }
+    if child.halted {
+      self.halted = true
+      self.exit_code = child.exit_code
+    }
+  }
+}
+
+fn clock_source(design: TypedModule, instance: String, port: String) -> String? {
+  for stmt in design.body {
+    match stmt {
+      @firrtl.Stmt::Connect(
+        @firrtl.Reference::FieldAccess(
+          lhs=@firrtl.Reference::Id(id, ..),
+          field~,
+          ..
+        ),
+        @firrtl.Expr::Reference(@firrtl.Reference::Id(clock, ..), ..),
+      ) if id.inner() == instance && field.inner() == port => return Some(clock.inner())
+      _ => ()
+    }
+  }
+  None
 }
 
 fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise SimulatorError {
