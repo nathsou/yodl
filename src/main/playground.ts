@@ -279,9 +279,7 @@ function parseSimulationAnnotations(source: string): SimulationAnnotation[] {
             else if (char === '}' && --depth === 0) { end = index; break; }
         }
         if (end < 0) break;
-        const jsonLike = source.slice(brace, end + 1)
-            .replace(/([A-Za-z_$][\w$]*)\s*:/g, '"$1":')
-            .replace(/,\s*([}])/g, '$1');
+        const jsonLike = simulationMetadataJson(source.slice(brace, end + 1));
         try {
             const value = JSON.parse(jsonLike) as Record<string, unknown>;
             const module = /\bmodule\s+([A-Za-z_$][\w$]*)/.exec(source.slice(end + 1, end + 300))?.[1];
@@ -290,6 +288,38 @@ function parseSimulationAnnotations(source: string): SimulationAnnotation[] {
         search = end + 1;
     }
     return annotations;
+}
+
+function simulationMetadataJson(source: string): string {
+    let result = '';
+    let quote = false;
+    let escaped = false;
+    for (let index = 0; index < source.length;) {
+        const char = source[index];
+        if (quote) {
+            result += char;
+            if (escaped) escaped = false;
+            else if (char === '\\') escaped = true;
+            else if (char === '"') quote = false;
+            index++;
+            continue;
+        }
+        if (char === '"') { quote = true; result += char; index++; continue; }
+        if (/[A-Za-z_$]/.test(char)) {
+            let end = index + 1;
+            while (end < source.length && /[\w$]/.test(source[end])) end++;
+            let next = end;
+            while (next < source.length && /\s/.test(source[next])) next++;
+            if (source[next] === ':') {
+                result += `"${source.slice(index, end)}"`;
+                index = end;
+                continue;
+            }
+        }
+        result += char;
+        index++;
+    }
+    return result.replace(/,\s*([}])/g, '$1');
 }
 
 function numberOption(value: unknown): number | undefined {
@@ -302,9 +332,10 @@ function stringOption(value: unknown): string | undefined {
 
 function annotatedSimulation(source: string, requestedTop: string): VisualSimulation | undefined {
     const annotations = parseSimulationAnnotations(source);
+    const requested = requestedTop.toLowerCase();
     const annotation = annotations.find(value => {
         const target = stringOption(value.top) ?? value.module;
-        return !requestedTop || target === requestedTop || value.module === requestedTop;
+        return !requested || target?.toLowerCase() === requested || value.module?.toLowerCase() === requested;
     });
     if (!annotation) return undefined;
     const rawFramebuffer = annotation.framebuffer && typeof annotation.framebuffer === 'object'
@@ -431,7 +462,6 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
         return Number.isFinite(value) && value > 0 ? value : undefined;
     };
     const cycles = Math.max(0, Math.min(100000, Number(element<HTMLInputElement>('simulation-cycles').value) || 0));
-    const frames = Math.max(1, Math.min(600, Number(element<HTMLInputElement>('simulation-frames').value) || 1));
     const requestedTop = element<HTMLInputElement>('simulation-top').value.trim();
     const clock = element<HTMLInputElement>('simulation-clock').value.trim() || undefined;
     const inputs = parseSimulationInputs(element<HTMLInputElement>('simulation-inputs').value);
@@ -446,9 +476,13 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     } : visual.framebuffer;
     const clockHz = readPositive('simulation-clock-hz') ?? visual.clockHz;
     const frameRate = readPositive('simulation-frame-rate') ?? visual.frameRate ?? 60;
-    const frameCount = visual.frames ?? (visual.framebuffer ? frames : undefined);
+    const frameCount = framebuffer ? Math.max(1, Math.min(600, readPositive('simulation-frames') ?? visual.frames ?? 60)) : undefined;
     const requestedFrameCycles = readPositive('simulation-frame-cycles');
-    const frameCycles = visual.frameCycles ?? (framebuffer ? Math.max(1, Math.min(100000, requestedFrameCycles ?? (clockHz ? Math.round(clockHz / frameRate) : 1))) : undefined);
+    const frameCycles = framebuffer
+        ? requestedFrameCycles !== undefined
+            ? Math.max(0, Math.min(100000, requestedFrameCycles))
+            : visual.frameCycles ?? Math.max(1, Math.min(100000, clockHz ? Math.round(clockHz / frameRate) : 1))
+        : undefined;
     element('output-pane').dataset.view = 'simulation';
     element('simulation-state').textContent = action === 'run' ? 'Running…' : action === 'reset' ? 'Resetting…' : action === 'step_frame' ? 'Stepping frame…' : 'Stepping cycle…';
     button('simulation-step-cycle').disabled = !visual.clocked;

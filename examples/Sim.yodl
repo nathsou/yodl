@@ -3,7 +3,7 @@ import Life
 
 @simulation({
     top: "LifeSim",
-    clock: "clk",
+    "clock": "clk",
     framebuffer: { width: 40, height: 30, state_prefix: "state", mode: "binary", on_color: 128676, off_color: 0 },
     init_signal: "init",
     init_cycles: 1,

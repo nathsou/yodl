@@ -80,8 +80,72 @@ shown as text below the canvas, so small circuits can be explored without a
 display adapter. The visual examples include compact `*Sim` tops for this
 protocol while keeping their VGA-oriented FPGA tops unchanged.
 
+Simulation tops may declare their host-facing defaults with the `simulation`
+module attribute. The compiler accepts the dictionary and leaves it out of
+hardware output; playgrounds and testbenches can interpret it as follows:
+
+```yodl id=ex-simulation-annotation
+@simulation({
+    "clock": "clk",
+    framebuffer: {
+        width: 40,
+        height: 30,
+        state_prefix: "pixel",
+        mode: "binary",
+        on_color: 16777215,
+        off_color: 0,
+    },
+    init_signal: "rst",
+    init_cycles: 1,
+    frame_cycles: 1,
+    clock_hz: 60,
+    frame_rate: 30,
+})
+module VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {
+    for row in 0..<30 {
+        for col in 0..<40 {
+            pixel[row][col] = rst
+        }
+    }
+}
+```
+
+`width`, `height`, and `state_prefix` describe the flattened output names;
+`mode` can be `binary`, `gray`, or `rgb`. `clock_hz` is the simulated design
+clock and `frame_rate` is the preferred display cadence, so a host can derive
+`frame_cycles` when it is omitted. The playground exposes these values as
+defaults in its Options panel. Width, height, frame count, clock frequency,
+display rate, top, clock, and input values can be overridden per run. A design
+that has no framebuffer metadata still works with scalar outputs and textual
+messages, and a matrix output can be inferred from its `prefix_row_col` port
+names.
+
 The simulation panel keeps one worker-side machine alive for manual
 interaction. `Reset` creates a fresh machine, `Step cycle` advances one clock,
 and `Step frame` advances the configured number of cycles per frame. `Run`
 captures the initial state before advancing, which makes reset-time patterns
 visible and avoids dropping the first frame.
+
+## JavaScript and WebAssembly hosts
+
+The browser playground currently uses MoonBit's JavaScript target. This keeps
+the compiler and simulator directly importable as ES modules and makes the
+existing object/array API inexpensive to call from a worker. MoonBit also
+produces both classic WASM and `wasm-gc` artifacts, but a library package's
+`.wasm` file is not by itself a browser API: the host still needs an exported
+entry point, memory/string marshalling, and a stable ABI for compile, poke,
+step, and framebuffer reads.
+
+WASM is attractive for long, arithmetic-heavy runs because the hot loop avoids
+JavaScript's dynamic dispatch and garbage collector. In this simulator the
+compiler/elaboration pass and the large flattened framebuffer are also
+significant costs, so repeatedly crossing a JS/WASM boundary for individual
+signals can erase that gain. A practical WASM backend should therefore batch
+work (`compile` or load a serialized SimIR once, `step N`, then copy one packed
+framebuffer) and keep the worker session in WASM. That can improve sustained
+playback and leave short interactive steps roughly unchanged; startup,
+serialization, and browser support for `wasm-gc` still make JavaScript the
+better default today. The recommended path is to keep the current JS backend,
+add a batched WASM worker behind the same `SimulationRequest` protocol, and
+choose it only after measuring representative designs such as Life, Image,
+and Noise.

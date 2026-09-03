@@ -301,6 +301,9 @@ fn Elaborator::lower_module(self: Elaborator, mod: CoreModuleDecl) -> Unit raise
         self.annotations.push(FlattenAnnotation(target=self.current_target))
       }
       { name: "internal", args: [], .. } => ()
+      // Simulation metadata is consumed by host-side testbenches and the
+      // playground. It is deliberately not emitted as a FIRRTL annotation.
+      { name: "simulation", args: [Dict(_)], .. } => ()
       { span, .. } => {
         raise ElaborationError(message="Invalid module attribute '\{attr.name}'", span~)
       }

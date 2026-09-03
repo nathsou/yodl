@@ -114,7 +114,7 @@ module Grid[Rows: Nat, Cols: Nat](
 // The vector register keeps all 1,200 cells in one sequential object; the
 // hardware-oriented TopSim below intentionally retains the Cell hierarchy.
 @simulation({
-    clock: "clk",
+    "clock": "clk",
     framebuffer: { width: 40, height: 30, state_prefix: "state", mode: "binary", on_color: 128676, off_color: 0 },
     init_signal: "init",
     init_cycles: 1,
