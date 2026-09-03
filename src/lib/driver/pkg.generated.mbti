@@ -10,6 +10,8 @@ import {
 // Values
 pub fn cli(@utils.Externals) -> Unit
 
+pub fn compile_simulation(path~ : String, ext~ : @utils.Externals) -> @firrtl.Circuit[@firrtl.Type] raise
+
 pub fn parse_commands(String) -> Array[Command] raise CommandParserError
 
 pub fn run(path~ : String, commands~ : Array[Command], ext~ : @utils.Externals) -> Unit raise
@@ -30,4 +32,3 @@ pub(all) enum Command {
 // Type aliases
 
 // Traits
-

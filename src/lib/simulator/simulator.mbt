@@ -408,7 +408,10 @@ fn eval_prim(
     @firrtl.PrimOp::Shr => if signed { av >> b.raw.to_int() } else { a.raw >> b.raw.to_int() }
     @firrtl.PrimOp::Head => a.raw >> (a.width - width)
     @firrtl.PrimOp::Tail => a.raw & mask(width)
-    @firrtl.PrimOp::Bits => (a.raw >> b.raw.to_int()) & mask(width)
+    @firrtl.PrimOp::Bits => {
+      let lo = values.get(2).unwrap_or(SimValue::zero(1)).raw.to_int()
+      (a.raw >> lo) & mask(width)
+    }
     @firrtl.PrimOp::Andr => BigInt::from_int(all_bits(a).to_int())
     @firrtl.PrimOp::Orr => BigInt::from_int(any_bits(a).to_int())
     @firrtl.PrimOp::Xorr => BigInt::from_int(parity(a).to_int())

@@ -8,6 +8,8 @@ import {
   "nathsou/yodl/lib/driver",
   "nathsou/yodl/lib/parse",
   "nathsou/yodl/lib/utils",
+  "nathsou/yodl/lib/simulator",
+  "nathsou/yodl/lib/firrtl",
   "moonbitlang/x/fs",
   "moonbitlang/x/sys",
 }

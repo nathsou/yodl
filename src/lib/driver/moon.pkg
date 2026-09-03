@@ -11,7 +11,7 @@ import {
 options(
   "is-main": false,
   link: {
-    "js": { "exports": [ "run", "parse_commands" ], "format": "esm" },
+    "js": { "exports": [ "run", "parse_commands", "compile_simulation" ], "format": "esm" },
     "native": { "exports": [ "run", "parse_commands" ] },
     "wasm": { "exports": [ "run", "parse_commands" ] },
   },

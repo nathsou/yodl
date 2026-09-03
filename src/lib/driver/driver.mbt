@@ -200,6 +200,70 @@ fn lower_firrtl(firrtl : @elaborate.Elaborator, passes~ : Array[&@firrtl.FIRRTLP
   circ
 }
 
+/// Compile a Yodl source file to the normalized FIRRTL consumed by the
+/// simulator.  This intentionally returns the in-memory typed circuit instead
+/// of serializing and reparsing FIRRTL, so source tools and testbenches share
+/// exactly the same elaboration and lowering semantics as the CLI.
+pub fn compile_simulation(
+  path~: String,
+  ext~: @utils.Externals,
+) -> @firrtl.TypedCircuit raise {
+  if !path.has_suffix(".yodl") {
+    raise Failure::Failure("Input file must have a .yodl extension")
+  }
+
+  let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs=ext.fs)
+  let pkg = try resolver.resolve(path~, is_top_package=true) catch {
+    err => raise Failure::Failure("{err}")
+  }
+  let monomorphizer = @simplify.Monomorphizer::new()
+  let mono_decls = try monomorphizer.monomorphize(decls=pkg.body, packages=[]) catch {
+    err => raise Failure::Failure(err.to_string())
+  }
+  let checker = @elaborate.TypeChecker::new()
+  let resolved_decls = Array::new(capacity=mono_decls.length())
+  for decl in mono_decls {
+    let resolved = try checker.check_decl(decl) catch {
+      err => raise Failure::Failure(err.to_string())
+    }
+    resolved_decls.push(resolved)
+  }
+  try checker.finalize() catch {
+    err => raise Failure::Failure(err.to_string())
+  }
+  let simplified_decls = @simplify.simplify_decls(resolved_decls)
+  let top = {
+    let candidates = pkg.body.filter_map(decl => {
+      match decl {
+        @parse.Decl::Module({ path, params: [], .. }) => Some(path)
+        _ => None
+      }
+    }).filter(path => !monomorphizer.instanciated_modules.contains(path))
+    match candidates {
+      [] => raise Failure::Failure("No top-level module found")
+      [top] => top.elem
+      _ =>
+        if candidates.contains(@parse.Path::new([], "Top")) {
+          "Top"
+        } else {
+          let names = candidates.iter().map(p => p.to_string()).join(", ")
+          raise Failure::Failure(
+            "Multiple top-level modules found: [{names}], remove extraneous uninstanciated modules or rename the top module to `Top`",
+          )
+        }
+    }
+  }
+  let elaborator = @elaborate.Elaborator::new(top, port_usage=checker.port_usage())
+  try elaborator.lower(simplified_decls.iter()) catch {
+    err => raise Failure::Failure(err.to_string())
+  }
+  lower_firrtl(elaborator, passes=[
+    @firrtl.ExpandConnectsPass::new(),
+    @firrtl.ExpandWhensPass::new(),
+    @firrtl.LowerAggregateTypesPass::new(split_memories=false),
+  ])
+}
+
 
 const VERSION: String = "0.3.1"
 
