@@ -437,7 +437,7 @@ function renderSimulationFrames(frames: Array<{ width: number; height: number; p
     // rendered as a postage stamp even though the pixels are correct. Pick an
     // integer pixel scale that fits the panel and keep image-rendering crisp.
     const availableWidth = canvas.parentElement?.clientWidth || 640;
-    const scale = Math.max(1, Math.floor(Math.min(640, availableWidth) / frames[0].width, 360 / frames[0].height));
+    const scale = Math.max(1, Math.floor(Math.min(Math.min(640, availableWidth) / frames[0].width, 360 / frames[0].height)));
     canvas.style.width = `${frames[0].width * scale}px`;
     canvas.style.height = `${frames[0].height * scale}px`;
     const context = canvas.getContext('2d');
