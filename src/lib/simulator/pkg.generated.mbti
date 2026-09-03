@@ -86,6 +86,7 @@ pub(all) struct Simulator {
   modules : Map[String, @firrtl.Module[@firrtl.Type]]
   children : Map[String, Simulator]
   child_message_offsets : Map[String, Int]
+  memory_clocks : Map[String, String]
 }
 pub fn Simulator::exit_code(Self) -> Int?
 pub fn Simulator::failure(Self) -> String?
