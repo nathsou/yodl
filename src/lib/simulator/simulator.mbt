@@ -57,6 +57,26 @@ pub impl Show for SimValue with output(self, logger) {
   }
 }
 
+/// The execution form used by the simulator.  It is deliberately small and
+/// backend-neutral: typed FIRRTL is compiled to this representation once when
+/// a simulator is constructed, so the hot loop does not repeatedly inspect
+/// type metadata or rebuild reference paths.
+pub(all) enum SimExpr {
+  Signal(name~: String, width~: Int)
+  MemoryData(memory~: String, reader~: String, width~: Int)
+  Slice(source~: SimExpr, index~: Int, width~: Int)
+  Literal(value~: SimValue)
+  Mux(cond~: SimExpr, tval~: SimExpr, fval~: SimExpr)
+  Prim(op~: PrimOp, args~: Array[SimExpr], width~: Int, signed~: Bool)
+}
+
+pub(all) enum SimStmt {
+  Node(name~: String, expr~: SimExpr)
+  Connect(name~: String, expr~: SimExpr)
+  When(cond~: SimExpr, body~: Array[SimStmt], otherwise~: Array[SimStmt])
+  Other
+}
+
 suberror SimulatorError {
   InvalidWidth(width~: Int)
   MissingSignal(name~: String)
@@ -95,6 +115,7 @@ struct MemoryState {
 
 pub(all) struct Simulator {
   design: TypedModule
+  program: Array[SimStmt]
   signals: Map[String, SimValue]
   registers: Map[String, RegisterState]
   next_registers: Map[String, SimValue]
@@ -144,6 +165,7 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
   let children: Map[String, Simulator] = Map([])
   let child_message_offsets: Map[String, Int] = Map([])
   let memory_clocks: Map[String, String] = Map([])
+  let program = design.body.map(compile_stmt)
   let dependents: Map[String, Array[Int]] = Map([])
   let pending = Array::new(capacity=design.body.length())
   let queued = Array::new(capacity=design.body.length())
@@ -242,6 +264,7 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
 
   {
     design,
+    program,
     signals,
     registers,
     next_registers,
@@ -313,6 +336,68 @@ fn collect_expr_refs(expr: @firrtl.TypedExpr, refs: Array[String]) -> Unit {
   }
 }
 
+fn compile_stmt(stmt: @firrtl.TypedStmt) -> SimStmt {
+  match stmt {
+    @firrtl.Stmt::Node(id~, expr~) => SimStmt::Node(name=id.inner(), expr=compile_expr(expr))
+    @firrtl.Stmt::Connect(lhs, rhs) => SimStmt::Connect(name=ref_name(lhs), expr=compile_expr(rhs))
+    @firrtl.Stmt::When(when) => SimStmt::When(
+      cond=compile_expr(when.cond),
+      body=when.body.map(compile_stmt),
+      otherwise=when.otherwise.unwrap_or([]).map(compile_stmt),
+    )
+    _ => SimStmt::Other
+  }
+}
+
+fn compile_expr(expr: @firrtl.TypedExpr) -> SimExpr {
+  match expr {
+    @firrtl.Expr::Reference(reference, ty~) => compile_ref(reference, type_width(ty))
+    @firrtl.Expr::Literal(lit, ty~) => SimExpr::Literal(value=SimValue::new(type_width(ty), lit.as_bigint()))
+    @firrtl.Expr::Mux(cond~, tval~, fval~, ..) => SimExpr::Mux(
+      cond=compile_expr(cond),
+      tval=compile_expr(tval),
+      fval=compile_expr(fval),
+    )
+    @firrtl.Expr::PrimOp(op~, args~, ty~) => {
+      let signed = match op {
+        @firrtl.PrimOp::Lt | @firrtl.PrimOp::Leq | @firrtl.PrimOp::Gt | @firrtl.PrimOp::Geq =>
+          args.get(0).map(expr => type_signed(expr.ty())).unwrap_or(false)
+        _ => type_signed(ty)
+      }
+      SimExpr::Prim(
+        op~,
+        args=args.map(compile_expr),
+        width=type_width(ty),
+        signed~,
+      )
+    }
+  }
+}
+
+fn compile_ref(reference: @firrtl.TypedRef, width: Int) -> SimExpr {
+  match reference {
+    @firrtl.Reference::FieldAccess(
+      lhs=@firrtl.Reference::FieldAccess(
+        lhs=@firrtl.Reference::Id(memory_id, ..),
+        field=reader,
+        ..
+      ),
+      field=data,
+      ..
+    ) if data.inner() == "data" => SimExpr::MemoryData(
+      memory=memory_id.inner(),
+      reader=reader.inner(),
+      width~,
+    )
+    @firrtl.Reference::StaticIndexing(lhs~, index~, ty~) => SimExpr::Slice(
+      source=compile_ref(lhs, type_width(lhs.ty())),
+      index~,
+      width=type_width(ty),
+    )
+    _ => SimExpr::Signal(name=ref_name(reference), width~)
+  }
+}
+
 fn Simulator::enqueue_signal(self: Simulator, name: String) -> Unit {
   match self.dependents.get(name) {
     Some(indices) => for index in indices { self.enqueue_statement(index) }
@@ -365,29 +450,64 @@ pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
       if evaluated > 1_000_000 {
         raise CombinationalLoop(message="dirty worklist exceeded 1,000,000 evaluations")
       }
-      self.eval_combinational_stmt(self.design.body[index])
+      self.eval_combinational_stmt(self.program[index])
     }
     let child_changed = self.settle_children()
     if self.pending.length() == 0 && !child_changed { break }
   }
 }
 
-fn Simulator::eval_combinational_stmt(self: Simulator, stmt: @firrtl.TypedStmt) -> Unit raise SimulatorError {
+fn Simulator::eval_combinational_stmt(self: Simulator, stmt: SimStmt) -> Unit raise SimulatorError {
   match stmt {
-    @firrtl.Stmt::Node(id~, expr~) => {
-      let _ = self.assign_signal(id.inner(), self.eval_expr(expr))
+    SimStmt::Node(name~, expr~) => {
+      let _ = self.assign_signal(name, self.eval_compiled_expr(expr))
     }
-    @firrtl.Stmt::Connect(lhs, rhs) => {
-      let _ = self.assign_lhs(lhs, self.eval_expr(rhs), false)
+    SimStmt::Connect(name~, expr~) => {
+      let value = self.eval_compiled_expr(expr)
+      if self.registers.contains(name) {
+        self.next_registers[name] = value
+      } else {
+        let _ = self.assign_signal(name, value)
+      }
     }
-    @firrtl.Stmt::When(when) => {
-      let cond = self.eval_expr(when.cond)
-      let body = if cond.raw != 0 { when.body } else { when.otherwise.unwrap_or([]) }
-      for nested in body {
+    SimStmt::When(cond~, body~, otherwise~) => {
+      let selected = if self.eval_compiled_expr(cond).raw != 0 { body } else { otherwise }
+      for nested in selected {
         self.eval_combinational_stmt(nested)
       }
     }
-    _ => ()
+    SimStmt::Other => ()
+  }
+}
+
+fn Simulator::eval_compiled_expr(self: Simulator, expr: SimExpr) -> SimValue raise SimulatorError {
+  match expr {
+    SimExpr::Signal(name~, width~) => self.signals.get(name).unwrap_or(SimValue::new(width, 0, known=false))
+    SimExpr::MemoryData(memory~, reader~, width~) => self.eval_memory_data(memory, reader, width)
+    SimExpr::Slice(source~, index~, width~) => {
+      let value = self.eval_compiled_expr(source)
+      SimValue::new(width, value.raw >> (index * width), known=value.known)
+    }
+    SimExpr::Literal(value~) => value
+    SimExpr::Mux(cond~, tval~, fval~) => {
+      if self.eval_compiled_expr(cond).raw != 0 {
+        self.eval_compiled_expr(tval)
+      } else {
+        self.eval_compiled_expr(fval)
+      }
+    }
+    SimExpr::Prim(op~, args~, width~, signed~) => {
+      let values = args.map((arg: SimExpr) => self.eval_compiled_expr(arg))
+      eval_prim(op, values, width, signed)
+    }
+  }
+}
+
+fn Simulator::eval_memory_data(self: Simulator, memory_id: String, reader: String, width: Int) -> SimValue raise SimulatorError {
+  match self.memories.get(memory_id) {
+    Some(memory) if memory.read_latency > 0 => memory.read_data.get(reader).unwrap_or(SimValue::new(width, 0, known=false))
+    Some(memory) => self.live_memory_read(memory_id, memory, reader, width)
+    None => raise MissingSignal(name=memory_id + "." + reader + ".data")
   }
 }
 
