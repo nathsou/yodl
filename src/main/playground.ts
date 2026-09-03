@@ -432,6 +432,14 @@ function renderSimulationFrames(frames: Array<{ width: number; height: number; p
     canvas.hidden = false;
     canvas.width = frames[0].width;
     canvas.height = frames[0].height;
+    // A canvas defaults to its backing-store dimensions. Small semantic
+    // framebuffers (for example ImageSim's 40×30 output) would otherwise be
+    // rendered as a postage stamp even though the pixels are correct. Pick an
+    // integer pixel scale that fits the panel and keep image-rendering crisp.
+    const availableWidth = canvas.parentElement?.clientWidth || 640;
+    const scale = Math.max(1, Math.floor(Math.min(640, availableWidth) / frames[0].width, 360 / frames[0].height));
+    canvas.style.width = `${frames[0].width * scale}px`;
+    canvas.style.height = `${frames[0].height * scale}px`;
     const context = canvas.getContext('2d');
     if (!context) return;
     const image = context.createImageData(canvas.width, canvas.height);
