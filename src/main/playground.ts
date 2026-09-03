@@ -228,6 +228,7 @@ function parseSimulationInputs(source: string): Record<string, { width: number; 
     }
     return inputs;
 }
+let framebufferAnimation: number | undefined;
 function renderSimulationFrames(frames: Array<{ width: number; height: number; pixels: number[] }>) {
     const canvas = element<HTMLCanvasElement>('simulation-framebuffer');
     if (framebufferAnimation !== undefined) cancelAnimationFrame(framebufferAnimation);
@@ -256,7 +257,6 @@ function renderSimulationFrames(frames: Array<{ width: number; height: number; p
     };
     draw();
 }
-let framebufferAnimation: number | undefined;
 async function runSimulation() {
     const id = ++requestId;
     latestRequest = id;
@@ -276,6 +276,7 @@ async function runSimulation() {
         offColor: 0x000000,
     } : undefined;
     const frameCount = isLife ? Math.max(1, Math.min(600, cycles || 60)) : undefined;
+    renderSimulationFrames([]);
     setStatus('Simulating…', 'loading');
     const result = await compiler.compile('simulation', {
         source: editors.input.getValue(),
