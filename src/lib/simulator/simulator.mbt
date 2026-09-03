@@ -77,6 +77,13 @@ pub(all) enum SimStmt {
   Other
 }
 
+/// A host-provided implementation for an external FIRRTL module.  Models are
+/// invoked after their input ports are propagated; they can read inputs with
+/// peek() and drive outputs with poke().
+pub(all) struct PrimitiveModel {
+  eval: (Simulator) -> Unit raise SimulatorError
+}
+
 suberror SimulatorError {
   InvalidWidth(width~: Int)
   MissingSignal(name~: String)
@@ -93,6 +100,22 @@ pub(all) struct SimMessage {
 pub fn SimMessage::kind(self: SimMessage) -> String { self.kind }
 
 pub fn SimMessage::text(self: SimMessage) -> String { self.text }
+
+pub(all) struct WaveSample {
+  cycle: Int
+  signal: String
+  value: SimValue
+}
+
+pub fn WaveSample::cycle(self: WaveSample) -> Int { self.cycle }
+
+pub fn WaveSample::signal(self: WaveSample) -> String { self.signal }
+
+pub fn WaveSample::value(self: WaveSample) -> SimValue { self.value }
+
+pub(all) struct Waveform {
+  samples: Array[WaveSample]
+}
 
 pub(all) struct RegisterState {
   name: String
@@ -129,34 +152,60 @@ pub(all) struct Simulator {
   children: Map[String, Simulator]
   child_message_offsets: Map[String, Int]
   memory_clocks: Map[String, String]
+  mut cycle: Int
+  mut waveform: Waveform?
+  mut waveform_filter: Array[String]
   // A reverse dependency index lets settle() revisit only statements affected
   // by a poke, clock edge, register update, or child output change.
   dependents: Map[String, Array[Int]]
   mut pending: Array[Int]
   mut queued: Array[Bool]
+  primitive_models: Map[String, PrimitiveModel]
+  primitive_model: PrimitiveModel?
 }
 
 pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
-  Simulator::new_with_modules(design, modules=Map([]))
+  Simulator::new_with_modules(design, modules=Map([]), primitive_models=Map([]), primitive_model=None)
 }
 
 /// Build a hierarchical simulator for one module in a typed FIRRTL circuit.
 pub fn Simulator::from_circuit(circuit: TypedCircuit, top: String) -> Simulator raise SimulatorError {
+  Simulator::from_circuit_with_models(circuit, top, Map([]))
+}
+
+/// Build a hierarchical simulator and provide host models for ExtModule
+/// declarations.  Primitive models keep board- or device-specific behaviour
+/// out of the FIRRTL evaluator while remaining usable from native testbenches.
+pub fn Simulator::from_circuit_with_models(
+  circuit: TypedCircuit,
+  top: String,
+  primitive_models: Map[String, PrimitiveModel],
+) -> Simulator raise SimulatorError {
   let modules: Map[String, TypedModule] = Map([])
   for decl in circuit.decls {
     match decl {
       @firrtl.Decl::Module(design) => modules[design.id.inner()] = design
-      @firrtl.Decl::ExtModule(_) => ()
+      @firrtl.Decl::ExtModule(ext) => modules[ext.id.inner()] = {
+        public: false,
+        id: ext.id,
+        ports: ext.ports,
+        body: [],
+      }
     }
   }
   let design = match modules.get(top) {
     Some(design) => design
     None => raise MissingSignal(name="top module " + top)
   }
-  Simulator::new_with_modules(design, modules~)
+  Simulator::new_with_modules(design, modules~, primitive_models~, primitive_model=None)
 }
 
-fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedModule]) -> Simulator raise SimulatorError {
+fn Simulator::new_with_modules(
+  design: TypedModule,
+  modules~: Map[String, TypedModule],
+  primitive_models~: Map[String, PrimitiveModel],
+  primitive_model~: PrimitiveModel?,
+) -> Simulator raise SimulatorError {
   let signals: Map[String, SimValue] = Map([])
   let registers: Map[String, RegisterState] = Map([])
   let next_registers: Map[String, SimValue] = Map([])
@@ -242,7 +291,16 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
           Some(child) => child
           None => raise Unsupported(message="external or unknown module '{of.inner()}' has no simulation model")
         }
-        children[instance] = Simulator::new_with_modules(child_design, modules~)
+        let model = primitive_models.get(of.inner())
+        if child_design.body.is_empty() && model is None {
+          raise Unsupported(message="external module '{of.inner()}' has no simulation model")
+        }
+        children[instance] = Simulator::new_with_modules(
+          child_design,
+          modules~,
+          primitive_models~,
+          primitive_model=model,
+        )
         for port_name, port in sig.ports {
           signals[instance + "." + port_name] = SimValue::new(type_width(port.ty), 0, known=false)
         }
@@ -278,9 +336,14 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
     children,
     child_message_offsets,
     memory_clocks,
+    cycle: 0,
+    waveform: None,
+    waveform_filter: [],
     dependents,
     pending,
     queued,
+    primitive_models,
+    primitive_model,
   }
 }
 
@@ -421,11 +484,30 @@ pub fn Simulator::exit_code(self: Simulator) -> Int? { self.exit_code }
 
 pub fn Simulator::failure(self: Simulator) -> String? { self.failure }
 
+/// Enable transition tracing.  An empty filter records every changed signal;
+/// otherwise only the named signals are retained.  Tracing is opt-in so it
+/// does not affect the hot path used by the playground.
+pub fn Simulator::enable_waveform(self: Simulator, signals~: Array[String] = []) -> Unit {
+  self.waveform_filter = signals
+  self.waveform = Some({ samples: [] })
+}
+
+pub fn Simulator::disable_waveform(self: Simulator) -> Unit {
+  self.waveform = None
+}
+
+pub fn Simulator::waveform(self: Simulator) -> Array[WaveSample] {
+  self.waveform.map(w => w.samples).unwrap_or([])
+}
+
+pub fn Simulator::cycle(self: Simulator) -> Int { self.cycle }
+
 pub fn Simulator::poke(self: Simulator, name: String, value: SimValue) -> Unit raise SimulatorError {
   if !self.signals.contains(name) {
     raise MissingSignal(name~)
   }
   let _ = self.assign_signal(name, SimValue::new(type_width_for_name(self, name), value.raw, known=value.known))
+  self.apply_async_resets()
 }
 
 pub fn Simulator::peek(self: Simulator, name: String) -> SimValue raise SimulatorError {
@@ -525,7 +607,12 @@ fn Simulator::settle_children(self: Simulator) -> Bool raise SimulatorError {
         }
       }
     }
-    if input_changed || child.pending.length() > 0 { child.settle() }
+    if input_changed || child.pending.length() > 0 {
+      match child.primitive_model {
+        Some(model) => (model.eval)(child)
+        None => child.settle()
+      }
+    }
     for port in child.design.ports {
       if port.dir is @parse.PortDir::Output {
         let child_value = child.signals.get(port.id.inner()).unwrap_or(SimValue::new(type_width(port.ty), 0, known=false))
@@ -545,14 +632,37 @@ pub fn Simulator::set_clock(self: Simulator, name: String, high: Bool) -> Unit r
   self.clocks[name] = high
   let _ = self.assign_signal(name, SimValue::from_int(1, high.to_int()))
   self.settle()
+  self.apply_async_resets()
   if !old && high {
     self.commit_clock(name)
+  }
+}
+
+fn Simulator::apply_async_resets(self: Simulator) -> Unit raise SimulatorError {
+  for name, reg in self.registers {
+    let is_async = match reg.reset {
+      Some(expr) => expr.ty() is @firrtl.Type::AsyncReset
+      None => false
+    }
+    if !is_async { continue }
+    let asserted = match reg.reset {
+      Some(expr) => self.eval_expr(expr).raw != 0
+      None => false
+    }
+    if !asserted { continue }
+    let value = match reg.init {
+      Some(expr) => self.eval_expr(expr)
+      None => SimValue::zero(reg.width)
+    }
+    let _ = self.assign_signal(name, value)
+    self.next_registers[name] = value
   }
 }
 
 pub fn Simulator::step_clock(self: Simulator, name: String) -> Unit raise SimulatorError {
   self.set_clock(name, true)
   self.set_clock(name, false)
+  self.cycle += 1
 }
 
 fn Simulator::commit_clock(self: Simulator, clock: String) -> Unit raise SimulatorError {
@@ -653,6 +763,7 @@ fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise Simu
       if memory.read_latency > 0 {
         let value = memory.data[address]
         memory.read_data[reader] = value
+        self.enqueue_signal(port + ".data")
       }
     }
 
@@ -668,6 +779,9 @@ fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise Simu
       let mask_value = self.signal_or_zero(port + ".mask")
       if memory.width == 0 { continue }
       memory.data[address] = masked_write(memory.data[address], data, mask_value, memory.width)
+      for reader in reader_prefixes {
+        self.enqueue_signal(prefix + reader + ".data")
+      }
     }
   }
 }
@@ -762,6 +876,9 @@ fn Simulator::assign_signal(self: Simulator, name: String, value: SimValue) -> B
   if old.raw != value.raw || old.known != value.known {
     self.signals[name] = value
     self.enqueue_signal(name)
+    if self.waveform is Some(trace) && (self.waveform_filter.is_empty() || self.waveform_filter.contains(name)) {
+      trace.samples.push({ cycle: self.cycle, signal: name, value })
+    }
     true
   } else {
     false

@@ -145,3 +145,75 @@ test "signed comparisons use operand signedness" {
   sim.settle()
   assert_eq(sim.peek("lt").as_bigint(), @bigint.BigInt::from_int(1))
 }
+
+test "waveform tracing records filtered transitions and cycles" {
+  let u1 = Type::UInt(1)
+  let design: Module[Type] = {
+    public: true,
+    id: @firrtl.Id::Ident("Trace"),
+    ports: [
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("a"), ty: u1 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("out"), ty: u1 },
+    ],
+    body: [@firrtl.Stmt::Connect(id("out", u1), ref_expr("a", u1))],
+  }
+  let sim = @simulator.Simulator::new(design)
+  sim.enable_waveform(signals=["out"])
+  sim.poke("a", @simulator.SimValue::from_int(1, 1))
+  sim.settle()
+  let trace = sim.waveform()
+  assert_true(trace.length() > 0)
+  assert_eq(trace[0].signal(), "out")
+  assert_eq(trace[0].value().as_bigint(), @bigint.BigInt::from_int(1))
+}
+
+test "external primitive models drive instance outputs" {
+  let u8 = Type::UInt(8)
+  let sig_ports : Map[String, @firrtl.PortSignature] = Map([])
+  sig_ports["a"] = { dir: PortDir::Input, ty: u8 }
+  sig_ports["y"] = { dir: PortDir::Output, ty: u8 }
+  let signature : @firrtl.ModuleSignature = { ports: sig_ports }
+  let ext : @firrtl.ExtModule = {
+    id: @firrtl.Id::Ident("Box"),
+    ports: [
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("a"), ty: u8 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("y"), ty: u8 },
+    ],
+    defname: None,
+    parameters: [],
+  }
+  let box_ty = signature.as_bundle()
+  let box_ref = @firrtl.Reference::Id(@firrtl.Id::Ident("box"), ty=box_ty)
+  let box_a = @firrtl.Reference::FieldAccess(lhs=box_ref, field=@firrtl.Id::Ident("a"), ty=u8)
+  let box_y = @firrtl.Reference::FieldAccess(lhs=box_ref, field=@firrtl.Id::Ident("y"), ty=u8)
+  let top : @firrtl.TypedModule = {
+    public: true,
+    id: @firrtl.Id::Ident("Top"),
+    ports: [
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("a"), ty: u8 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("y"), ty: u8 },
+    ],
+    body: [
+      @firrtl.Stmt::Inst(id=@firrtl.Id::Ident("box"), of=@firrtl.Id::Ident("Box"), sig=signature),
+      @firrtl.Stmt::Connect(box_a, ref_expr("a", u8)),
+      @firrtl.Stmt::Connect(id("y", u8), @firrtl.Expr::Reference(box_y, ty=u8)),
+    ],
+  }
+  let circuit : @firrtl.TypedCircuit = {
+    version: @firrtl.min_version(),
+    id: @firrtl.Id::Ident("Top"),
+    annotations: [],
+    decls: [@firrtl.Decl::ExtModule(ext), @firrtl.Decl::Module(top)],
+  }
+  let models : Map[String, @simulator.PrimitiveModel] = Map([])
+  models["Box"] = {
+    eval: fn(sim) {
+      let input = sim.peek("a")
+      sim.poke("y", @simulator.SimValue::from_int(8, input.as_bigint().to_int() + 1))
+    },
+  }
+  let sim = @simulator.Simulator::from_circuit_with_models(circuit, "Top", models)
+  sim.poke("a", @simulator.SimValue::from_int(8, 41))
+  sim.settle()
+  assert_eq(sim.peek("y").as_bigint().to_int(), 42)
+}

@@ -29,6 +29,31 @@ test "compile_simulation produces a runnable low FIRRTL module" {
   assert_eq(sim.peek("value").as_bigint().to_int(), 1)
 }
 
+test "async reset updates a register without a clock edge" {
+  let source =
+    #|module Top(clk: clock, rst: bool, d: u8) -> (q: u8) {
+    #|  let state = RegAsyncReset[u8](clk, rst: rst)
+    #|  state.d = d
+    #|  q = state.q
+    #|}
+  let files : Map[String, String] = Map([])
+  files["fixture.yodl"] = source
+  let ext : @utils.Externals = {
+    fs: make_vfs(files),
+    println: fn(_) { () },
+    get_args: fn() { [] },
+    exit: fn(_) { () },
+  }
+  let circuit = @driver.compile_simulation(path="fixture.yodl", ext~)
+  let sim = @simulator.Simulator::from_circuit(circuit, "Top")
+  sim.poke("rst", @simulator.SimValue::from_int(1, 1))
+  assert_eq(sim.peek("state").as_bigint().to_int(), 0)
+  sim.poke("rst", @simulator.SimValue::from_int(1, 0))
+  sim.poke("d", @simulator.SimValue::from_int(8, 23))
+  sim.step_clock("clk")
+  assert_eq(sim.peek("q").as_bigint().to_int(), 23)
+}
+
 test "compiled simulator models a synchronous memory" {
   let source =
     #|module Top(clk: clock, addr: u2, wdata: u8, we: bool) -> (rdata: u8) {
