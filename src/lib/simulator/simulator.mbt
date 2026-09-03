@@ -29,6 +29,10 @@ pub fn SimValue::zero(width: Int) -> SimValue {
   SimValue::new(width, 0)
 }
 
+pub fn SimValue::from_int(width: Int, value: Int) -> SimValue {
+  SimValue::new(width, BigInt::from_int(value))
+}
+
 pub fn SimValue::as_bigint(self: SimValue) -> BigInt {
   self.raw
 }
@@ -58,6 +62,7 @@ suberror SimulatorError {
   MissingSignal(name~: String)
   Unsupported(message~: String)
   CombinationalLoop(message~: String)
+  ExpectationFailed(name~: String, expected~: String, actual~: String)
 } derive(Debug)
 
 pub(all) struct SimMessage {
@@ -737,4 +742,152 @@ fn type_width_for_name(sim: Simulator, name: String) -> Int {
     if port.id.inner() == name { return type_width(port.ty) }
   }
   sim.signals.get(name).map(v => v.width).unwrap_or(0)
+}
+
+/// A small procedural facade intended for native testbenches and the
+/// playground host API.
+pub(all) struct Testbench {
+  simulator: Simulator
+  mut cycles: Int
+}
+
+pub fn Simulator::testbench(self: Simulator) -> Testbench {
+  { simulator: self, cycles: 0 }
+}
+
+pub fn Testbench::poke(self: Testbench, name: String, value: SimValue) -> Unit raise SimulatorError {
+  self.simulator.poke(name, value)
+}
+
+pub fn Testbench::peek(self: Testbench, name: String) -> SimValue raise SimulatorError {
+  self.simulator.peek(name)
+}
+
+pub fn Testbench::settle(self: Testbench) -> Unit raise SimulatorError {
+  self.simulator.settle()
+}
+
+pub fn Testbench::step(self: Testbench, clock: String) -> Unit raise SimulatorError {
+  self.simulator.step_clock(clock)
+  self.cycles += 1
+}
+
+pub fn Testbench::expect(self: Testbench, name: String, expected: SimValue) -> Unit raise SimulatorError {
+  let actual = self.simulator.peek(name)
+  if actual.raw != expected.raw || actual.known != expected.known {
+    raise ExpectationFailed(name~, expected=Show::to_string(expected), actual=Show::to_string(actual))
+  }
+}
+
+pub fn Testbench::run(self: Testbench, clock: String, cycles: Int) -> Unit raise SimulatorError {
+  if cycles < 0 { raise Unsupported(message="testbench cycle count must be non-negative") }
+  for _ in 0..<cycles { self.step(clock) }
+}
+
+pub fn Testbench::cycle(self: Testbench) -> Int { self.cycles }
+
+pub fn Testbench::simulator(self: Testbench) -> Simulator { self.simulator }
+
+/// A semantic video sink for simulation-only adapters. Hardware wrappers can
+/// turn the same logical pixels into VGA timing; the playground can render the
+/// completed buffer directly.
+pub(all) struct Framebuffer {
+  width: Int
+  height: Int
+  pixels: Array[Int]
+}
+
+pub fn Framebuffer::new(width: Int, height: Int) -> Framebuffer {
+  let pixels = Array::new(capacity=width * height)
+  for _ in 0..<(width * height) { pixels.push(0) }
+  { width, height, pixels }
+}
+
+pub fn Framebuffer::width(self: Framebuffer) -> Int { self.width }
+
+pub fn Framebuffer::height(self: Framebuffer) -> Int { self.height }
+
+pub fn Framebuffer::clear(self: Framebuffer, color~: Int = 0) -> Unit {
+  for i in 0..<self.pixels.length() { self.pixels[i] = color }
+}
+
+pub fn Framebuffer::write(self: Framebuffer, x: Int, y: Int, red: Int, green: Int, blue: Int) -> Unit {
+  if x < 0 || x >= self.width || y < 0 || y >= self.height { return }
+  let color = ((red & 255) << 16) | ((green & 255) << 8) | (blue & 255)
+  self.pixels[y * self.width + x] = color
+}
+
+pub fn Framebuffer::pixel(self: Framebuffer, x: Int, y: Int) -> Int {
+  if x < 0 || x >= self.width || y < 0 || y >= self.height { return 0 }
+  self.pixels[y * self.width + x]
+}
+
+pub fn Framebuffer::pixels(self: Framebuffer) -> Array[Int] { self.pixels }
+
+pub(all) struct TextSink {
+  mut bytes: Array[Int]
+}
+
+pub fn TextSink::new() -> TextSink { { bytes: [] } }
+
+pub fn TextSink::write(self: TextSink, byte: Int) -> Unit {
+  self.bytes.push(byte & 255)
+}
+
+pub fn TextSink::bytes(self: TextSink) -> Array[Int] { self.bytes }
+
+pub fn TextSink::text(self: TextSink) -> String {
+  let builder = StringBuilder()
+  for byte in self.bytes {
+    builder.write_char(byte.to_char().unwrap_or('\u{0}'))
+  }
+  builder.to_string()
+}
+
+// JavaScript-facing helpers. Keeping these wrappers integer-based avoids
+// exposing MoonBit's BigInt representation in the playground protocol; native
+// callers can use SimValue::new for arbitrary-width values.
+pub fn simulator_new(circuit: TypedCircuit, top: String) -> Simulator raise SimulatorError {
+  Simulator::from_circuit(circuit, top)
+}
+
+pub fn simulator_poke_int(simulator: Simulator, name: String, width: Int, value: Int) -> Unit raise SimulatorError {
+  simulator.poke(name, SimValue::from_int(width, value))
+}
+
+pub fn simulator_peek_int(simulator: Simulator, name: String) -> Int raise SimulatorError {
+  simulator.peek(name).raw.to_int()
+}
+
+pub fn simulator_step(simulator: Simulator, clock: String) -> Unit raise SimulatorError {
+  simulator.step_clock(clock)
+}
+
+pub fn simulator_settle(simulator: Simulator) -> Unit raise SimulatorError {
+  simulator.settle()
+}
+
+pub fn simulator_messages(simulator: Simulator) -> Array[String] {
+  simulator.messages().map(message => message.text())
+}
+
+pub fn simulator_outputs(simulator: Simulator) -> Array[(String, Int)] {
+  let outputs = []
+  for port in simulator.design.ports {
+    if port.dir is @parse.PortDir::Output {
+      let name = port.id.inner()
+      outputs.push((name, simulator.signals.get(name).unwrap_or(SimValue::zero(type_width(port.ty))).raw.to_int()))
+    }
+  }
+  outputs
+}
+
+pub fn simulator_clocks(simulator: Simulator) -> Array[String] {
+  let clocks = []
+  for port in simulator.design.ports {
+    if port.ty is @firrtl.Type::Clock {
+      clocks.push(port.id.inner())
+    }
+  }
+  clocks
 }

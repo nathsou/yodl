@@ -219,6 +219,39 @@ async function runCompile() {
     button('download-output').disabled = !lastOutput;
     setStatus(`✓ Compiled · ${Math.round(result.duration)} ms`, 'success');
 }
+function parseSimulationInputs(source: string): Record<string, { width: number; value: number }> {
+    const inputs: Record<string, { width: number; value: number }> = {};
+    for (const token of source.split(',')) {
+        const match = /^\s*([A-Za-z_$][\w$]*)(?::(\d+))?\s*=\s*(-?\d+)\s*$/.exec(token);
+        if (!match) continue;
+        inputs[match[1]] = { width: Number(match[2] ?? 32), value: Number(match[3]) };
+    }
+    return inputs;
+}
+async function runSimulation() {
+    const id = ++requestId;
+    latestRequest = id;
+    const cycles = Math.max(0, Math.min(100000, Number(element<HTMLInputElement>('simulation-cycles').value) || 0));
+    const clock = element<HTMLInputElement>('simulation-clock').value.trim() || undefined;
+    const inputs = parseSimulationInputs(element<HTMLInputElement>('simulation-inputs').value);
+    setStatus('Simulating…', 'loading');
+    const result = await compiler.compile('simulation', {
+        source: editors.input.getValue(),
+        path: sharedEntryPath ?? selection.path,
+        stage: 'write_low_firrtl',
+        files: { ...files, ...sharedFiles },
+        simulate: { top: 'Top', clock, cycles, inputs },
+    });
+    if (!result || id !== latestRequest) return;
+    if (result.error !== undefined) { showError(result.error); return; }
+    const simulation = result.simulation;
+    if (!simulation) return;
+    const lines = [`cycles: ${simulation.cycles}`];
+    for (const [name, value] of Object.entries(simulation.outputs)) lines.push(`${name} = ${value}`);
+    if (simulation.messages.length) { lines.push('', ...simulation.messages); }
+    element('simulation-output').textContent = lines.join('\n');
+    setStatus(`✓ Simulated · ${Math.round(result.duration)} ms`, 'success');
+}
 function download(name: string, content: string) {
     const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = name; link.click();
@@ -246,7 +279,7 @@ async function start() {
     renderSelection();
     if (matchMedia('(max-width: 820px)').matches) element<HTMLDetailsElement>('guide-details').open = false;
     saveDraft();
-    for (const id of ['share-button', 'source-selector', 'compile-button', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
+    for (const id of ['share-button', 'source-selector', 'compile-button', 'simulate-button', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
     const mac = /Mac|iPhone|iPad/.test(navigator.platform);
     element('compile-shortcut').textContent = mac ? '⌘ ↵' : 'Ctrl ↵';
     editors.input.addAction({ id: 'compile-yodl', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });
@@ -272,6 +305,7 @@ async function start() {
     button('suggested-stage').onclick = () => changeStage(tour[lessonIndex()].stage as Stage);
     select('pass-selector').onchange = () => changeStage(select('pass-selector').value as Stage);
     button('compile-button').onclick = runCompile;
+    button('simulate-button').onclick = runSimulation;
     auto.onchange = () => {
         writeStorage('auto', String(auto.checked));
         clearTimeout(timer);

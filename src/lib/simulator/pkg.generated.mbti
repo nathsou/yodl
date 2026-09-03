@@ -8,11 +8,41 @@ import {
 }
 
 // Values
+pub fn simulator_clocks(Simulator) -> Array[String]
+
+pub fn simulator_messages(Simulator) -> Array[String]
+
+pub fn simulator_new(@firrtl.Circuit[@firrtl.Type], String) -> Simulator raise SimulatorError
+
+pub fn simulator_outputs(Simulator) -> Array[(String, Int)]
+
+pub fn simulator_peek_int(Simulator, String) -> Int raise SimulatorError
+
+pub fn simulator_poke_int(Simulator, String, Int, Int) -> Unit raise SimulatorError
+
+pub fn simulator_settle(Simulator) -> Unit raise SimulatorError
+
+pub fn simulator_step(Simulator, String) -> Unit raise SimulatorError
 
 // Errors
-type SimulatorError derive(Show, @debug.Debug)
+type SimulatorError derive(@debug.Debug)
 
 // Types and methods
+pub(all) struct Framebuffer {
+  width : Int
+  height : Int
+  pixels : Array[Int]
+}
+pub fn Framebuffer::clear(Self, color? : Int) -> Unit
+pub fn Framebuffer::height(Self) -> Int
+pub fn Framebuffer::new(Int, Int) -> Self
+pub fn Framebuffer::pixel(Self, Int, Int) -> Int
+pub fn Framebuffer::pixels(Self) -> Array[Int]
+pub fn Framebuffer::width(Self) -> Int
+pub fn Framebuffer::write(Self, Int, Int, Int, Int, Int) -> Unit
+
+type MemoryState
+
 pub(all) struct RegisterState {
   name : String
   width : Int
@@ -36,6 +66,7 @@ pub(all) struct SimValue {
 }
 pub fn SimValue::as_bigint(Self) -> @bigint.BigInt
 pub fn SimValue::bit(Self, Int) -> Self
+pub fn SimValue::from_int(Int, Int) -> Self
 pub fn SimValue::is_known(Self) -> Bool
 pub fn SimValue::new(Int, @bigint.BigInt, known? : Bool) -> Self
 pub fn SimValue::zero(Int) -> Self
@@ -46,14 +77,19 @@ pub(all) struct Simulator {
   signals : Map[String, SimValue]
   registers : Map[String, RegisterState]
   next_registers : Map[String, SimValue]
+  memories : Map[String, MemoryState]
   clocks : Map[String, Bool]
   messages : Array[SimMessage]
   mut halted : Bool
   mut exit_code : Int?
   mut failure : String?
+  modules : Map[String, @firrtl.Module[@firrtl.Type]]
+  children : Map[String, Simulator]
+  child_message_offsets : Map[String, Int]
 }
 pub fn Simulator::exit_code(Self) -> Int?
 pub fn Simulator::failure(Self) -> String?
+pub fn Simulator::from_circuit(@firrtl.Circuit[@firrtl.Type], String) -> Self raise SimulatorError
 pub fn Simulator::is_halted(Self) -> Bool
 pub fn Simulator::messages(Self) -> Array[SimMessage]
 pub fn Simulator::new(@firrtl.Module[@firrtl.Type]) -> Self raise SimulatorError
@@ -62,6 +98,28 @@ pub fn Simulator::poke(Self, String, SimValue) -> Unit raise SimulatorError
 pub fn Simulator::set_clock(Self, String, Bool) -> Unit raise SimulatorError
 pub fn Simulator::settle(Self) -> Unit raise SimulatorError
 pub fn Simulator::step_clock(Self, String) -> Unit raise SimulatorError
+pub fn Simulator::testbench(Self) -> Testbench
+
+pub(all) struct Testbench {
+  simulator : Simulator
+  mut cycles : Int
+}
+pub fn Testbench::cycle(Self) -> Int
+pub fn Testbench::expect(Self, String, SimValue) -> Unit raise SimulatorError
+pub fn Testbench::peek(Self, String) -> SimValue raise SimulatorError
+pub fn Testbench::poke(Self, String, SimValue) -> Unit raise SimulatorError
+pub fn Testbench::run(Self, String, Int) -> Unit raise SimulatorError
+pub fn Testbench::settle(Self) -> Unit raise SimulatorError
+pub fn Testbench::simulator(Self) -> Simulator
+pub fn Testbench::step(Self, String) -> Unit raise SimulatorError
+
+pub(all) struct TextSink {
+  mut bytes : Array[Int]
+}
+pub fn TextSink::bytes(Self) -> Array[Int]
+pub fn TextSink::new() -> Self
+pub fn TextSink::text(Self) -> String
+pub fn TextSink::write(Self, Int) -> Unit
 
 // Type aliases
 

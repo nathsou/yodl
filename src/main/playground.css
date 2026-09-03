@@ -72,6 +72,12 @@ h2 { font-size: 13px; font-weight: 650; margin: 0 0 9px; }
 .problems-header { display: flex; gap: 12px; align-items: center; justify-content: space-between; font-size: 12px; color: var(--error); }
 .problems-header button { color: var(--error); background: transparent; font-size: 11px; }
 .problems pre { font: 12px/1.6 "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.simulation-panel { border-top: 1px solid var(--border); background: var(--background); padding: 10px 14px; max-height: 30%; overflow: auto; }
+.simulation-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.simulation-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.simulation-controls label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+.simulation-controls input { min-height: 27px; border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; background: var(--surface); color: var(--text); font-size: 11px; }
+#simulation-output { margin: 8px 0 0; font: 12px/1.5 "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
 .notice { padding: 9px 24px; color: var(--text); background: var(--accent-soft); font-size: 12px; }
 .notice button { margin-left: 12px; padding: 2px 7px; min-height: 25px; }
 .mobile-tabs { display: none; }

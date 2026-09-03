@@ -3,3 +3,22 @@ import {
   "nathsou/yodl/lib/parse",
   "moonbitlang/core/bigint",
 }
+
+options(
+  "is-main": false,
+  link: {
+    "js": {
+      "exports": [
+        "simulator_new",
+        "simulator_poke_int",
+        "simulator_peek_int",
+        "simulator_step",
+        "simulator_settle",
+        "simulator_messages",
+        "simulator_outputs",
+        "simulator_clocks",
+      ],
+      "format": "esm",
+    },
+  },
+)

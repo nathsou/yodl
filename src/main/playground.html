@@ -21,6 +21,7 @@
             <button id="share-button" disabled>Share</button>
             <label class="auto-label"><input type="checkbox" id="auto-compile" checked> Auto-compile</label>
             <button class="primary" id="compile-button" disabled>Compile <kbd id="compile-shortcut">Ctrl ↵</kbd></button>
+            <button id="simulate-button" disabled>Run simulation</button>
         </div>
     </div>
     <main id="main-layout" class="main-layout">
@@ -52,6 +53,10 @@
                     <div class="stage-description"><span id="stage-description"></span><code id="stage-command"></code></div>
                     <div id="output-panel" class="editor"></div>
                     <section id="problems" class="problems" aria-label="Compilation diagnostics" hidden><div class="problems-header"><strong>Compilation error</strong><button id="jump-error" hidden>Go to source ↗</button></div><pre id="error-message"></pre></section>
+                    <section id="simulation-panel" class="simulation-panel" aria-label="Simulation">
+                        <div class="simulation-header"><strong>Simulation</strong><div class="simulation-controls"><label>Clock <input id="simulation-clock" placeholder="auto" size="5"></label><label>Cycles <input id="simulation-cycles" type="number" value="1" min="0" max="100000" size="7"></label><label>Inputs <input id="simulation-inputs" placeholder="rst=0, en=1" size="18"></label></div></div>
+                        <pre id="simulation-output">Compile a circuit, then run it here.</pre>
+                    </section>
                 </section>
             </div>
             <footer class="status-bar"><span id="compile-status" role="status" data-state="loading">Starting editor…</span><span id="save-status">Drafts stay in this browser</span><span id="cursor-position">Ln 1, Col 1</span></footer>
