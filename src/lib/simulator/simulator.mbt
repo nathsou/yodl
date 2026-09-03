@@ -959,24 +959,6 @@ fn Simulator::assign_signal(self: Simulator, name: String, value: SimValue) -> B
   }
 }
 
-fn Simulator::assign_lhs(
-  self: Simulator,
-  lhs: TypedRef,
-  value: SimValue,
-  next_register: Bool,
-) -> Bool {
-  let name = ref_name(lhs)
-  if self.registers.contains(name) && next_register {
-    self.next_registers[name] = value
-    false
-  } else if self.registers.contains(name) {
-    self.next_registers[name] = value
-    false
-  } else {
-    self.assign_signal(name, value)
-  }
-}
-
 fn Simulator::eval_expr(self: Simulator, expr: TypedExpr) -> SimValue raise SimulatorError {
   match expr {
     @firrtl.Expr::Reference(reference, ty~) => self.eval_ref(reference, type_width(ty))
