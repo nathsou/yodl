@@ -56,8 +56,8 @@ suberror SimulatorError {
   InvalidWidth(width~: Int)
   MissingSignal(name~: String)
   Unsupported(message~: String)
-  CombinationalLoop
-} derive(Show, Debug)
+  CombinationalLoop(message~: String)
+} derive(Debug)
 
 pub(all) struct SimMessage {
   kind: String
@@ -77,11 +77,22 @@ pub(all) struct RegisterState {
   previous_clock: Bool
 }
 
+struct MemoryState {
+  width: Int
+  depth: Int
+  read_latency: Int
+  write_latency: Int
+  read_under_write: @firrtl.ReadUnderWrite
+  data: Array[SimValue]
+  read_data: Map[String, SimValue]
+}
+
 pub(all) struct Simulator {
   design: TypedModule
   signals: Map[String, SimValue]
   registers: Map[String, RegisterState]
   next_registers: Map[String, SimValue]
+  memories: Map[String, MemoryState]
   clocks: Map[String, Bool]
   messages: Array[SimMessage]
   mut halted: Bool
@@ -93,6 +104,7 @@ pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
   let signals: Map[String, SimValue] = Map([])
   let registers: Map[String, RegisterState] = Map([])
   let next_registers: Map[String, SimValue] = Map([])
+  let memories: Map[String, MemoryState] = Map([])
   let clocks: Map[String, Bool] = Map([])
 
   for port in design.ports {
@@ -133,6 +145,21 @@ pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
         }
         next_registers[name] = signals[name]
       }
+      @firrtl.Stmt::Mem(mem) => {
+        let id = mem.id.inner()
+        let width = type_width(mem.data_type)
+        let data = Array::new(capacity=mem.depth)
+        for _ in 0..<mem.depth { data.push(SimValue::new(width, 0, known=false)) }
+        memories[id] = {
+          width,
+          depth: mem.depth,
+          read_latency: mem.read_latency,
+          write_latency: mem.write_latency,
+          read_under_write: mem.read_under_write,
+          data,
+          read_data: Map([]),
+        }
+      }
       _ => ()
     }
   }
@@ -142,6 +169,7 @@ pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
     signals,
     registers,
     next_registers,
+    memories,
     clocks,
     messages: [],
     halted: false,
@@ -181,22 +209,27 @@ pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
   if self.halted { return }
   let mut changed = true
   let mut iterations = 0
+  let mut last_changed = ""
   while changed {
     changed = false
     iterations += 1
-    if iterations > self.design.body.length() + 1 {
-      raise CombinationalLoop
+    if iterations > 1024 {
+      raise CombinationalLoop(message="last signal: " + last_changed)
     }
 
     for stmt in self.design.body {
       match stmt {
         @firrtl.Stmt::Node(id~, expr~) => {
           let value = self.eval_expr(expr)
-          changed = self.assign_signal(id.inner(), value) || changed
+          let did_change = self.assign_signal(id.inner(), value)
+          if did_change { last_changed = id.inner() }
+          changed = did_change || changed
         }
         @firrtl.Stmt::Connect(lhs, rhs) => {
           let value = self.eval_expr(rhs)
-          changed = self.assign_lhs(lhs, value, false) || changed
+          let did_change = self.assign_lhs(lhs, value, false)
+          if did_change { last_changed = ref_name(lhs) }
+          changed = did_change || changed
         }
         @firrtl.Stmt::When(when) => {
           let cond = self.eval_expr(when.cond)
@@ -205,7 +238,9 @@ pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
             match nested {
               @firrtl.Stmt::Connect(lhs, rhs) => {
                 let value = self.eval_expr(rhs)
-                changed = self.assign_lhs(lhs, value, false) || changed
+                let did_change = self.assign_lhs(lhs, value, false)
+                if did_change { last_changed = ref_name(lhs) }
+                changed = did_change || changed
               }
               _ => ()
             }
@@ -254,8 +289,81 @@ fn Simulator::commit_clock(self: Simulator, clock: String) -> Unit raise Simulat
     self.signals[name] = value
     self.next_registers[name] = value
   }
+  self.commit_memories(clock)
   self.run_commands(clock)
   self.settle()
+}
+
+fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise SimulatorError {
+  for id, memory in self.memories {
+    let prefix = id + "."
+    let reader_prefixes = memory_port_prefixes(self.design, id, "reader")
+    for reader in reader_prefixes {
+      let port = prefix + reader
+      let port_clock = self.signal_or_zero(port + ".clk")
+      if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
+      let address = self.signal_or_zero(port + ".addr").raw.to_int()
+      if address < 0 || address >= memory.depth { continue }
+      if memory.read_latency > 0 {
+        let value = memory.data[address]
+        memory.read_data[reader] = value
+      }
+    }
+
+    let writer_prefixes = memory_port_prefixes(self.design, id, "writer")
+    for writer in writer_prefixes {
+      let port = prefix + writer
+      let port_clock = self.signal_or_zero(port + ".clk")
+      if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
+      let address = self.signal_or_zero(port + ".addr").raw.to_int()
+      if address < 0 || address >= memory.depth { continue }
+      let data = self.signal_or_zero(port + ".data")
+      let mask_value = self.signal_or_zero(port + ".mask")
+      if memory.width == 0 { continue }
+      memory.data[address] = masked_write(memory.data[address], data, mask_value, memory.width)
+    }
+  }
+}
+
+fn Simulator::live_memory_read(self: Simulator, memory_id: String, memory: MemoryState, reader: String, width: Int) -> SimValue {
+  let port = memory_id + "." + reader
+  let enabled = self.signal_or_zero(port + ".en")
+  let address = self.signal_or_zero(port + ".addr").raw.to_int()
+  if enabled.raw == 0 || address < 0 || address >= memory.depth {
+    SimValue::new(width, 0, known=false)
+  } else {
+    memory.data[address]
+  }
+}
+
+fn Simulator::signal_or_zero(self: Simulator, name: String) -> SimValue {
+  self.signals.get(name).unwrap_or(SimValue::zero(1))
+}
+
+fn memory_port_prefixes(design: TypedModule, id: String, kind: String) -> Array[String] {
+  let result = []
+  for stmt in design.body {
+    match stmt {
+      @firrtl.Stmt::Mem(mem) if mem.id.inner() == id => {
+        let ports = if kind == "reader" { mem.readers } else { mem.writers }
+        for port in ports { result.push(port.inner()) }
+      }
+      _ => ()
+    }
+  }
+  result
+}
+
+fn masked_write(old: SimValue, value: SimValue, mask_value: SimValue, width: Int) -> SimValue {
+  let granularity = if mask_value.width == 0 { width } else { width / mask_value.width }
+  let mut raw = old.raw
+  for i in 0..<mask_value.width {
+    if ((mask_value.raw >> i) & 1) != 0 {
+      let chunk_mask = mask(granularity) << (i * granularity)
+      raw = (raw & (mask(width) ^ chunk_mask)) | (value.raw & chunk_mask)
+    }
+  }
+  SimValue::new(width, raw, known=old.known && value.known && mask_value.known)
 }
 
 fn Simulator::run_commands(self: Simulator, clock: String) -> Unit raise SimulatorError {
@@ -268,7 +376,7 @@ fn Simulator::run_commands(self: Simulator, clock: String) -> Unit raise Simulat
           @firrtl.Command::Printf(fmt~, args~, ..) => {
             let mut text = fmt
             for arg in args {
-              text = text + " " + self.eval_expr(arg).to_string()
+              text = text + " " + Show::to_string(self.eval_expr(arg))
             }
             self.messages.push({ kind: "printf", text })
           }
@@ -276,7 +384,7 @@ fn Simulator::run_commands(self: Simulator, clock: String) -> Unit raise Simulat
             if self.eval_expr(pred).raw == 0 {
               let mut text = fmt
               for arg in args {
-                text = text + " " + self.eval_expr(arg).to_string()
+                text = text + " " + Show::to_string(self.eval_expr(arg))
               }
               self.failure = Some(text)
               self.messages.push({ kind: "assert", text })
@@ -357,11 +465,39 @@ fn Simulator::eval_ref(self: Simulator, reference: TypedRef, width: Int) -> SimV
       let source = self.eval_ref(lhs, type_width(lhs.ty()))
       SimValue::new(element_width, source.raw >> (index * element_width), known=source.known)
     }
+    @firrtl.Reference::FieldAccess(
+      lhs=@firrtl.Reference::FieldAccess(
+        lhs=@firrtl.Reference::Id(memory_id, ..),
+        field=reader,
+        ..
+      ),
+      field=data_field,
+      ..
+    ) if data_field.inner() == "data" => {
+      match self.memories.get(memory_id.inner()) {
+              Some(memory) if memory.read_latency > 0 => memory.read_data.get(reader.inner()).unwrap_or(SimValue::new(width, 0, known=false))
+              Some(memory) => self.live_memory_read(memory_id.inner(), memory, reader.inner(), width)
+        None => raise MissingSignal(name=memory_id.inner())
+      }
+    }
     @firrtl.Reference::FieldAccess(lhs~, field~, ..) => {
       let name = ref_name(reference)
       match self.signals.get(name) {
         Some(value) => value
-        None => self.eval_ref(lhs, width)
+        None => {
+          let parts: Array[String] = name.split(".").map(part => part.to_owned()).collect()
+          if parts.length() >= 3 && parts[parts.length() - 1] == "data" {
+            let memory_id = parts[0]
+            let reader = parts[1]
+            match self.memories.get(memory_id) {
+              Some(memory) if memory.read_latency > 0 => memory.read_data.get(reader).unwrap_or(SimValue::new(width, 0, known=false))
+              Some(memory) => self.live_memory_read(memory_id, memory, reader, width)
+              None => self.eval_ref(lhs, width)
+            }
+          } else {
+            self.eval_ref(lhs, width)
+          }
+        }
       }
     }
     @firrtl.Reference::DynamicIndexing(..) => raise Unsupported(message="dynamic references must be expanded before simulation")
@@ -447,9 +583,9 @@ fn clock_name(expr: TypedExpr) -> String raise SimulatorError {
 fn ref_name(reference: TypedRef) -> String {
   match reference {
     @firrtl.Reference::Id(id, ..) => id.inner()
-    @firrtl.Reference::StaticIndexing(lhs~, index~, ..) => "{ref_name(lhs)}[{index}]"
+    @firrtl.Reference::StaticIndexing(lhs~, index~, ..) => ref_name(lhs) + "[" + index.to_string() + "]"
     @firrtl.Reference::DynamicIndexing(lhs~, ..) => ref_name(lhs)
-    @firrtl.Reference::FieldAccess(lhs~, field~, ..) => "{ref_name(lhs)}.{field.inner()}"
+    @firrtl.Reference::FieldAccess(lhs~, field~, ..) => ref_name(lhs) + "." + field.inner()
   }
 }
 
