@@ -433,7 +433,7 @@ fn collect_stmt_refs(stmt: @firrtl.TypedStmt, refs: Array[String]) -> Unit {
 
 fn collect_expr_refs(expr: @firrtl.TypedExpr, refs: Array[String]) -> Unit {
   match expr {
-    @firrtl.Expr::Reference(reference, ..) => refs.push(ref_name(reference))
+    @firrtl.Expr::Reference(reference, ..) => collect_ref_refs(reference, refs)
     @firrtl.Expr::Mux(cond~, tval~, fval~, ..) => {
       collect_expr_refs(cond, refs)
       collect_expr_refs(tval, refs)
@@ -443,6 +443,22 @@ fn collect_expr_refs(expr: @firrtl.TypedExpr, refs: Array[String]) -> Unit {
       for arg in args { collect_expr_refs(arg, refs) }
     }
     @firrtl.Expr::Literal(_, ..) => ()
+  }
+}
+
+// Static and dynamic indexing is evaluated from the underlying signal, not
+// from a standalone `signal[index]` entry.  Record every enclosing reference
+// so that a later assignment to the source re-enqueues the slice expression.
+// This matters for aggregate literals, whose bit-slice statements can be
+// visited before the literal node during the initial dirty-worklist pass.
+fn collect_ref_refs(reference: @firrtl.TypedRef, refs: Array[String]) -> Unit {
+  refs.push(ref_name(reference))
+  match reference {
+    @firrtl.Reference::StaticIndexing(lhs~, ..) | @firrtl.Reference::DynamicIndexing(lhs~, ..) => {
+      collect_ref_refs(lhs, refs)
+    }
+    @firrtl.Reference::FieldAccess(lhs~, ..) => collect_ref_refs(lhs, refs)
+    @firrtl.Reference::Id(_, ..) => ()
   }
 }
 

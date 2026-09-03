@@ -349,7 +349,10 @@ pub fn Literal::uint(n: Int) -> Literal {
   }
 
   let value = BigInt::from_int(n)
-  let width = @utils.max(@utils.clog2(value).to_int(), 1)
+  // `clog2` gives the number of bits needed to address a value, not the
+  // number of bits needed to represent it.  Powers of two (for example the
+  // bit-slice index 16) therefore need one additional bit.
+  let width = @utils.significant_bits(value)
   UInt(width~, radix=None, value~)
 }
 

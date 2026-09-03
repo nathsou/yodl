@@ -82,6 +82,91 @@ test "simulator masks values to their declared width" {
   assert_eq(value.as_bigint(), @bigint.BigInt::from_int(0xf))
 }
 
+test "simulator extracts high bits from wide values" {
+  let u1 = Type::UInt(1)
+  let u40 = Type::UInt(40)
+  let design: Module[Type] = {
+    public: true,
+    id: @firrtl.Id::Ident("Bits"),
+    ports: [
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("a"), ty: u40 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("out"), ty: u1 },
+    ],
+    body: [
+      @firrtl.Stmt::Connect(id("out", u1), @firrtl.Expr::PrimOp(op=@firrtl.PrimOp::Bits, args=[ref_expr("a", u40), lit(2, 6), lit(2, 6)], ty=u1)),
+    ],
+  }
+  let sim = @simulator.Simulator::new(design)
+  sim.poke("a", @simulator.SimValue::from_int(40, 1 << 2))
+  sim.settle()
+  assert_eq(sim.peek("out").as_bigint(), @bigint.BigInt::from_int(1))
+}
+
+test "simulator requeues aggregate slices when their source changes" {
+  let u1 = Type::UInt(1)
+  let vec40 = Type::Vec(u1, 40)
+  let design: Module[Type] = {
+    public: true,
+    id: @firrtl.Id::Ident("AggregateSlice"),
+    ports: [
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("a"), ty: vec40 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("out"), ty: u1 },
+    ],
+    body: [
+      @firrtl.Stmt::Connect(
+        id("out", u1),
+        @firrtl.Expr::Reference(
+          @firrtl.Reference::StaticIndexing(lhs=id("a", vec40), index=16, ty=u1),
+          ty=u1,
+        ),
+      ),
+    ],
+  }
+  let sim = @simulator.Simulator::new(design)
+  sim.poke("a", @simulator.SimValue::from_int(40, 1 << 16))
+  sim.settle()
+  assert_eq(sim.peek("out").as_bigint(), @bigint.BigInt::from_int(1))
+}
+
+test "simulator propagates adjacent wide slices" {
+  let u1 = Type::UInt(1)
+  let u40 = Type::UInt(40)
+  let design: Module[Type] = {
+    public: true,
+    id: @firrtl.Id::Ident("Slices"),
+    ports: [
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("out2"), ty: u1 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("out16"), ty: u1 },
+    ],
+    body: [
+      @firrtl.Stmt::Node(id=@firrtl.Id::Ident("tmp"), expr=lit(50528268, 40)),
+      @firrtl.Stmt::Connect(id("out2", u1), @firrtl.Expr::PrimOp(op=@firrtl.PrimOp::Bits, args=[ref_expr("tmp", u40), lit(2, 6), lit(2, 6)], ty=u1)),
+      @firrtl.Stmt::Connect(id("out16", u1), @firrtl.Expr::PrimOp(op=@firrtl.PrimOp::Bits, args=[ref_expr("tmp", u40), lit(16, 6), lit(16, 6)], ty=u1)),
+    ],
+  }
+  let sim = @simulator.Simulator::new(design)
+  sim.settle()
+  assert_eq(sim.peek("out2").as_bigint(), @bigint.BigInt::from_int(1))
+  assert_eq(sim.peek("out16").as_bigint(), @bigint.BigInt::from_int(1))
+}
+
+test "simulator handles generated dollar names in wide slices" {
+  let u1 = Type::UInt(1)
+  let u40 = Type::UInt(40)
+  let design: Module[Type] = {
+    public: true,
+    id: @firrtl.Id::Ident("DollarSlices"),
+    ports: [{ dir: PortDir::Output, id: @firrtl.Id::Ident("out"), ty: u1 }],
+    body: [
+      @firrtl.Stmt::Node(id=@firrtl.Id::Ident("tmp_16$"), expr=lit(50528268, 40)),
+      @firrtl.Stmt::Connect(id("out", u1), @firrtl.Expr::PrimOp(op=@firrtl.PrimOp::Bits, args=[ref_expr("tmp_16$", u40), lit(2, 6), lit(2, 6)], ty=u1)),
+    ],
+  }
+  let sim = @simulator.Simulator::new(design)
+  sim.settle()
+  assert_eq(sim.peek("out").as_bigint(), @bigint.BigInt::from_int(1))
+}
+
 test "testbench facade advances cycles and checks expectations" {
   let u8 = Type::UInt(8)
   let clock = Type::Clock
