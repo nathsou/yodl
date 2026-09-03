@@ -120,3 +120,28 @@ test "semantic output sinks collect framebuffer pixels and text" {
   text.write(10)
   assert_eq(text.text(), "A\n")
 }
+
+test "signed comparisons use operand signedness" {
+  let s8 = Type::SInt(8)
+  let bit = Type::UInt(1)
+  let design: Module[Type] = {
+    public: true,
+    id: @firrtl.Id::Ident("Compare"),
+    ports: [
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("a"), ty: s8 },
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("b"), ty: s8 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("lt"), ty: bit },
+    ],
+    body: [
+      @firrtl.Stmt::Connect(
+        id("lt", bit),
+        @firrtl.Expr::PrimOp(op=@firrtl.PrimOp::Lt, args=[ref_expr("a", s8), ref_expr("b", s8)], ty=bit),
+      ),
+    ],
+  }
+  let sim = @simulator.Simulator::new(design)
+  sim.poke("a", @simulator.SimValue::from_int(8, 255))
+  sim.poke("b", @simulator.SimValue::from_int(8, 1))
+  sim.settle()
+  assert_eq(sim.peek("lt").as_bigint(), @bigint.BigInt::from_int(1))
+}

@@ -107,6 +107,7 @@ pub(all) struct Simulator {
   modules: Map[String, TypedModule]
   children: Map[String, Simulator]
   child_message_offsets: Map[String, Int]
+  memory_clocks: Map[String, String]
 }
 
 pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
@@ -137,6 +138,7 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
   let clocks: Map[String, Bool] = Map([])
   let children: Map[String, Simulator] = Map([])
   let child_message_offsets: Map[String, Int] = Map([])
+  let memory_clocks: Map[String, String] = Map([])
 
   for port in design.ports {
     let width = type_width(port.ty)
@@ -190,6 +192,18 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
           data,
           read_data: Map([]),
         }
+        for reader in mem.readers {
+          let name = id + "." + reader.inner()
+          if find_signal_source(design, name + ".clk") is Some(clock) {
+            memory_clocks[name] = clock
+          }
+        }
+        for writer in mem.writers {
+          let name = id + "." + writer.inner()
+          if find_signal_source(design, name + ".clk") is Some(clock) {
+            memory_clocks[name] = clock
+          }
+        }
       }
       @firrtl.Stmt::Inst(id~, of~, sig~) => {
         let instance = id.inner()
@@ -220,6 +234,7 @@ fn Simulator::new_with_modules(design: TypedModule, modules~: Map[String, TypedM
     modules,
     children,
     child_message_offsets,
+    memory_clocks,
   }
 }
 
@@ -408,6 +423,23 @@ fn clock_source(design: TypedModule, instance: String, port: String) -> String? 
   None
 }
 
+fn find_signal_source(design: TypedModule, target: String) -> String? {
+  for stmt in design.body {
+    match stmt {
+      @firrtl.Stmt::Connect(lhs, @firrtl.Expr::Reference(@firrtl.Reference::Id(source, ..), ..)) if ref_name(lhs) == target => {
+          for port in design.ports {
+            if port.id.inner() == source.inner() && port.ty is @firrtl.Type::Clock {
+              return Some(source.inner())
+            }
+          }
+          return find_signal_source(design, source.inner())
+        }
+      _ => ()
+    }
+  }
+  None
+}
+
 fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise SimulatorError {
   for id, memory in self.memories {
     let prefix = id + "."
@@ -415,6 +447,7 @@ fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise Simu
     for reader in reader_prefixes {
       let port = prefix + reader
       let port_clock = self.signal_or_zero(port + ".clk")
+      if self.memory_clocks.get(port) is Some(source) && source != clock { continue }
       if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
       let address = self.signal_or_zero(port + ".addr").raw.to_int()
       if address < 0 || address >= memory.depth { continue }
@@ -428,6 +461,7 @@ fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise Simu
     for writer in writer_prefixes {
       let port = prefix + writer
       let port_clock = self.signal_or_zero(port + ".clk")
+      if self.memory_clocks.get(port) is Some(source) && source != clock { continue }
       if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
       let address = self.signal_or_zero(port + ".addr").raw.to_int()
       if address < 0 || address >= memory.depth { continue }
@@ -561,7 +595,12 @@ fn Simulator::eval_expr(self: Simulator, expr: TypedExpr) -> SimValue raise Simu
     }
     @firrtl.Expr::PrimOp(op~, args~, ty~) => {
       let values = args.map((expr: TypedExpr) => self.eval_expr(expr))
-      eval_prim(op, values, type_width(ty), type_signed(ty))
+      let signed = match op {
+        @firrtl.PrimOp::Lt | @firrtl.PrimOp::Leq | @firrtl.PrimOp::Gt | @firrtl.PrimOp::Geq =>
+          args.get(0).map(expr => type_signed(expr.ty())).unwrap_or(false)
+        _ => type_signed(ty)
+      }
+      eval_prim(op, values, type_width(ty), signed)
     }
   }
 }
