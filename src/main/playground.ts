@@ -339,7 +339,7 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     element('output-pane').dataset.view = 'simulation';
     element('simulation-state').textContent = action === 'run' ? 'Running…' : action === 'reset' ? 'Resetting…' : action === 'step_frame' ? 'Stepping frame…' : 'Stepping cycle…';
     button('simulation-step-cycle').disabled = !visual.clocked;
-    button('simulation-step-frame').hidden = !visual.framebuffer;
+    button('simulation-step-frame').hidden = !(visual.framebuffer && visual.clocked);
     renderSimulationFrames([]);
     setStatus('Simulating…', 'loading');
     const result = await compiler.compile('simulation', {
@@ -365,7 +365,8 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     if (simulation.messages.length) { lines.push('', ...simulation.messages); }
     element('simulation-output').textContent = lines.join('\n');
     renderSimulationFrames(simulation.framebuffers ?? []);
-    button('simulation-step-frame').hidden = !(visual.framebuffer || simulation.framebuffers?.length);
+    button('simulation-step-cycle').disabled = !simulation.clock;
+    button('simulation-step-frame').hidden = !(simulation.framebuffers?.length && simulation.clock);
     element('simulation-state').textContent = simulation.framebuffers?.length ? `${simulation.framebuffers.length} frame${simulation.framebuffers.length === 1 ? '' : 's'} · ${simulation.cycles} cycles` : `${simulation.cycles} cycles`;
     setStatus(`✓ Simulated · ${Math.round(result.duration)} ms`, 'success');
 }

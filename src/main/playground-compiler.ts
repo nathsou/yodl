@@ -31,7 +31,7 @@ export type SimulationRequest = {
 };
 export type CompileRequest = { id: number; source: string; path: string; stage: Stage; files?: Record<string, string>; simulate?: SimulationRequest };
 export type SimulationFramebuffer = { width: number; height: number; pixels: number[] };
-export type SimulationResult = { outputs: Record<string, number>; messages: string[]; cycles: number; framebuffers?: SimulationFramebuffer[] };
+export type SimulationResult = { outputs: Record<string, number>; messages: string[]; cycles: number; clock?: string; framebuffers?: SimulationFramebuffer[] };
 export type CompileResult = { id: number; output?: string; error?: string; duration: number; simulation?: SimulationResult };
 
 type SimulationSession = {
@@ -184,7 +184,7 @@ export function compile(request: CompileRequest): CompileResult {
             return {
                 id: request.id,
                 duration: performance.now() - started,
-                simulation: { outputs, messages: simulator_messages(machine) as string[], cycles: simulatedCycles, ...((framebuffer || detectedFramebuffer) ? { framebuffers } : {}) },
+                simulation: { outputs, messages: simulator_messages(machine) as string[], cycles: simulatedCycles, ...(clock ? { clock } : {}), ...((framebuffer || detectedFramebuffer) ? { framebuffers } : {}) },
             };
         }
         const commands = unwrap(yodl.parse_commands(request.stage));
