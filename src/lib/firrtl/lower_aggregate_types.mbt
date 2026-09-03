@@ -89,6 +89,14 @@ fn LowerAggregateTypesPass::signature_for_ports(self: Self, ports: Array[Port]) 
   }
 }
 
+fn LowerAggregateTypesPass::signature_for_instance(self: Self, sig: ModuleSignature) -> ModuleSignature {
+  let ports: Array[Port] = []
+  for name, port in sig.ports.iter2() {
+    ports.push({ dir: port.dir, id: Id::from(name), ty: port.ty })
+  }
+  self.signature_for_ports(ports)
+}
+
 fn rewrite_annotations(module_tables: Map[Id, LoweringTable], annotations: Array[Annotation]) -> Array[Annotation] raise {
   let new_annotations = Array::new(capacity=annotations.length())
 
@@ -252,7 +260,7 @@ fn LowerAggregateTypesPass::process_stmt(self: Self, stmt: TypedStmt, body: Arra
       // External declarations may not be present in the lowered circuit
       // (they are represented by the instance signature alone). Preserve that
       // signature when there is no declaration to look up.
-      let new_sig = self.module_signatures.get(of).unwrap_or(sig)
+      let new_sig = self.module_signatures.get(of).unwrap_or(self.signature_for_instance(sig))
 
       if inst_ty is Bundle(fields) {
         for field in fields {

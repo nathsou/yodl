@@ -146,3 +146,38 @@ test "external module instances can use a host primitive model" {
   sim.settle()
   assert_eq(sim.peek("y").as_bigint().to_int(), 42)
 }
+
+test "external aggregate ports are flattened for primitive models" {
+  let source =
+    #|declare module Box(a: [2]u8) -> (y: [2]u8)
+    #|
+    #|module Top(a: [2]u8) -> (y: [2]u8) {
+    #|  let box = Box(a)
+    #|  y = box.y
+    #|}
+  let files : Map[String, String] = Map([])
+  files["fixture.yodl"] = source
+  let ext : @utils.Externals = {
+    fs: make_vfs(files),
+    println: fn(_) { () },
+    get_args: fn() { [] },
+    exit: fn(_) { () },
+  }
+  let circuit = @driver.compile_simulation(path="fixture.yodl", ext~)
+  let models : Map[String, @simulator.PrimitiveModel] = Map([])
+  models["Box"] = {
+    eval: (sim) => {
+      for index in 0..<2 {
+        let suffix = index.to_string()
+        let value = sim.peek("a_" + suffix).as_bigint().to_int()
+        sim.poke("y_" + suffix, @simulator.SimValue::from_int(8, value + 1))
+      }
+    },
+  }
+  let sim = @simulator.Simulator::from_circuit_with_models(circuit, "Top", models)
+  sim.poke("a_0", @simulator.SimValue::from_int(8, 10))
+  sim.poke("a_1", @simulator.SimValue::from_int(8, 20))
+  sim.settle()
+  assert_eq(sim.peek("y_0").as_bigint().to_int(), 11)
+  assert_eq(sim.peek("y_1").as_bigint().to_int(), 21)
+}
