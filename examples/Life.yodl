@@ -1,6 +1,8 @@
 // Fully parallel game of life simulation
 // adapted from https://k155la3.blog/2020/10/09/conways-game-of-life-on-fpga/
 
+import VGA
+
 const LIFE_ROWS = 480 / 16
 const LIFE_COLS = 640 / 16
 
@@ -231,4 +233,37 @@ module Life(
             }
         }
     }
+}
+
+// Standalone FPGA wrapper. The playground selects LifeSim above, while the
+// normal CLI continues to find a conventional Top when compiling this file.
+module Top(
+    clk: clock,
+    rst: bool,
+) -> (
+    is_active_area: bool,
+    screen_x: u10,
+    screen_y: u10,
+    r: u3,
+    g: u3,
+    b: u3,
+) {
+    let vga = VGA::SyncPulses(
+        pixel_clk: clk,
+        is_active_area,
+        col: screen_x,
+        row: screen_y,
+    )
+    let life = Life(
+        clk,
+        rst,
+        hsync: vga.hsync,
+        vsync: vga.vsync,
+        row: vga.row,
+        col: vga.col,
+    )
+    let color = vga.is_active_area ? life.color : (r: 3'd0, g: 3'd0, b: 3'd0)
+    r = color.r
+    g = color.g
+    b = color.b
 }
