@@ -30,6 +30,15 @@ module TicTac[Max: Nat](clk: clock, en: bool, rst: bool) -> (tick: bool, count: 
 // Semantic framebuffer used by the playground. This deliberately uses a
 // short divider so stepping the simulation produces visible movement instead
 // of requiring the 25 MHz hardware clock divider.
+@simulation({
+    clock: "clk",
+    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "binary", on_color: 9485933, off_color: 1118744 },
+    init_signal: "rst",
+    init_cycles: 1,
+    frame_cycles: 1,
+    clock_hz: 1,
+    frame_rate: 1,
+})
 module ClockSim(
     clk: clock,
     rst: bool,

@@ -5,6 +5,15 @@ import Text
 // Semantic framebuffer used by the playground. The FPGA Top below retains
 // the VGA/scrolling implementation; this compact adapter keeps simulation
 // focused on the rendered pixels rather than scan timing.
+@simulation({
+    clock: "clk",
+    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "binary", on_color: 8116210, off_color: 1056800 },
+    init_signal: "rst",
+    init_cycles: 1,
+    frame_cycles: 1,
+    clock_hz: 60,
+    frame_rate: 30,
+})
 module HelloSim(
     clk: clock,
     rst: bool,

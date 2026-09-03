@@ -113,6 +113,16 @@ module Grid[Rows: Nat, Cols: Nat](
 // generation and the aggregate output can be copied directly into a canvas.
 // The vector register keeps all 1,200 cells in one sequential object; the
 // hardware-oriented TopSim below intentionally retains the Cell hierarchy.
+@simulation({
+    clock: "clk",
+    framebuffer: { width: 40, height: 30, state_prefix: "state", mode: "binary", on_color: 128676, off_color: 0 },
+    init_signal: "init",
+    init_cycles: 1,
+    frames: 60,
+    frame_cycles: 1,
+    clock_hz: 60,
+    frame_rate: 30,
+})
 module LifeSim(
     clk: clock,
     rst: bool,

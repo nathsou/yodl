@@ -156,6 +156,12 @@ function choose(next: Selection) {
     sharedFiles = {}; sharedEntryPath = undefined; sharedOrigin = undefined;
     if (location.hash.startsWith('#code=')) history.replaceState(null, '', location.pathname + location.search);
     selection = next;
+    // Simulation fields describe the selected design. Do not carry a top or
+    // clock from a previous example into the next one (that made Image/Noise
+    // appear broken after running LifeSim).
+    for (const id of ['simulation-top', 'simulation-clock', 'simulation-inputs']) {
+        element<HTMLInputElement>(id).value = '';
+    }
     loadingSource = true;
     editors.input.setValue(readStorage(draftKey()) ?? originals(selection.path));
     loadingSource = false;
@@ -238,12 +244,101 @@ function parseSimulationInputs(source: string): Record<string, { width: number; 
 }
 type VisualSimulation = {
     top?: string;
+    clock?: string;
     framebuffer?: NonNullable<SimulationRequest['framebuffer']>;
     frames?: number;
     frameCycles?: number;
+    clockHz?: number;
+    frameRate?: number;
     clocked: boolean;
 };
-function visualSimulation(path: string, requestedTop: string): VisualSimulation {
+type SimulationAnnotation = Record<string, unknown> & { module?: string };
+
+function parseSimulationAnnotations(source: string): SimulationAnnotation[] {
+    const annotations: SimulationAnnotation[] = [];
+    let search = 0;
+    while (true) {
+        const marker = source.indexOf('@simulation', search);
+        if (marker < 0) break;
+        const brace = source.indexOf('{', marker);
+        if (brace < 0) break;
+        let depth = 0;
+        let end = -1;
+        let quote = false;
+        let escaped = false;
+        for (let index = brace; index < source.length; index++) {
+            const char = source[index];
+            if (quote) {
+                if (escaped) escaped = false;
+                else if (char === '\\') escaped = true;
+                else if (char === '"') quote = false;
+                continue;
+            }
+            if (char === '"') { quote = true; continue; }
+            if (char === '{') depth++;
+            else if (char === '}' && --depth === 0) { end = index; break; }
+        }
+        if (end < 0) break;
+        const jsonLike = source.slice(brace, end + 1)
+            .replace(/([A-Za-z_$][\w$]*)\s*:/g, '"$1":')
+            .replace(/,\s*([}])/g, '$1');
+        try {
+            const value = JSON.parse(jsonLike) as Record<string, unknown>;
+            const module = /\bmodule\s+([A-Za-z_$][\w$]*)/.exec(source.slice(end + 1, end + 300))?.[1];
+            annotations.push({ ...value, module });
+        } catch { /* Invalid metadata is ignored; normal simulation still works. */ }
+        search = end + 1;
+    }
+    return annotations;
+}
+
+function numberOption(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function stringOption(value: unknown): string | undefined {
+    return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function annotatedSimulation(source: string, requestedTop: string): VisualSimulation | undefined {
+    const annotations = parseSimulationAnnotations(source);
+    const annotation = annotations.find(value => {
+        const target = stringOption(value.top) ?? value.module;
+        return !requestedTop || target === requestedTop || value.module === requestedTop;
+    });
+    if (!annotation) return undefined;
+    const rawFramebuffer = annotation.framebuffer && typeof annotation.framebuffer === 'object'
+        ? annotation.framebuffer as Record<string, unknown>
+        : undefined;
+    const width = numberOption(rawFramebuffer?.width);
+    const height = numberOption(rawFramebuffer?.height);
+    const statePrefix = stringOption(rawFramebuffer?.state_prefix) ?? stringOption(rawFramebuffer?.statePrefix);
+    const framebuffer = width && height && statePrefix ? {
+        width,
+        height,
+        statePrefix,
+        valueMode: (stringOption(rawFramebuffer?.mode) ?? stringOption(rawFramebuffer?.value_mode) ?? 'binary') as 'binary' | 'gray' | 'rgb',
+        onColor: numberOption(rawFramebuffer?.on_color) ?? numberOption(rawFramebuffer?.onColor),
+        offColor: numberOption(rawFramebuffer?.off_color) ?? numberOption(rawFramebuffer?.offColor),
+        initSignal: stringOption(annotation.init_signal) ?? stringOption(annotation.initSignal),
+        initCycles: numberOption(annotation.init_cycles) ?? numberOption(annotation.initCycles),
+    } satisfies NonNullable<SimulationRequest['framebuffer']> : undefined;
+    const clock = stringOption(annotation.clock);
+    return {
+        top: stringOption(annotation.top) ?? annotation.module,
+        clock,
+        framebuffer,
+        frames: numberOption(annotation.frames),
+        frameCycles: numberOption(annotation.frame_cycles) ?? numberOption(annotation.frameCycles),
+        clockHz: numberOption(annotation.clock_hz) ?? numberOption(annotation.clockHz),
+        frameRate: numberOption(annotation.frame_rate) ?? numberOption(annotation.frameRate),
+        clocked: Boolean(clock) || Boolean(framebuffer && annotation.clocked !== false),
+    };
+}
+
+function visualSimulation(path: string, requestedTop: string, source = ''): VisualSimulation {
+    const annotated = annotatedSimulation(source, requestedTop);
+    if (annotated && (!requestedTop || annotated.top === requestedTop)) return annotated;
     const name = path.split('/').at(-1)?.toLowerCase() ?? '';
     const top = requestedTop.toLowerCase();
     if (top === 'lifesim' || ((name === 'sim.yodl' || name === 'life.yodl') && !requestedTop)) {
@@ -298,9 +393,9 @@ function visualSimulation(path: string, requestedTop: string): VisualSimulation 
     return { clocked: true };
 }
 let framebufferAnimation: number | undefined;
-function renderSimulationFrames(frames: Array<{ width: number; height: number; pixels: number[] }>) {
+function renderSimulationFrames(frames: Array<{ width: number; height: number; pixels: number[] }>, frameRate = 60) {
     const canvas = element<HTMLCanvasElement>('simulation-framebuffer');
-    if (framebufferAnimation !== undefined) cancelAnimationFrame(framebufferAnimation);
+    if (framebufferAnimation !== undefined) clearTimeout(framebufferAnimation);
     framebufferAnimation = undefined;
     if (frames.length === 0) { canvas.hidden = true; return; }
     canvas.hidden = false;
@@ -321,7 +416,8 @@ function renderSimulationFrames(frames: Array<{ width: number; height: number; p
         context.putImageData(image, 0, 0);
         if (frames.length > 1) {
             frame = (frame + 1) % frames.length;
-            framebufferAnimation = requestAnimationFrame(draw);
+            const delay = 1000 / Math.max(1, Math.min(240, frameRate));
+            framebufferAnimation = window.setTimeout(draw, delay);
         }
     };
     draw();
@@ -330,19 +426,33 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     setMobileView('output');
     const id = ++requestId;
     latestRequest = id;
+    const readPositive = (id: string) => {
+        const value = Number(element<HTMLInputElement>(id).value);
+        return Number.isFinite(value) && value > 0 ? value : undefined;
+    };
     const cycles = Math.max(0, Math.min(100000, Number(element<HTMLInputElement>('simulation-cycles').value) || 0));
     const frames = Math.max(1, Math.min(600, Number(element<HTMLInputElement>('simulation-frames').value) || 1));
     const requestedTop = element<HTMLInputElement>('simulation-top').value.trim();
     const clock = element<HTMLInputElement>('simulation-clock').value.trim() || undefined;
     const inputs = parseSimulationInputs(element<HTMLInputElement>('simulation-inputs').value);
-    const visual = visualSimulation(sharedEntryPath ?? selection.path, requestedTop);
+    const visual = visualSimulation(sharedEntryPath ?? selection.path, requestedTop, editors.input.getValue());
     const top = requestedTop || visual.top;
+    const width = readPositive('simulation-width');
+    const height = readPositive('simulation-height');
+    const framebuffer = visual.framebuffer && (width || height) ? {
+        ...visual.framebuffer,
+        width: width ?? visual.framebuffer.width,
+        height: height ?? visual.framebuffer.height,
+    } : visual.framebuffer;
+    const clockHz = readPositive('simulation-clock-hz') ?? visual.clockHz;
+    const frameRate = readPositive('simulation-frame-rate') ?? visual.frameRate ?? 60;
     const frameCount = visual.frames ?? (visual.framebuffer ? frames : undefined);
-    const frameCycles = visual.frameCycles ?? (visual.framebuffer ? Math.max(1, Math.min(100000, Number(element<HTMLInputElement>('simulation-frame-cycles').value) || 1)) : undefined);
+    const requestedFrameCycles = readPositive('simulation-frame-cycles');
+    const frameCycles = visual.frameCycles ?? (framebuffer ? Math.max(1, Math.min(100000, requestedFrameCycles ?? (clockHz ? Math.round(clockHz / frameRate) : 1))) : undefined);
     element('output-pane').dataset.view = 'simulation';
     element('simulation-state').textContent = action === 'run' ? 'Running…' : action === 'reset' ? 'Resetting…' : action === 'step_frame' ? 'Stepping frame…' : 'Stepping cycle…';
     button('simulation-step-cycle').disabled = !visual.clocked;
-    button('simulation-step-frame').hidden = !(visual.framebuffer && visual.clocked);
+    button('simulation-step-frame').hidden = !(framebuffer && visual.clocked);
     renderSimulationFrames([]);
     setStatus('Simulating…', 'loading');
     const result = await compiler.compile('simulation', {
@@ -350,7 +460,7 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
         path: sharedEntryPath ?? selection.path,
         stage: 'write_low_firrtl',
         files: { ...files, ...sharedFiles },
-        simulate: { action, top, clock, cycles, inputs, frames: frameCount, frameCycles, framebuffer: visual.framebuffer },
+        simulate: { action, top, clock: clock ?? visual.clock, cycles, inputs, frames: frameCount, frameCycles, framebuffer },
     });
     if (!result || id !== latestRequest) return;
     if (result.error !== undefined) {
@@ -367,7 +477,7 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     if (outputEntries.length > 100) lines.push(`… ${outputEntries.length - 100} more outputs`);
     if (simulation.messages.length) { lines.push('', ...simulation.messages); }
     element('simulation-output').textContent = lines.join('\n');
-    renderSimulationFrames(simulation.framebuffers ?? []);
+    renderSimulationFrames(simulation.framebuffers ?? [], frameRate);
     button('simulation-step-cycle').disabled = !simulation.clock;
     button('simulation-step-frame').hidden = !(simulation.framebuffers?.length && simulation.clock);
     element('simulation-state').textContent = simulation.framebuffers?.length ? `${simulation.framebuffers.length} frame${simulation.framebuffers.length === 1 ? '' : 's'} · ${simulation.cycles} cycles` : `${simulation.cycles} cycles`;
@@ -400,7 +510,7 @@ async function start() {
     renderSelection();
     if (matchMedia('(max-width: 820px)').matches) element<HTMLDetailsElement>('guide-details').open = false;
     saveDraft();
-    for (const id of ['share-button', 'source-selector', 'compile-button', 'simulate-button', 'simulation-reset', 'simulation-step-cycle', 'simulation-step-frame', 'simulation-run', 'simulation-top', 'simulation-clock', 'simulation-cycles', 'simulation-frames', 'simulation-frame-cycles', 'simulation-inputs', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
+    for (const id of ['share-button', 'source-selector', 'compile-button', 'simulate-button', 'simulation-reset', 'simulation-step-cycle', 'simulation-step-frame', 'simulation-run', 'simulation-top', 'simulation-clock', 'simulation-cycles', 'simulation-frames', 'simulation-frame-cycles', 'simulation-width', 'simulation-height', 'simulation-clock-hz', 'simulation-frame-rate', 'simulation-inputs', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
     const mac = /Mac|iPhone|iPad/.test(navigator.platform);
     element('compile-shortcut').textContent = mac ? '⌘ ↵' : 'Ctrl ↵';
     editors.input.addAction({ id: 'compile-yodl', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });

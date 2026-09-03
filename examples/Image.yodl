@@ -5,6 +5,12 @@ import Timing
 // Logical image source used by the playground. The FPGA Top below keeps the
 // original VGA/memory implementation, while this compact form exposes pixels
 // directly so simulation does not spend a frame emulating scan timing.
+@simulation({
+    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "binary", on_color: 14201690, off_color: 1315860 },
+    frames: 1,
+    frame_cycles: 0,
+    frame_rate: 1,
+})
 module ImageSim() -> (pixel: [30][40]bool) {
     for row in 0..<30 {
         for col in 0..<40 {

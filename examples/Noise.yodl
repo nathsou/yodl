@@ -3,6 +3,15 @@ import LFSR
 
 // Logical noise source used by the playground. The hardware Top below keeps
 // the VGA timing path; simulation renders this pixel matrix directly.
+@simulation({
+    clock: "clk",
+    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "binary", on_color: 5086688, off_color: 528408 },
+    init_signal: "rst",
+    init_cycles: 1,
+    frame_cycles: 1,
+    clock_hz: 60,
+    frame_rate: 30,
+})
 module NoiseSim(
     clk: clock,
     rst: bool,
