@@ -478,10 +478,13 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     const frameRate = readPositive('simulation-frame-rate') ?? visual.frameRate ?? 60;
     const frameCount = framebuffer ? Math.max(1, Math.min(600, readPositive('simulation-frames') ?? visual.frames ?? 60)) : undefined;
     const requestedFrameCycles = readPositive('simulation-frame-cycles');
+    const cadenceOverride = readPositive('simulation-clock-hz') !== undefined || readPositive('simulation-frame-rate') !== undefined;
     const frameCycles = framebuffer
         ? requestedFrameCycles !== undefined
             ? Math.max(0, Math.min(100000, requestedFrameCycles))
-            : visual.frameCycles ?? Math.max(1, Math.min(100000, clockHz ? Math.round(clockHz / frameRate) : 1))
+            : cadenceOverride
+                ? Math.max(1, Math.min(100000, clockHz ? Math.round(clockHz / frameRate) : 1))
+                : visual.frameCycles ?? Math.max(1, Math.min(100000, clockHz ? Math.round(clockHz / frameRate) : 1))
         : undefined;
     element('output-pane').dataset.view = 'simulation';
     element('simulation-state').textContent = action === 'run' ? 'Running…' : action === 'reset' ? 'Resetting…' : action === 'step_frame' ? 'Stepping frame…' : 'Stepping cycle…';
