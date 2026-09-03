@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test';
 import { CompilerClient } from '../main/compiler-client.ts';
 import { compile } from '../main/playground-compiler.ts';
+import { files } from '../main/playground-model.ts';
 
 const originalWorker = globalThis.Worker;
 class FakeWorker {
@@ -88,4 +89,26 @@ test('each compile has an isolated dependency filesystem', () => {
     const second = compile({ ...request, id: 2, source });
     expect(second.error).toBeDefined();
     expect(files['examples/lib/Logic.yodl']).toContain('q = not a');
+});
+
+test('Game of Life simulation returns playable framebuffer frames', () => {
+    const source = files['examples/Sim.yodl'];
+    const result = compile({
+        id: 4,
+        source,
+        path: 'examples/Sim.yodl',
+        stage: 'write_low_firrtl',
+        files,
+        simulate: {
+            top: 'LifeSim',
+            clock: 'clk',
+            frames: 4,
+            frameCycles: 1,
+            framebuffer: { width: 40, height: 30, statePrefix: 'state', initSignal: 'init', initCycles: 1 },
+        },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.simulation?.cycles).toBe(4);
+    expect(result.simulation?.framebuffers).toHaveLength(4);
+    expect(result.simulation?.framebuffers?.[0].pixels.some(pixel => pixel !== 0)).toBe(true);
 });
