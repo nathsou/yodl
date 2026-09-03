@@ -1,0 +1,68 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/simulator"
+
+import {
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/debug",
+  "nathsou/yodl/lib/firrtl",
+}
+
+// Values
+
+// Errors
+type SimulatorError derive(Show, @debug.Debug)
+
+// Types and methods
+pub(all) struct RegisterState {
+  name : String
+  width : Int
+  clock : String
+  reset : @firrtl.Expr[@firrtl.Type]?
+  init : @firrtl.Expr[@firrtl.Type]?
+  previous_clock : Bool
+}
+
+pub(all) struct SimMessage {
+  kind : String
+  text : String
+}
+pub fn SimMessage::kind(Self) -> String
+pub fn SimMessage::text(Self) -> String
+
+pub(all) struct SimValue {
+  width : Int
+  raw : @bigint.BigInt
+  known : Bool
+}
+pub fn SimValue::as_bigint(Self) -> @bigint.BigInt
+pub fn SimValue::bit(Self, Int) -> Self
+pub fn SimValue::is_known(Self) -> Bool
+pub fn SimValue::new(Int, @bigint.BigInt, known? : Bool) -> Self
+pub fn SimValue::zero(Int) -> Self
+pub impl Show for SimValue
+
+pub(all) struct Simulator {
+  design : @firrtl.Module[@firrtl.Type]
+  signals : Map[String, SimValue]
+  registers : Map[String, RegisterState]
+  next_registers : Map[String, SimValue]
+  clocks : Map[String, Bool]
+  messages : Array[SimMessage]
+  mut halted : Bool
+  mut exit_code : Int?
+  mut failure : String?
+}
+pub fn Simulator::exit_code(Self) -> Int?
+pub fn Simulator::failure(Self) -> String?
+pub fn Simulator::is_halted(Self) -> Bool
+pub fn Simulator::messages(Self) -> Array[SimMessage]
+pub fn Simulator::new(@firrtl.Module[@firrtl.Type]) -> Self raise SimulatorError
+pub fn Simulator::peek(Self, String) -> SimValue raise SimulatorError
+pub fn Simulator::poke(Self, String, SimValue) -> Unit raise SimulatorError
+pub fn Simulator::set_clock(Self, String, Bool) -> Unit raise SimulatorError
+pub fn Simulator::settle(Self) -> Unit raise SimulatorError
+pub fn Simulator::step_clock(Self, String) -> Unit raise SimulatorError
+
+// Type aliases
+
+// Traits
