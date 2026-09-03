@@ -108,7 +108,102 @@ test('Game of Life simulation returns playable framebuffer frames', () => {
         },
     });
     expect(result.error).toBeUndefined();
-    expect(result.simulation?.cycles).toBe(4);
+    expect(result.simulation?.cycles).toBe(3);
     expect(result.simulation?.framebuffers).toHaveLength(4);
     expect(result.simulation?.framebuffers?.[0].pixels.some(pixel => pixel !== 0)).toBe(true);
+});
+
+test('visual examples expose simulation-friendly pixel outputs', () => {
+    const image = compile({
+        id: 5,
+        source: files['examples/Image.yodl'],
+        path: 'examples/Image.yodl',
+        stage: 'write_low_firrtl',
+        files,
+        simulate: {
+            top: 'ImageSim',
+            frames: 1,
+            frameCycles: 0,
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary' },
+        },
+    });
+    expect(image.error).toBeUndefined();
+    expect(image.simulation?.framebuffers).toHaveLength(1);
+    expect(image.simulation?.framebuffers?.[0].pixels.some(pixel => pixel !== 0)).toBe(true);
+
+    const noise = compile({
+        id: 6,
+        source: files['examples/Noise.yodl'],
+        path: 'examples/Noise.yodl',
+        stage: 'write_low_firrtl',
+        files,
+        simulate: {
+            top: 'NoiseSim',
+            clock: 'clk',
+            frames: 2,
+            frameCycles: 1,
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', initSignal: 'rst', initCycles: 1 },
+        },
+    });
+    expect(noise.error).toBeUndefined();
+    expect(noise.simulation?.framebuffers).toHaveLength(2);
+    expect(noise.simulation?.framebuffers?.[0].pixels).not.toEqual(noise.simulation?.framebuffers?.[1].pixels);
+
+    for (const [id, file, top] of [
+        [9, 'examples/Hello.yodl', 'HelloSim'],
+        [10, 'examples/Euler1.yodl', 'Euler1Sim'],
+        [11, 'examples/Clock.yodl', 'ClockSim'],
+    ] as const) {
+        const visual = compile({
+            id,
+            source: files[file],
+            path: file,
+            stage: 'write_low_firrtl',
+            files,
+            simulate: {
+                top,
+                clock: 'clk',
+                frames: 2,
+                frameCycles: 1,
+                framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', initSignal: 'rst', initCycles: 1 },
+            },
+        });
+        expect(visual.error).toBeUndefined();
+        expect(visual.simulation?.framebuffers).toHaveLength(2);
+        expect(visual.simulation?.framebuffers?.[0].pixels.some(pixel => pixel !== 0)).toBe(true);
+    }
+});
+
+test('pixel matrices from user circuits are rendered automatically', () => {
+    const source = 'module Top() -> (pixel: [2][3]u8) { pixel = [[1, 2, 3], [4, 5, 6]]; }';
+    const result = compile({ id: 7, source, path: 'examples/Pixel.yodl', stage: 'write_low_firrtl', simulate: { action: 'run' } });
+    expect(result.error).toBeUndefined();
+    expect(result.simulation?.framebuffers).toHaveLength(1);
+    expect(result.simulation?.framebuffers?.[0]).toMatchObject({ width: 3, height: 2 });
+    expect(result.simulation?.framebuffers?.[0].pixels).toEqual([1, 2, 3, 4, 5, 6]);
+});
+
+test('simulation step actions continue the worker session', () => {
+    const source = files['examples/Sim.yodl'];
+    const request = (action: 'reset' | 'step_frame' | 'step_cycle') => compile({
+        id: 8,
+        source,
+        path: 'examples/Sim.yodl',
+        stage: 'write_low_firrtl',
+        files,
+        simulate: {
+            action,
+            top: 'LifeSim',
+            clock: 'clk',
+            frameCycles: 1,
+            framebuffer: { width: 40, height: 30, statePrefix: 'state', initSignal: 'init', initCycles: 1 },
+        },
+    });
+    const reset = request('reset');
+    const first = request('step_frame');
+    const second = request('step_cycle');
+    expect(reset.simulation?.framebuffers?.[0].pixels.filter(pixel => pixel !== 0)).toHaveLength(43);
+    expect(first.simulation?.cycles).toBe(1);
+    expect(first.simulation?.framebuffers?.[0].pixels).not.toEqual(reset.simulation?.framebuffers?.[0].pixels);
+    expect(second.simulation?.cycles).toBe(1);
 });

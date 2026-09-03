@@ -11,6 +11,26 @@ module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
     is_ready = not is_active
 }
 
+// Semantic framebuffer used by the playground. Each column displays one bit
+// of the running Euler-1 sum, making progress visible without emulating VGA.
+module Euler1Sim(
+    clk: clock,
+    rst: bool,
+) -> (
+    pixel: [30][40]bool,
+    value: u18,
+) {
+    let euler = Euler1(clk, rst)
+    value = euler.q
+    for row in 0..<30 {
+        for col in 0..<40 {
+            const bit = (row * 40 + col) % 18
+            const border = row == 0 or row == 29 or col == 0 or col == 39
+            pixel[row][col] = border or euler.q[bit]
+        }
+    }
+}
+
 module Top(
     clk: clock,
     button: u4,

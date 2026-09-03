@@ -2,6 +2,24 @@ import Timing
 import LFSR
 import Text
 
+// Semantic framebuffer used by the playground. The FPGA Top below retains
+// the VGA/scrolling implementation; this compact adapter keeps simulation
+// focused on the rendered pixels rather than scan timing.
+module HelloSim(
+    clk: clock,
+    rst: bool,
+) -> (pixel: [30][40]bool) {
+    let phase = Reg[u6](clk, rst)
+    phase.d = phase.q + 1
+    for row in 0..<30 {
+        for col in 0..<40 {
+            const border = row == 0 or row == 29 or col == 0 or col == 39
+            const stripe = (row / 2 + col / 3) % 2 == 0
+            pixel[row][col] = border or (stripe xor phase.q[0])
+        }
+    }
+}
+
 module Top(
     clk: clock,
 ) -> (

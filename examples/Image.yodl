@@ -2,6 +2,19 @@ import VGA
 import LFSR
 import Timing
 
+// Logical image source used by the playground. The FPGA Top below keeps the
+// original VGA/memory implementation, while this compact form exposes pixels
+// directly so simulation does not spend a frame emulating scan timing.
+module ImageSim() -> (pixel: [30][40]bool) {
+    for row in 0..<30 {
+        for col in 0..<40 {
+            const checker = (row / 3 + col / 3) % 2 == 0
+            const diagonal = row == col or row + col == 39
+            pixel[row][col] = checker xor diagonal
+        }
+    }
+}
+
 module Top(
     clk: clock,
     button: u4,

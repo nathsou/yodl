@@ -4,6 +4,7 @@ import type { Selection, Stage, Mode } from './playground-model.ts';
 import { CompilerClient } from './compiler-client.ts';
 import { setupTheme } from './theme.ts';
 import { loadEditors, monaco } from './playground-editor.ts';
+import type { SimulationRequest } from './playground-compiler.ts';
 
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const button = (id: string) => element<HTMLButtonElement>(id);
@@ -85,6 +86,7 @@ function saveDraft() {
     element('draft-badge').hidden = editors.input.getValue() === originalSource();
 }
 function renderSelection() {
+    element('output-pane').dataset.view = 'output';
     const isTour = selection.mode === 'tour';
     element('site-section').textContent = isTour ? 'tour' : 'playground';
     button('tour-mode').setAttribute('aria-pressed', String(isTour));
@@ -180,6 +182,7 @@ function changeStage(stage: Stage) {
     editors.output.setValue('');
     lastOutput = '';
     renderStage();
+    element('output-pane').dataset.view = 'output';
     saveDraft();
     markChanged();
 }
@@ -190,6 +193,7 @@ function setMobileView(view: string) {
     editors.input.layout(); editors.output.layout();
 }
 function showError(message: string) {
+    element('output-pane').dataset.view = 'output';
     element('problems').hidden = false;
     element('error-message').textContent = message;
     errorRange = diagnosticLocation(message, sharedEntryPath ?? selection.path);
@@ -215,6 +219,7 @@ async function runCompile() {
     outputRevision = compiledRevision;
     editors.output.setValue(lastOutput);
     renderStage();
+    element('output-pane').dataset.view = 'output';
     button('copy-output').disabled = !lastOutput;
     button('download-output').disabled = !lastOutput;
     setStatus(`✓ Compiled · ${Math.round(result.duration)} ms`, 'success');
@@ -227,6 +232,67 @@ function parseSimulationInputs(source: string): Record<string, { width: number; 
         inputs[match[1]] = { width: Number(match[2] ?? 32), value: Number(match[3]) };
     }
     return inputs;
+}
+type VisualSimulation = {
+    top?: string;
+    framebuffer?: NonNullable<SimulationRequest['framebuffer']>;
+    frames?: number;
+    frameCycles?: number;
+    clocked: boolean;
+};
+function visualSimulation(path: string, requestedTop: string): VisualSimulation {
+    const name = path.split('/').at(-1)?.toLowerCase() ?? '';
+    const top = requestedTop.toLowerCase();
+    if (top === 'lifesim' || ((name === 'sim.yodl' || name === 'life.yodl') && !requestedTop)) {
+        return {
+            top: 'LifeSim',
+            framebuffer: { width: 40, height: 30, statePrefix: 'state', initSignal: 'init', initCycles: 1, onColor: 0x1f6a4, offColor: 0x000000 },
+            frameCycles: 1,
+            clocked: true,
+        };
+    }
+    if (top === 'imagesim' || (name === 'image.yodl' && !requestedTop)) {
+        return {
+            top: 'ImageSim',
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0xd8b35a, offColor: 0x141414 },
+            frames: 1,
+            frameCycles: 0,
+            clocked: false,
+        };
+    }
+    if (top === 'noisesim' || (name === 'noise.yodl' && !requestedTop)) {
+        return {
+            top: 'NoiseSim',
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x4d9de0, offColor: 0x081018, initSignal: 'rst', initCycles: 1 },
+            frameCycles: 1,
+            clocked: true,
+        };
+    }
+    if (top === 'hellosim' || (name === 'hello.yodl' && !requestedTop)) {
+        return {
+            top: 'HelloSim',
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x7bdff2, offColor: 0x101820, initSignal: 'rst', initCycles: 1 },
+            frameCycles: 1,
+            clocked: true,
+        };
+    }
+    if (top === 'euler1sim' || (name === 'euler1.yodl' && !requestedTop)) {
+        return {
+            top: 'Euler1Sim',
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0xf4a261, offColor: 0x1b1725, initSignal: 'rst', initCycles: 1 },
+            frameCycles: 1,
+            clocked: true,
+        };
+    }
+    if (top === 'clocksim' || (name === 'clock.yodl' && !requestedTop)) {
+        return {
+            top: 'ClockSim',
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x90be6d, offColor: 0x111a18, initSignal: 'rst', initCycles: 1 },
+            frameCycles: 1,
+            clocked: true,
+        };
+    }
+    return { clocked: true };
 }
 let framebufferAnimation: number | undefined;
 function renderSimulationFrames(frames: Array<{ width: number; height: number; pixels: number[] }>) {
@@ -257,25 +323,22 @@ function renderSimulationFrames(frames: Array<{ width: number; height: number; p
     };
     draw();
 }
-async function runSimulation() {
+async function runSimulation(action: SimulationRequest['action'] = 'run') {
     const id = ++requestId;
     latestRequest = id;
     const cycles = Math.max(0, Math.min(100000, Number(element<HTMLInputElement>('simulation-cycles').value) || 0));
+    const frames = Math.max(1, Math.min(600, Number(element<HTMLInputElement>('simulation-frames').value) || 1));
     const requestedTop = element<HTMLInputElement>('simulation-top').value.trim();
     const clock = element<HTMLInputElement>('simulation-clock').value.trim() || undefined;
     const inputs = parseSimulationInputs(element<HTMLInputElement>('simulation-inputs').value);
-    const isLife = (requestedTop || '').toLowerCase() === 'lifesim' || (selection.path.endsWith('/Sim.yodl') || selection.path === 'examples/Sim.yodl') && requestedTop === '';
-    const top = requestedTop || (isLife ? 'LifeSim' : undefined);
-    const framebuffer = isLife ? {
-        width: 40,
-        height: 30,
-        statePrefix: 'state',
-        initSignal: 'init',
-        initCycles: 1,
-        onColor: 0x1f6a4,
-        offColor: 0x000000,
-    } : undefined;
-    const frameCount = isLife ? Math.max(1, Math.min(600, cycles || 60)) : undefined;
+    const visual = visualSimulation(sharedEntryPath ?? selection.path, requestedTop);
+    const top = requestedTop || visual.top;
+    const frameCount = visual.frames ?? (visual.framebuffer ? frames : undefined);
+    const frameCycles = visual.frameCycles ?? (visual.framebuffer ? Math.max(1, Math.min(100000, Number(element<HTMLInputElement>('simulation-frame-cycles').value) || 1)) : undefined);
+    element('output-pane').dataset.view = 'simulation';
+    element('simulation-state').textContent = action === 'run' ? 'Running…' : action === 'reset' ? 'Resetting…' : action === 'step_frame' ? 'Stepping frame…' : 'Stepping cycle…';
+    button('simulation-step-cycle').disabled = !visual.clocked;
+    button('simulation-step-frame').hidden = !visual.framebuffer;
     renderSimulationFrames([]);
     setStatus('Simulating…', 'loading');
     const result = await compiler.compile('simulation', {
@@ -283,19 +346,26 @@ async function runSimulation() {
         path: sharedEntryPath ?? selection.path,
         stage: 'write_low_firrtl',
         files: { ...files, ...sharedFiles },
-        simulate: { top, clock, cycles, inputs, frames: frameCount, frameCycles: isLife ? 1 : undefined, framebuffer },
+        simulate: { action, top, clock, cycles, inputs, frames: frameCount, frameCycles, framebuffer: visual.framebuffer },
     });
     if (!result || id !== latestRequest) return;
-    if (result.error !== undefined) { showError(result.error); return; }
+    if (result.error !== undefined) {
+        element('simulation-state').textContent = 'Error';
+        element('simulation-output').textContent = result.error;
+        setStatus('Simulation failed · check the simulation output', 'error');
+        return;
+    }
     const simulation = result.simulation;
     if (!simulation) return;
     const lines = [`cycles: ${simulation.cycles}`];
-    const outputEntries = Object.entries(simulation.outputs).filter(([name]) => !simulation.framebuffers || !name.startsWith('state_'));
+    const outputEntries = Object.entries(simulation.outputs).filter(([name]) => !simulation.framebuffers || !/^(state|pixel|pixels|framebuffer)_/.test(name));
     for (const [name, value] of outputEntries.slice(0, 100)) lines.push(`${name} = ${value}`);
     if (outputEntries.length > 100) lines.push(`… ${outputEntries.length - 100} more outputs`);
     if (simulation.messages.length) { lines.push('', ...simulation.messages); }
     element('simulation-output').textContent = lines.join('\n');
     renderSimulationFrames(simulation.framebuffers ?? []);
+    button('simulation-step-frame').hidden = !(visual.framebuffer || simulation.framebuffers?.length);
+    element('simulation-state').textContent = simulation.framebuffers?.length ? `${simulation.framebuffers.length} frame${simulation.framebuffers.length === 1 ? '' : 's'} · ${simulation.cycles} cycles` : `${simulation.cycles} cycles`;
     setStatus(`✓ Simulated · ${Math.round(result.duration)} ms`, 'success');
 }
 function download(name: string, content: string) {
@@ -325,7 +395,7 @@ async function start() {
     renderSelection();
     if (matchMedia('(max-width: 820px)').matches) element<HTMLDetailsElement>('guide-details').open = false;
     saveDraft();
-    for (const id of ['share-button', 'source-selector', 'compile-button', 'simulate-button', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
+    for (const id of ['share-button', 'source-selector', 'compile-button', 'simulate-button', 'simulation-reset', 'simulation-step-cycle', 'simulation-step-frame', 'simulation-run', 'simulation-top', 'simulation-clock', 'simulation-cycles', 'simulation-frames', 'simulation-frame-cycles', 'simulation-inputs', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
     const mac = /Mac|iPhone|iPad/.test(navigator.platform);
     element('compile-shortcut').textContent = mac ? '⌘ ↵' : 'Ctrl ↵';
     editors.input.addAction({ id: 'compile-yodl', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });
@@ -351,7 +421,11 @@ async function start() {
     button('suggested-stage').onclick = () => changeStage(tour[lessonIndex()].stage as Stage);
     select('pass-selector').onchange = () => changeStage(select('pass-selector').value as Stage);
     button('compile-button').onclick = runCompile;
-    button('simulate-button').onclick = runSimulation;
+    button('simulate-button').onclick = () => runSimulation('run');
+    button('simulation-run').onclick = () => runSimulation('run');
+    button('simulation-reset').onclick = () => runSimulation('reset');
+    button('simulation-step-cycle').onclick = () => runSimulation('step_cycle');
+    button('simulation-step-frame').onclick = () => runSimulation('step_frame');
     auto.onchange = () => {
         writeStorage('auto', String(auto.checked));
         clearTimeout(timer);

@@ -1,6 +1,23 @@
 import VGA
 import LFSR
 
+// Logical noise source used by the playground. The hardware Top below keeps
+// the VGA timing path; simulation renders this pixel matrix directly.
+module NoiseSim(
+    clk: clock,
+    rst: bool,
+) -> (pixel: [30][40]bool) {
+    let seed = Reg[u32](clk, rst)
+    seed.d = seed.q + 32'd1
+    for row in 0..<30 {
+        for col in 0..<40 {
+            const bit = (row * 40 + col) % 32
+            const base = (row + col) % 3 == 0
+            pixel[row][col] = seed.q[bit] xor base
+        }
+    }
+}
+
 module Top(
     clk: clock,
 ) -> (

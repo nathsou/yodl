@@ -70,3 +70,18 @@ The playground uses this separation for the Game of Life example: `LifeSim`
 loads its 30×40 vector register in one cycle, advances one generation per
 clock, and returns the aggregate state as a framebuffer. The FPGA-oriented
 `TopSim` remains available when VGA timing itself is what you want to inspect.
+
+Framebuffer output is a host protocol, not a VGA requirement. Any simulation
+top can expose a two-dimensional output such as `pixel: [height][width]bool`
+or `pixel: [height][width]u8`; the playground detects flattened
+`pixel_row_col` ports and renders them automatically (binary pixels, grayscale
+values, and RGB values are supported). Scalar ports and `printf!` messages are
+shown as text below the canvas, so small circuits can be explored without a
+display adapter. The visual examples include compact `*Sim` tops for this
+protocol while keeping their VGA-oriented FPGA tops unchanged.
+
+The simulation panel keeps one worker-side machine alive for manual
+interaction. `Reset` creates a fresh machine, `Step cycle` advances one clock,
+and `Step frame` advances the configured number of cycles per frame. `Run`
+captures the initial state before advancing, which makes reset-time patterns
+visible and avoids dropping the first frame.

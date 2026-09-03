@@ -27,6 +27,28 @@ module TicTac[Max: Nat](clk: clock, en: bool, rst: bool) -> (tick: bool, count: 
     tick = counter.q == Max
 }
 
+// Semantic framebuffer used by the playground. This deliberately uses a
+// short divider so stepping the simulation produces visible movement instead
+// of requiring the 25 MHz hardware clock divider.
+module ClockSim(
+    clk: clock,
+    rst: bool,
+) -> (
+    pixel: [30][40]bool,
+    seconds: u8,
+) {
+    let counter = Reg[u8](clk, rst)
+    counter.d = counter.q + 1
+    seconds = counter.q
+    for row in 0..<30 {
+        for col in 0..<40 {
+            const bit = (row * 40 + col) % 8
+            const grid = (row + col) % 5 == 0
+            pixel[row][col] = counter.q[bit] xor grid
+        }
+    }
+}
+
 module Clock(
     clk: clock,
     pixel_clk: clock,
