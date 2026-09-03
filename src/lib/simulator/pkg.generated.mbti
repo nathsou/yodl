@@ -43,6 +43,10 @@ pub fn Framebuffer::write(Self, Int, Int, Int, Int, Int) -> Unit
 
 type MemoryState
 
+pub(all) struct PrimitiveModel {
+  eval : (Simulator) -> Unit raise SimulatorError
+}
+
 pub(all) struct RegisterState {
   name : String
   width : Int
@@ -52,12 +56,28 @@ pub(all) struct RegisterState {
   previous_clock : Bool
 }
 
+pub(all) enum SimExpr {
+  Signal(name~ : String, width~ : Int)
+  MemoryData(memory~ : String, reader~ : String, width~ : Int)
+  Slice(source~ : SimExpr, index~ : Int, width~ : Int)
+  Literal(value~ : SimValue)
+  Mux(cond~ : SimExpr, tval~ : SimExpr, fval~ : SimExpr)
+  Prim(op~ : @firrtl.PrimOp, args~ : Array[SimExpr], width~ : Int, signed~ : Bool)
+}
+
 pub(all) struct SimMessage {
   kind : String
   text : String
 }
 pub fn SimMessage::kind(Self) -> String
 pub fn SimMessage::text(Self) -> String
+
+pub(all) enum SimStmt {
+  Node(name~ : String, expr~ : SimExpr)
+  Connect(name~ : String, expr~ : SimExpr)
+  When(cond~ : SimExpr, body~ : Array[SimStmt], otherwise~ : Array[SimStmt])
+  Other
+}
 
 pub(all) struct SimValue {
   width : Int
@@ -74,6 +94,7 @@ pub impl Show for SimValue
 
 pub(all) struct Simulator {
   design : @firrtl.Module[@firrtl.Type]
+  program : Array[SimStmt]
   signals : Map[String, SimValue]
   registers : Map[String, RegisterState]
   next_registers : Map[String, SimValue]
@@ -87,10 +108,22 @@ pub(all) struct Simulator {
   children : Map[String, Simulator]
   child_message_offsets : Map[String, Int]
   memory_clocks : Map[String, String]
+  mut cycle : Int
+  mut waveform : Waveform?
+  mut waveform_filter : Array[String]
+  dependents : Map[String, Array[Int]]
+  mut pending : Array[Int]
+  mut queued : Array[Bool]
+  primitive_models : Map[String, PrimitiveModel]
+  primitive_model : PrimitiveModel?
 }
+pub fn Simulator::cycle(Self) -> Int
+pub fn Simulator::disable_waveform(Self) -> Unit
+pub fn Simulator::enable_waveform(Self, signals? : Array[String]) -> Unit
 pub fn Simulator::exit_code(Self) -> Int?
 pub fn Simulator::failure(Self) -> String?
 pub fn Simulator::from_circuit(@firrtl.Circuit[@firrtl.Type], String) -> Self raise SimulatorError
+pub fn Simulator::from_circuit_with_models(@firrtl.Circuit[@firrtl.Type], String, Map[String, PrimitiveModel]) -> Self raise SimulatorError
 pub fn Simulator::is_halted(Self) -> Bool
 pub fn Simulator::messages(Self) -> Array[SimMessage]
 pub fn Simulator::new(@firrtl.Module[@firrtl.Type]) -> Self raise SimulatorError
@@ -100,6 +133,7 @@ pub fn Simulator::set_clock(Self, String, Bool) -> Unit raise SimulatorError
 pub fn Simulator::settle(Self) -> Unit raise SimulatorError
 pub fn Simulator::step_clock(Self, String) -> Unit raise SimulatorError
 pub fn Simulator::testbench(Self) -> Testbench
+pub fn Simulator::waveform(Self) -> Array[WaveSample]
 
 pub(all) struct Testbench {
   simulator : Simulator
@@ -121,6 +155,19 @@ pub fn TextSink::bytes(Self) -> Array[Int]
 pub fn TextSink::new() -> Self
 pub fn TextSink::text(Self) -> String
 pub fn TextSink::write(Self, Int) -> Unit
+
+pub(all) struct WaveSample {
+  cycle : Int
+  signal : String
+  value : SimValue
+}
+pub fn WaveSample::cycle(Self) -> Int
+pub fn WaveSample::signal(Self) -> String
+pub fn WaveSample::value(Self) -> SimValue
+
+pub(all) struct Waveform {
+  samples : Array[WaveSample]
+}
 
 // Type aliases
 
