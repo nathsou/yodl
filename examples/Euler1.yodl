@@ -33,7 +33,7 @@ module Euler1Sim(
     value = euler.q
     let hex = Text::Hex[20](n: cat!(2'0, euler.q)).chars
     let message = [.."Euler 1: ", ..hex]
-    Text::TextFramebuffer[Length: 14, Width: 80, Height: 60, X: 3, Y: 7](text: message, pixel)
+    Text::TextFramebuffer[Length: 14, Width: 80, Height: 60, X: 1, Y: 4, Scale: 5](text: message, pixel)
 }
 
 module Top(

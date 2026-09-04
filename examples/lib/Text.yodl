@@ -161,23 +161,26 @@ module TextDynamicPosition[Length: Nat](
     is_active = (bitmap shr pixel_idx)[0]
 }
 
-// Render one text line into an 80x60 semantic framebuffer. Each output pixel
-// represents a 4x4 area of the 8x8 glyph, preserving the text shape while
-// keeping browser simulations small enough to animate interactively.
-module TextFramebuffer[Length: Nat, Width: Nat, Height: Nat, X: Nat, Y: Nat](
+// Render text into a semantic framebuffer. Glyphs are enlarged to Scale
+// pixels and long strings wrap at the framebuffer edge, keeping text legible
+// in the playground without emulating VGA scan timing.
+module TextFramebuffer[Length: Nat, Width: Nat, Height: Nat, X: Nat, Y: Nat, Scale: Nat](
     text: [Length]Char,
 ) -> (pixel: [Height][Width]bool) {
+    const cells_per_row = Width / Scale
+    const chars_per_row = cells_per_row - X
     for row in 0..<Height {
         for col in 0..<Width {
-            const cell_x = col / 4
-            const cell_y = row / 4
-            const glyph_x = (col % 4) * 2
-            const glyph_y = (row % 4) * 2
-            let char = cell_x >= X and cell_x < X + Length and cell_y == Y ? text[cell_x - X] : ' '
+            const cell_x = col / Scale
+            const cell_y = row / Scale
+            const text_row = cell_y >= Y ? cell_y - Y : 0
+            const text_col = cell_x >= X ? cell_x - X : 0
+            const text_idx = text_row * chars_per_row + text_col
+            const glyph_x = ((col % Scale) * 8) / Scale
+            const glyph_y = ((row % Scale) * 8) / Scale
+            let char = cell_x >= X and cell_x < cells_per_row and cell_y >= Y and text_idx < Length ? text[text_idx] : ' '
             let bitmap = AsciiTable(char).q
-            let row0 = (bitmap shr (glyph_y * 8 + glyph_x))[1:0]
-            let row1 = (bitmap shr ((glyph_y + 1) * 8 + glyph_x))[1:0]
-            pixel[row][col] = orr row0 or orr row1
+            pixel[row][col] = (bitmap shr (glyph_y * 8 + glyph_x))[0]
         }
     }
 }

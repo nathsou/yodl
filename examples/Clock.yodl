@@ -58,7 +58,7 @@ module ClockSim(
         ':',
         ..Text::Dec[8](n: counter.q % 60).chars,
     ]
-    Text::TextFramebuffer[Length: 8, Width: 80, Height: 60, X: 6, Y: 7](text: clock_text, pixel)
+    Text::TextFramebuffer[Length: 8, Width: 80, Height: 60, X: 1, Y: 3, Scale: 7](text: clock_text, pixel)
 }
 
 module Clock(

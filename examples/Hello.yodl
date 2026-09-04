@@ -21,7 +21,7 @@ module HelloSim(
     // The hardware message changes only after a very long timer interval;
     // keep the initial message stable while the playground captures frames.
     let message = "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!"
-    Text::TextFramebuffer[Length: 69, Width: 80, Height: 60, X: 1, Y: 0](text: message, pixel)
+    Text::TextFramebuffer[Length: 69, Width: 80, Height: 60, X: 0, Y: 1, Scale: 5](text: message, pixel)
 }
 
 module Top(

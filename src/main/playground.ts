@@ -345,7 +345,12 @@ function hasModule(source: string, name: string): boolean {
     return new RegExp(`\\bmodule\\s+${name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`).test(source);
 }
 
-function annotatedSimulation(source: string, requestedTop: string): VisualSimulation | undefined {
+function hasModuleInSources(sources: Iterable<string>, name: string): boolean {
+    for (const source of sources) if (hasModule(source, name)) return true;
+    return false;
+}
+
+function annotatedSimulation(source: string, requestedTop: string, dependencies: Iterable<string> = []): VisualSimulation | undefined {
     const annotations = parseSimulationAnnotations(source);
     const requested = requestedTop.toLowerCase();
     const annotation = annotations.find(value => {
@@ -354,7 +359,7 @@ function annotatedSimulation(source: string, requestedTop: string): VisualSimula
     });
     if (!annotation) return undefined;
     const annotatedTop = stringOption(annotation.top) ?? annotation.module;
-    if (annotatedTop && !hasModule(source, annotatedTop)) return undefined;
+    if (annotatedTop && !hasModuleInSources([source, ...dependencies], annotatedTop)) return undefined;
     const rawFramebuffer = annotation.framebuffer && typeof annotation.framebuffer === 'object'
         ? annotation.framebuffer as Record<string, unknown>
         : undefined;
@@ -384,8 +389,8 @@ function annotatedSimulation(source: string, requestedTop: string): VisualSimula
     };
 }
 
-function visualSimulation(path: string, requestedTop: string, source = ''): VisualSimulation {
-    const annotated = annotatedSimulation(source, requestedTop);
+function visualSimulation(path: string, requestedTop: string, source = '', dependencies: Iterable<string> = []): VisualSimulation {
+    const annotated = annotatedSimulation(source, requestedTop, dependencies);
     if (annotated && (!requestedTop || annotated.top?.toLowerCase() === requestedTop.toLowerCase())) return annotated;
     const name = path.split('/').at(-1)?.toLowerCase() ?? '';
     const top = requestedTop.toLowerCase();
@@ -490,12 +495,21 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     const requestedTop = element<HTMLInputElement>('simulation-top').value.trim();
     const clock = element<HTMLInputElement>('simulation-clock').value.trim() || undefined;
     const inputs = parseSimulationInputs(element<HTMLInputElement>('simulation-inputs').value);
-    const visual = visualSimulation(sharedEntryPath ?? selection.path, requestedTop, editors.input.getValue());
+    const entryPath = sharedEntryPath ?? selection.path;
+    const source = editors.input.getValue();
+    // Exclude the entry path itself: files contains the repository original,
+    // which must not make a stale annotation look valid after an edit. Other
+    // files are available to resolve annotations such as Sim.yodl's imported
+    // LifeSim module.
+    const dependencies = Object.entries({ ...files, ...sharedFiles })
+        .filter(([path]) => path !== entryPath)
+        .map(([, content]) => content);
+    const visual = visualSimulation(entryPath, requestedTop, source, dependencies);
     // A source edit can remove an annotated/fallback simulator top while the
     // text field still contains its old value. Let the simulator infer the
     // actual top in that case instead of issuing a guaranteed missing-module
     // error (for example, an edited Noise.yodl without NoiseSim).
-    const top = requestedTop && hasModule(editors.input.getValue(), requestedTop) ? requestedTop : visual.top;
+    const top = requestedTop && hasModuleInSources([source, ...dependencies], requestedTop) ? requestedTop : visual.top;
     const width = readPositive('simulation-width');
     const height = readPositive('simulation-height');
     const framebuffer = visual.framebuffer && (width || height) ? {
@@ -523,7 +537,7 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     setStatus('Simulating…', 'loading');
     const result = await compiler.compile('simulation', {
         source: editors.input.getValue(),
-        path: sharedEntryPath ?? selection.path,
+        path: entryPath,
         stage: 'write_low_firrtl',
         files: { ...files, ...sharedFiles },
         simulate: { action, top, clock: clock ?? visual.clock, cycles, inputs, frames: frameCount, frameCycles, framebuffer },
