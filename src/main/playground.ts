@@ -234,6 +234,10 @@ function showError(message: string) {
 }
 async function runCompile() {
     clearTimeout(timer);
+    realtimeSimulation.stop();
+    realtimeRunning = false;
+    realtimePaused = false;
+    updateSimulationControls();
     renderSimulationFrames([]);
     const id = ++requestId;
     latestRequest = id;
