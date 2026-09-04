@@ -181,3 +181,34 @@ test "external aggregate ports are flattened for primitive models" {
   assert_eq(sim.peek("y_0").as_bigint().to_int(), 11)
   assert_eq(sim.peek("y_1").as_bigint().to_int(), 21)
 }
+
+test "boolean framebuffers execute as packed rows across word boundaries" {
+  let source =
+    #|module Top(clk: clock, init: bool) -> (pixel: [2][35]bool) {
+    #|  let cells = Reg[[2][35]bool](clk)
+    #|  for y in 0..<2 {
+    #|    for x in 0..<35 {
+    #|      cells.d[y][x] = init ? (x == 0) : cells.q[y][(x + 34) % 35]
+    #|      pixel[y][x] = cells.q[y][x]
+    #|    }
+    #|  }
+    #|}
+  let files: Map[String, String] = { "fixture.yodl": source }
+  let ext: @utils.Externals = {
+    fs: make_vfs(files), println: fn(_) { () }, get_args: fn() { [] }, exit: fn(_) { () },
+  }
+  let design = @driver.compile_simulation_design(path="fixture.yodl", ext~)
+  assert_eq(design.displays.length(), 1)
+  let display = design.displays[0]
+  assert_eq(display.width, 35)
+  assert_eq(display.height, 2)
+  assert_eq(display.ports.length(), 2)
+  let sim = @simulator.Simulator::from_circuit(design.circuit, "Top")
+  sim.poke("init", @simulator.SimValue::from_int(1, 1))
+  sim.step_clock("clk")
+  sim.poke("init", @simulator.SimValue::from_int(1, 0))
+  for _ in 0..<33 { sim.step_clock("clk") }
+  let frame = @simulator.simulator_frame(sim, display.ports, 35, 2, true)
+  assert_eq(frame.words, [0U, 2U, 0U, 2U])
+  assert_true(frame.valid.iter().all(word => word == 0xffffffffU))
+}

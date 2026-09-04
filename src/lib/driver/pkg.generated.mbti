@@ -10,11 +10,15 @@ import {
 // Values
 pub fn cli(@utils.Externals) -> Unit
 
-pub fn compile_simulation(path~ : String, ext~ : @utils.Externals, top? : String?) -> @firrtl.Circuit[@firrtl.Type] raise
+pub fn compile_simulation(path~ : String, ext~ : @utils.Externals, top? : String?, displays? : Array[SimulationDisplay]) -> @firrtl.Circuit[@firrtl.Type] raise
+
+pub fn compile_simulation_design(path~ : String, ext~ : @utils.Externals, top? : String?) -> SimulationDesign raise
 
 pub fn parse_commands(String) -> Array[Command] raise CommandParserError
 
 pub fn run(path~ : String, commands~ : Array[Command], ext~ : @utils.Externals) -> Unit raise
+
+pub fn simulation_metadata(path~ : String, ext~ : @utils.Externals, top? : String?) -> Array[(String, String)] raise
 
 // Errors
 type CommandParserError derive(@debug.Debug)
@@ -27,6 +31,19 @@ pub(all) enum Command {
   WriteSimplified(path~ : String?)
   WriteFIRRTL(path~ : String?, passes~ : Array[&@firrtl.FIRRTLPass])
   WriteRTLIL(path~ : String?)
+}
+
+pub(all) struct SimulationDesign {
+  circuit : @firrtl.Circuit[@firrtl.Type]
+  displays : Array[SimulationDisplay]
+}
+
+pub(all) struct SimulationDisplay {
+  signal : String
+  width : Int
+  height : Int
+  bits : Int
+  ports : Array[String]
 }
 
 // Type aliases

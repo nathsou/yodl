@@ -208,6 +208,7 @@ pub fn compile_simulation(
   path~: String,
   ext~: @utils.Externals,
   top~: String? = None,
+  displays~: Array[SimulationDisplay] = [],
 ) -> @firrtl.TypedCircuit raise {
   if !path.has_suffix(".yodl") {
     raise Failure::Failure("Input file must have a .yodl extension")
@@ -215,7 +216,7 @@ pub fn compile_simulation(
 
   let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs=ext.fs)
   let pkg = try resolver.resolve(path~, is_top_package=true) catch {
-    err => raise Failure::Failure("{err}")
+    err => raise Failure::Failure("\{err}")
   }
   let monomorphizer = @simplify.Monomorphizer::new()
   let mono_decls = try monomorphizer.monomorphize(decls=pkg.body, packages=[]) catch {
@@ -233,7 +234,9 @@ pub fn compile_simulation(
     err => raise Failure::Failure(err.to_string())
   }
   let simplified_decls = @simplify.simplify_decls(resolved_decls)
-  let inferred_top = {
+  let inferred_top = if top is Some(_) {
+    ""
+  } else {
     let candidates = pkg.body.filter_map(decl => {
       match decl {
         @parse.Decl::Module({ path, params: [], .. }) => Some(path)
@@ -249,7 +252,7 @@ pub fn compile_simulation(
         } else {
           let names = candidates.iter().map(p => p.to_string()).join(", ")
           raise Failure::Failure(
-            "Multiple top-level modules found: [{names}], remove extraneous uninstanciated modules or rename the top module to `Top`",
+            "Multiple top-level modules found: [\{names}], remove extraneous uninstanciated modules or rename the top module to `Top`",
           )
         }
     }
@@ -259,11 +262,131 @@ pub fn compile_simulation(
   try elaborator.lower(simplified_decls.iter()) catch {
     err => raise Failure::Failure(err.to_string())
   }
-  lower_firrtl(elaborator, passes=[
+  let circuit = lower_firrtl(elaborator, passes=[
     @firrtl.ExpandConnectsPass::new(),
     @firrtl.ExpandWhensPass::new(),
-    @firrtl.LowerAggregateTypesPass::new(split_memories=false),
   ])
+  let pass = @firrtl.LowerAggregateTypesPass::new(split_memories=false, packed_bool_rows=true)
+  let lowered = pass.run(circuit)
+  let candidates = circuit.decls.filter_map(decl => match decl {
+    @firrtl.Decl::Module(mod) if mod.id.inner() == top || mod.id.inner().has_suffix("_" + top) => Some(mod)
+    _ => None
+  })
+  let mut selected = if candidates.length() == 1 { Some(candidates[0]) } else { None }
+  for mod in candidates {
+    if mod.id.inner() == top { selected = Some(mod) }
+  }
+  if selected is Some(mod) {
+    for port in mod.ports {
+      if port.dir is @parse.PortDir::Output &&
+        port.ty is @firrtl.Type::Vec(@firrtl.Type::Vec(@firrtl.Type::UInt(bits), width), height) {
+        let ports = []
+        for row in 0..<height {
+          let row_ref = @firrtl.Reference::StaticIndexing(lhs=@firrtl.Reference::Id(port.id, ty=port.ty), index=row, ty=@firrtl.Type::Vec(@firrtl.Type::UInt(bits), width))
+          if bits == 1 {
+            ports.push(pass.lowered_name(mod.id.inner(), row_ref).unwrap_or_error(Failure::Failure("Missing packed display row")))
+          } else {
+            for col in 0..<width {
+              let reference = @firrtl.Reference::StaticIndexing(lhs=row_ref, index=col, ty=@firrtl.Type::UInt(bits))
+              ports.push(pass.lowered_name(mod.id.inner(), reference).unwrap_or_error(Failure::Failure("Missing display element")))
+            }
+          }
+        }
+        displays.push({ signal: port.id.inner(), width, height, bits, ports })
+      }
+    }
+  }
+  lowered
+}
+
+pub(all) struct SimulationDisplay {
+  signal: String
+  width: Int
+  height: Int
+  bits: Int
+  ports: Array[String]
+}
+
+pub(all) struct SimulationDesign {
+  circuit: @firrtl.TypedCircuit
+  displays: Array[SimulationDisplay]
+}
+
+pub fn compile_simulation_design(path~: String, ext~: @utils.Externals, top~: String? = None) -> SimulationDesign raise {
+  let displays = []
+  let circuit = compile_simulation(path~, ext~, top~, displays~)
+  { circuit, displays }
+}
+
+/// Return the `@simulation` attribute attached to a source module as flat
+/// key/value pairs. Hosts use this descriptor instead of trying to reparse
+/// Yodl syntax in another language.
+pub fn simulation_metadata(
+  path~: String,
+  ext~: @utils.Externals,
+  top~: String? = None,
+) -> Array[(String, String)] raise {
+  let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs=ext.fs)
+  let pkg = try resolver.resolve(path~, is_top_package=true) catch {
+    err => raise Failure::Failure(err.to_string())
+  }
+  let result : Array[(String, String)] = []
+  for decl in pkg.body {
+    match decl {
+      @parse.Decl::Module({ path, attributes, .. }) => {
+        match attributes.get("simulation") {
+          Some({ args: [@parse.AttributeValue::Dict(values)], span, .. }) => {
+            let mut metadata_top = path.elem
+            match values.get("top") {
+              Some(@parse.AttributeValue::String(name)) => metadata_top = name
+              _ => ()
+            }
+            if top.map(name => name != metadata_top).unwrap_or(false) {
+              continue
+            }
+            result.push(("module", path.elem))
+            result.push(("location", span.to_string()))
+            for key, value in values {
+              if !["top", "clock", "reset", "display", "cycles_per_frame", "clock_hz"].contains(key) {
+                raise Failure::Failure("Unknown @simulation option '\{key}' at \{span}")
+              }
+              if key == "display" {
+                match value {
+                  @parse.AttributeValue::Dict(fields) => {
+                    if !fields.contains("signal") && !fields.contains("stream") {
+                      raise Failure::Failure("display requires a signal or stream at \{span}")
+                    }
+                  }
+                  _ => raise Failure::Failure("display must be an object at \{span}")
+                }
+              }
+              flatten_simulation_metadata(value, key, result~)
+            }
+            return result
+          }
+          _ => ()
+        }
+      }
+      _ => ()
+    }
+  }
+  result
+}
+
+fn flatten_simulation_metadata(
+  value: @parse.AttributeValue,
+  prefix: String,
+  result~: Array[(String, String)],
+) -> Unit {
+  match value {
+    @parse.AttributeValue::String(value) => result.push((prefix, value))
+    @parse.AttributeValue::Int(value) => result.push((prefix, value.to_string()))
+    @parse.AttributeValue::Dict(values) => {
+      for key, value in values {
+        flatten_simulation_metadata(value, prefix + "." + key, result~)
+      }
+    }
+  }
 }
 
 

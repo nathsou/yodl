@@ -81,34 +81,53 @@ export class RealtimeSimulationClient {
     private worker?: Worker;
     private requestId = 0;
     private activeId?: number;
+    private request?: StreamRequest;
+    private startupTimer?: ReturnType<typeof setTimeout>;
+    constructor(private startupTimeoutMs = 30_000) {}
 
     start(request: StreamRequest, onEvent: (event: SimulationStreamEvent) => void) {
         this.stop();
         const id = ++this.requestId;
         this.activeId = id;
+        this.request = request;
         const worker = this.worker = new Worker(new URL(compilerWorkerFile, import.meta.url), { type: 'module' });
         worker.onmessage = (message: MessageEvent<SimulationStreamEvent>) => {
             if (this.worker !== worker || message.data.id !== id) return;
+            clearTimeout(this.startupTimer);
             onEvent(message.data);
         };
         worker.onerror = () => {
             if (this.worker !== worker) return;
+            this.stop();
             onEvent({ id, type: 'error', error: 'The simulation worker could not run. Try Run again.' });
         };
-        worker.postMessage({ ...request, id, simulate: { ...request.simulate, mode: 'realtime', action: 'run' } });
+        this.startupTimer = setTimeout(() => {
+            if (this.worker !== worker) return;
+            this.stop();
+            onEvent({ id, type: 'error', error: 'Simulation compilation timed out. Try a smaller design.' });
+        }, this.startupTimeoutMs);
+        worker.postMessage({ ...request, id, simulate: { ...request.simulate, mode: 'realtime', action: request.simulate?.action ?? 'run' } });
     }
 
     pause() { this.postControl('pause'); }
-    resume() { this.postControl('resume'); }
+    resume(options?: Pick<NonNullable<StreamRequest['simulate']>, 'clockHz' | 'refreshFps' | 'cyclesPerFrame'>) { this.postControl('resume', options); }
+    command(action: 'reset' | 'step_cycle' | 'step_frame', options?: Pick<NonNullable<StreamRequest['simulate']>, 'clockHz' | 'refreshFps' | 'cyclesPerFrame'>) { this.postControl(action, options); }
+    setInputs(inputs: NonNullable<StreamRequest['simulate']>['inputs']) {
+        if (!this.request?.simulate) return;
+        this.request = { ...this.request, simulate: { ...this.request.simulate, inputs } };
+        this.postControl('settle');
+    }
 
     stop() {
+        clearTimeout(this.startupTimer);
         this.worker?.terminate();
         this.worker = undefined;
         this.activeId = undefined;
+        this.request = undefined;
     }
 
-    private postControl(action: 'pause' | 'resume') {
-        if (!this.worker || this.activeId === undefined) return;
-        this.worker.postMessage({ id: this.activeId, source: '', path: '', stage: 'write_low_firrtl', simulate: { mode: 'realtime', action } });
+    private postControl(action: 'pause' | 'resume' | 'reset' | 'step_cycle' | 'step_frame' | 'settle', options?: Pick<NonNullable<StreamRequest['simulate']>, 'clockHz' | 'refreshFps' | 'cyclesPerFrame'>) {
+        if (!this.worker || this.activeId === undefined || !this.request) return;
+        this.worker.postMessage({ id: this.activeId, control: { action, options, ...(action === 'settle' ? { inputs: this.request.simulate?.inputs } : {}) } });
     }
 }

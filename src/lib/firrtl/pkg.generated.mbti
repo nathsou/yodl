@@ -172,10 +172,13 @@ pub impl Show for Literal
 
 pub struct LowerAggregateTypesPass {
   split_memories : Bool
+  packed_bool_rows : Bool
   mut table : LoweringTable
   module_signatures : Map[Id, ModuleSignature]
+  tables : Map[String, LoweringTable]
 }
-pub fn LowerAggregateTypesPass::new(split_memories? : Bool) -> Self
+pub fn LowerAggregateTypesPass::lowered_name(Self, String, Reference[Type]) -> String?
+pub fn LowerAggregateTypesPass::new(split_memories? : Bool, packed_bool_rows? : Bool) -> Self
 pub impl FIRRTLPass for LowerAggregateTypesPass
 
 pub struct LoweringTable {

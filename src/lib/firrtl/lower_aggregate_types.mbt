@@ -1,12 +1,14 @@
 
 pub struct LowerAggregateTypesPass {
   split_memories: Bool
+  packed_bool_rows: Bool
   mut table: LoweringTable
   module_signatures: Map[Id, ModuleSignature]
+  tables: Map[String, LoweringTable]
 }
 
-pub fn LowerAggregateTypesPass::new(split_memories~: Bool = true) -> Self {
-  { split_memories, table: LoweringTable::new(), module_signatures: {} }
+pub fn LowerAggregateTypesPass::new(split_memories~: Bool = true, packed_bool_rows~: Bool = false) -> Self {
+  { split_memories, packed_bool_rows, table: LoweringTable::new(), module_signatures: {}, tables: Map([]) }
 }
 
 pub impl FIRRTLPass for LowerAggregateTypesPass with run(self, circuit: TypedCircuit) -> TypedCircuit {
@@ -33,6 +35,13 @@ fn LoweringTable::register(self: Self, old_ref: TypedRef, new_ref: TypedRef) -> 
     existing.push(new_ref)
   } else {
     self.ref_mapping[old_ref] = [new_ref]
+  }
+  if old_ref.ty() is Vec(UInt(1), size) {
+    for i in 0..<size {
+      self.ref_mapping[StaticIndexing(lhs=old_ref, index=i, ty=UInt(1))] = [
+        StaticIndexing(lhs=new_ref, index=i, ty=UInt(1)),
+      ]
+    }
   }
 }
 
@@ -69,6 +78,7 @@ fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> Ty
     let new_decl = self.process_decl(decl, self.split_memories)
     new_decls.push(new_decl)
     module_tables[decl.id()] = module_table
+    self.tables[decl.id().inner()] = module_table
   }
 
   {
@@ -82,7 +92,7 @@ fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> Ty
 fn LowerAggregateTypesPass::signature_for_ports(self: Self, ports: Array[Port]) -> ModuleSignature {
   // Use a fresh lowering table so collecting signatures does not affect the
   // reference mappings of the declaration currently being rewritten.
-  let helper = LowerAggregateTypesPass::new(split_memories=self.split_memories)
+  let helper = LowerAggregateTypesPass::new(split_memories=self.split_memories, packed_bool_rows=self.packed_bool_rows)
   let flat_ports = helper.flatten_ports(ports)
   {
     ports: Map::from_array(flat_ports.map(port => (port.id.inner(), PortSignature::from(port))))
@@ -157,7 +167,7 @@ fn LowerAggregateTypesPass::process_module(self: Self, mod: TypedModule, split_m
   {
     ..mod,
     ports: new_ports,
-    body: new_body,
+    body: if self.packed_bool_rows { pack_row_connects(new_body) } else { new_body },
   }
 }
 
@@ -263,16 +273,18 @@ fn LowerAggregateTypesPass::process_stmt(self: Self, stmt: TypedStmt, body: Arra
       let new_sig = self.module_signatures.get(of).unwrap_or(self.signature_for_instance(sig))
 
       if inst_ty is Bundle(fields) {
+        let helper = LowerAggregateTypesPass::new(packed_bool_rows=self.packed_bool_rows)
         for field in fields {
           let old_ref = FieldAccess(lhs=old_inst_ref, field=field.id, ty=field.ty)
-          for flat in subcomponents(field.id.value(), old_ref) {
+          for pair in helper.flatten(prefix=field.id.value(), old_ref~) {
+            let (reference, name) = pair
             let new_ref = FieldAccess(
               lhs=new_inst_ref,
-              field=Id::from(flat.name),
-              ty=flat.ty,
+              field=Id::from(name),
+              ty=reference.ty(),
             )
 
-            self.table.register(flat.reference, new_ref)
+            self.table.register(reference, new_ref)
           }
         }
       }
@@ -385,6 +397,10 @@ fn LowerAggregateTypesPass::flatten(self: Self, prefix~: String, old_ref~: Typed
         results.push_iter(self.flatten(prefix=new_id, old_ref=field_ref).iter())
       }
     }
+    Vec(UInt(1), _) if self.packed_bool_rows => {
+      self.table.namespace_.add(safe_prefix)
+      results.push((old_ref, safe_prefix))
+    }
     Vec(elem_ty, size) => {
       for i in 0 ..<size {
         let new_id = "\{safe_prefix}\{delim}\{i}"
@@ -408,7 +424,7 @@ fn LowerAggregateTypesPass::uniquify(self: Self, prefix: String, ty: Type) -> St
   // "If a name is already taken, that name will be made unique by appending a suffix _<i> to the
   // name, where i is the lowest nonnegative integer that gives a unique name."
 
-  while subcomponents(current_prefix, Id(Id::from(prefix), ty~)).iter().any(field => self.table.namespace_.contains(field.name)) {
+  while (self.packed_bool_rows && ty is Vec(UInt(1), _) && self.table.namespace_.contains(current_prefix)) || subcomponents(current_prefix, Id(Id::from(prefix), ty~)).iter().any(field => self.table.namespace_.contains(field.name)) {
     current_prefix = "\{prefix}\{delim}\{iterations}"
     iterations += 1
   }
@@ -557,6 +573,7 @@ fn LowerAggregateTypesPass::sub_exprs_dfs(self: Self, expr: TypedExpr, body: Arr
 
         results
       }
+      Vec(UInt(1), _) if self.packed_bool_rows => [expr]
       Vec(elem_ty, size) => {
         let results = Array::new()
         let expr_ref = self.expr_as_ref(expr, body)
@@ -627,4 +644,43 @@ fn LowerAggregateTypesPass::split_mem(self: Self, mem: Mem) -> Array[Mem] {
     id: Id::from(flat.name),
     data_type: flat.ty,
   })
+}
+
+// Keep each boolean row as one packed sequential/combinational value. Reads
+// remain typed bit slices; all writes to a row are assembled once per settle.
+fn pack_row_connects(body: Array[TypedStmt]) -> Array[TypedStmt] {
+  let rows: Map[TypedRef, Array[TypedExpr]] = Map([])
+  let result: Array[TypedStmt] = []
+  for stmt in body {
+    match stmt {
+      Connect(StaticIndexing(lhs~, index~, ty=UInt(1)), rhs) if lhs.ty() is Vec(UInt(1), size) => {
+        let bits = match rows.get(lhs) {
+          Some(bits) => bits
+          None => {
+            let bits = Array::makei(size, i => Reference(StaticIndexing(lhs~, index=i, ty=UInt(1)), ty=UInt(1)))
+            rows[lhs] = bits
+            bits
+          }
+        }
+        bits[index] = rhs
+      }
+      _ => result.push(stmt)
+    }
+  }
+  for lhs, bits in rows {
+    let mut value = bits[bits.length() - 1]
+    for i = bits.length() - 2; i >= 0; i = i - 1 {
+      value = PrimOp(op=Cat, args=[value, bits[i]], ty=UInt(bits.length() - i))
+    }
+    result.push(Connect(lhs, value))
+  }
+  result
+}
+
+/// Resolve a typed source reference to its actual lowered port name.
+pub fn LowerAggregateTypesPass::lowered_name(self: Self, mod: String, reference: TypedRef) -> String? {
+  match self.tables.get(mod).map(table => table.ref_mapping.get(reference)).unwrap_or(None) {
+    Some([Id(id, ..)]) => Some(id.inner())
+    _ => None
+  }
 }

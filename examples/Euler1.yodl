@@ -13,13 +13,9 @@ module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
 }
 
 @simulation({
-    "clock": "clk",
-    framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 16096865, off_color: 1773349 },
-    init_signal: "rst",
-    init_cycles: 1,
-    frame_cycles: 1,
+    display: { signal: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 16096865, off_color: 1773349 },
+    reset: "rst",
     clock_hz: 60,
-    frame_rate: 30,
 })
 module Euler1Sim(
     clk: clock,

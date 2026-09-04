@@ -6,93 +6,141 @@ import {
     simulator_clocks,
     simulator_settle,
     simulator_messages,
-    simulator_outputs,
+    simulator_output_signals,
+    simulator_inputs,
+    simulator_frame,
+    simulator_halted,
+    simulator_visible_outputs,
+    simulator_raster_new,
+    simulator_raster_step,
 } from '../../_build/js/release/build/lib/simulator/simulator.js';
 import type { Stage } from './compiler-stages.ts';
 
 export type SimulationRequest = {
-    action?: 'run' | 'reset' | 'step_cycle' | 'step_frame' | 'pause' | 'resume' | 'stop';
+    action?: 'run' | 'reset' | 'step_cycle' | 'step_frame' | 'settle' | 'pause' | 'resume' | 'stop';
     mode?: 'batch' | 'realtime';
     top?: string;
     clock?: string;
     cycles?: number;
     inputs?: Record<string, { width: number; value: number }>;
-    frames?: number;
-    frameCycles?: number;
+    reset?: { signal: string; cycles?: number };
+    /** Batch capture length; not a circuit annotation. */
+    captureFrames?: number;
+    cyclesPerFrame?: number;
     clockHz?: number;
-    frameRate?: number;
-    framebuffer?: {
-        width: number;
-        height: number;
-        statePrefix: string;
-        initSignal?: string;
-        initCycles?: number;
-        valueMode?: 'binary' | 'gray' | 'rgb';
-        packing?: 'bits' | 'bits32' | 'rgb332x4';
-        pixelScale?: number;
-        onColor?: number;
-        offColor?: number;
-    };
+    /** Realtime canvas refresh limit; independent of simulated clock speed. */
+    refreshFps?: number;
+    /** Logical display binding. Dimensions and binary mode are inferred from
+     * the typed aggregate output when they are omitted. */
+    display?: { signal?: string; stream?: string; width?: number; height?: number; valueMode?: 'binary' | 'gray' | 'rgb'; packing?: 'bits' | 'bits32' | 'rgb332x4'; pixelScale?: number; onColor?: number; offColor?: number };
 };
+type ResolvedFramebuffer = NonNullable<SimulationRequest['display']> & { signal: string; width: number; height: number };
 export type CompileRequest = { id: number; source: string; path: string; stage: Stage; files?: Record<string, string>; simulate?: SimulationRequest };
-export type SimulationFramebuffer = { width: number; height: number; pixels: number[] };
-export type SimulationResult = { outputs: Record<string, number>; messages: string[]; cycles: number; clock?: string; framebuffers?: SimulationFramebuffer[] };
-export type CompileResult = { id: number; output?: string; error?: string; duration: number; simulation?: SimulationResult };
+/** A display frame. `packed` is present for logical binary matrices and is
+ * transferred as row-major u32 words by the realtime worker. `rgb` contains
+ * color pixels; `pixels` is retained only for explicitly packed inputs. */
+export type SimulationFramebuffer = { width: number; height: number; signal?: string; pixels?: number[]; packed?: Uint32Array; rgb?: Uint32Array; valid?: Uint32Array; onColor?: number; offColor?: number };
+export type SimulationSignal = { name: string; width: number; value: string; known: boolean };
+export type SimulationMetadata = { top?: string; clock?: string; reset?: NonNullable<SimulationRequest['reset']>; display?: NonNullable<SimulationRequest['display']>; cyclesPerFrame?: number; clockHz?: number };
+export type SimulationResult = { outputs: SimulationSignal[]; inputs: SimulationSignal[]; messages: string[]; cycles: number; halted?: boolean; clock?: string; metadata?: SimulationMetadata; framebuffers?: SimulationFramebuffer[] };
+export type CompileResult = { id: number; output?: string; error?: string; duration: number; sources?: Record<string, string>; simulation?: SimulationResult };
 export type SimulationStreamEvent = {
     id: number;
-    type: 'started' | 'frame' | 'paused' | 'resumed' | 'stopped' | 'error';
+    type: 'started' | 'frame' | 'snapshot' | 'paused' | 'resumed' | 'stopped' | 'halted' | 'stepping' | 'error';
+    sources?: Record<string, string>;
     frame?: SimulationFramebuffer;
-    outputs?: Record<string, number>;
+    outputs?: SimulationSignal[];
+    inputs?: SimulationSignal[];
     messages?: string[];
     cycles?: number;
     totalCycles?: number;
     error?: string;
-};
-
-type SimulationSession = {
-    key: string;
-    machine: any;
+    metadata?: SimulationMetadata;
+    playback?: { refreshFps: number; clockHz?: number; cyclesPerFrame: number };
     clock?: string;
-    framebuffer?: SimulationRequest['framebuffer'];
+    simulatedSeconds?: number;
+    cyclesPerSecond?: number;
 };
-let simulationSession: SimulationSession | undefined;
 
-function readSimulationOutputs(machine: any): Record<string, number> {
-    const values: Record<string, number> = {};
-    for (const pair of (simulator_outputs(machine) as Array<{ _0: string; _1: number }>)) values[pair._0] = pair._1;
-    return values;
+type DisplayDescriptor = { signal: string; width: number; height: number; bits: number; ports: string[] };
+
+function inferFramebuffer(displays: DisplayDescriptor[], selected?: string): ResolvedFramebuffer | undefined {
+    const display = selected ? displays.find(d => d.signal === selected)
+        : displays.length === 1 ? displays[0] : undefined;
+    if (selected && !display) throw new Error(`Display '${selected}' must name a two-dimensional unsigned output array.`);
+    if (!display) return undefined;
+    return { signal: display.signal, width: display.width, height: display.height, valueMode: display.bits === 1 ? 'binary' : 'rgb' };
 }
 
-function inferFramebuffer(values: Record<string, number>): SimulationRequest['framebuffer'] | undefined {
-    const candidates = new Map<string, { width: number; height: number; max: number }>();
-    for (const [name, value] of Object.entries(values)) {
-        const match = /^(.*)_([0-9]+)_([0-9]+)$/.exec(name);
-        if (!match) continue;
-        const prefix = match[1];
-        const row = Number(match[2]);
-        const col = Number(match[3]);
-        const current = candidates.get(prefix) ?? { width: 0, height: 0, max: 0 };
-        current.width = Math.max(current.width, col + 1);
-        current.height = Math.max(current.height, row + 1);
-        current.max = Math.max(current.max, value >>> 0);
-        candidates.set(prefix, current);
+function outputValues(signals: SimulationSignal[]): Record<string, number> {
+    return Object.fromEntries(signals.map(signal => [signal.name, signal.known ? Number(signal.value) : NaN]));
+}
+
+function positive(value: string | undefined): number | undefined {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : undefined;
+}
+
+function nonNegative(value: string | undefined): number | undefined {
+    const number = Number(value);
+    return Number.isFinite(number) && number >= 0 ? number : undefined;
+}
+
+function metadataFromPairs(pairs: Array<{ _0: string; _1: string }>): SimulationMetadata | undefined {
+    if (!pairs.length) return undefined;
+    const values = Object.fromEntries(pairs.map(pair => [pair._0, pair._1]));
+    const allowed = new Set(['location', 'module', 'top', 'clock', 'reset', 'reset.signal', 'reset.cycles', 'display.signal', 'display.stream', 'display.width', 'display.height', 'display.mode', 'display.packing', 'display.pixel_scale', 'display.on_color', 'display.off_color', 'cycles_per_frame', 'clock_hz']);
+    for (const [key, value] of Object.entries(values)) {
+        if (!allowed.has(key)) throw new Error(`Unknown @simulation option '${key}'.`);
+        if (/(width|height|cycles|frames|hz|rate|scale)$/.test(key) && (!Number.isSafeInteger(Number(value)) || Number(value) < 0)) throw new Error(`@simulation '${key}' must be a nonnegative integer.`);
+        if (key.endsWith('.mode') && !['binary', 'gray', 'rgb'].includes(value)) throw new Error(`Unknown display mode '${value}'.`);
+        if (key.endsWith('.packing') && !['bits', 'bits32', 'rgb332x4'].includes(value)) throw new Error(`Unknown display packing '${value}'.`);
     }
-    const preferred = ['pixel', 'pixels', 'framebuffer', 'state'];
-    const prefix = preferred.find(name => candidates.has(name)) ?? [...candidates.keys()].find(name => candidates.get(name)!.width * candidates.get(name)!.height > 1);
-    if (!prefix) return undefined;
-    const shape = candidates.get(prefix)!;
+    if (values.cycles_per_frame !== undefined && (!Number.isSafeInteger(Number(values.cycles_per_frame)) || Number(values.cycles_per_frame) < 1 || Number(values.cycles_per_frame) > 100000)) throw new Error('cycles_per_frame must be an integer between 1 and 100000.');
+    const hasDisplay = Object.keys(values).some(key => key.startsWith('display.'));
+    if (hasDisplay && !values['display.signal'] && !values['display.stream']) throw new Error('The display object requires signal (array output) or stream (pixel stream).');
+    if (values['display.signal'] && values['display.stream']) throw new Error('Choose either display.signal or display.stream.');
+    if (values['display.packing'] && (!positive(values['display.width']) || !positive(values['display.height']))) throw new Error('Explicitly packed displays require positive width and height.');
+    const resetSignal = values['reset.signal'] ?? values.reset;
+    const logicalDisplaySignal = values['display.signal'];
+    const display = logicalDisplaySignal || values['display.stream'] ? {
+        signal: logicalDisplaySignal,
+        stream: values['display.stream'],
+        width: positive(values['display.width']),
+        height: positive(values['display.height']),
+        valueMode: values['display.mode'] as 'binary' | 'gray' | 'rgb' | undefined,
+        packing: values['display.packing'] as 'bits' | 'bits32' | 'rgb332x4' | undefined,
+        pixelScale: positive(values['display.pixel_scale']),
+        onColor: values['display.on_color'] === undefined ? undefined : Number(values['display.on_color']),
+        offColor: values['display.off_color'] === undefined ? undefined : Number(values['display.off_color']),
+    } satisfies SimulationRequest['display'] : undefined;
     return {
-        width: shape.width,
-        height: shape.height,
-        statePrefix: prefix,
-        valueMode: shape.max <= 1 ? 'binary' : 'rgb',
+        top: values.top ?? values.module,
+        clock: values.clock,
+        reset: resetSignal ? { signal: resetSignal, cycles: nonNegative(values['reset.cycles']) } : undefined,
+        display,
+        cyclesPerFrame: positive(values.cycles_per_frame),
+        clockHz: positive(values.clock_hz),
     };
 }
 
-function simulationFramebuffer(values: Record<string, number>, framebuffer: SimulationRequest['framebuffer']): SimulationFramebuffer | undefined {
+/** Parsed compiler-owned simulation metadata. This is deliberately separate
+ * from `compile` so the UI can choose appropriate controls before a run. */
+export function readSimulationMetadata(request: Pick<CompileRequest, 'source' | 'path' | 'files'>, top?: string): SimulationMetadata | undefined {
+    const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source });
+    unwrap(fs.write_string_to_file(request.path, request.source));
+    const topOption = top === undefined ? { $tag: 0 } : { $tag: 1, _0: top };
+    const pairs = unwrap(yodl.simulation_metadata(request.path, { ...ext, fs }, topOption)) as Array<{ _0: string; _1: string }>;
+    try { return metadataFromPairs(pairs); }
+    catch (error) { throw new Error(`${simulationError(error)} at ${pairs.find(pair => pair._0 === 'location')?._1 ?? request.path}`); }
+}
+
+function simulationFramebuffer(values: Record<string, number>, framebuffer: ResolvedFramebuffer): SimulationFramebuffer | undefined {
     if (!framebuffer) return undefined;
     const pixels = new Array(framebuffer.width * framebuffer.height).fill(framebuffer.offColor ?? 0);
-    const prefix = `${framebuffer.statePrefix}_`;
+    const signal = framebuffer.signal;
+    if (!signal) return undefined;
+    const prefix = `${signal}_`;
     const pixelScale = Number.isInteger(framebuffer.pixelScale) && framebuffer.pixelScale! > 0 ? framebuffer.pixelScale! : 1;
     const putPixel = (row: number, col: number, color: number) => {
         for (let dy = 0; dy < pixelScale; dy++) {
@@ -111,6 +159,7 @@ function simulationFramebuffer(values: Record<string, number>, framebuffer: Simu
         const row = Number(parts[0]);
         const col = Number(parts[1]);
         if (Number.isInteger(row) && Number.isInteger(col) && row >= 0 && row < framebuffer.height && col >= 0 && col < framebuffer.width) {
+            if (!Number.isFinite(value)) { putPixel(row, col, 0xff00ff); continue; }
             if (framebuffer.packing === 'bits') {
                 if (value === 0) continue;
                 for (let bit = 0; bit < 8; bit++) {
@@ -147,111 +196,164 @@ function simulationFramebuffer(values: Record<string, number>, framebuffer: Simu
             putPixel(row, col, color);
         }
     }
-    return { width: framebuffer.width, height: framebuffer.height, pixels };
+    return { width: framebuffer.width, height: framebuffer.height, signal, pixels };
 }
 
+/** A compiled machine owned by one worker. Commands never parse source. */
+export class SimulationSession {
+    readonly metadata: SimulationMetadata;
+    readonly clock?: string;
+    readonly sources: Record<string, string> = {};
+    readonly framebuffer?: ResolvedFramebuffer;
+    readonly stream: boolean;
+    private machine: any;
+    private raster: any;
+    private design: any;
+    private hidden: string[] = [];
+    private nativeDisplay = false;
+    private messageOffset = 0;
+    private inputs: NonNullable<SimulationRequest['inputs']>;
+    private options: SimulationRequest;
+    constructor(request: CompileRequest) {
+        const metadata = readSimulationMetadata(request, request.simulate?.top);
+        const requested = request.simulate ?? {};
+        this.options = { ...metadata, ...requested, reset: requested.reset ?? metadata?.reset, display: requested.display ?? metadata?.display };
+        const options = this.options;
+        const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source }, (path, source) => { this.sources[path] = source; });
+        const compiled: any = unwrap(yodl.compile_simulation_design(request.path, { ...ext, fs, println: () => {} }, options.top === undefined ? { $tag: 0 } : { $tag: 1, _0: options.top }));
+        this.design = compiled.circuit;
+        this.inputs = options.inputs ?? {};
+        this.machine = unwrap(simulator_new(this.design, options.top ?? ''));
+        const clocks = simulator_clocks(this.machine) as string[];
+        if (!options.clock && clocks.length > 1) throw new Error('Select a simulation clock: ' + clocks.join(', '));
+        this.clock = options.clock ?? clocks[0];
+        if (this.clock && !clocks.includes(this.clock)) throw new Error(`Unknown clock '${this.clock}'.`);
+        this.stream = Boolean(options.display?.stream);
+        if (this.stream) {
+            if (options.display?.signal) throw new Error("Choose either an array signal or a pixel stream.");
+            this.framebuffer = { signal: options.display!.stream!, width: options.display!.width!, height: options.display!.height!, valueMode: 'rgb' };
+            this.hidden = ['x', 'y', 'valid', 'r', 'g', 'b'].map(suffix => `${this.framebuffer!.signal}_${suffix}`);
+        } else {
+            const selected = options.display?.signal;
+            const inferred = inferFramebuffer(compiled.displays, selected);
+            this.framebuffer = inferred ? { ...inferred, ...Object.fromEntries(Object.entries(options.display ?? {}).filter(([, v]) => v !== undefined)) } : undefined;
+            const descriptor = compiled.displays.find((d: DisplayDescriptor) => d.signal === this.framebuffer?.signal);
+            this.nativeDisplay = Boolean(descriptor && !this.framebuffer?.packing);
+            if (descriptor) {
+                if (descriptor.bits === 1 && this.framebuffer?.valueMode !== 'binary') throw new Error("Boolean displays use binary mode; set on_color and off_color to change their colors.");
+                if (this.nativeDisplay && (this.framebuffer!.width !== descriptor.width || this.framebuffer!.height !== descriptor.height)) throw new Error('Display dimensions come from the output type; use UI zoom to resize it.');
+                this.hidden = descriptor.ports;
+            }
+        }
+        if (this.framebuffer && (!Number.isSafeInteger(this.framebuffer.width) || !Number.isSafeInteger(this.framebuffer.height) || this.framebuffer.width < 1 || this.framebuffer.height < 1 || this.framebuffer.width * this.framebuffer.height > 4_194_304)) throw new Error('Display dimensions must be positive integers with at most 4,194,304 pixels.');
+        this.metadata = { top: options.top, clock: this.clock, reset: options.reset, clockHz: options.clockHz, cyclesPerFrame: options.cyclesPerFrame, display: options.display ?? (this.framebuffer ? { signal: this.framebuffer.signal } : undefined) };
+        this.initialize();
+    }
+    private initialize() {
+        this.messageOffset = 0;
+        this.setInputs(this.inputs);
+        if (this.options.reset) {
+            if (!this.clock) throw new Error('Reset requires a clock.');
+            const { signal, cycles = 1 } = this.options.reset;
+            if (!Number.isSafeInteger(cycles) || cycles < 0 || cycles > 100000) throw new Error('Reset cycles must be between 0 and 100000.');
+            const input = (simulator_inputs(this.machine) as SimulationSignal[]).find(input => input.name === signal);
+            if (!input || input.width !== 1) throw new Error(`Reset '${signal}' must name a one-bit input.`);
+            unwrap(simulator_poke_int(this.machine, signal, 1, 1));
+            for (let i = 0; i < cycles; i++) unwrap(simulator_step(this.machine, this.clock));
+            unwrap(simulator_poke_int(this.machine, signal, 1, 0));
+            unwrap(simulator_settle(this.machine));
+        }
+        if (this.stream) this.raster = unwrap(simulator_raster_new(this.machine, this.framebuffer!.signal!, this.framebuffer!.width, this.framebuffer!.height));
+    }
+    reset() {
+        this.machine = unwrap(simulator_new(this.design, this.options.top ?? ''));
+        this.initialize();
+    }
+    setInputs(inputs: NonNullable<SimulationRequest['inputs']>) {
+        this.inputs = inputs;
+        for (const [name, input] of Object.entries(inputs)) unwrap(simulator_poke_int(this.machine, name, input.width, input.value));
+        unwrap(simulator_settle(this.machine));
+    }
+    get halted(): boolean { return simulator_halted(this.machine); }
+    get frames(): number { return this.raster?.frames ?? 0; }
+    advance(cycles: number, untilFrame = false): number {
+        if (!this.clock) throw new Error('Stepping requires a clock.');
+        if (this.stream) return unwrap(simulator_raster_step(this.machine, this.raster, this.clock, cycles, untilFrame));
+        let advanced = 0;
+        for (; advanced < cycles && !this.halted; advanced++) unwrap(simulator_step(this.machine, this.clock));
+        return advanced;
+    }
+    snapshot(cycles = 0): SimulationResult {
+        const frames: SimulationFramebuffer[] = [];
+        const fb = this.framebuffer;
+        if (fb) {
+            if (this.stream) frames.push({ width: fb.width, height: fb.height, signal: fb.signal, rgb: Uint32Array.from(this.raster.pixels), valid: Uint32Array.from(this.raster.valid) });
+            else if (this.nativeDisplay) {
+                const binary = fb.valueMode === 'binary';
+                const frame: any = unwrap(simulator_frame(this.machine, this.hidden, fb.width, fb.height, binary));
+                const words = Uint32Array.from(frame.words);
+                if (fb.valueMode === 'gray') for (let i = 0; i < words.length; i++) words[i] = (words[i] & 255) * 0x010101;
+                frames.push({ width: fb.width, height: fb.height, signal: fb.signal, ...(binary ? { packed: words } : { rgb: words }), valid: Uint32Array.from(frame.valid), onColor: fb.onColor, offColor: fb.offColor });
+            } else {
+                const frame = simulationFramebuffer(outputValues(simulator_output_signals(this.machine) as SimulationSignal[]), fb);
+                if (frame) frames.push(frame);
+            }
+        }
+        const messages = (simulator_messages(this.machine) as string[]).slice(this.messageOffset);
+        this.messageOffset += messages.length;
+        const unknown = frames.reduce((n, frame) => n + (frame.valid?.filter(word => word === 0).length ?? 0), 0);
+        if (unknown) messages.push(this.stream ? 'Uncaptured or unknown pixels are shown in magenta.' : 'Display contains unknown values (magenta). Check reset and initialization.');
+        return { outputs: simulator_visible_outputs(this.machine, this.hidden) as SimulationSignal[], inputs: simulator_inputs(this.machine) as SimulationSignal[], messages, cycles, halted: this.halted, clock: this.clock, metadata: this.metadata, framebuffers: frames };
+    }
+}
+
+let batchSession: { key: string; session: SimulationSession } | undefined;
 export function compile(request: CompileRequest): CompileResult {
     const started = performance.now();
-    let output = '';
+    const sources: Record<string, string> = {};
     try {
-        // Each request starts with pristine dependencies. Editing an example
-        // must not change imports in a different example compiled afterwards.
-        const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source });
-        unwrap(fs.write_string_to_file(request.path, request.source));
         if (request.simulate) {
-            const simulate = request.simulate;
-            const action = simulate.action ?? 'run';
-            const top = simulate.top;
-            const topOption = top === undefined ? { $tag: 0 } : { $tag: 1, _0: top };
-            const key = JSON.stringify({
-                path: request.path,
-                source: request.source,
-                files: request.files ?? {},
-                top: simulate.top ?? null,
-                clock: simulate.clock ?? null,
-                inputs: simulate.inputs ?? {},
-                framebuffer: simulate.framebuffer ?? null,
-            });
-            const reuse = action !== 'run' && action !== 'reset' && simulationSession?.key === key;
-            if (!reuse) {
-                const circuit = unwrap(yodl.compile_simulation(request.path, { ...ext, fs, println: () => {} }, topOption));
-                const machine = unwrap(simulator_new(circuit, simulate.top ?? ''));
-                for (const [name, input] of Object.entries(simulate.inputs ?? {})) {
-                    unwrap(simulator_poke_int(machine, name, input.width, input.value));
-                }
-                unwrap(simulator_settle(machine));
-                const clocks = simulator_clocks(machine) as string[];
-                const clock = simulate.clock || clocks[0];
-                if (simulate.framebuffer?.initSignal) {
-                    if (!clock) throw new Error('framebuffer simulation requires a clock');
-                    unwrap(simulator_poke_int(machine, simulate.framebuffer.initSignal, 1, 1));
-                    for (let i = 0; i < Math.max(0, simulate.framebuffer.initCycles ?? 1); i++) unwrap(simulator_step(machine, clock));
-                    unwrap(simulator_poke_int(machine, simulate.framebuffer.initSignal, 1, 0));
-                    unwrap(simulator_settle(machine));
-                }
-                const framebuffer = simulate.framebuffer ?? inferFramebuffer(readSimulationOutputs(machine));
-                simulationSession = { key, machine, clock, framebuffer };
-            }
-            const session = simulationSession!;
-            const machine = session.machine;
-            const clock = session.clock;
-            const framebuffer = session.framebuffer;
-            const cycles = Math.max(0, Math.min(100000, simulate.cycles ?? 1));
-            const frameCount = Math.max(1, Math.min(600, simulate.frames ?? 1));
-            const frameCycles = Math.max(0, Math.min(100000, simulate.frameCycles ?? cycles));
-            const framebuffers: SimulationFramebuffer[] = [];
-            let simulatedCycles = 0;
-            if (action === 'step_cycle') {
-                if (!clock) throw new Error('framebuffer simulation requires a clock');
-                unwrap(simulator_step(machine, clock));
-                simulatedCycles = 1;
-            } else if (action === 'step_frame') {
-                if (!clock) throw new Error('frame stepping requires a clock');
-                for (let cycle = 0; cycle < Math.max(1, frameCycles); cycle++) unwrap(simulator_step(machine, clock));
-                simulatedCycles = Math.max(1, frameCycles);
-            } else if (action === 'run' && framebuffer) {
-                for (let frame = 0; frame < frameCount; frame++) {
-                    if (frame > 0 && frameCycles > 0) {
-                        if (!clock) throw new Error('framebuffer simulation requires a clock for multiple frames');
-                        for (let cycle = 0; cycle < frameCycles; cycle++) unwrap(simulator_step(machine, clock));
-                        simulatedCycles += frameCycles;
+            const action = request.simulate.action ?? 'run';
+            const { action: _action, inputs: _inputs, cycles: _cycles, captureFrames: _captureFrames, cyclesPerFrame: _cyclesPerFrame, ...identity } = request.simulate;
+            const key = JSON.stringify([request.path, request.source, request.files, identity]);
+            if (action === 'run' || batchSession?.key !== key) batchSession = { key, session: new SimulationSession(request) };
+            const session = batchSession!.session;
+            if (action === 'reset') session.reset();
+            if (request.simulate.inputs) session.setInputs(request.simulate.inputs);
+            const cyclesPerFrame = request.simulate.cyclesPerFrame ?? session.metadata.cyclesPerFrame ?? 1;
+            if (!Number.isSafeInteger(cyclesPerFrame) || cyclesPerFrame < 1 || cyclesPerFrame > 100000) throw new Error('cyclesPerFrame must be an integer between 1 and 100000.');
+            let cycles = 0;
+            if (action === 'step_cycle') cycles = session.advance(1);
+            if (action === 'step_frame') cycles = session.advance(cyclesPerFrame);
+            const simulation = session.snapshot(cycles);
+            if (action === 'run') {
+                if (session.framebuffer) {
+                    const frames = request.simulate.captureFrames ?? 1;
+                    if (!Number.isSafeInteger(frames) || frames < 1 || frames > 600) throw new Error("captureFrames must be an integer between 1 and 600.");
+                    for (let i = 1; i < frames; i++) {
+                        if (session.clock) cycles += session.advance(cyclesPerFrame);
+                        simulation.framebuffers!.push(...session.snapshot().framebuffers!);
                     }
-                    const image = simulationFramebuffer(readSimulationOutputs(machine), framebuffer);
-                    if (image) framebuffers.push(image);
+                } else if (session.clock) {
+                    cycles += session.advance(Math.max(0, Math.min(100000, request.simulate.cycles ?? 1)));
+                    return { id: request.id, duration: performance.now() - started, sources: session.sources, simulation: session.snapshot(cycles) };
                 }
-            } else if (action === 'run' && clock) {
-                for (let cycle = 0; cycle < cycles; cycle++) unwrap(simulator_step(machine, clock));
-                simulatedCycles = cycles;
             }
-            const outputs = readSimulationOutputs(machine);
-            const detectedFramebuffer = framebuffer ?? inferFramebuffer(outputs);
-            if (action === 'reset' && detectedFramebuffer) {
-                const frame = simulationFramebuffer(outputs, detectedFramebuffer);
-                if (frame) framebuffers.push(frame);
-            } else if ((action === 'step_cycle' || action === 'step_frame') && detectedFramebuffer) {
-                const frame = simulationFramebuffer(outputs, detectedFramebuffer);
-                if (frame) framebuffers.push(frame);
-            } else if (action === 'run' && !framebuffer && detectedFramebuffer) {
-                const frame = simulationFramebuffer(outputs, detectedFramebuffer);
-                if (frame) framebuffers.push(frame);
-            }
-            return {
-                id: request.id,
-                duration: performance.now() - started,
-                simulation: { outputs, messages: simulator_messages(machine) as string[], cycles: simulatedCycles, ...(clock ? { clock } : {}), ...((framebuffer || detectedFramebuffer) ? { framebuffers } : {}) },
-            };
+            simulation.cycles = cycles;
+            simulation.halted = session.halted;
+            return { id: request.id, duration: performance.now() - started, sources: session.sources, simulation };
         }
-        const commands = unwrap(yodl.parse_commands(request.stage));
-        unwrap(yodl.run(request.path, commands, { ...ext, fs, println: (text: string) => { output += text; } }));
-        return { id: request.id, output, duration: performance.now() - started };
+        const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source }, (path, source) => { sources[path] = source; });
+        let output = '';
+        unwrap(yodl.run(request.path, unwrap(yodl.parse_commands(request.stage)), { ...ext, fs, println: (text: string) => { output += text; } }));
+        return { id: request.id, output, sources, duration: performance.now() - started };
     } catch (error) {
-        // unwrap serialises the MoonBit error. Retain the rendered message,
-        // including the source span and excerpt, without escaped JSON newlines.
-        let value: any = error instanceof Error ? error.message : error;
-        if (typeof value === 'string') {
-            try { value = JSON.parse(value); } catch { /* Already plain text. */ }
-        }
-        const message = typeof value === 'string' ? value : value?._0 ?? value?.message ?? String(value);
-        return { id: request.id, error: String(message), duration: performance.now() - started };
+        return { id: request.id, sources, error: simulationError(error), duration: performance.now() - started };
     }
+}
+
+export function simulationError(error: unknown): string {
+    let value: any = error instanceof Error ? error.message : error;
+    if (typeof value === 'string') { try { value = JSON.parse(value); } catch { /* Plain text. */ } }
+    return String(typeof value === 'string' ? value : value?._0 ?? value?.message ?? value);
 }

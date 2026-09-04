@@ -159,7 +159,11 @@ export async function createEditor(container: HTMLElement, options: Record<strin
 }
 
 export async function loadEditors() {
-    const input = await createEditor(document.getElementById('input-panel')!);
+    // Explicitly own the source model: Monaco disposes an implicitly created
+    // model when setModel detaches it, which breaks returning to the main tab.
+    await loadMonaco();
+    const model = monaco.editor.createModel('', 'yodl');
+    const input = await createEditor(document.getElementById('input-panel')!, { model });
     const output = await createEditor(document.getElementById('output-panel')!, { readOnly: true, language: 'firrtl', ariaLabel: 'Compiled output' });
     return { input, output };
 }

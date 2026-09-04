@@ -2,13 +2,9 @@ import Text
 import Font
 
 @simulation({
-    "clock": "clk",
-    framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 9485933, off_color: 1118744 },
-    init_signal: "rst",
-    init_cycles: 1,
-    frame_cycles: 1,
+    display: { signal: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 9485933, off_color: 1118744 },
+    reset: "rst",
     clock_hz: 1,
-    frame_rate: 1,
 })
 module ClockSim(
     clk: clock,

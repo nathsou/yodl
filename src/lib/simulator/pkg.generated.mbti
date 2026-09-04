@@ -10,9 +10,17 @@ import {
 // Values
 pub fn simulator_clocks(Simulator) -> Array[String]
 
+pub fn simulator_frame(Simulator, Array[String], Int, Int, Bool) -> SimulatorFrame raise SimulatorError
+
+pub fn simulator_halted(Simulator) -> Bool
+
+pub fn simulator_inputs(Simulator) -> Array[SimulatorSignal]
+
 pub fn simulator_messages(Simulator) -> Array[String]
 
 pub fn simulator_new(@firrtl.Circuit[@firrtl.Type], String) -> Simulator raise SimulatorError
+
+pub fn simulator_output_signals(Simulator) -> Array[SimulatorSignal]
 
 pub fn simulator_outputs(Simulator) -> Array[(String, Int)]
 
@@ -20,9 +28,15 @@ pub fn simulator_peek_int(Simulator, String) -> Int raise SimulatorError
 
 pub fn simulator_poke_int(Simulator, String, Int, Int) -> Unit raise SimulatorError
 
+pub fn simulator_raster_new(Simulator, String, Int, Int) -> SimulatorRaster raise SimulatorError
+
+pub fn simulator_raster_step(Simulator, SimulatorRaster, String, Int, Bool) -> Int raise SimulatorError
+
 pub fn simulator_settle(Simulator) -> Unit raise SimulatorError
 
 pub fn simulator_step(Simulator, String) -> Unit raise SimulatorError
+
+pub fn simulator_visible_outputs(Simulator, Array[String]) -> Array[SimulatorSignal]
 
 // Errors
 type SimulatorError derive(@debug.Debug)
@@ -134,6 +148,29 @@ pub fn Simulator::settle(Self) -> Unit raise SimulatorError
 pub fn Simulator::step_clock(Self, String) -> Unit raise SimulatorError
 pub fn Simulator::testbench(Self) -> Testbench
 pub fn Simulator::waveform(Self) -> Array[WaveSample]
+
+pub(all) struct SimulatorFrame {
+  words : Array[UInt]
+  valid : Array[UInt]
+}
+
+pub(all) struct SimulatorRaster {
+  signal : String
+  width : Int
+  height : Int
+  pixels : Array[UInt]
+  valid : Array[UInt]
+  mut frames : Int
+  mut started : Bool
+  mut at_origin : Bool
+}
+
+pub(all) struct SimulatorSignal {
+  name : String
+  width : Int
+  value : String
+  known : Bool
+}
 
 pub(all) struct Testbench {
   simulator : Simulator

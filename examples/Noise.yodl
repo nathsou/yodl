@@ -1,39 +1,28 @@
-import LFSR
+// A logical framebuffer: one clock edge advances one complete noise frame.
+// Each pixel consumes the next 32-bit LFSR state in row-major order.
+// Keep the logical image small for interactive execution; use canvas zoom.
+const WIDTH = 80
+const HEIGHT = 60
 
-@simulation({
-    top: "NoiseSim",
-    "clock": "clk",
-    framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "rgb", packing: "rgb332x4", pixel_scale: 2 },
-    init_signal: "rst",
-    init_cycles: 1,
-    frame_cycles: 1,
-    clock_hz: 60,
-    frame_rate: 30,
-})
-module NoiseSim(
-    clk: clock,
-    rst: bool,
-) -> (pixel: [150][50]u32) {
-    let random = LFSR::LFSR[32](clk, enable: not rst).q
-    for row in 0..<150 {
-        for col in 0..<50 {
-            // Mix the frame counter with the pixel coordinate and pack four
-            // RGB332 pixels per output word. Each source pixel expands to a
-            // 2x2 display block.
-            const x0 = col * 8
-            const x1 = x0 + 2
-            const x2 = x0 + 4
-            const x3 = x0 + 6
-            const y = row * 2
-            let mix0 = random xor uint!(y * 37 + x0 * 101)
-            let mix1 = random xor uint!(y * 37 + x1 * 101)
-            let mix2 = random xor uint!(y * 37 + x2 * 101)
-            let mix3 = random xor uint!(y * 37 + x3 * 101)
-            let color0 = cat!(mix0[2:0], mix0[5:3], mix0[8:7])
-            let color1 = cat!(mix1[2:0], mix1[5:3], mix1[8:7])
-            let color2 = cat!(mix2[2:0], mix2[5:3], mix2[8:7])
-            let color3 = cat!(mix3[2:0], mix3[5:3], mix3[8:7])
-            pixel[row][col] = cat!(color3, color2, color1, color0)
+@simulation({ display: { signal: "pixel" }, reset: "rst" })
+module NoiseSim(clk: clock, rst: bool) -> (pixel: [HEIGHT][WIDTH]u24) {
+    let seed = Reg[u32](clk, rst)
+    let samples: [WIDTH * HEIGHT + 1]u32
+    samples[0] = seed.q
+
+    for row in 0..<HEIGHT {
+        for col in 0..<WIDTH {
+            const i = row * WIDTH + col
+            let random = samples[i]
+            let feedback = random[31] xnor random[21] xnor random[1] xnor random[0]
+            samples[i + 1] = cat!(random[30:0], feedback)
+
+            let r = random[2:0]
+            let g = random[5:3]
+            let b = random[8:6]
+            // Expand each three-bit channel to eight bits for RGB output.
+            pixel[row][col] = cat!(r, r, r[2:1], g, g, g[2:1], b, b, b[2:1])
         }
     }
+    seed.d = samples[WIDTH * HEIGHT]
 }

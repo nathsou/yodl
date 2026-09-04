@@ -1,19 +1,9 @@
 import Font
 
 @simulation({
-    "clock": "clk",
-    framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 8116210, off_color: 1056800 },
-    init_signal: "rst",
-    init_cycles: 1,
-    frame_cycles: 1,
-    clock_hz: 60,
-    frame_rate: 30,
-    frames: 1,
+    display: { signal: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 8116210, off_color: 1056800 },
 })
-module HelloSim(
-    clk: clock,
-    rst: bool,
-) -> (pixel: [300][13]u32) {
+module HelloSim() -> (pixel: [300][13]u32) {
     let message = "YODL; Yet anOther Description Language by Nathan Soufflet!"
     Font::TextFramebufferWords[Length: 58, Width: 400, Height: 300, PackedWidth: 13, X: 1, Y: 2, Scale: 8](text: message, pixel)
 }

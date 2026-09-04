@@ -1,127 +1,143 @@
-import { compile } from './playground-compiler.ts';
-import type { CompileRequest, SimulationStreamEvent } from './playground-compiler.ts';
+import { compile, SimulationSession, simulationError } from './playground-compiler.ts';
+import type { CompileRequest, SimulationRequest, SimulationStreamEvent, SimulationFramebuffer } from './playground-compiler.ts';
 
-type RealtimeState = {
+export type SimulationControl = { id: number; control: { action: NonNullable<SimulationRequest['action']>; inputs?: SimulationRequest['inputs']; options?: Pick<SimulationRequest, 'cyclesPerFrame' | 'clockHz' | 'refreshFps'> } };
+type State = {
     id: number;
-    request: CompileRequest;
-    frameRate: number;
-    frameCycles: number;
-    totalCycles: number;
-    nextDeadline: number;
+    session: SimulationSession;
     running: boolean;
+    remaining: number;
+    targetFrame?: number;
+    totalCycles: number;
+    refreshFps: number;
+    clockHz?: number;
+    cyclesPerFrame: number;
+    lastTick: number;
+    lastPaint: number;
+    credit: number;
+    measuredAt: number;
+    measuredCycles: number;
 };
+let state: State | undefined;
+let timer: ReturnType<typeof setTimeout> | undefined;
 
-let realtime: RealtimeState | undefined;
-let realtimeTimer: ReturnType<typeof setTimeout> | undefined;
-
-function post(event: SimulationStreamEvent) {
-    self.postMessage(event);
+function buffers(frame?: SimulationFramebuffer): ArrayBuffer[] {
+    return [frame?.packed, frame?.rgb, frame?.valid].flatMap(value => value ? [value.buffer as ArrayBuffer] : []);
 }
-
-function stopRealtime() {
-    if (realtimeTimer !== undefined) clearTimeout(realtimeTimer);
-    realtimeTimer = undefined;
-    realtime = undefined;
-}
-
-function eventFromResult(id: number, type: SimulationStreamEvent['type'], result: ReturnType<typeof compile>, totalCycles: number): SimulationStreamEvent {
-    const simulation = result.simulation;
-    if (result.error !== undefined) return { id, type: 'error', error: result.error };
-    return {
-        id,
-        type,
-        frame: simulation?.framebuffers?.at(-1),
-        outputs: simulation?.outputs,
-        messages: simulation?.messages,
-        cycles: simulation?.cycles ?? 0,
-        totalCycles,
+function send(type: SimulationStreamEvent['type']) {
+    if (!state) return;
+    const now = performance.now();
+    const result = state.session.snapshot();
+    const event: SimulationStreamEvent = {
+        id: state.id, type: result.halted ? 'halted' : type,
+        frame: result.framebuffers?.at(-1), outputs: result.outputs, inputs: result.inputs,
+        messages: result.messages, totalCycles: state.totalCycles, clock: result.clock,
+        sources: type === 'started' ? state.session.sources : undefined,
+        metadata: result.metadata,
+        playback: { refreshFps: state.refreshFps, clockHz: state.clockHz, cyclesPerFrame: state.cyclesPerFrame },
+        simulatedSeconds: state.clockHz ? state.totalCycles / state.clockHz : undefined,
+        cyclesPerSecond: (state.totalCycles - state.measuredCycles) * 1000 / Math.max(1, now - state.measuredAt),
     };
+    self.postMessage(event, buffers(event.frame));
+    state.lastPaint = now;
+    if (now - state.measuredAt >= 1000) { state.measuredAt = now; state.measuredCycles = state.totalCycles; }
 }
-
-function scheduleRealtime(state: RealtimeState) {
-    if (realtime !== state || !state.running) return;
-    const delay = Math.max(0, state.nextDeadline - performance.now());
-    realtimeTimer = setTimeout(() => realtimeTick(state), delay);
+function cancelTick() { clearTimeout(timer); timer = undefined; }
+function schedule(delay = 0) { cancelTick(); timer = setTimeout(tick, delay); }
+function fail(error: unknown) {
+    cancelTick();
+    if (state) { state.running = false; self.postMessage({ id: state.id, type: 'error', error: simulationError(error) }); }
 }
-
-function realtimeTick(state: RealtimeState) {
-    if (realtime !== state || !state.running) return;
-    const simulate = state.request.simulate!;
-    const result = compile({
-        ...state.request,
-        simulate: { ...simulate, mode: 'batch', action: 'step_frame', frames: 1, frameCycles: state.frameCycles },
-    });
-    if (result.error !== undefined) {
-        post(eventFromResult(state.id, 'error', result, state.totalCycles));
-        stopRealtime();
-        return;
+function tick() {
+    const current = state;
+    if (!current) return;
+    try {
+        const start = performance.now();
+        const manual = current.remaining > 0 || current.targetFrame !== undefined;
+        const hz = current.clockHz;
+        if (current.running && hz) current.credit = Math.min(Math.max(1, hz / 4), current.credit + (start - current.lastTick) * hz / 1000);
+        current.lastTick = start;
+        let budget = manual ? current.remaining : hz ? Math.floor(current.credit) : 4096;
+        while ((current.running || manual) && budget > 0 && performance.now() - start < 8) {
+            const count = current.session.advance(Math.min(current.session.stream ? 128 : 1, budget), current.targetFrame !== undefined);
+            current.totalCycles += count;
+            budget -= count;
+            if (manual) current.remaining -= count;
+            else if (hz) current.credit -= count;
+            if (current.session.halted || count === 0) break;
+            if (current.targetFrame !== undefined && current.session.frames >= current.targetFrame) { current.remaining = 0; break; }
+        }
+        if (current.session.halted) { current.running = false; current.remaining = 0; current.targetFrame = undefined; send('halted'); return; }
+        if (manual && current.remaining <= 0) {
+            if (current.targetFrame !== undefined && current.session.frames < current.targetFrame) throw new Error('No frame boundary after 10,000,000 cycles. Check the stream coordinates and valid signal.');
+            current.targetFrame = undefined;
+            send('snapshot');
+            return;
+        }
+        if (performance.now() - current.lastPaint >= 1000 / current.refreshFps) send(manual ? 'stepping' : 'frame');
+        if (current.running || manual) schedule(budget <= 0 && hz && !manual ? Math.min(16, 1000 / hz) : 0);
+    } catch (error) { fail(error); }
+}
+function configure(options: SimulationControl['control']['options']) {
+    if (!state || !options) return;
+    if (options.refreshFps !== undefined) state.refreshFps = Math.max(1, Math.min(240, options.refreshFps));
+    if (options.clockHz !== undefined) state.clockHz = Math.max(1, options.clockHz);
+    if (options.cyclesPerFrame !== undefined) {
+        if (!Number.isSafeInteger(options.cyclesPerFrame) || options.cyclesPerFrame < 1 || options.cyclesPerFrame > 100000) throw new Error('cyclesPerFrame must be an integer between 1 and 100000.');
+        state.cyclesPerFrame = options.cyclesPerFrame;
     }
-    state.totalCycles += result.simulation?.cycles ?? 0;
-    post(eventFromResult(state.id, 'frame', result, state.totalCycles));
-    state.nextDeadline += 1000 / state.frameRate;
-    // If a frame takes substantially longer than its deadline, slow simulated
-    // time down rather than spinning in an unbounded catch-up loop.
-    if (state.nextDeadline < performance.now() - 4 * (1000 / state.frameRate)) state.nextDeadline = performance.now() + 1000 / state.frameRate;
-    scheduleRealtime(state);
 }
-
-function startRealtime(request: CompileRequest) {
-    stopRealtime();
-    const simulate = request.simulate!;
-    const frameRate = Math.max(1, Math.min(240, simulate.frameRate ?? 60));
-    const frameCycles = Math.max(1, Math.min(100000, simulate.frameCycles ?? (simulate.clockHz ? Math.round(simulate.clockHz / frameRate) : 1)));
-    const initial = compile({ ...request, simulate: { ...simulate, mode: 'batch', action: 'run', frames: 1 } });
-    if (initial.error !== undefined) {
-        post(eventFromResult(request.id, 'error', initial, 0));
-        return;
-    }
-    const state: RealtimeState = {
-        id: request.id,
-        request,
-        frameRate,
-        frameCycles,
-        totalCycles: initial.simulation?.cycles ?? 0,
-        nextDeadline: performance.now() + 1000 / frameRate,
-        running: true,
-    };
-    realtime = state;
-    post(eventFromResult(state.id, 'started', initial, state.totalCycles));
-    scheduleRealtime(state);
-}
-
-self.onmessage = (event: MessageEvent<CompileRequest>) => {
-    const request = event.data;
-    const simulate = request.simulate;
-    if (simulate?.mode !== 'realtime') {
-        self.postMessage(compile(request));
-        return;
-    }
-    switch (simulate.action) {
+function control(command: SimulationControl) {
+    if (!state || command.id !== state.id) return;
+    const { action, inputs, options } = command.control;
+    configure(options);
+    cancelTick();
+    state.running = false;
+    state.remaining = 0;
+    state.targetFrame = undefined;
+    if (inputs) state.session.setInputs(inputs);
+    switch (action) {
         case 'run':
-            startRealtime(request);
-            break;
-        case 'pause':
-            if (realtime) {
-                realtime.running = false;
-                if (realtimeTimer !== undefined) clearTimeout(realtimeTimer);
-                realtimeTimer = undefined;
-                post({ id: request.id, type: 'paused', totalCycles: realtime.totalCycles });
-            }
-            break;
         case 'resume':
-            if (realtime) {
-                realtime.running = true;
-                realtime.nextDeadline = performance.now();
-                post({ id: request.id, type: 'resumed', totalCycles: realtime.totalCycles });
-                scheduleRealtime(realtime);
-            }
+            if (!state.session.clock || state.session.halted) { send('snapshot'); break; }
+            state.running = true;
+            state.credit = 0;
+            state.lastTick = performance.now();
+            send('resumed');
+            schedule();
             break;
-        case 'stop':
-            stopRealtime();
-            post({ id: request.id, type: 'stopped' });
-            break;
-        default:
-            self.postMessage(compile({ ...request, simulate: { ...simulate, mode: 'batch' } }));
-            break;
+        case 'pause': send('paused'); break;
+        case 'stop': send('stopped'); state = undefined; break;
+        case 'reset':
+            state.session.reset(); state.totalCycles = 0;
+            state.measuredAt = performance.now(); state.measuredCycles = 0;
+            send('snapshot'); break;
+        case 'step_cycle': state.remaining = 1; send('stepping'); schedule(); break;
+        case 'step_frame':
+            state.remaining = state.session.stream ? 10_000_000 : state.cyclesPerFrame;
+            state.targetFrame = state.session.stream ? state.session.frames + 1 : undefined;
+            send('stepping'); schedule(); break;
+        default: send('snapshot'); break;
+    }
+}
+self.onmessage = (event: MessageEvent<CompileRequest | SimulationControl>) => {
+    const request = event.data;
+    try {
+        if ('control' in request) { control(request); return; }
+        if (request.simulate?.mode !== 'realtime') {
+            const result = compile(request);
+            self.postMessage(result, result.simulation?.framebuffers?.flatMap(buffers) ?? []);
+            return;
+        }
+        cancelTick();
+        const session = new SimulationSession(request);
+        const metadata = session.metadata;
+        state = { id: request.id, session, running: false, remaining: 0, totalCycles: 0, refreshFps: 30, clockHz: session.clock ? metadata.clockHz ?? (session.stream ? undefined : 30) : undefined, cyclesPerFrame: metadata.cyclesPerFrame ?? 1, lastTick: performance.now(), lastPaint: 0, credit: 0, measuredAt: performance.now(), measuredCycles: 0 };
+        configure(request.simulate);
+        send('started');
+        if (session.clock || (request.simulate.action && request.simulate.action !== 'run')) control({ id: request.id, control: { action: request.simulate.action ?? 'run' } });
+    } catch (error) {
+        cancelTick();
+        self.postMessage({ id: request.id, type: 'error', error: simulationError(error) });
     }
 };

@@ -227,6 +227,7 @@ fn Simulator::new_with_modules(
   primitive_models~: Map[String, PrimitiveModel],
   primitive_model~: PrimitiveModel?,
 ) -> Simulator raise SimulatorError {
+  let design = { ..design, body: order_simulation_body(design.body) }
   let signals: Map[String, SimValue] = Map([])
   let registers: Map[String, RegisterState] = Map([])
   let next_registers: Map[String, SimValue] = Map([])
@@ -588,8 +589,13 @@ pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
   if self.halted { return }
   let mut evaluated = 0
   while true {
-    while self.pending.length() > 0 {
-      let index = self.pending.pop().unwrap()
+    // Process in source/enqueue order. A stack repeatedly propagates partially
+    // evaluated values through long feed-forward chains (such as a framebuffer
+    // of successive LFSR samples), making acyclic circuits look like loops.
+    let mut cursor = 0
+    while cursor < self.pending.length() {
+      let index = self.pending[cursor]
+      cursor += 1
       self.queued[index] = false
       evaluated += 1
       if evaluated > 1_000_000 {
@@ -597,6 +603,7 @@ pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
       }
       self.eval_combinational_stmt(self.program[index])
     }
+    self.pending.clear()
     let child_changed = self.settle_children()
     if self.pending.length() == 0 && !child_changed { break }
   }
@@ -616,12 +623,46 @@ fn Simulator::eval_combinational_stmt(self: Simulator, stmt: SimStmt) -> Unit ra
       }
     }
     SimStmt::When(cond~, body~, otherwise~) => {
-      let selected = if self.eval_compiled_expr(cond).raw != 0 { body } else { otherwise }
-      for nested in selected {
-        self.eval_combinational_stmt(nested)
+      let condition = self.eval_compiled_expr(cond)
+      if !condition.known {
+        // A conditional assignment with an unknown predicate cannot safely
+        // choose one branch. Mark the values written by either branch as
+        // unknown instead of silently taking the false branch.
+        let names = []
+        for nested in body { collect_sim_stmt_assignments(nested, names) }
+        for nested in otherwise { collect_sim_stmt_assignments(nested, names) }
+        for name in names {
+          match self.signals.get(name) {
+            Some(value) => {
+              let unknown = SimValue::new(value.width, 0, known=false)
+              if self.registers.contains(name) {
+                self.next_registers[name] = unknown
+              } else {
+                let _ = self.assign_signal(name, unknown)
+              }
+            }
+            None => ()
+          }
+        }
+      } else {
+        let selected = if condition.raw != 0 { body } else { otherwise }
+        for nested in selected {
+          self.eval_combinational_stmt(nested)
+        }
       }
     }
     SimStmt::Other => ()
+  }
+}
+
+fn collect_sim_stmt_assignments(stmt: SimStmt, names: Array[String]) -> Unit {
+  match stmt {
+    SimStmt::Connect(name~, ..) => if !names.contains(name) { names.push(name) }
+    SimStmt::When(body~, otherwise~, ..) => {
+      for nested in body { collect_sim_stmt_assignments(nested, names) }
+      for nested in otherwise { collect_sim_stmt_assignments(nested, names) }
+    }
+    _ => ()
   }
 }
 
@@ -635,10 +676,25 @@ fn Simulator::eval_compiled_expr(self: Simulator, expr: SimExpr) -> SimValue rai
     }
     SimExpr::Literal(value~) => value
     SimExpr::Mux(cond~, tval~, fval~) => {
-      if self.eval_compiled_expr(cond).raw != 0 {
-        self.eval_compiled_expr(tval)
+      let condition = self.eval_compiled_expr(cond)
+      if condition.known {
+        return self.eval_compiled_expr(if condition.raw != 0 { tval } else { fval })
+      }
+      let when_true = self.eval_compiled_expr(tval)
+      let when_false = self.eval_compiled_expr(fval)
+      if !condition.known {
+        // Four-state mux semantics: an unknown selector can still produce a
+        // known result when both arms agree. Otherwise preserve X instead of
+        // silently choosing the false arm from the raw backing bit.
+        if when_true.known && when_false.known && when_true.raw == when_false.raw {
+          when_true
+        } else {
+          SimValue::new(when_true.width, 0, known=false)
+        }
+      } else if condition.raw != 0 {
+        when_true
       } else {
-        self.eval_compiled_expr(fval)
+        when_false
       }
     }
     SimExpr::Prim(op~, args~, width~, signed~) => {
@@ -723,6 +779,7 @@ fn Simulator::apply_async_resets(self: Simulator) -> Unit raise SimulatorError {
 }
 
 pub fn Simulator::step_clock(self: Simulator, name: String) -> Unit raise SimulatorError {
+  if self.halted { return }
   self.set_clock(name, true)
   self.set_clock(name, false)
   self.cycle += 1
@@ -914,7 +971,7 @@ fn masked_write(old: SimValue, value: SimValue, mask_value: SimValue, width: Int
       raw = (raw & (mask(width) ^ chunk_mask)) | (value.raw & chunk_mask)
     }
   }
-  SimValue::new(width, raw, known=old.known && value.known && mask_value.known)
+  SimValue::new(width, raw, known=mask_value.known && (mask_value.raw == 0 || value.known) && (mask_value.raw == mask(mask_value.width) || old.known))
 }
 
 fn Simulator::run_commands(self: Simulator, clock: String) -> Unit raise SimulatorError {
@@ -980,7 +1037,23 @@ fn Simulator::eval_expr(self: Simulator, expr: TypedExpr) -> SimValue raise Simu
     @firrtl.Expr::Reference(reference, ty~) => self.eval_ref(reference, type_width(ty))
     @firrtl.Expr::Literal(lit, ty~) => SimValue::new(type_width(ty), lit.as_bigint())
     @firrtl.Expr::Mux(cond~, tval~, fval~, ..) => {
-      if self.eval_expr(cond).raw != 0 { self.eval_expr(tval) } else { self.eval_expr(fval) }
+      let condition = self.eval_expr(cond)
+      if condition.known {
+        return self.eval_expr(if condition.raw != 0 { tval } else { fval })
+      }
+      let when_true = self.eval_expr(tval)
+      let when_false = self.eval_expr(fval)
+      if !condition.known {
+        if when_true.known && when_false.known && when_true.raw == when_false.raw {
+          when_true
+        } else {
+          SimValue::new(when_true.width, 0, known=false)
+        }
+      } else if condition.raw != 0 {
+        when_true
+      } else {
+        when_false
+      }
     }
     @firrtl.Expr::PrimOp(op~, args~, ty~) => {
       let values = args.map((expr: TypedExpr) => self.eval_expr(expr))
@@ -1095,7 +1168,7 @@ fn eval_prim_fast(
     @firrtl.PrimOp::Eq => (ar == br).to_int()
     @firrtl.PrimOp::Neq => (ar != br).to_int()
     @firrtl.PrimOp::Dshl => if shift >= 31 { 0 } else { ar << shift }
-    @firrtl.PrimOp::Dshr => if shift >= 31 { 0 } else { ar >> shift }
+    @firrtl.PrimOp::Dshr => if shift >= 31 { if signed && av < 0 { -1 } else { 0 } } else if signed { av >> shift } else { ar >> shift }
     @firrtl.PrimOp::Cat => {
       let mut result = 0
       for value in values {
@@ -1151,7 +1224,7 @@ fn eval_prim_big(
     @firrtl.PrimOp::Eq => BigInt::from_int((a.raw == b.raw).to_int())
     @firrtl.PrimOp::Neq => BigInt::from_int((a.raw != b.raw).to_int())
     @firrtl.PrimOp::Dshl => a.raw << b.raw.to_int()
-    @firrtl.PrimOp::Dshr => a.raw >> b.raw.to_int()
+    @firrtl.PrimOp::Dshr => if signed { av >> b.raw.to_int() } else { a.raw >> b.raw.to_int() }
     @firrtl.PrimOp::Cat => {
       let mut result = BigInt::from_int(0)
       for value in values { result = (result << value.width) | value.raw }
@@ -1383,9 +1456,14 @@ pub fn TextSink::text(self: TextSink) -> String {
   builder.to_string()
 }
 
-// JavaScript-facing helpers. Keeping these wrappers integer-based avoids
-// exposing MoonBit's BigInt representation in the playground protocol; native
-// callers can use SimValue::new for arbitrary-width values.
+// JavaScript-facing helpers expose a legacy integer view plus a lossless
+// signal view. Native callers can use SimValue::new directly.
+pub(all) struct SimulatorSignal {
+  name: String
+  width: Int
+  value: String
+  known: Bool
+}
 pub fn simulator_new(circuit: TypedCircuit, top: String) -> Simulator raise SimulatorError {
   Simulator::from_circuit(circuit, top)
 }
@@ -1410,15 +1488,43 @@ pub fn simulator_messages(simulator: Simulator) -> Array[String] {
   simulator.messages().map(message => message.text())
 }
 
+/// Legacy integer output view retained for native callers. New hosts should
+/// use `simulator_output_signals` so wide values and unknown state survive the
+/// boundary.
 pub fn simulator_outputs(simulator: Simulator) -> Array[(String, Int)] {
   let outputs = []
   for port in simulator.design.ports {
     if port.dir is @parse.PortDir::Output {
       let name = port.id.inner()
-      outputs.push((name, simulator.signals.get(name).unwrap_or(SimValue::zero(type_width(port.ty))).raw.to_int()))
+      let value = simulator.signals.get(name).unwrap_or(SimValue::zero(type_width(port.ty)))
+      outputs.push((name, value.raw.to_int()))
     }
   }
   outputs
+}
+
+pub fn simulator_output_signals(simulator: Simulator) -> Array[SimulatorSignal] {
+  let outputs = []
+  for port in simulator.design.ports {
+    if port.dir is @parse.PortDir::Output {
+      let name = port.id.inner()
+      let value = simulator.signals.get(name).unwrap_or(SimValue::zero(type_width(port.ty)))
+      outputs.push({ name, width: type_width(port.ty), value: value.raw.to_string(), known: value.known })
+    }
+  }
+  outputs
+}
+
+pub fn simulator_inputs(simulator: Simulator) -> Array[SimulatorSignal] {
+  let inputs = []
+  for port in simulator.design.ports {
+    if port.dir is @parse.PortDir::Input && !(port.ty is @firrtl.Type::Clock) {
+      let name = port.id.inner()
+      let value = simulator.signals.get(name).unwrap_or(SimValue::zero(type_width(port.ty)))
+      inputs.push({ name, width: type_width(port.ty), value: value.raw.to_string(), known: value.known })
+    }
+  }
+  inputs
 }
 
 pub fn simulator_clocks(simulator: Simulator) -> Array[String] {
@@ -1429,4 +1535,182 @@ pub fn simulator_clocks(simulator: Simulator) -> Array[String] {
     }
   }
   clocks
+}
+
+/// Read display storage directly, without decimal strings or scalar host maps.
+/// Boolean rows are packed execution values; color elements are RGB integers.
+pub(all) struct SimulatorFrame {
+  words: Array[UInt]
+  valid: Array[UInt]
+}
+
+pub fn simulator_frame(simulator: Simulator, ports: Array[String], width: Int, height: Int, binary: Bool) -> SimulatorFrame raise SimulatorError {
+  let words: Array[UInt] = []
+  let valid: Array[UInt] = []
+  for row in 0..<height {
+    if binary {
+      let value = simulator.peek(ports[row])
+      for word in 0..<((width + 31) / 32) {
+        words.push(((value.raw >> (word * 32)) & mask(32)).to_uint())
+        valid.push(if value.known { 0xffffffffU } else { 0U })
+      }
+    } else {
+      for col in 0..<width {
+        let value = simulator.peek(ports[row * width + col])
+        words.push((value.raw & mask(32)).to_uint())
+        valid.push(if value.known { 0xffffffffU } else { 0U })
+      }
+    }
+  }
+  { words, valid }
+}
+
+pub fn simulator_halted(simulator: Simulator) -> Bool { simulator.halted }
+
+pub fn simulator_visible_outputs(simulator: Simulator, hidden: Array[String]) -> Array[SimulatorSignal] {
+  let hidden = Set::from_array(hidden)
+  let outputs = []
+  for port in simulator.design.ports {
+    let name = port.id.inner()
+    if port.dir is @parse.PortDir::Output && !hidden.contains(name) {
+      let value = simulator.peek(name) catch { _ => SimValue::new(type_width(port.ty), 0, known=false) }
+      outputs.push({ name, width: value.width, value: value.raw.to_string(), known: value.known })
+    }
+  }
+  outputs
+}
+
+pub(all) struct SimulatorRaster {
+  signal: String
+  width: Int
+  height: Int
+  pixels: Array[UInt]
+  valid: Array[UInt]
+  mut frames: Int
+  mut started: Bool
+  mut at_origin: Bool
+}
+
+pub fn simulator_raster_new(simulator: Simulator, signal: String, width: Int, height: Int) -> SimulatorRaster raise SimulatorError {
+  for suffix in ["x", "y", "valid", "r", "g", "b"] {
+    let name = signal + "_" + suffix
+    if !simulator.design.ports.iter().any(p => p.id.inner() == name && p.dir is @parse.PortDir::Output) {
+      raise Unsupported(message="pixel stream requires output '\{name}'")
+    }
+    let value = simulator.peek(name)
+    if (suffix == "r" || suffix == "g" || suffix == "b") && (value.width < 1 || value.width > 8) {
+      raise Unsupported(message="pixel stream color channels must have 1 to 8 bits")
+    }
+  }
+  { signal, width, height, pixels: Array::make(width * height, 0U), valid: Array::make(width * height, 0U), frames: 0, started: false, at_origin: false }
+}
+
+/// Sample the pre-edge pixel, then advance the hardware. The worker calls this
+/// in bounded chunks so playback and frame stepping remain interruptible.
+pub fn simulator_raster_step(simulator: Simulator, raster: SimulatorRaster, clock: String, cycles: Int, until_frame: Bool) -> Int raise SimulatorError {
+  let target = raster.frames + 1
+  let mut advanced = 0
+  for _ in 0..<cycles {
+    if simulator.halted { break }
+    let x = simulator.peek(raster.signal + "_x")
+    let y = simulator.peek(raster.signal + "_y")
+    let valid = simulator.peek(raster.signal + "_valid")
+    if (x.known && x.raw != 0) || (y.known && y.raw != 0) || (valid.known && valid.raw == 0) {
+      raster.at_origin = false
+    }
+    if x.known && y.known && valid.known && valid.raw != 0 {
+      let col = x.raw.to_int()
+      let row = y.raw.to_int()
+      if col == 0 && row == 0 {
+        if !raster.at_origin && raster.started { raster.frames += 1 }
+        raster.at_origin = true
+        raster.started = true
+        if until_frame && raster.frames >= target { break }
+      } else {
+        raster.at_origin = false
+      }
+      if col >= 0 && col < raster.width && row >= 0 && row < raster.height {
+        let r = simulator.peek(raster.signal + "_r")
+        let g = simulator.peek(raster.signal + "_g")
+        let b = simulator.peek(raster.signal + "_b")
+        let red = (r.raw.to_int() * 255 / ((1 << r.width) - 1)).reinterpret_as_uint()
+        let green = (g.raw.to_int() * 255 / ((1 << g.width) - 1)).reinterpret_as_uint()
+        let blue = (b.raw.to_int() * 255 / ((1 << b.width) - 1)).reinterpret_as_uint()
+        raster.pixels[row * raster.width + col] = (red << 16) | (green << 8) | blue
+        raster.valid[row * raster.width + col] = if r.known && g.known && b.known { 0xffffffffU } else { 0U }
+      }
+    }
+    simulator.step_clock(clock)
+    advanced += 1
+    if until_frame && raster.frames >= target { break }
+  }
+  advanced
+}
+
+
+// Lowering may place temporary nodes before their source connections. Order
+// combinational producers before consumers once, rather than propagating a
+// partially settled value down a long feed-forward chain on every iteration.
+fn order_simulation_body(body: Array[@firrtl.TypedStmt]) -> Array[@firrtl.TypedStmt] {
+  // Hand-built FIRRTL can contain ordered conditional/multiple assignments.
+  // Preserve that order; the compiler normalizes them before this optimization.
+  let assigned: Set[String] = Set([])
+  for stmt in body {
+    match stmt {
+      @firrtl.Stmt::When(_) => return body
+      @firrtl.Stmt::Connect(lhs, _) => {
+        let name = ref_name(lhs)
+        if assigned.contains(name) { return body }
+        assigned.add(name)
+      }
+      _ => ()
+    }
+  }
+  let registers: Set[String] = Set([])
+  for stmt in body {
+    match stmt {
+      @firrtl.Stmt::Reg(id~, ..) | @firrtl.Stmt::RegReset(id~, ..) => { registers.add(id.inner()) }
+      _ => ()
+    }
+  }
+  let producers: Map[String, Array[Int]] = Map([])
+  for i, stmt in body {
+    match stmt {
+      @firrtl.Stmt::Node(id~, ..) => add_dependent(producers, id.inner(), i)
+      @firrtl.Stmt::Connect(lhs, _) => {
+        let name = ref_name(lhs)
+        if !registers.contains(name) { add_dependent(producers, name, i) }
+      }
+      _ => ()
+    }
+  }
+  let successors: Array[Array[Int]] = Array::makei(body.length(), _ => [])
+  let indegree = Array::make(body.length(), 0)
+  for i, stmt in body {
+    let refs = []
+    collect_stmt_refs(stmt, refs)
+    let dependencies: Array[Int] = []
+    for reference in refs {
+      for producer in producers.get(reference).unwrap_or([]) {
+        if !dependencies.contains(producer) { dependencies.push(producer) }
+      }
+    }
+    indegree[i] = dependencies.length()
+    for producer in dependencies { successors[producer].push(i) }
+  }
+  let queue: Array[Int] = []
+  for i, count in indegree { if count == 0 { queue.push(i) } }
+  let ordered = []
+  let mut cursor = 0
+  while cursor < queue.length() {
+    let index = queue[cursor]
+    cursor += 1
+    ordered.push(body[index])
+    for successor in successors[index] {
+      indegree[successor] -= 1
+      if indegree[successor] == 0 { queue.push(successor) }
+    }
+  }
+  // Cyclic graphs still go through the ordinary convergence diagnostic.
+  if ordered.length() == body.length() { ordered } else { body }
 }
