@@ -1,3 +1,5 @@
+import LFSR
+
 @simulation({
     top: "NoiseSim",
     "clock": "clk",
@@ -12,8 +14,7 @@ module NoiseSim(
     clk: clock,
     rst: bool,
 ) -> (pixel: [150][50]u32) {
-    let seed = Reg[u32](clk, rst)
-    seed.d = seed.q + 32'd1
+    let random = LFSR::LFSR[32](clk, enable: not rst).q
     for row in 0..<150 {
         for col in 0..<50 {
             // Mix the frame counter with the pixel coordinate and pack four
@@ -24,10 +25,10 @@ module NoiseSim(
             const x2 = x0 + 4
             const x3 = x0 + 6
             const y = row * 2
-            let mix0 = seed.q xor uint!(y * 37 + x0 * 101)
-            let mix1 = seed.q xor uint!(y * 37 + x1 * 101)
-            let mix2 = seed.q xor uint!(y * 37 + x2 * 101)
-            let mix3 = seed.q xor uint!(y * 37 + x3 * 101)
+            let mix0 = random xor uint!(y * 37 + x0 * 101)
+            let mix1 = random xor uint!(y * 37 + x1 * 101)
+            let mix2 = random xor uint!(y * 37 + x2 * 101)
+            let mix3 = random xor uint!(y * 37 + x3 * 101)
             let color0 = cat!(mix0[2:0], mix0[5:3], mix0[8:7])
             let color1 = cat!(mix1[2:0], mix1[5:3], mix1[8:7])
             let color2 = cat!(mix2[2:0], mix2[5:3], mix2[8:7])
