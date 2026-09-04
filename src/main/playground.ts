@@ -395,7 +395,10 @@ function annotatedSimulation(source: string, requestedTop: string, dependencies:
         frameCycles: numberOption(annotation.frame_cycles) ?? numberOption(annotation.frameCycles),
         clockHz: numberOption(annotation.clock_hz) ?? numberOption(annotation.clockHz),
         frameRate: numberOption(annotation.frame_rate) ?? numberOption(annotation.frameRate),
-        clocked: Boolean(clock) || Boolean(framebuffer && annotation.clocked !== false),
+        // A framebuffer alone does not make a design clocked. Static images
+        // should use one-shot capture; only a declared clock can be streamed
+        // or manually stepped.
+        clocked: Boolean(clock),
     };
 }
 

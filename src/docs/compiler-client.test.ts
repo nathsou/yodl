@@ -150,6 +150,10 @@ test('visual examples expose simulation-friendly pixel outputs', () => {
     expect(image.simulation?.framebuffers?.[0].pixels[0]).toBe(0x6db6ff);
     expect(new Set(image.simulation?.framebuffers?.[0].pixels).size).toBeGreaterThan(4);
 
+    // ImageSim is a static framebuffer and intentionally has no clock. It
+    // remains valid on the one-shot path instead of attempting frame stepping.
+    expect(image.simulation?.clock).toBeUndefined();
+
     const noise = compile({
         id: 6,
         source: files['examples/Noise.yodl'],
