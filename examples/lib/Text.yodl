@@ -176,11 +176,15 @@ module TextFramebuffer[Length: Nat, Width: Nat, Height: Nat, X: Nat, Y: Nat, Sca
             const text_row = cell_y >= Y ? cell_y - Y : 0
             const text_col = cell_x >= X ? cell_x - X : 0
             const text_idx = text_row * chars_per_row + text_col
-            const glyph_x = ((col % Scale) * 8) / Scale
-            const glyph_y = ((row % Scale) * 8) / Scale
+            const glyph_x0 = ((col % Scale) * 8) / Scale
+            const glyph_x1 = (((col % Scale) + 1) * 8) / Scale - 1
+            const glyph_y0 = ((row % Scale) * 8) / Scale
+            const glyph_y1 = (((row % Scale) + 1) * 8) / Scale - 1
             let char = cell_x >= X and cell_x < cells_per_row and cell_y >= Y and text_idx < Length ? text[text_idx] : ' '
             let bitmap = AsciiTable(char).q
-            pixel[row][col] = (bitmap shr (glyph_y * 8 + glyph_x))[0]
+            let row0 = (bitmap shr (glyph_y0 * 8))[glyph_x1:glyph_x0]
+            let row1 = (bitmap shr (glyph_y1 * 8))[glyph_x1:glyph_x0]
+            pixel[row][col] = orr row0 or orr row1
         }
     }
 }
