@@ -149,6 +149,8 @@ test('visual examples expose simulation-friendly pixel outputs', () => {
     });
     expect(noise.error).toBeUndefined();
     expect(noise.simulation?.framebuffers).toHaveLength(2);
+    expect(noise.simulation?.framebuffers?.[0]).toMatchObject({ width: 40, height: 30 });
+    expect(noise.simulation?.framebuffers?.[0].pixels.some(pixel => pixel !== 528408)).toBe(true);
     expect(noise.simulation?.framebuffers?.[0].pixels).not.toEqual(noise.simulation?.framebuffers?.[1].pixels);
 
     for (const [id, file, top] of [
