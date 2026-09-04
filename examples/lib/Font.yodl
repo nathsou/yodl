@@ -1,5 +1,5 @@
-// VGA-independent character primitives shared by semantic playground
-// adapters. Keeping this file free of VGA imports makes framebuffer examples
+// Character primitives shared by semantic playground adapters. Keeping this
+// file free of display timing imports makes framebuffer examples
 // explicit about the hardware interfaces they actually use.
 type Char = u8
 
@@ -106,7 +106,7 @@ module AsciiTable(char: Char) -> (q: u64) {
 
 // Render text into a semantic framebuffer. Glyphs are enlarged to Scale
 // pixels and long strings wrap at the framebuffer edge, keeping text legible
-// in the playground without emulating VGA scan timing.
+// in the playground without emulating a display scan.
 module TextFramebuffer[Length: Nat, Width: Nat, Height: Nat, X: Nat, Y: Nat, Scale: Nat](
     text: [Length]Char,
 ) -> (pixel: [Height][Width]bool) {

@@ -1,6 +1,8 @@
-import VGA
 import Life
 
+// The playground selects LifeSim from the imported Life package. This small
+// metadata module keeps the host-facing defaults next to the example without
+// adding a display protocol or wrapper logic.
 @simulation({
     top: "LifeSim",
     "clock": "clk",
@@ -12,36 +14,4 @@ import Life
     clock_hz: 60,
     frame_rate: 30,
 })
-module TopSim(
-    clk: clock,
-    rst: bool,
-) -> (
-    is_active_area: bool,
-    screen_x: u10,
-    screen_y: u10,
-    r: u3,
-    g: u3,
-    b: u3,
-) {
-   let vga = VGA::SyncPulses(
-        pixel_clk: clk,
-        is_active_area,
-        col: screen_x,
-        row: screen_y,
-    )
-
-    let life = Life::Life(
-        clk,
-        rst,
-        hsync: vga.hsync,
-        vsync: vga.vsync,
-        row: vga.row,
-        col: vga.col,
-    )
-
-    let color = vga.is_active_area ? life.color : (r: 3'd0, g: 3'd0, b: 3'd0)
-
-    r = color.r
-    g = color.g
-    b = color.b
-}
+module LifeSimulationConfig() -> () {}

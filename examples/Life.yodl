@@ -1,8 +1,6 @@
 // Fully parallel game of life simulation
 // adapted from https://k155la3.blog/2020/10/09/conways-game-of-life-on-fpga/
 
-import VGA
-
 const LIFE_ROWS = 480 / 16
 const LIFE_COLS = 640 / 16
 
@@ -202,78 +200,4 @@ module GridInit[Rows: Nat, Cols: Nat](
         grid.write_col = pad!(1'0, clog2!(Cols))
         ready = 1'b1
     }
-}
-
-module Life(
-    clk: clock,
-    rst: bool,
-    hsync: bool,
-    vsync: bool,
-    row: u10,
-    col: u10,
-) -> (
-    color: (r: u3, g: u3, b: u3),
-) {
-    const Rows = LIFE_ROWS
-    const Cols = LIFE_COLS
-
-    let x = col[9:4]
-    let y = row[8:4]
-
-    let pattern = LifePattern().pattern
-
-    let grid = GridInit[Rows, Cols](
-        rst,
-        read_col: x,
-        read_row: y,
-        pattern,
-    )
-
-    grid.clk = grid.ready ? clock!(vsync) : clk
-
-    color = match grid.ready {
-        1'0 => (r: 3'd0, g: 3'd0, b: 3'd0)
-        1'1 => {
-            if col[3:0] == 4'0 or row[3:0] == 4'0 {
-                (r: 3'd1, g: 3'd1, b: 3'd1)
-            } else if grid.read_state {
-                (r: 3'd1, g: 3'd6, b: 3'd4)
-            } else {
-                (r: 3'd0, g: 3'd0, b: 3'd0)
-            }
-        }
-    }
-}
-
-// Standalone FPGA wrapper. The playground selects LifeSim above, while the
-// normal CLI continues to find a conventional Top when compiling this file.
-module Top(
-    clk: clock,
-    rst: bool,
-) -> (
-    is_active_area: bool,
-    screen_x: u10,
-    screen_y: u10,
-    r: u3,
-    g: u3,
-    b: u3,
-) {
-    let vga = VGA::SyncPulses(
-        pixel_clk: clk,
-        is_active_area,
-        col: screen_x,
-        row: screen_y,
-    )
-    let life = Life(
-        clk,
-        rst,
-        hsync: vga.hsync,
-        vsync: vga.vsync,
-        row: vga.row,
-        col: vga.col,
-    )
-    let color = vga.is_active_area ? life.color : (r: 3'd0, g: 3'd0, b: 3'd0)
-    r = color.r
-    g = color.g
-    b = color.b
 }

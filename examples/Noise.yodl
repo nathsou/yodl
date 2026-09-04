@@ -1,10 +1,5 @@
-import VGA
-import LFSR
-
-// VGA is used only by the FPGA-facing Top below; NoiseSim is framebuffer-only.
-// Logical noise source used by the playground. The hardware Top below keeps
-// the VGA timing path; simulation renders the same kind of RGB noise directly
-// without spending 420,000 cycles on a VGA scan.
+// Logical noise source used by the playground. The simulation top exposes
+// packed RGB pixels directly, without a display scan protocol.
 @simulation({
     top: "NoiseSim",
     "clock": "clk",
@@ -24,7 +19,7 @@ module NoiseSim(
     for row in 0..<150 {
         for col in 0..<50 {
             // Mix the frame counter with the pixel coordinate. The hardware
-            // LFSR advances once per VGA pixel; this equivalent hash keeps
+            // source advances once per display pixel; this equivalent hash keeps
             // the same changing, full-colour appearance at 400x300 while
             // packing four RGB332 pixels per output word and expanding each
             // source pixel to an explicit 2x2 display block.
@@ -44,27 +39,4 @@ module NoiseSim(
             pixel[row][col] = cat!(color3, color2, color1, color0)
         }
     }
-}
-
-module Top(
-    clk: clock,
-) -> (
-    led: u4,
-    vga_hsync: bool,
-    vga_vsync: bool,
-    vga_red: u3,
-    vga_green: u3,
-    vga_blue: u3,
-) {
-    let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync)
-    let rand_color = LFSR::LFSR[32](clk, enable: vga.new_pixel).q[8:0]
-    let color = match vga.is_active_area {
-        1'b0 => (r: 3'd0, g: 3'd0, b: 3'd0)
-        1'b1 => (r: rand_color[2-:3], g: rand_color[5-:3], b: rand_color[8-:3])
-    }
-
-    vga_red = color.r
-    vga_green = color.g
-    vga_blue = color.b
-    led = 4'd0
 }

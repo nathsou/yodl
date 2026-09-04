@@ -1,13 +1,7 @@
-import VGA
-import Timing
-import LFSR
-import Text
 import Font
 
-// VGA is used only by the FPGA-facing Top below; HelloSim is framebuffer-only.
-// Semantic framebuffer used by the playground. The FPGA Top below retains
-// the VGA/scrolling implementation; this compact adapter renders the same
-// message through the VGA-independent Font rasterizer without scan timing.
+// Semantic framebuffer used by the playground. A simulation top exposes the
+// image directly; no display scan signals are required.
 @simulation({
     "clock": "clk",
     framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 8116210, off_color: 1056800 },
@@ -26,52 +20,4 @@ module HelloSim(
     // keep the initial message stable while the playground captures frames.
     let message = "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!"
     Font::TextFramebufferWords[Length: 69, Width: 400, Height: 300, PackedWidth: 13, X: 1, Y: 2, Scale: 8](text: message, pixel)
-}
-
-module Top(
-    clk: clock,
-) -> (
-    led: u4,
-    vga_hsync: bool,
-    vga_vsync: bool,
-    vga_red: u3,
-    vga_green: u3,
-    vga_blue: u3,
-) {
-    let vga = VGA::SyncPulses(
-        pixel_clk: clk,
-        hsync: vga_hsync,
-        vsync: vga_vsync,
-    )
-
-    const MsgLen = 69
-    let timer = Timing::Timer[100_000_000](clk)
-    let timer2 = Timing::Timer[5_000_000](clk)
-    let messages = [
-        "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!",
-        "Visit https://github.com/nathsou/yodl for more information :)        ",
-    ]
-
-    let msg_index = Timing::Counter[1](clk, en: timer.q, rst: 1'b0).q
-    let rand_color = LFSR::LFSR[32](clk, enable: timer.q).q[8:0]
-    let y = Timing::Counter[6](clk, en: timer2.q)
-    y.rst = y.q >= (Text::Cols - 1)
-
-    let text = Text::TextDynamicPosition[MsgLen](
-        text: messages[msg_index],
-        x_offset: 7'd5,
-        y_offset: y.q,
-        screen_x: vga.col,
-        screen_y: vga.row,
-    )
-
-    let color = match vga.is_active_area and text.is_active {
-        1'b0 => (r: 3'd0, g: 3'd0, b: 3'd0)
-        1'b1 => (r: rand_color[2:0], g: rand_color[5:3], b: rand_color[8:6])
-    }
-
-    vga_red = color.r
-    vga_green = color.g
-    vga_blue = color.b
-    led = 4'd0
 }
