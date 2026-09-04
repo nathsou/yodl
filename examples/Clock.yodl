@@ -1,6 +1,43 @@
 import Text
 import Font
 
+module ClockState(
+    clk: clock,
+    rst: bool,
+) -> (
+    hours: u8,
+    minutes: u8,
+    seconds: u8,
+) {
+    let second = Reg[u8](clk, rst)
+    let minute = Reg[u8](clk, rst)
+    let hour = Reg[u8](clk, rst)
+    let last_second = second.q == 59
+    let last_minute = minute.q == 59
+    let last_hour = hour.q == 23
+    second.d = last_second ? 0 : second.q + 1
+    minute.d = last_second ? (last_minute ? 0 : minute.q + 1) : minute.q
+    hour.d = last_second and last_minute ? (last_hour ? 0 : hour.q + 1) : hour.q
+    hours = hour.q
+    minutes = minute.q
+    seconds = second.q
+}
+
+module TwoDecimalDigits(n: u8) -> (chars: [2]u8) {
+    let packed_bcd = cat!((n / 10)[3:0], (n % 10)[3:0])
+    chars = Text::Dec[8](n: packed_bcd).chars
+}
+
+module ClockText(hours: u8, minutes: u8, seconds: u8) -> (chars: [8]u8) {
+    chars = [
+        ..TwoDecimalDigits(n: hours).chars,
+        ':',
+        ..TwoDecimalDigits(n: minutes).chars,
+        ':',
+        ..TwoDecimalDigits(n: seconds).chars,
+    ]
+}
+
 @simulation({
     display: { buffer: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 9485933, off_color: 1118744 },
     reset: "rst",
@@ -13,17 +50,9 @@ module ClockSim(
     pixel: [300][13]u32,
     seconds: u8,
 ) {
-    let counter = Reg[u8](clk, rst)
-    counter.d = counter.q + 1
-    seconds = counter.q
-    let minutes = counter.q / 60
-    let hours = minutes / 60
-    let clock_text = [
-        ..Text::Dec[8](n: hours % 100).chars,
-        ':',
-        ..Text::Dec[8](n: minutes % 60).chars,
-        ':',
-        ..Text::Dec[8](n: counter.q % 60).chars,
-    ]
+    let state = ClockState(clk, rst)
+    seconds = state.seconds
+    let text = ClockText(hours: state.hours, minutes: state.minutes, seconds: state.seconds)
+    let clock_text = text.chars
     Font::TextFramebufferWords[Length: 8, Width: 400, Height: 300, PackedWidth: 13, X: 2, Y: 3, Scale: 8](text: clock_text, pixel)
 }

@@ -380,6 +380,93 @@ test "clocked commands use the shared FIRRTL formatter" {
   assert_eq(sim.messages().map(m => m.text()), ["b=00101010 c=* d=42 x=2a %"])
 }
 
+test "simulation compilation rejects clockless runtime commands at their span" {
+  for command in ["printf!(\"checked\")", "assert!(input)"] {
+    let source = "module Top(input: bool) -> () {\n  " + command + "\n}\n"
+    let files: Map[String, String] = { "fixture.yodl": source }
+    let ext: @utils.Externals = {
+      fs: make_vfs(files), println: fn(_) { () }, get_args: fn() { [] }, exit: fn(_) { () },
+    }
+    let diagnostic = try {
+      let _ = @driver.compile_simulation(path="fixture.yodl", ext~)
+      fail("Expected simulation compilation to fail")
+    } catch {
+      Failure::Failure(message) => message
+      error => error.to_string()
+    }
+    assert_true(diagnostic.contains("No clock found in current module"))
+    assert_true(diagnostic.contains("fixture.yodl:2"))
+  }
+}
+
+fn repository_externals() -> @utils.Externals {
+  {
+    fs: {
+      path_exists: @fs.path_exists,
+      read_file_to_string: path => @fs.read_file_to_string(path),
+      read_dir: path => @fs.read_dir(path),
+      is_dir: path => @fs.is_dir(path),
+      create_dir: path => @fs.create_dir(path),
+      write_string_to_file: (path, contents) => @fs.write_string_to_file(path, contents),
+    },
+    println: fn(_) { () },
+    get_args: fn() { [] },
+    exit: fn(_) { () },
+  }
+}
+
+test "clock text converts binary time to decimal digits" {
+  let ext = repository_externals()
+  let design = @driver.compile_simulation_design(
+    path="examples/Clock.yodl",
+    ext~,
+    top=Some("ClockText"),
+  )
+  let sim = @simulator.Simulator::from_circuit(design.circuit, "ClockText")
+  let cases = [
+    (0, 0, 9, [48, 48, 58, 48, 48, 58, 48, 57]),
+    (0, 0, 10, [48, 48, 58, 48, 48, 58, 49, 48]),
+    (0, 0, 59, [48, 48, 58, 48, 48, 58, 53, 57]),
+    (0, 1, 0, [48, 48, 58, 48, 49, 58, 48, 48]),
+    (1, 0, 0, [48, 49, 58, 48, 48, 58, 48, 48]),
+  ]
+  for case in cases {
+    let (hours, minutes, seconds, expected) = case
+    sim.poke("hours", @simulator.SimValue::from_int(8, hours))
+    sim.poke("minutes", @simulator.SimValue::from_int(8, minutes))
+    sim.poke("seconds", @simulator.SimValue::from_int(8, seconds))
+    sim.settle()
+    let chars: Array[Int] = []
+    for index in 0..<8 {
+      chars.push(sim.peek("chars_\{index}").as_bigint().to_int())
+    }
+    assert_eq(chars, expected)
+  }
+}
+
+test "clock state rolls seconds, minutes, hours, and day explicitly" {
+  let ext = repository_externals()
+  let design = @driver.compile_simulation_design(
+    path="examples/Clock.yodl",
+    ext~,
+    top=Some("ClockState"),
+  )
+  let sim = @simulator.Simulator::from_circuit(design.circuit, "ClockState")
+  sim.poke("rst", @simulator.SimValue::from_int(1, 1))
+  sim.step_clock("clk")
+  sim.poke("rst", @simulator.SimValue::from_int(1, 0))
+  for _ in 0..<3600 { sim.step_clock("clk") }
+  assert_eq(sim.peek("hours").as_bigint().to_int(), 1)
+  assert_eq(sim.peek("minutes").as_bigint().to_int(), 0)
+  assert_eq(sim.peek("seconds").as_bigint().to_int(), 0)
+  assert_eq(sim.cycle(), 3601)
+  for _ in 3600..<(24 * 60 * 60) { sim.step_clock("clk") }
+  assert_eq(sim.peek("hours").as_bigint().to_int(), 0)
+  assert_eq(sim.peek("minutes").as_bigint().to_int(), 0)
+  assert_eq(sim.peek("seconds").as_bigint().to_int(), 0)
+  assert_eq(sim.cycle(), 24 * 60 * 60 + 1)
+}
+
 test "tied child clocks sample a pipeline simultaneously through hierarchy" {
   let source =
     #|module Child(c1: clock, c2: clock, d: u8) -> (q: u8) {

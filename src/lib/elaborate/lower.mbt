@@ -434,14 +434,6 @@ fn Elaborator::get_clock(self: Elaborator, source~: String, span~: Span) -> FExp
   ))
 }
 
-/// Assertions and diagnostics over constant expressions do not need a module
-/// clock. FIRRTL commands still require one syntactically, so give clockless
-/// modules a permanently-low local clock. It has no rising edge and cannot
-/// execute a runtime side effect.
-fn Elaborator::get_command_clock(self: Elaborator) -> FExpr {
-  self.current_clock.unwrap_or(mk_prim(AsClock, [FExpr::uint(0)]))
-}
-
 fn Value::ty(self: Value) -> @firrtl.Type {
   match self {
     Expr(ty~, ..) => ty
@@ -1459,7 +1451,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
         new_args.push(self.lower_expr(arg, scope~, env~).as_expr(self, scope~))
       }
 
-      let clk = self.get_command_clock()
+      let clk = self.get_clock(source="printf", span~)
       let en = mk_lit(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
 
       scope.add_stmt(Command(Printf(clk~, en~, fmt~, args=new_args)))
@@ -1467,7 +1459,7 @@ fn Elaborator::lower_expr(self: Elaborator, expr: CoreExpr, scope~: &ScopeLike, 
     }
     FunCall(name="assert", args=[pred, ..rest], span~, ..) => {
       let pred_val = self.lower_expr(pred, scope~, env~)
-      let clk = self.get_command_clock()
+      let clk = self.get_clock(source="assert", span~)
       let en = mk_lit(UInt(width=1, radix=Some(2), value=BigInt::from_int(1)))
 
       let (fmt, args) = if rest is [format_str, ..args] {

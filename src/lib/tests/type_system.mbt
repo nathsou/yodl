@@ -177,14 +177,20 @@ test "constant assertions fold through explicit coercions" {
 }
 
 ///|
-test "clockless modules may contain constant assertions and diagnostics" {
-  let source =
+test "clockless modules keep folded assertions but reject runtime commands" {
+  let constant_assertion =
     #|module Top() -> () {
     #|  assert!(1'b1)
-    #|  printf!("checked")
     #|}
-  let firrtl = compile_stage(source, "write_firrtl")
-  assert_true(firrtl.contains("asClock"))
+  let firrtl = compile_stage(constant_assertion, "write_firrtl")
+  assert_false(firrtl.contains("assert("))
+
+  for command in ["printf!(\"checked\")", "assert!(input)"] {
+    let source = "module Top(input: bool) -> () {\n  " + command + "\n}\n"
+    let diagnostic = compile_error(source)
+    assert_true(diagnostic.contains("No clock found in current module"))
+    assert_true(diagnostic.contains("fixture.yodl:2"))
+  }
 }
 
 ///|
