@@ -63,22 +63,22 @@ let sim = @simulator.Simulator::from_circuit_with_models(circuit, "Top", models)
 
 Graphical and text-producing designs can expose semantic output protocols to a
 simulation host. `Framebuffer` stores RGB pixels for a browser canvas, and
-`TextSink` collects byte-oriented output. Hardware wrappers can connect those
-same logical signals to VGA or UART timing when targeting an FPGA.
+`TextSink` collects byte-oriented output. A hardware wrapper can connect those
+same logical signals to a physical display or serial link when targeting an
+FPGA, but the simulation top does not need those timing signals.
 
 The playground uses this separation for the Game of Life example: `LifeSim`
 loads its 30×40 vector register in one cycle, advances one generation per
-clock, and returns the aggregate state as a framebuffer. The FPGA-oriented
-`TopSim` remains available when VGA timing itself is what you want to inspect.
+clock, and returns the aggregate state as a framebuffer.
 
-Framebuffer output is a host protocol, not a VGA requirement. Any simulation
+Framebuffer output is a host protocol, not a display-timing requirement. Any simulation
 top can expose a two-dimensional output such as `pixel: [height][width]bool`
 or `pixel: [height][width]u8`; the playground detects flattened
 `pixel_row_col` ports and renders them automatically (binary pixels, grayscale
 values, and RGB values are supported). Scalar ports and `printf!` messages are
 shown as text below the canvas, so small circuits can be explored without a
-display adapter. The visual examples include compact `*Sim` tops for this
-protocol while keeping their VGA-oriented FPGA tops unchanged.
+display adapter. The visual examples use compact `*Sim` tops for this protocol;
+they do not require display scan signals.
 
 Simulation tops may declare their host-facing defaults with the `simulation`
 module attribute. The compiler accepts the dictionary and leaves it out of
@@ -130,9 +130,12 @@ outputs and textual messages, and a matrix output can be inferred from its
 
 The simulation panel keeps one worker-side machine alive for manual
 interaction. `Reset` creates a fresh machine, `Step cycle` advances one clock,
-and `Step frame` advances the configured number of cycles per frame. `Run`
-captures the initial state before advancing, which makes reset-time patterns
-visible and avoids dropping the first frame.
+and `Step frame` advances the configured number of cycles per frame. Visual
+`Run` sessions are streamed from a persistent worker: the worker captures the
+initial state, advances one frame at each wall-clock deadline, and sends the
+latest framebuffer to the canvas. `Pause`, `Resume`, and `Stop` do not rebuild
+the circuit. Batch capture remains available through the compiler API for
+deterministic tests and snapshot generation.
 
 ## JavaScript and WebAssembly hosts
 

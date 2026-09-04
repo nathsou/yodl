@@ -11,7 +11,8 @@ import {
 import type { Stage } from './compiler-stages.ts';
 
 export type SimulationRequest = {
-    action?: 'run' | 'reset' | 'step_cycle' | 'step_frame';
+    action?: 'run' | 'reset' | 'step_cycle' | 'step_frame' | 'pause' | 'resume' | 'stop';
+    mode?: 'batch' | 'realtime';
     top?: string;
     clock?: string;
     cycles?: number;
@@ -35,6 +36,16 @@ export type CompileRequest = { id: number; source: string; path: string; stage: 
 export type SimulationFramebuffer = { width: number; height: number; pixels: number[] };
 export type SimulationResult = { outputs: Record<string, number>; messages: string[]; cycles: number; clock?: string; framebuffers?: SimulationFramebuffer[] };
 export type CompileResult = { id: number; output?: string; error?: string; duration: number; simulation?: SimulationResult };
+export type SimulationStreamEvent = {
+    id: number;
+    type: 'started' | 'frame' | 'paused' | 'resumed' | 'stopped' | 'error';
+    frame?: SimulationFramebuffer;
+    outputs?: Record<string, number>;
+    messages?: string[];
+    cycles?: number;
+    totalCycles?: number;
+    error?: string;
+};
 
 type SimulationSession = {
     key: string;

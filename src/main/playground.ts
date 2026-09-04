@@ -1,7 +1,8 @@
 import { chapterLessons } from '../docs/links.ts';
 import { examples, files, tour, stages, blankPath, initialSelection, validSelection, encodeShare, decodeShare, diagnosticLocation } from './playground-model.ts';
 import type { Selection, Stage, Mode } from './playground-model.ts';
-import { CompilerClient } from './compiler-client.ts';
+import { CompilerClient, RealtimeSimulationClient } from './compiler-client.ts';
+import type { SimulationStreamEvent } from './playground-compiler.ts';
 import { setupTheme } from './theme.ts';
 import { loadEditors, monaco } from './playground-editor.ts';
 import type { SimulationRequest } from './playground-compiler.ts';
@@ -68,6 +69,9 @@ let lastOutput = '';
 let outputRevision = -1;
 let timer: ReturnType<typeof setTimeout> | undefined;
 const compiler = new CompilerClient();
+const realtimeSimulation = new RealtimeSimulationClient();
+let realtimeRunning = false;
+let realtimePaused = false;
 let requestId = 0;
 let latestRequest = 0;
 let errorRange: ReturnType<typeof diagnosticLocation> = null;
@@ -150,6 +154,10 @@ function clearDiagnostics() {
 }
 function markChanged() {
     compiler.cancel('playground');
+    realtimeSimulation.stop();
+    realtimeRunning = false;
+    realtimePaused = false;
+    updateSimulationControls();
     revision++;
     latestRequest = ++requestId;
     clearTimeout(timer);
@@ -400,6 +408,13 @@ function visualSimulation(requestedTop: string, source = '', dependencies: Itera
     return { clocked: false };
 }
 let framebufferAnimation: number | undefined;
+function updateSimulationControls() {
+    const run = button('simulation-run');
+    const stop = button('simulation-stop');
+    run.textContent = realtimeRunning && !realtimePaused ? 'Pause' : 'Run';
+    stop.disabled = !realtimeRunning;
+}
+
 function renderSimulationFrames(frames: Array<{ width: number; height: number; pixels: number[] }>, frameRate = 60) {
     const canvas = element<HTMLCanvasElement>('simulation-framebuffer');
     if (framebufferAnimation !== undefined) clearTimeout(framebufferAnimation);
@@ -437,8 +452,68 @@ function renderSimulationFrames(frames: Array<{ width: number; height: number; p
     };
     draw();
 }
+
+function renderSimulationOutput(outputs: Record<string, number>, messages: string[], cycles: number, hasFramebuffer: boolean) {
+    const lines = [`cycles: ${cycles}`];
+    const outputEntries = Object.entries(outputs).filter(([name]) => !hasFramebuffer || !/^(state|pixel|pixels|framebuffer)_/.test(name));
+    for (const [name, value] of outputEntries.slice(0, 100)) lines.push(`${name} = ${value}`);
+    if (outputEntries.length > 100) lines.push(`… ${outputEntries.length - 100} more outputs`);
+    if (messages.length) lines.push('', ...messages);
+    element('simulation-output').textContent = lines.join('\n');
+}
+
+function handleRealtimeEvent(event: SimulationStreamEvent) {
+    if (event.type === 'error') {
+        realtimeRunning = false;
+        realtimePaused = false;
+        updateSimulationControls();
+        element('simulation-state').textContent = 'Error';
+        element('simulation-output').textContent = event.error ?? 'The simulation worker stopped unexpectedly.';
+        setStatus('Simulation failed · check the simulation output', 'error');
+        return;
+    }
+    if (event.type === 'stopped') {
+        realtimeRunning = false;
+        realtimePaused = false;
+        updateSimulationControls();
+        return;
+    }
+    if (event.type === 'paused') {
+        realtimePaused = true;
+        updateSimulationControls();
+        element('simulation-state').textContent = `${event.totalCycles ?? 0} cycles · Paused`;
+        setStatus('Simulation paused');
+        return;
+    }
+    if (event.type === 'resumed') {
+        realtimePaused = false;
+        updateSimulationControls();
+        element('simulation-state').textContent = `${event.totalCycles ?? 0} cycles · Running`;
+        setStatus('Simulating…', 'loading');
+        return;
+    }
+    realtimeRunning = true;
+    realtimePaused = false;
+    updateSimulationControls();
+    if (event.frame) renderSimulationFrames([event.frame]);
+    renderSimulationOutput(event.outputs ?? {}, event.messages ?? [], event.totalCycles ?? 0, Boolean(event.frame));
+    element('simulation-state').textContent = `${event.totalCycles ?? 0} cycles · Running`;
+    setStatus(event.type === 'started' ? '✓ Simulation started' : 'Simulating…', event.type === 'started' ? 'success' : 'loading');
+}
+
 async function runSimulation(action: SimulationRequest['action'] = 'run') {
     setMobileView('output');
+    if (action === 'run' && realtimeRunning) {
+        if (realtimePaused) realtimeSimulation.resume();
+        else realtimeSimulation.pause();
+        return;
+    }
+    if (action !== 'run') {
+        realtimeSimulation.stop();
+        realtimeRunning = false;
+        realtimePaused = false;
+        updateSimulationControls();
+    }
     const id = ++requestId;
     latestRequest = id;
     const readPositive = (id: string) => {
@@ -489,13 +564,20 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     button('simulation-step-frame').hidden = !(framebuffer && visual.clocked);
     renderSimulationFrames([]);
     setStatus('Simulating…', 'loading');
-    const result = await compiler.compile('simulation', {
+    const simulationRequest = {
         source: editors.input.getValue(),
         path: entryPath,
         stage: 'write_low_firrtl',
         files: { ...files, ...sharedFiles },
         simulate: { action, top, clock: clock ?? visual.clock, cycles, inputs, frames: frameCount, frameCycles, framebuffer },
-    });
+    } as const;
+    if (action === 'run' && framebuffer && visual.clocked) {
+        // Visual runs are streamed by a persistent worker. It captures the
+        // initial frame once, then advances one frame per wall-clock deadline.
+        realtimeSimulation.start({ ...simulationRequest, simulate: { ...simulationRequest.simulate, mode: 'realtime' } }, handleRealtimeEvent);
+        return;
+    }
+    const result = await compiler.compile('simulation', simulationRequest);
     if (!result || id !== latestRequest) return;
     if (result.error !== undefined) {
         element('simulation-state').textContent = 'Error';
@@ -505,16 +587,12 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     }
     const simulation = result.simulation;
     if (!simulation) return;
-    const lines = [`cycles: ${simulation.cycles}`];
-    const outputEntries = Object.entries(simulation.outputs).filter(([name]) => !simulation.framebuffers || !/^(state|pixel|pixels|framebuffer)_/.test(name));
-    for (const [name, value] of outputEntries.slice(0, 100)) lines.push(`${name} = ${value}`);
-    if (outputEntries.length > 100) lines.push(`… ${outputEntries.length - 100} more outputs`);
-    if (simulation.messages.length) { lines.push('', ...simulation.messages); }
-    element('simulation-output').textContent = lines.join('\n');
+    renderSimulationOutput(simulation.outputs, simulation.messages, simulation.cycles, Boolean(simulation.framebuffers));
     renderSimulationFrames(simulation.framebuffers ?? [], frameRate);
     button('simulation-step-cycle').disabled = !simulation.clock;
     button('simulation-step-frame').hidden = !(simulation.framebuffers?.length && simulation.clock);
     element('simulation-state').textContent = simulation.framebuffers?.length ? `${simulation.framebuffers.length} frame${simulation.framebuffers.length === 1 ? '' : 's'} · ${simulation.cycles} cycles` : `${simulation.cycles} cycles`;
+    updateSimulationControls();
     setStatus(`✓ Simulated · ${Math.round(result.duration)} ms`, 'success');
 }
 function download(name: string, content: string) {
@@ -544,7 +622,7 @@ async function start() {
     renderSelection();
     if (matchMedia('(max-width: 820px)').matches) element<HTMLDetailsElement>('guide-details').open = false;
     saveDraft();
-    for (const id of ['share-button', 'source-selector', 'compile-button', 'simulate-button', 'simulation-reset', 'simulation-step-cycle', 'simulation-step-frame', 'simulation-run', 'simulation-top', 'simulation-clock', 'simulation-cycles', 'simulation-frames', 'simulation-frame-cycles', 'simulation-width', 'simulation-height', 'simulation-clock-hz', 'simulation-frame-rate', 'simulation-inputs', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
+    for (const id of ['share-button', 'source-selector', 'compile-button', 'simulate-button', 'simulation-reset', 'simulation-step-cycle', 'simulation-step-frame', 'simulation-stop', 'simulation-run', 'simulation-top', 'simulation-clock', 'simulation-cycles', 'simulation-frames', 'simulation-frame-cycles', 'simulation-width', 'simulation-height', 'simulation-clock-hz', 'simulation-frame-rate', 'simulation-inputs', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
     const mac = /Mac|iPhone|iPad/.test(navigator.platform);
     element('compile-shortcut').textContent = mac ? '⌘ ↵' : 'Ctrl ↵';
     editors.input.addAction({ id: 'compile-yodl', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });
@@ -575,6 +653,14 @@ async function start() {
     button('simulation-reset').onclick = () => runSimulation('reset');
     button('simulation-step-cycle').onclick = () => runSimulation('step_cycle');
     button('simulation-step-frame').onclick = () => runSimulation('step_frame');
+    button('simulation-stop').onclick = () => {
+        realtimeSimulation.stop();
+        realtimeRunning = false;
+        realtimePaused = false;
+        updateSimulationControls();
+        element('simulation-state').textContent = 'Stopped';
+        setStatus('Simulation stopped');
+    };
     auto.onchange = () => {
         writeStorage('auto', String(auto.checked));
         clearTimeout(timer);

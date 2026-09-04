@@ -1,8 +1,8 @@
-import type { CompileRequest, CompileResult } from './playground-compiler.ts';
+import type { CompileRequest, CompileResult, SimulationStreamEvent } from './playground-compiler.ts';
 
 // Replaced by the site build with the content-hashed worker filename.
 declare const __YODL_COMPILER_WORKER__: string;
-const workerFile = typeof __YODL_COMPILER_WORKER__ === 'undefined' ? './playground-worker.js' : __YODL_COMPILER_WORKER__;
+export const compilerWorkerFile = typeof __YODL_COMPILER_WORKER__ === 'undefined' ? './playground-worker.js' : __YODL_COMPILER_WORKER__;
 
 type Job = { owner: string; request: CompileRequest; resolve: (result: CompileResult | null) => void };
 
@@ -59,7 +59,7 @@ export class CompilerClient {
             this.finish({ id: job.request.id, error, duration: 0 });
         };
         try {
-            this.worker ??= new Worker(new URL(workerFile, import.meta.url), { type: 'module' });
+            this.worker ??= new Worker(new URL(compilerWorkerFile, import.meta.url), { type: 'module' });
             this.worker.onmessage = (event: MessageEvent<CompileResult>) => {
                 if (this.active === job && event.data.id === job.request.id) this.finish(event.data);
             };
@@ -69,5 +69,46 @@ export class CompilerClient {
         } catch (error) {
             fail(`Could not start the compiler: ${(error as Error).message}`);
         }
+    }
+}
+
+type StreamRequest = Omit<CompileRequest, 'id'>;
+
+// Visual simulation has a separate worker so that a persistent real-time run
+// never blocks ordinary compilation or documentation examples. The worker
+// owns the simulator session and emits one framebuffer at a time.
+export class RealtimeSimulationClient {
+    private worker?: Worker;
+    private requestId = 0;
+    private activeId?: number;
+
+    start(request: StreamRequest, onEvent: (event: SimulationStreamEvent) => void) {
+        this.stop();
+        const id = ++this.requestId;
+        this.activeId = id;
+        const worker = this.worker = new Worker(new URL(compilerWorkerFile, import.meta.url), { type: 'module' });
+        worker.onmessage = (message: MessageEvent<SimulationStreamEvent>) => {
+            if (this.worker !== worker || message.data.id !== id) return;
+            onEvent(message.data);
+        };
+        worker.onerror = () => {
+            if (this.worker !== worker) return;
+            onEvent({ id, type: 'error', error: 'The simulation worker could not run. Try Run again.' });
+        };
+        worker.postMessage({ ...request, id, simulate: { ...request.simulate, mode: 'realtime', action: 'run' } });
+    }
+
+    pause() { this.postControl('pause'); }
+    resume() { this.postControl('resume'); }
+
+    stop() {
+        this.worker?.terminate();
+        this.worker = undefined;
+        this.activeId = undefined;
+    }
+
+    private postControl(action: 'pause' | 'resume') {
+        if (!this.worker || this.activeId === undefined) return;
+        this.worker.postMessage({ id: this.activeId, source: '', path: '', stage: 'write_low_firrtl', simulate: { mode: 'realtime', action } });
     }
 }

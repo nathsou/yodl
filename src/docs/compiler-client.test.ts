@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test';
-import { CompilerClient } from '../main/compiler-client.ts';
+import { CompilerClient, RealtimeSimulationClient } from '../main/compiler-client.ts';
 import { compile } from '../main/playground-compiler.ts';
 import { files } from '../main/playground-model.ts';
 
@@ -78,6 +78,23 @@ test('timeout terminates stuck work and releases the next example', async () => 
     FakeWorker.instances[1].reply();
     expect((await next)?.output).toBe('compiled');
     client.dispose();
+});
+
+test('real-time simulation uses a persistent worker control stream', () => {
+    globalThis.Worker = FakeWorker as any;
+    const client = new RealtimeSimulationClient();
+    const events: string[] = [];
+    client.start({ ...request, simulate: { action: 'run', framebuffer: { width: 2, height: 2, statePrefix: 'pixel' }, frameRate: 60, frameCycles: 1 } }, event => events.push(event.type));
+    const worker = FakeWorker.instances[0];
+    expect(worker.messages[0].simulate).toMatchObject({ mode: 'realtime', action: 'run' });
+    client.pause();
+    expect(worker.messages[1].simulate).toMatchObject({ mode: 'realtime', action: 'pause' });
+    client.resume();
+    expect(worker.messages[2].simulate).toMatchObject({ mode: 'realtime', action: 'resume' });
+    worker.onmessage?.({ data: { id: worker.messages[0].id, type: 'started' } });
+    expect(events).toEqual(['started']);
+    client.stop();
+    expect(worker.terminated).toBe(true);
 });
 
 test('each compile has an isolated dependency filesystem', () => {
