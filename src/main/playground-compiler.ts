@@ -19,6 +19,8 @@ export type SimulationRequest = {
     inputs?: Record<string, { width: number; value: number }>;
     frames?: number;
     frameCycles?: number;
+    clockHz?: number;
+    frameRate?: number;
     framebuffer?: {
         width: number;
         height: number;

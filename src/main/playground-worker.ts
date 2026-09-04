@@ -69,7 +69,7 @@ function startRealtime(request: CompileRequest) {
     stopRealtime();
     const simulate = request.simulate!;
     const frameRate = Math.max(1, Math.min(240, simulate.frameRate ?? 60));
-    const frameCycles = Math.max(1, Math.min(100000, simulate.frameCycles ?? 1));
+    const frameCycles = Math.max(1, Math.min(100000, simulate.frameCycles ?? (simulate.clockHz ? Math.round(simulate.clockHz / frameRate) : 1)));
     const initial = compile({ ...request, simulate: { ...simulate, mode: 'batch', action: 'run', frames: 1 } });
     if (initial.error !== undefined) {
         post(eventFromResult(request.id, 'error', initial, 0));

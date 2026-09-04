@@ -576,7 +576,7 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
         path: entryPath,
         stage: 'write_low_firrtl',
         files: { ...files, ...sharedFiles },
-        simulate: { action, top, clock: clock ?? visual.clock, cycles, inputs, frames: frameCount, frameCycles, framebuffer },
+        simulate: { action, top, clock: clock ?? visual.clock, cycles, inputs, frames: frameCount, frameCycles, clockHz, frameRate, framebuffer },
     } as const;
     if (action === 'run' && framebuffer && visual.clocked) {
         // Visual runs are streamed by a persistent worker. It captures the
