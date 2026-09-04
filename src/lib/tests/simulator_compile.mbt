@@ -1,7 +1,7 @@
 test "compile_simulation produces a runnable low FIRRTL module" {
   let source =
-    #|module Top(clk: clock) -> (value: u8) {
-    #|  let state = Reg[u8](clk)
+    #|module Top(clk: clock, rst: bool) -> (value: u8) {
+    #|  let state = Reg[u8](clk, rst)
     #|  state.d = state.q + 1'b1
     #|  value = state.q
     #|}
@@ -24,6 +24,9 @@ test "compile_simulation produces a runnable low FIRRTL module" {
   }
   let design = top.unwrap_or_error(Failure::Failure("Top module missing"))
   let sim = @simulator.Simulator::new(design)
+  sim.poke("rst", @simulator.SimValue::from_int(1, 1))
+  sim.step_clock("clk")
+  sim.poke("rst", @simulator.SimValue::from_int(1, 0))
   sim.step_clock("clk")
   inspect(sim.peek("state").as_bigint().to_int(), content="1")
   assert_eq(sim.peek("value").as_bigint().to_int(), 1)
@@ -91,14 +94,14 @@ test "compiled simulator models a synchronous memory" {
 
 test "hierarchical instances share clocked state with their parent" {
   let source =
-    #|module Child(clk: clock) -> (value: u8) {
-    #|  let state = Reg[u8](clk)
+    #|module Child(clk: clock, rst: bool) -> (value: u8) {
+    #|  let state = Reg[u8](clk, rst)
     #|  state.d = state.q + 1'b1
     #|  value = state.q
     #|}
     #|
-    #|module Top(clk: clock) -> (value: u8) {
-    #|  let child = Child(clk)
+    #|module Top(clk: clock, rst: bool) -> (value: u8) {
+    #|  let child = Child(clk, rst)
     #|  value = child.value
     #|}
   let files : Map[String, String] = Map([])
@@ -111,6 +114,9 @@ test "hierarchical instances share clocked state with their parent" {
   }
   let circuit = @driver.compile_simulation(path="fixture.yodl", ext~)
   let sim = @simulator.Simulator::from_circuit(circuit, "Top")
+  sim.poke("rst", @simulator.SimValue::from_int(1, 1))
+  sim.step_clock("clk")
+  sim.poke("rst", @simulator.SimValue::from_int(1, 0))
   sim.step_clock("clk")
   assert_eq(sim.peek("value").as_bigint().to_int(), 1)
   sim.step_clock("clk")
@@ -201,7 +207,59 @@ test "boolean framebuffers execute as packed rows across word boundaries" {
   for _ in 0..<33 { sim.step_clock("clk") }
   let frame = @simulator.simulator_frame(sim, display.ports, 35, 2, true)
   assert_eq(frame.words, [0U, 2U, 0U, 2U])
-  assert_true(frame.valid.iter().all(word => word == 0xffffffffU))
+  assert_eq(frame.valid, [0xffffffffU, 7U, 0xffffffffU, 7U])
+}
+
+test "packed shift register gains validity one bit per cycle" {
+  let source =
+    #|module Top(clk: clock, input: bool) -> (out: u2) {
+    #|  let state = Reg[u2](clk)
+    #|  state.d = cat!(state.q[0], input)
+    #|  out = state.q
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("input", @simulator.SimValue::from_int(1, 1))
+  sim.step_clock("clk")
+  let first = sim.peek("out")
+  assert_eq(first.as_bigint().to_int(), 1)
+  assert_eq(first.known_mask().to_int(), 1)
+  assert_false(first.is_known())
+  let first_frame = @simulator.simulator_frame(sim, ["out"], 2, 1, true)
+  assert_eq(first_frame.words, [1U])
+  assert_eq(first_frame.valid, [1U])
+
+  sim.poke("input", @simulator.SimValue::from_int(1, 0))
+  sim.step_clock("clk")
+  let second = sim.peek("out")
+  assert_eq(second.as_bigint().to_int(), 2)
+  assert_eq(second.known_mask().to_int(), 3)
+  assert_true(second.is_known())
+  assert_eq(sim.cycle(), 2)
+}
+
+test "bitwise primitives and unknown muxes preserve known equal bits" {
+  let source =
+    #|module Top(a: u4, b: u4, select: bool) -> (
+    #|  anded: u4,
+    #|  ored: u4,
+    #|  xored: u4,
+    #|  selected: u4,
+    #|) {
+    #|  anded = a and b
+    #|  ored = a or b
+    #|  xored = a xor b
+    #|  selected = select ? a : b
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("a", @simulator.SimValue::with_mask(4, 0b1000, 0b1001))
+  sim.poke("b", @simulator.SimValue::with_mask(4, 0b1010, 0b1111))
+  sim.poke("select", @simulator.SimValue::new(1, 0, known=false))
+  sim.settle()
+  assert_eq(sim.peek("anded").known_mask().to_int(), 0b1101)
+  assert_eq(sim.peek("ored").known_mask().to_int(), 0b1011)
+  assert_eq(sim.peek("xored").known_mask().to_int(), 0b1001)
+  assert_eq(sim.peek("selected").known_mask().to_int(), 0b1001)
+  assert_eq(sim.peek("selected").as_bigint().to_int(), 0b1000)
 }
 
 fn compile_test_simulator(source: String) -> @simulator.Simulator raise {

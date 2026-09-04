@@ -43,7 +43,7 @@ module Top(clk: clock, rst: bool, a: bool) -> (pixel: [1][2]bool, count: u8) {
     snapshot = await waitFor('snapshot', offset);
     expect(snapshot.totalCycles).toBe(paused.totalCycles);
     expect(snapshot.frame!.packed![0]).toBe(3);
-    expect(snapshot.frame!.valid![0]).toBe(0xffffffff);
+    expect(snapshot.frame!.valid![0]).toBe(3);
     offset = events.length;
     send({ id: 100, control: { action: 'reset' } });
     snapshot = await waitFor('snapshot', offset);

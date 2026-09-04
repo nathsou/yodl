@@ -71,6 +71,8 @@ test "simulator commits a register on a rising edge" {
     ],
   }
   let sim = @simulator.Simulator::new(design)
+  sim.poke("state", @simulator.SimValue::zero(8))
+  sim.settle()
   sim.step_clock("clk")
   assert_eq(sim.peek("out").as_bigint(), @bigint.BigInt::from_int(1))
   sim.step_clock("clk")

@@ -120,13 +120,15 @@ pub(all) enum SimStmt {
 pub(all) struct SimValue {
   width : Int
   raw : @bigint.BigInt
-  known : Bool
+  known_mask : @bigint.BigInt
 }
 pub fn SimValue::as_bigint(Self) -> @bigint.BigInt
 pub fn SimValue::bit(Self, Int) -> Self
 pub fn SimValue::from_int(Int, Int) -> Self
 pub fn SimValue::is_known(Self) -> Bool
+pub fn SimValue::known_mask(Self) -> @bigint.BigInt
 pub fn SimValue::new(Int, @bigint.BigInt, known? : Bool) -> Self
+pub fn SimValue::with_mask(Int, @bigint.BigInt, @bigint.BigInt) -> Self
 pub fn SimValue::zero(Int) -> Self
 pub impl Show for SimValue
 

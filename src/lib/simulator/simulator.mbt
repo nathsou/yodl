@@ -17,11 +17,17 @@ using @firrtl {
 pub(all) struct SimValue {
   width: Int
   raw: BigInt
-  known: Bool
+  known_mask: BigInt
 }
 
 pub fn SimValue::new(width: Int, raw: BigInt, known~: Bool = true) -> SimValue {
-  { width, raw: normalize(raw, width), known }
+  let known_mask = if known { mask(width) } else { 0 }
+  SimValue::with_mask(width, raw, known_mask)
+}
+
+pub fn SimValue::with_mask(width: Int, raw: BigInt, known_mask: BigInt) -> SimValue {
+  let known_mask = normalize(known_mask, width)
+  { width, raw: normalize(raw, width) & known_mask, known_mask }
 }
 
 pub fn SimValue::zero(width: Int) -> SimValue {
@@ -37,19 +43,23 @@ pub fn SimValue::as_bigint(self: SimValue) -> BigInt {
 }
 
 pub fn SimValue::is_known(self: SimValue) -> Bool {
-  self.known
+  self.known_mask == mask(self.width)
+}
+
+pub fn SimValue::known_mask(self: SimValue) -> BigInt {
+  self.known_mask
 }
 
 pub fn SimValue::bit(self: SimValue, index: Int) -> SimValue {
   if index < 0 || index >= self.width {
     SimValue::new(1, 0, known=false)
   } else {
-    SimValue::new(1, (self.raw >> index) & 1, known=self.known)
+    SimValue::with_mask(1, (self.raw >> index) & 1, (self.known_mask >> index) & 1)
   }
 }
 
 pub impl Show for SimValue with output(self, logger) {
-  if self.known {
+  if self.is_known() {
     logger.write_string(self.raw.to_string())
   } else {
     logger.write_string("x")
@@ -697,7 +707,7 @@ pub fn Simulator::poke(self: Simulator, name: String, value: SimValue) -> Unit r
   if !self.signals.contains(name) {
     raise MissingSignal(name~)
   }
-  let _ = self.assign_signal(name, SimValue::new(type_width_for_name(self, name), value.raw, known=value.known))
+  let _ = self.assign_signal(name, SimValue::with_mask(type_width_for_name(self, name), value.raw, value.known_mask))
   self.apply_async_resets()
 }
 
@@ -772,30 +782,17 @@ fn Simulator::eval_compiled_expr(self: Simulator, expr: SimExpr) -> SimValue rai
     SimExpr::MemoryData(memory~, reader~, width~) => self.eval_memory_data(memory, reader, width)
     SimExpr::Slice(source~, index~, width~) => {
       let value = self.eval_compiled_expr(source)
-      SimValue::new(width, value.raw >> (index * width), known=value.known)
+      SimValue::with_mask(width, value.raw >> (index * width), value.known_mask >> (index * width))
     }
     SimExpr::Literal(value~) => value
     SimExpr::Mux(cond~, tval~, fval~) => {
       let condition = self.eval_compiled_expr(cond)
-      if condition.known {
+      if condition.is_known() {
         return self.eval_compiled_expr(if condition.raw != 0 { tval } else { fval })
       }
       let when_true = self.eval_compiled_expr(tval)
       let when_false = self.eval_compiled_expr(fval)
-      if !condition.known {
-        // Four-state mux semantics: an unknown selector can still produce a
-        // known result when both arms agree. Otherwise preserve X instead of
-        // silently choosing the false arm from the raw backing bit.
-        if when_true.known && when_false.known && when_true.raw == when_false.raw {
-          when_true
-        } else {
-          SimValue::new(when_true.width, 0, known=false)
-        }
-      } else if condition.raw != 0 {
-        when_true
-      } else {
-        when_false
-      }
+      merge_unknown_mux(when_true, when_false, when_true.width)
     }
     SimExpr::Prim(op~, args~, width~, signed~) => {
       let values = args.map((arg: SimExpr) => self.eval_compiled_expr(arg))
@@ -1019,19 +1016,20 @@ fn Simulator::commit_memories(self: Simulator, clocks: Array[String]) -> Unit {
       let port = prefix + writer
       if !clocks.contains(self.memory_clocks[port]) { continue }
       let enabled = self.signal_or_zero(port + ".en")
-      if enabled.known && enabled.raw == 0 { continue }
+      if enabled.is_known() && enabled.raw == 0 { continue }
       let rw = memory.readwriters.contains(writer)
       let mode = if rw { self.signal_or_zero(port + ".wmode") } else { SimValue::from_int(1, 1) }
-      if mode.known && mode.raw == 0 { continue }
+      if mode.is_known() && mode.raw == 0 { continue }
       let mask_name = if rw { port + ".wmask" } else { port + ".mask" }
       let mask_value = self.signal_or_zero(mask_name)
-      if mask_value.known && mask_value.raw == 0 { continue }
+      if mask_value.is_known() && mask_value.raw == 0 { continue }
       let address_value = self.signal_or_zero(port + ".addr")
-      if address_value.known && address_value.raw >= BigInt::from_int(memory.depth) { continue }
-      let address = if address_value.known { Some(address_value.raw.to_int()) } else { None }
+      if address_value.is_known() && address_value.raw >= BigInt::from_int(memory.depth) { continue }
+      let address = if address_value.is_known() { Some(address_value.raw.to_int()) } else { None }
       let data_name = if rw { port + ".wdata" } else { port + ".data" }
       let data = self.signal_or_zero(data_name)
-      let data = with_known(data, data.known && enabled.known && mode.known && address_value.known)
+      let controls_known = enabled.is_known() && mode.is_known() && address_value.is_known()
+      let data = if controls_known { data } else { SimValue::new(data.width, 0, known=false) }
       writes.push({ address, data, mask: mask_value })
     }
 
@@ -1043,8 +1041,8 @@ fn Simulator::commit_memories(self: Simulator, clocks: Array[String]) -> Unit {
         let address = self.signal_or_zero(port + ".addr")
         let rw = memory.readwriters.contains(reader)
         let mode = if rw { self.signal_or_zero(port + ".wmode") } else { SimValue::zero(1) }
-        let value = if enabled.known && enabled.raw != 0 && address.known &&
-            address.raw < BigInt::from_int(memory.depth) && mode.known && mode.raw == 0 {
+        let value = if enabled.is_known() && enabled.raw != 0 && address.is_known() &&
+            address.raw < BigInt::from_int(memory.depth) && mode.is_known() && mode.raw == 0 {
           memory.read_value(address.raw.to_int(), writes)
         } else {
           SimValue::new(memory.width, 0, known=false)
@@ -1068,21 +1066,19 @@ fn resolve_writes(old: SimValue, writes: Array[MemoryWrite], width: Int) -> SimV
   let mut result = old
   let mut written: BigInt = 0
   for write in writes {
-    if !write.mask.known { return SimValue::new(width, 0, known=false) }
     let granularity = if write.mask.width == 0 { width } else { width / write.mask.width }
     let mut bits: BigInt = 0
     for lane in 0..<write.mask.width {
-      if ((write.mask.raw >> lane) & 1) != 0 {
+      if ((write.mask.known_mask >> lane) & 1) == 0 || ((write.mask.raw >> lane) & 1) != 0 {
         bits = bits | (mask(granularity) << (lane * granularity))
       }
     }
-    if (written & bits) != 0 { return SimValue::new(width, 0, known=false) }
+    let overlap = written & bits
     written = written | bits
     result = masked_write(result, write.data, write.mask, width)
-  }
-  // Disjoint writes may jointly initialize a previously unknown word.
-  if written == mask(width) && writes.iter().all(w => w.data.known && w.mask.known) {
-    result = with_known(result, true)
+    if overlap != 0 {
+      result = SimValue::with_mask(width, result.raw, result.known_mask & (mask(width) ^ overlap))
+    }
   }
   result
 }
@@ -1104,7 +1100,7 @@ fn Simulator::live_memory_read(self: Simulator, memory_id: String, memory: Memor
   let address_value = self.signal_or_zero(port + ".addr")
   let address = address_value.raw.to_int()
   let mode = if memory.readwriters.contains(reader) { self.signal_or_zero(port + ".wmode") } else { SimValue::zero(1) }
-  if !mode.known || mode.raw != 0 || !enabled.known || !address_value.known || enabled.raw == 0 || address_value.raw >= BigInt::from_int(memory.depth) || address < 0 || address >= memory.depth {
+  if !mode.is_known() || mode.raw != 0 || !enabled.is_known() || !address_value.is_known() || enabled.raw == 0 || address_value.raw >= BigInt::from_int(memory.depth) || address < 0 || address >= memory.depth {
     SimValue::new(width, 0, known=false)
   } else {
     memory.data[address]
@@ -1116,33 +1112,43 @@ fn Simulator::signal_or_zero(self: Simulator, name: String) -> SimValue {
 }
 
 fn select_value(condition: SimValue, yes: SimValue, no: SimValue, width: Int) -> SimValue {
-  if condition.known {
+  if condition.is_known() {
     let value = if condition.raw != 0 { yes } else { no }
-    SimValue::new(width, value.raw, known=value.known)
-  } else if yes.known && no.known && normalize(yes.raw, width) == normalize(no.raw, width) {
-    SimValue::new(width, yes.raw)
+    SimValue::with_mask(width, value.raw, value.known_mask)
   } else {
-    SimValue::new(width, 0, known=false)
+    merge_unknown_mux(yes, no, width)
   }
+}
+
+fn merge_unknown_mux(yes: SimValue, no: SimValue, width: Int) -> SimValue {
+  let both_known = yes.known_mask & no.known_mask
+  let equal = mask(width) ^ normalize(yes.raw ^ no.raw, width)
+  let known_mask = both_known & equal
+  SimValue::with_mask(width, yes.raw, known_mask)
 }
 
 fn masked_write(old: SimValue, value: SimValue, mask_value: SimValue, width: Int) -> SimValue {
   let granularity = if mask_value.width == 0 { width } else { width / mask_value.width }
   let mut raw = old.raw
+  let mut known_mask = old.known_mask
   for i in 0..<mask_value.width {
-    if ((mask_value.raw >> i) & 1) != 0 {
-      let chunk_mask = mask(granularity) << (i * granularity)
+    let chunk_mask = mask(granularity) << (i * granularity)
+    if ((mask_value.known_mask >> i) & 1) == 0 {
+      raw = raw & (mask(width) ^ chunk_mask)
+      known_mask = known_mask & (mask(width) ^ chunk_mask)
+    } else if ((mask_value.raw >> i) & 1) != 0 {
       raw = (raw & (mask(width) ^ chunk_mask)) | (value.raw & chunk_mask)
+      known_mask = (known_mask & (mask(width) ^ chunk_mask)) | (value.known_mask & chunk_mask)
     }
   }
-  SimValue::new(width, raw, known=mask_value.known && (mask_value.raw == 0 || value.known) && (mask_value.raw == mask(mask_value.width) || old.known))
+  SimValue::with_mask(width, raw, known_mask)
 }
 
 fn Simulator::run_commands(self: Simulator, clock: String) -> Unit raise SimulatorError {
   for command in self.commands {
     if command.clock != clock { continue }
     let enabled = self.eval_compiled_expr(command.enable)
-    if !enabled.known {
+    if !enabled.is_known() {
       raise Unsupported(message="command enable is unknown on clock '\{clock}'")
     }
     if enabled.raw == 0 { continue }
@@ -1152,7 +1158,7 @@ fn Simulator::run_commands(self: Simulator, clock: String) -> Unit raise Simulat
       }
       SimCommandAction::Assert(pred~, parts~, args~) => {
         let predicate = self.eval_compiled_expr(pred)
-        if !predicate.known {
+        if !predicate.is_known() {
           raise Unsupported(message="assertion predicate is unknown on clock '\{clock}'")
         }
         if predicate.raw == 0 {
@@ -1186,7 +1192,7 @@ fn Simulator::format_command(
         match part {
           SimFormatPart::Binary => text.write_string(format_binary(value))
           SimFormatPart::Character => text.write_char(Int::unsafe_to_char((value.raw & 255).to_int()))
-          SimFormatPart::Decimal => text.write_string(if value.known { (if signed { signed_value(value) } else { value.raw }).to_string() } else { "x" })
+          SimFormatPart::Decimal => text.write_string(if value.is_known() { (if signed { signed_value(value) } else { value.raw }).to_string() } else { "x" })
           SimFormatPart::Hexadecimal => text.write_string(format_hex(value))
           SimFormatPart::Text(_) => ()
         }
@@ -1197,7 +1203,7 @@ fn Simulator::format_command(
 }
 
 fn format_binary(value: SimValue) -> String {
-  if !value.known { return "x" }
+  if !value.is_known() { return "x" }
   let text = StringBuilder()
   for i in 0..<value.width {
     let bit = value.width - i - 1
@@ -1207,7 +1213,7 @@ fn format_binary(value: SimValue) -> String {
 }
 
 fn format_hex(value: SimValue) -> String {
-  if !value.known { return "x" }
+  if !value.is_known() { return "x" }
   let text = StringBuilder()
   let digits = (value.width + 3) / 4
   for i in 0..<digits {
@@ -1220,8 +1226,8 @@ fn format_hex(value: SimValue) -> String {
 
 fn Simulator::assign_signal(self: Simulator, name: String, value: SimValue) -> Bool {
   let old = self.signals.get(name).unwrap_or(SimValue::zero(value.width))
-  let value = SimValue::new(old.width, value.raw, known=value.known)
-  if old.raw != value.raw || old.known != value.known {
+  let value = SimValue::with_mask(old.width, value.raw, value.known_mask)
+  if old.raw != value.raw || old.known_mask != value.known_mask {
     self.signals[name] = value
     self.enqueue_signal(name)
     if self.waveform is Some(trace) && (self.waveform_filter.is_empty() || self.waveform_filter.contains(name)) {
@@ -1239,8 +1245,12 @@ fn eval_prim(
   width: Int,
   signed: Bool,
 ) -> SimValue {
+  match eval_validity_prim(op, values, width, signed) {
+    Some(value) => return value
+    None => ()
+  }
   if (op is @firrtl.PrimOp::Div || op is @firrtl.PrimOp::Rem) &&
-      values.get(1).map(v => !v.known || v.raw == 0).unwrap_or(true) {
+      values.get(1).map(v => !v.is_known() || v.raw == 0).unwrap_or(true) {
     return SimValue::new(width, 0, known=false)
   }
   // Most generated control/data paths (including the playground's VGA and
@@ -1252,6 +1262,99 @@ fn eval_prim(
     return eval_prim_fast(op, values, width, signed)
   }
   eval_prim_big(op, values, width, signed)
+}
+
+/// Structural and bitwise primitives propagate validity bit-for-bit. More
+/// complex arithmetic and comparisons deliberately remain conservative: their
+/// result is unknown unless every operand is known.
+fn eval_validity_prim(
+  op: PrimOp,
+  values: Array[SimValue],
+  width: Int,
+  signed: Bool,
+) -> SimValue? {
+  let a = values.get(0).unwrap_or(SimValue::zero(width))
+  let b = values.get(1).unwrap_or(SimValue::zero(width))
+  match op {
+    @firrtl.PrimOp::Not => Some(SimValue::with_mask(width, mask(width) ^ a.raw, a.known_mask))
+    @firrtl.PrimOp::And => {
+      let known_zero_a = a.known_mask & (mask(width) ^ a.raw)
+      let known_zero_b = b.known_mask & (mask(width) ^ b.raw)
+      Some(SimValue::with_mask(width, a.raw & b.raw, (a.known_mask & b.known_mask) | known_zero_a | known_zero_b))
+    }
+    @firrtl.PrimOp::Or => {
+      let known_one_a = a.known_mask & a.raw
+      let known_one_b = b.known_mask & b.raw
+      Some(SimValue::with_mask(width, a.raw | b.raw, (a.known_mask & b.known_mask) | known_one_a | known_one_b))
+    }
+    @firrtl.PrimOp::Xor => Some(SimValue::with_mask(width, a.raw ^ b.raw, a.known_mask & b.known_mask))
+    @firrtl.PrimOp::Cat => {
+      let mut raw: BigInt = 0
+      let mut known_mask: BigInt = 0
+      for value in values {
+        raw = (raw << value.width) | value.raw
+        known_mask = (known_mask << value.width) | value.known_mask
+      }
+      Some(SimValue::with_mask(width, raw, known_mask))
+    }
+    @firrtl.PrimOp::Bits => {
+      let lo = values.get(2).unwrap_or(SimValue::zero(1)).raw.to_int()
+      Some(SimValue::with_mask(width, a.raw >> lo, a.known_mask >> lo))
+    }
+    @firrtl.PrimOp::Head => {
+      let shift = if a.width > width { a.width - width } else { 0 }
+      Some(SimValue::with_mask(width, a.raw >> shift, a.known_mask >> shift))
+    }
+    @firrtl.PrimOp::Tail => Some(SimValue::with_mask(width, a.raw, a.known_mask))
+    @firrtl.PrimOp::Shl | @firrtl.PrimOp::Dshl => {
+      if !b.is_known() { Some(SimValue::new(width, 0, known=false)) } else {
+        let shift = b.raw.to_int()
+        let fill = if shift >= width { mask(width) } else { mask(shift) }
+        Some(SimValue::with_mask(width, a.raw << shift, (a.known_mask << shift) | fill))
+      }
+    }
+    @firrtl.PrimOp::Shr | @firrtl.PrimOp::Dshr => {
+      if !b.is_known() { Some(SimValue::new(width, 0, known=false)) } else {
+        let shift = b.raw.to_int()
+        let kept_mask: BigInt = if shift >= a.width { BigInt::from_int(0) } else { a.known_mask >> shift }
+        let extension_width = if shift > width { width } else { shift }
+        let extension: BigInt = if extension_width == 0 { BigInt::from_int(0) } else { mask(extension_width) << (width - extension_width) }
+        if signed && a.width > 0 {
+          let sign_known = ((a.known_mask >> (a.width - 1)) & 1) != 0
+          let sign_set = ((a.raw >> (a.width - 1)) & 1) != 0
+          let raw = (a.raw >> shift) | (if sign_set { extension } else { 0 })
+          Some(SimValue::with_mask(width, raw, kept_mask | (if sign_known { extension } else { 0 })))
+        } else {
+          Some(SimValue::with_mask(width, a.raw >> shift, kept_mask | extension))
+        }
+      }
+    }
+    @firrtl.PrimOp::Pad | @firrtl.PrimOp::AsUInt | @firrtl.PrimOp::AsSInt |
+    @firrtl.PrimOp::AsClock | @firrtl.PrimOp::AsAsyncReset | @firrtl.PrimOp::Cvt => {
+      if width <= a.width {
+        Some(SimValue::with_mask(width, a.raw, a.known_mask))
+      } else {
+        let extension = mask(width) ^ mask(a.width)
+        if signed && a.width > 0 {
+          let sign_known = ((a.known_mask >> (a.width - 1)) & 1) != 0
+          let sign_set = ((a.raw >> (a.width - 1)) & 1) != 0
+          Some(SimValue::with_mask(width, a.raw | (if sign_set { extension } else { 0 }), a.known_mask | (if sign_known { extension } else { 0 })))
+        } else {
+          Some(SimValue::with_mask(width, a.raw, a.known_mask | extension))
+        }
+      }
+    }
+    @firrtl.PrimOp::Andr => {
+      let known_zero = (a.known_mask & (mask(a.width) ^ a.raw)) != 0
+      Some(if known_zero { SimValue::zero(1) } else if a.is_known() { SimValue::from_int(1, 1) } else { SimValue::new(1, 0, known=false) })
+    }
+    @firrtl.PrimOp::Orr => {
+      let known_one = (a.known_mask & a.raw) != 0
+      Some(if known_one { SimValue::from_int(1, 1) } else if a.is_known() { SimValue::zero(1) } else { SimValue::new(1, 0, known=false) })
+    }
+    @firrtl.PrimOp::Xorr => if a.is_known() { None } else { Some(SimValue::new(1, 0, known=false)) }
+    _ => None
+  }
 }
 
 fn eval_prim_fast(
@@ -1310,7 +1413,7 @@ fn eval_prim_fast(
     @firrtl.PrimOp::Orr => (ar != 0).to_int()
     @firrtl.PrimOp::Xorr => parity_fast(a)
   }
-  with_known(SimValue::from_int(width, normalize_int(result, width)), values.iter().all(v => v.known))
+  with_known(SimValue::from_int(width, normalize_int(result, width)), values.iter().all(v => v.is_known()))
 }
 
 fn eval_prim_big(
@@ -1365,7 +1468,7 @@ fn eval_prim_big(
     @firrtl.PrimOp::Orr => BigInt::from_int(any_bits(a).to_int())
     @firrtl.PrimOp::Xorr => BigInt::from_int(parity(a).to_int())
   }
-  SimValue::new(width, result, known=values.iter().all(v => v.known))
+  SimValue::new(width, result, known=values.iter().all(v => v.is_known()))
 }
 
 fn type_width(ty: Type) -> Int {
@@ -1438,7 +1541,7 @@ fn parity_fast(value: SimValue) -> Int {
 }
 
 fn with_known(value: SimValue, known: Bool) -> SimValue {
-  { width: value.width, raw: value.raw, known }
+  SimValue::new(value.width, value.raw, known~)
 }
 
 fn mask(width: Int) -> BigInt {
@@ -1508,7 +1611,7 @@ pub fn Testbench::step(self: Testbench, clock: String) -> Unit raise SimulatorEr
 
 pub fn Testbench::expect(self: Testbench, name: String, expected: SimValue) -> Unit raise SimulatorError {
   let actual = self.simulator.peek(name)
-  if actual.raw != expected.raw || actual.known != expected.known {
+  if actual.raw != expected.raw || actual.known_mask != expected.known_mask {
     raise ExpectationFailed(name~, expected=Show::to_string(expected), actual=Show::to_string(actual))
   }
 }
@@ -1631,7 +1734,7 @@ pub fn simulator_output_signals(simulator: Simulator) -> Array[SimulatorSignal] 
     if port.dir is @parse.PortDir::Output {
       let name = port.id.inner()
       let value = simulator.signals.get(name).unwrap_or(SimValue::zero(type_width(port.ty)))
-      outputs.push({ name, width: type_width(port.ty), value: value.raw.to_string(), known: value.known })
+      outputs.push({ name, width: type_width(port.ty), value: value.raw.to_string(), known: value.is_known() })
     }
   }
   outputs
@@ -1643,7 +1746,7 @@ pub fn simulator_inputs(simulator: Simulator) -> Array[SimulatorSignal] {
     if port.dir is @parse.PortDir::Input && !(port.ty is @firrtl.Type::Clock) {
       let name = port.id.inner()
       let value = simulator.signals.get(name).unwrap_or(SimValue::zero(type_width(port.ty)))
-      inputs.push({ name, width: type_width(port.ty), value: value.raw.to_string(), known: value.known })
+      inputs.push({ name, width: type_width(port.ty), value: value.raw.to_string(), known: value.is_known() })
     }
   }
   inputs
@@ -1688,7 +1791,7 @@ pub fn simulator_frame_with_layout(
       let value = simulator.peek(ports[row])
       for word in 0..<((width + 31) / 32) {
         words.push(((value.raw >> (word * 32)) & mask(32)).to_uint())
-        valid.push(if value.known { 0xffffffffU } else { 0U })
+        valid.push(((value.known_mask >> (word * 32)) & mask(32)).to_uint())
       }
     } else if binary {
       for word in 0..<((width + 31) / 32) {
@@ -1699,7 +1802,7 @@ pub fn simulator_frame_with_layout(
           if col >= width { continue }
           let value = simulator.peek(ports[row * width + col])
           if value.raw != 0 { packed = packed | (1U << bit) }
-          if value.known { packed_valid = packed_valid | (1U << bit) }
+          if value.is_known() { packed_valid = packed_valid | (1U << bit) }
         }
         words.push(packed)
         valid.push(packed_valid)
@@ -1708,7 +1811,7 @@ pub fn simulator_frame_with_layout(
       for col in 0..<width {
         let value = simulator.peek(ports[row * width + col])
         words.push((value.raw & mask(32)).to_uint())
-        valid.push(if value.known { 0xffffffffU } else { 0U })
+        valid.push(if value.is_known() { 0xffffffffU } else { 0U })
       }
     }
   }
@@ -1724,7 +1827,7 @@ pub fn simulator_visible_outputs(simulator: Simulator, hidden: Array[String]) ->
     let name = port.id.inner()
     if port.dir is @parse.PortDir::Output && !hidden.contains(name) {
       let value = simulator.peek(name) catch { _ => SimValue::new(type_width(port.ty), 0, known=false) }
-      outputs.push({ name, width: value.width, value: value.raw.to_string(), known: value.known })
+      outputs.push({ name, width: value.width, value: value.raw.to_string(), known: value.is_known() })
     }
   }
   outputs
@@ -1765,10 +1868,10 @@ pub fn simulator_raster_step(simulator: Simulator, raster: SimulatorRaster, cloc
     let x = simulator.peek(raster.signal + "_x")
     let y = simulator.peek(raster.signal + "_y")
     let valid = simulator.peek(raster.signal + "_valid")
-    if (x.known && x.raw != 0) || (y.known && y.raw != 0) || (valid.known && valid.raw == 0) {
+    if (x.is_known() && x.raw != 0) || (y.is_known() && y.raw != 0) || (valid.is_known() && valid.raw == 0) {
       raster.at_origin = false
     }
-    if x.known && y.known && valid.known && valid.raw != 0 {
+    if x.is_known() && y.is_known() && valid.is_known() && valid.raw != 0 {
       let col = x.raw.to_int()
       let row = y.raw.to_int()
       if col == 0 && row == 0 {
@@ -1787,7 +1890,7 @@ pub fn simulator_raster_step(simulator: Simulator, raster: SimulatorRaster, cloc
         let green = (g.raw.to_int() * 255 / ((1 << g.width) - 1)).reinterpret_as_uint()
         let blue = (b.raw.to_int() * 255 / ((1 << b.width) - 1)).reinterpret_as_uint()
         raster.pixels[row * raster.width + col] = (red << 16) | (green << 8) | blue
-        raster.valid[row * raster.width + col] = if r.known && g.known && b.known { 0xffffffffU } else { 0U }
+        raster.valid[row * raster.width + col] = if r.is_known() && g.is_known() && b.is_known() { 0xffffffffU } else { 0U }
       }
     }
     simulator.step_clock(clock)
