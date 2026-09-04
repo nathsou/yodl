@@ -1,7 +1,6 @@
 import Text
 import Font
 
-// The simulation top renders the result directly into a semantic framebuffer.
 module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
     const N = 1000
     let counter = Reg[uint[clog2!(N)]](clk, rst)
@@ -13,8 +12,6 @@ module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
     is_ready = not is_active
 }
 
-// Semantic framebuffer used by the playground. It renders the result string
-// directly with the Font rasterizer, without display scan timing.
 @simulation({
     "clock": "clk",
     framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 16096865, off_color: 1773349 },

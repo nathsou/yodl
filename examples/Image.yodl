@@ -1,9 +1,5 @@
-// Logical image source used by the playground. The simulation top exposes
-// pixels directly, without any display scan protocol.
-//
-// This is a 40x30 (4x decimated) extract of res/york.mem. Keeping the source
-// packed as eight 3-bit palette indices per u24 word avoids a 1,200-entry
-// literal while retaining the same picture and palette as the hardware path.
+// A 40x30 (4x decimated) extract of res/york.mem, packed as eight 3-bit
+// palette indices per u24 word.
 @simulation({
     framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "rgb", off_color: 0 },
     frames: 1,
@@ -47,14 +43,14 @@ module ImageSim() -> (pixel: [30][40]u24) {
         for col in 0..<40 {
             let palette_index = (image[row][col / 8] shr ((col % 8) * 3))[2:0]
             pixel[row][col] = match palette_index {
-                3'd0 => 24'd7190271 // 0x6DB6FF
-                3'd1 => 24'd4802889 // 0x494949
-                3'd2 => 24'd0
-                3'd3 => 24'd2368512 // 0x242400
-                3'd4 => 24'd2368548 // 0x242424
-                3'd5 => 24'd16777179 // 0xFFFFDB
-                3'd6 => 24'd16777215 // 0xFFFFFF
-                _ => 24'd7171437 // 0x6D6D6D
+                3'd0 => 24'h6DB6FF
+                3'd1 => 24'h494949
+                3'd2 => 24'h000000
+                3'd3 => 24'h242400
+                3'd4 => 24'h242424
+                3'd5 => 24'hFFFFDB
+                3'd6 => 24'hFFFFFF
+                _ => 24'h6D6D6D
             }
         }
     }

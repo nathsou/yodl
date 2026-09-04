@@ -1,6 +1,4 @@
-// Character primitives shared by semantic playground adapters. Keeping this
-// file free of display timing imports makes framebuffer examples
-// explicit about the hardware interfaces they actually use.
+// Character primitives shared by framebuffer adapters.
 type Char = u8
 
 module AsciiTable(char: Char) -> (q: u64) {
@@ -104,9 +102,8 @@ module AsciiTable(char: Char) -> (q: u64) {
     }
 }
 
-// Render text into a semantic framebuffer. Glyphs are enlarged to Scale
-// pixels and long strings wrap at the framebuffer edge, keeping text legible
-// in the playground without emulating a display scan.
+// Render text into a framebuffer. Glyphs are enlarged to Scale pixels and
+// long strings wrap at the framebuffer edge.
 module TextFramebuffer[Length: Nat, Width: Nat, Height: Nat, X: Nat, Y: Nat, Scale: Nat](
     text: [Length]Char,
 ) -> (pixel: [Height][Width]bool) {
@@ -132,9 +129,8 @@ module TextFramebuffer[Length: Nat, Width: Nat, Height: Nat, X: Nat, Y: Nat, Sca
     }
 }
 
-// Bit-packed variant for larger semantic framebuffers. Eight horizontal
-// pixels share one output byte, reducing simulator port traffic while the
-// playground reconstructs the declared Width x Height image.
+// Bit-packed variant for larger framebuffers. Eight horizontal pixels share
+// one output byte.
 module TextFramebufferBits[Length: Nat, Width: Nat, Height: Nat, PackedWidth: Nat, X: Nat, Y: Nat, Scale: Nat](
     text: [Length]Char,
 ) -> (pixel: [Height][PackedWidth]u8) {
@@ -165,9 +161,8 @@ module TextFramebufferBits[Length: Nat, Width: Nat, Height: Nat, PackedWidth: Na
     }
 }
 
-// Word-packed variant for the 400x300 playground text outputs. At Scale=8 a
-// framebuffer byte is exactly one font row; four bytes therefore cover one
-// u32 output word without a per-pixel output port.
+// Word-packed variant for 400x300 text outputs. At Scale=8 a framebuffer byte
+// is exactly one font row; four bytes cover one u32 output word.
 module TextFramebufferWords[Length: Nat, Width: Nat, Height: Nat, PackedWidth: Nat, X: Nat, Y: Nat, Scale: Nat](
     text: [Length]Char,
 ) -> (pixel: [Height][PackedWidth]u32) {

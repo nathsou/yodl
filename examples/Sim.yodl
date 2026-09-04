@@ -1,8 +1,5 @@
 import Life
 
-// The playground selects LifeSim from the imported Life package. This small
-// metadata module keeps the host-facing defaults next to the example without
-// adding a display protocol or wrapper logic.
 @simulation({
     top: "LifeSim",
     "clock": "clk",

@@ -1,8 +1,6 @@
 import Text
 import Font
 
-// Semantic framebuffer used by the playground. The counter and text are
-// ordinary synchronous logic; the host renders the output directly.
 @simulation({
     "clock": "clk",
     framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 9485933, off_color: 1118744 },

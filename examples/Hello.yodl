@@ -1,7 +1,5 @@
 import Font
 
-// Semantic framebuffer used by the playground. A simulation top exposes the
-// image directly; no display scan signals are required.
 @simulation({
     "clock": "clk",
     framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 8116210, off_color: 1056800 },
@@ -16,8 +14,6 @@ module HelloSim(
     clk: clock,
     rst: bool,
 ) -> (pixel: [300][13]u32) {
-    // The hardware message changes only after a very long timer interval;
-    // keep the initial message stable while the playground captures frames.
-    let message = "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!"
-    Font::TextFramebufferWords[Length: 69, Width: 400, Height: 300, PackedWidth: 13, X: 1, Y: 2, Scale: 8](text: message, pixel)
+    let message = "YODL; Yet anOther Description Language by Nathan Soufflet!"
+    Font::TextFramebufferWords[Length: 58, Width: 400, Height: 300, PackedWidth: 13, X: 1, Y: 2, Scale: 8](text: message, pixel)
 }

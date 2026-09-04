@@ -39,10 +39,8 @@ module LifePattern() -> (pattern: [LIFE_ROWS][LIFE_COLS]bool) {
     ]
 }
 
-// A compact top for the playground.  One clk edge is one Game of Life
-// generation and the aggregate output can be copied directly into a canvas.
-// The vector register keeps all 1,200 cells in one sequential object; the
-// hardware-oriented TopSim below intentionally retains the Cell hierarchy.
+// One clk edge advances one Game of Life generation. The vector register
+// keeps all 1,200 cells in one sequential object.
 @simulation({
     "clock": "clk",
     framebuffer: { width: 40, height: 30, state_prefix: "state", mode: "binary", on_color: 128676, off_color: 0 },

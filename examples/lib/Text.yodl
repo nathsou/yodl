@@ -1,5 +1,5 @@
-// Numeric text helpers are independent of any display protocol. Semantic
-// framebuffer adapters should import Font directly for glyph rasterization.
+// Numeric text helpers are independent of any display protocol. Framebuffer
+// adapters should import Font directly for glyph rasterization.
 type Char = u8
 
 module CharAt[Length: Nat, IndexWidth: Nat](

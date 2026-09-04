@@ -1,5 +1,3 @@
-// Logical noise source used by the playground. The simulation top exposes
-// packed RGB pixels directly, without a display scan protocol.
 @simulation({
     top: "NoiseSim",
     "clock": "clk",
@@ -18,11 +16,9 @@ module NoiseSim(
     seed.d = seed.q + 32'd1
     for row in 0..<150 {
         for col in 0..<50 {
-            // Mix the frame counter with the pixel coordinate. The hardware
-            // source advances once per display pixel; this equivalent hash keeps
-            // the same changing, full-colour appearance at 400x300 while
-            // packing four RGB332 pixels per output word and expanding each
-            // source pixel to an explicit 2x2 display block.
+            // Mix the frame counter with the pixel coordinate and pack four
+            // RGB332 pixels per output word. Each source pixel expands to a
+            // 2x2 display block.
             const x0 = col * 8
             const x1 = x0 + 2
             const x2 = x0 + 4
