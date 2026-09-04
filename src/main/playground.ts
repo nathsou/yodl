@@ -330,6 +330,10 @@ function stringOption(value: unknown): string | undefined {
     return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+function hasModule(source: string, name: string): boolean {
+    return new RegExp(`\\bmodule\\s+${name.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}\\b`).test(source);
+}
+
 function annotatedSimulation(source: string, requestedTop: string): VisualSimulation | undefined {
     const annotations = parseSimulationAnnotations(source);
     const requested = requestedTop.toLowerCase();
@@ -338,6 +342,8 @@ function annotatedSimulation(source: string, requestedTop: string): VisualSimula
         return !requested || target?.toLowerCase() === requested || value.module?.toLowerCase() === requested;
     });
     if (!annotation) return undefined;
+    const annotatedTop = stringOption(annotation.top) ?? annotation.module;
+    if (annotatedTop && !hasModule(source, annotatedTop)) return undefined;
     const rawFramebuffer = annotation.framebuffer && typeof annotation.framebuffer === 'object'
         ? annotation.framebuffer as Record<string, unknown>
         : undefined;
@@ -356,7 +362,7 @@ function annotatedSimulation(source: string, requestedTop: string): VisualSimula
     } satisfies NonNullable<SimulationRequest['framebuffer']> : undefined;
     const clock = stringOption(annotation.clock);
     return {
-        top: stringOption(annotation.top) ?? annotation.module,
+        top: annotatedTop,
         clock,
         framebuffer,
         frames: numberOption(annotation.frames),
@@ -372,7 +378,7 @@ function visualSimulation(path: string, requestedTop: string, source = ''): Visu
     if (annotated && (!requestedTop || annotated.top?.toLowerCase() === requestedTop.toLowerCase())) return annotated;
     const name = path.split('/').at(-1)?.toLowerCase() ?? '';
     const top = requestedTop.toLowerCase();
-    if (top === 'lifesim' || ((name === 'sim.yodl' || name === 'life.yodl') && !requestedTop)) {
+    if ((top === 'lifesim' && hasModule(source, 'LifeSim')) || ((name === 'sim.yodl' || name === 'life.yodl') && !requestedTop && hasModule(source, 'LifeSim'))) {
         return {
             top: 'LifeSim',
             framebuffer: { width: 40, height: 30, statePrefix: 'state', initSignal: 'init', initCycles: 1, onColor: 0x1f6a4, offColor: 0x000000 },
@@ -380,7 +386,7 @@ function visualSimulation(path: string, requestedTop: string, source = ''): Visu
             clocked: true,
         };
     }
-    if (top === 'imagesim' || (name === 'image.yodl' && !requestedTop)) {
+    if ((top === 'imagesim' && hasModule(source, 'ImageSim')) || (name === 'image.yodl' && !requestedTop && hasModule(source, 'ImageSim'))) {
         return {
             top: 'ImageSim',
             framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0xd8b35a, offColor: 0x141414 },
@@ -389,34 +395,34 @@ function visualSimulation(path: string, requestedTop: string, source = ''): Visu
             clocked: false,
         };
     }
-    if (top === 'noisesim' || (name === 'noise.yodl' && !requestedTop)) {
+    if ((top === 'noisesim' && hasModule(source, 'NoiseSim')) || (name === 'noise.yodl' && !requestedTop && hasModule(source, 'NoiseSim'))) {
         return {
             top: 'NoiseSim',
-            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x4d9de0, offColor: 0x081018, initSignal: 'rst', initCycles: 1 },
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'rgb', initSignal: 'rst', initCycles: 1 },
             frameCycles: 1,
             clocked: true,
         };
     }
-    if (top === 'hellosim' || (name === 'hello.yodl' && !requestedTop)) {
+    if ((top === 'hellosim' && hasModule(source, 'HelloSim')) || (name === 'hello.yodl' && !requestedTop && hasModule(source, 'HelloSim'))) {
         return {
             top: 'HelloSim',
-            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x7bdff2, offColor: 0x101820, initSignal: 'rst', initCycles: 1 },
+            framebuffer: { width: 80, height: 60, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x7bdff2, offColor: 0x101820, initSignal: 'rst', initCycles: 1 },
             frameCycles: 1,
             clocked: true,
         };
     }
-    if (top === 'euler1sim' || (name === 'euler1.yodl' && !requestedTop)) {
+    if ((top === 'euler1sim' && hasModule(source, 'Euler1Sim')) || (name === 'euler1.yodl' && !requestedTop && hasModule(source, 'Euler1Sim'))) {
         return {
             top: 'Euler1Sim',
-            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0xf4a261, offColor: 0x1b1725, initSignal: 'rst', initCycles: 1 },
+            framebuffer: { width: 80, height: 60, statePrefix: 'pixel', valueMode: 'binary', onColor: 0xf4a261, offColor: 0x1b1725, initSignal: 'rst', initCycles: 1 },
             frameCycles: 1,
             clocked: true,
         };
     }
-    if (top === 'clocksim' || (name === 'clock.yodl' && !requestedTop)) {
+    if ((top === 'clocksim' && hasModule(source, 'ClockSim')) || (name === 'clock.yodl' && !requestedTop && hasModule(source, 'ClockSim'))) {
         return {
             top: 'ClockSim',
-            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x90be6d, offColor: 0x111a18, initSignal: 'rst', initCycles: 1 },
+            framebuffer: { width: 80, height: 60, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x90be6d, offColor: 0x111a18, initSignal: 'rst', initCycles: 1 },
             frameCycles: 1,
             clocked: true,
         };
@@ -474,7 +480,11 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     const clock = element<HTMLInputElement>('simulation-clock').value.trim() || undefined;
     const inputs = parseSimulationInputs(element<HTMLInputElement>('simulation-inputs').value);
     const visual = visualSimulation(sharedEntryPath ?? selection.path, requestedTop, editors.input.getValue());
-    const top = requestedTop || visual.top;
+    // A source edit can remove an annotated/fallback simulator top while the
+    // text field still contains its old value. Let the simulator infer the
+    // actual top in that case instead of issuing a guaranteed missing-module
+    // error (for example, an edited Noise.yodl without NoiseSim).
+    const top = requestedTop && hasModule(editors.input.getValue(), requestedTop) ? requestedTop : visual.top;
     const width = readPositive('simulation-width');
     const height = readPositive('simulation-height');
     const framebuffer = visual.framebuffer && (width || height) ? {

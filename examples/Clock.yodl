@@ -27,12 +27,12 @@ module TicTac[Max: Nat](clk: clock, en: bool, rst: bool) -> (tick: bool, count: 
     tick = counter.q == Max
 }
 
-// Semantic framebuffer used by the playground. This deliberately uses a
-// short divider so stepping the simulation produces visible movement instead
-// of requiring the 25 MHz hardware clock divider.
+// Semantic framebuffer used by the playground. It preserves the Clock
+// module's seven-segment-like text output while using a short simulation
+// divider instead of requiring the 25 MHz hardware clock divider.
 @simulation({
     "clock": "clk",
-    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "binary", on_color: 9485933, off_color: 1118744 },
+    framebuffer: { width: 80, height: 60, state_prefix: "pixel", mode: "binary", on_color: 9485933, off_color: 1118744 },
     init_signal: "rst",
     init_cycles: 1,
     frame_cycles: 1,
@@ -43,19 +43,22 @@ module ClockSim(
     clk: clock,
     rst: bool,
 ) -> (
-    pixel: [30][40]bool,
+    pixel: [60][80]bool,
     seconds: u8,
 ) {
     let counter = Reg[u8](clk, rst)
     counter.d = counter.q + 1
     seconds = counter.q
-    for row in 0..<30 {
-        for col in 0..<40 {
-            const bit = (row * 40 + col) % 8
-            const grid = (row + col) % 5 == 0
-            pixel[row][col] = counter.q[bit] xor grid
-        }
-    }
+    let minutes = counter.q / 60
+    let hours = minutes / 60
+    let clock_text = [
+        ..Text::Dec[8](n: hours % 100).chars,
+        ':',
+        ..Text::Dec[8](n: minutes % 60).chars,
+        ':',
+        ..Text::Dec[8](n: counter.q % 60).chars,
+    ]
+    Text::TextFramebuffer[Length: 8, Width: 80, Height: 60, X: 6, Y: 7](text: clock_text, pixel)
 }
 
 module Clock(

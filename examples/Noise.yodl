@@ -2,11 +2,12 @@ import VGA
 import LFSR
 
 // Logical noise source used by the playground. The hardware Top below keeps
-// the VGA timing path; simulation renders this pixel matrix directly.
+// the VGA timing path; simulation renders the same kind of RGB noise directly
+// without spending 420,000 cycles on a VGA scan.
 @simulation({
     top: "NoiseSim",
     "clock": "clk",
-    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "binary", on_color: 5086688, off_color: 528408 },
+    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "rgb" },
     init_signal: "rst",
     init_cycles: 1,
     frame_cycles: 1,
@@ -16,14 +17,20 @@ import LFSR
 module NoiseSim(
     clk: clock,
     rst: bool,
-) -> (pixel: [30][40]bool) {
+) -> (pixel: [30][40]u24) {
     let seed = Reg[u32](clk, rst)
     seed.d = seed.q + 32'd1
     for row in 0..<30 {
         for col in 0..<40 {
-            const bit = (row * 40 + col) % 32
-            const base = (row + col) % 3 == 0
-            pixel[row][col] = seed.q[bit] xor base
+            // Mix the frame counter with the pixel coordinate. The hardware
+            // LFSR advances once per VGA pixel; this equivalent hash keeps
+            // the same changing, full-colour appearance at 40x30.
+            const offset = row * 37 + col * 101
+            let mix = seed.q xor uint!(offset)
+            let red = cat!(mix[2:0], mix[2:0], mix[2:1])
+            let green = cat!(mix[5:3], mix[5:3], mix[5:4])
+            let blue = cat!(mix[8:6], mix[8:6], mix[8:7])
+            pixel[row][col] = cat!(red, green, blue)
         }
     }
 }

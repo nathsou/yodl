@@ -3,11 +3,11 @@ import LFSR
 import Text
 
 // Semantic framebuffer used by the playground. The FPGA Top below retains
-// the VGA/scrolling implementation; this compact adapter keeps simulation
-// focused on the rendered pixels rather than scan timing.
+// the VGA/scrolling implementation; this compact adapter renders the same
+// message through the shared text rasterizer without scan timing.
 @simulation({
     "clock": "clk",
-    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "binary", on_color: 8116210, off_color: 1056800 },
+    framebuffer: { width: 80, height: 60, state_prefix: "pixel", mode: "binary", on_color: 8116210, off_color: 1056800 },
     init_signal: "rst",
     init_cycles: 1,
     frame_cycles: 1,
@@ -17,16 +17,11 @@ import Text
 module HelloSim(
     clk: clock,
     rst: bool,
-) -> (pixel: [30][40]bool) {
-    let phase = Reg[u6](clk, rst)
-    phase.d = phase.q + 1
-    for row in 0..<30 {
-        for col in 0..<40 {
-            const border = row == 0 or row == 29 or col == 0 or col == 39
-            const stripe = (row / 2 + col / 3) % 2 == 0
-            pixel[row][col] = border or (stripe xor phase.q[0])
-        }
-    }
+) -> (pixel: [60][80]bool) {
+    // The hardware message changes only after a very long timer interval;
+    // keep the initial message stable while the playground captures frames.
+    let message = "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!"
+    Text::TextFramebuffer[Length: 69, Width: 80, Height: 60, X: 1, Y: 0](text: message, pixel)
 }
 
 module Top(

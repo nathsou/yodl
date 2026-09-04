@@ -161,6 +161,27 @@ module TextDynamicPosition[Length: Nat](
     is_active = (bitmap shr pixel_idx)[0]
 }
 
+// Render one text line into an 80x60 semantic framebuffer. Each output pixel
+// represents a 4x4 area of the 8x8 glyph, preserving the text shape while
+// keeping browser simulations small enough to animate interactively.
+module TextFramebuffer[Length: Nat, Width: Nat, Height: Nat, X: Nat, Y: Nat](
+    text: [Length]Char,
+) -> (pixel: [Height][Width]bool) {
+    for row in 0..<Height {
+        for col in 0..<Width {
+            const cell_x = col / 4
+            const cell_y = row / 4
+            const glyph_x = (col % 4) * 2
+            const glyph_y = (row % 4) * 2
+            let char = cell_x >= X and cell_x < X + Length and cell_y == Y ? text[cell_x - X] : ' '
+            let bitmap = AsciiTable(char).q
+            let row0 = (bitmap shr (glyph_y * 8 + glyph_x))[1:0]
+            let row1 = (bitmap shr ((glyph_y + 1) * 8 + glyph_x))[1:0]
+            pixel[row][col] = orr row0 or orr row1
+        }
+    }
+}
+
 module Hex[Bits: Nat](n: uint[Bits]) -> (chars: [cdiv!(Bits, 4)]Char) {
     const Len = cdiv!(Bits, 4)
     for i in 0..<Len {

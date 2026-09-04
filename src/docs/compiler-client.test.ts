@@ -144,19 +144,19 @@ test('visual examples expose simulation-friendly pixel outputs', () => {
             clock: 'clk',
             frames: 2,
             frameCycles: 1,
-            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', initSignal: 'rst', initCycles: 1 },
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'rgb', initSignal: 'rst', initCycles: 1 },
         },
     });
     expect(noise.error).toBeUndefined();
     expect(noise.simulation?.framebuffers).toHaveLength(2);
     expect(noise.simulation?.framebuffers?.[0]).toMatchObject({ width: 40, height: 30 });
-    expect(noise.simulation?.framebuffers?.[0].pixels.some(pixel => pixel !== 528408)).toBe(true);
+    expect(new Set(noise.simulation?.framebuffers?.[0].pixels).size).toBeGreaterThan(4);
     expect(noise.simulation?.framebuffers?.[0].pixels).not.toEqual(noise.simulation?.framebuffers?.[1].pixels);
 
-    for (const [id, file, top] of [
-        [9, 'examples/Hello.yodl', 'HelloSim'],
-        [10, 'examples/Euler1.yodl', 'Euler1Sim'],
-        [11, 'examples/Clock.yodl', 'ClockSim'],
+    for (const [id, file, top, width] of [
+        [9, 'examples/Hello.yodl', 'HelloSim', 80],
+        [10, 'examples/Euler1.yodl', 'Euler1Sim', 80],
+        [11, 'examples/Clock.yodl', 'ClockSim', 80],
     ] as const) {
         const visual = compile({
             id,
@@ -169,11 +169,12 @@ test('visual examples expose simulation-friendly pixel outputs', () => {
                 clock: 'clk',
                 frames: 2,
                 frameCycles: 1,
-                framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', initSignal: 'rst', initCycles: 1 },
+                framebuffer: { width, height: 60, statePrefix: 'pixel', valueMode: 'binary', initSignal: 'rst', initCycles: 1 },
             },
         });
         expect(visual.error).toBeUndefined();
         expect(visual.simulation?.framebuffers).toHaveLength(2);
+        expect(visual.simulation?.framebuffers?.[0]).toMatchObject({ width, height: 60 });
         expect(visual.simulation?.framebuffers?.[0].pixels.some(pixel => pixel !== 0)).toBe(true);
     }
 });
