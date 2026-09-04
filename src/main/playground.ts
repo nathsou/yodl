@@ -76,7 +76,18 @@ auto.checked = readStorage('auto') !== 'false';
 const defaultBlank = '// Start a new circuit here.\nmodule Top(a: bool) -> (q: bool) {\n    q = a\n}\n';
 const originals = (path: string) => files[path] ?? defaultBlank;
 const originalSource = () => sharedEntryPath && sharedSource !== null ? sharedSource : originals(selection.path);
-const draftKey = () => sharedDraftKey || `draft:${selection.path}`;
+function sourceRevision(source: string): string {
+    // A compact, deterministic revision keeps built-in example drafts from
+    // masking updated simulator adapters after a site deployment. User edits
+    // remain sticky until the example source itself changes again.
+    let hash = 2166136261;
+    for (let i = 0; i < source.length; i++) {
+        hash ^= source.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+}
+const draftKey = () => sharedDraftKey || `draft:${selection.path}:${sourceRevision(originals(selection.path))}`;
 
 function lessonIndex() { return tour.findIndex(lesson => `tour/${lesson.file}` === selection.path); }
 function saveDraft() {
