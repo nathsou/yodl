@@ -5,18 +5,62 @@ import Timing
 // Logical image source used by the playground. The FPGA Top below keeps the
 // original VGA/memory implementation, while this compact form exposes pixels
 // directly so simulation does not spend a frame emulating scan timing.
+//
+// This is a 40x30 (4x decimated) extract of res/york.mem. Keeping the source
+// packed as eight 3-bit palette indices per u24 word avoids a 1,200-entry
+// literal while retaining the same picture and palette as the hardware path.
 @simulation({
-    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "binary", on_color: 14201690, off_color: 1315860 },
+    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "rgb", off_color: 0 },
     frames: 1,
     frame_cycles: 0,
     frame_rate: 1,
 })
-module ImageSim() -> (pixel: [30][40]bool) {
+module ImageSim() -> (pixel: [30][40]u24) {
+    const image: [30][5]u24 = [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [196608, 0, 0, 0, 8654144],
+        [2088960, 0, 0, 0, 1464952],
+        [14032192, 5, 0, 14376960, 16055925],
+        [14146472, 62, 0, 11984896, 9437039],
+        [14343543, 53, 0, 12025856, 6265125],
+        [12245941, 438, 0, 12550144, 16554303],
+        [12283317, 16552886, 16776783, 16764543, 2422975],
+        [14368118, 15007670, 16028623, 16252927, 2521199],
+        [13557102, 12283830, 14118270, 16228334, 16556031],
+        [12049454, 16702381, 16448447, 9671247, 9586980],
+        [13781998, 12049333, 3922879, 16750713, 2510415],
+        [14420846, 14146486, 3660735, 16751097, 2400039],
+        [14380470, 12049334, 3464127, 16775673, 15105639],
+        [2583499, 11984207, 16215406, 16752639, 16244735],
+        [2498505, 12243913, 8254429, 16777215, 16711679],
+        [2610907, 11983689, 15637245, 4768719, 2995986],
+        [14996447, 12049289, 16666191, 4856319, 9582354],
+        [2441087, 12050279, 16664697, 5118463, 6862610],
+        [9600603, 16241497, 16664895, 4756479, 6859034],
+        [8879867, 16244604, 4016487, 6856655, 8692698],
+        [7806825, 16555899, 3281529, 4756044, 6689636],
+        [3637244, 2472443, 8688201, 7452443, 9314250],
+        [3665983, 9288188, 8688227, 5322849, 5392666],
+        [3604335, 2410809, 9585249, 9586468, 8688227],
+        [16187391, 2396793, 9488457, 9550052, 7190307],
+        [14684159, 2593791, 9582881, 9585436, 7190812],
+        [16777215, 16777215, 9586767, 7194915, 9549387],
+    ]
     for row in 0..<30 {
         for col in 0..<40 {
-            const checker = (row / 3 + col / 3) % 2 == 0
-            const diagonal = row == col or row + col == 39
-            pixel[row][col] = checker xor diagonal
+            let palette_index = (image[row][col / 8] shr ((col % 8) * 3))[2:0]
+            pixel[row][col] = match palette_index {
+                3'd0 => 24'd7190271 // 0x6DB6FF
+                3'd1 => 24'd4802889 // 0x494949
+                3'd2 => 24'd0
+                3'd3 => 24'd2368512 // 0x242400
+                3'd4 => 24'd2368548 // 0x242424
+                3'd5 => 24'd16777178 // 0xFFFFDA
+                3'd6 => 24'd16777215 // 0xFFFFFF
+                _ => 24'd7171437 // 0x6D6D6D
+            }
         }
     }
 }

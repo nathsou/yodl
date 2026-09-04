@@ -124,12 +124,14 @@ test('visual examples expose simulation-friendly pixel outputs', () => {
             top: 'ImageSim',
             frames: 1,
             frameCycles: 0,
-            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary' },
+            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'rgb' },
         },
     });
     expect(image.error).toBeUndefined();
     expect(image.simulation?.framebuffers).toHaveLength(1);
-    expect(image.simulation?.framebuffers?.[0].pixels.some(pixel => pixel !== 0)).toBe(true);
+    expect(image.simulation?.framebuffers?.[0]).toMatchObject({ width: 40, height: 30 });
+    expect(image.simulation?.framebuffers?.[0].pixels[0]).toBe(0x6db6ff);
+    expect(new Set(image.simulation?.framebuffers?.[0].pixels).size).toBeGreaterThan(4);
 
     const noise = compile({
         id: 6,
