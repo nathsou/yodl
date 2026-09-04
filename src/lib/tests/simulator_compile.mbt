@@ -136,10 +136,7 @@ test "external module instances can use a host primitive model" {
   let circuit = @driver.compile_simulation(path="fixture.yodl", ext~)
   let models : Map[String, @simulator.PrimitiveModel] = Map([])
   models["Box"] = {
-    eval: (sim) => {
-      let value = sim.peek("a").as_bigint().to_int()
-      sim.poke("y", @simulator.SimValue::from_int(8, value + 1))
-    },
+    evaluate: (inputs) => [@simulator.SimValue::from_int(8, inputs[0].as_bigint().to_int() + 1)],
   }
   let sim = @simulator.Simulator::from_circuit_with_models(circuit, "Top", models)
   sim.poke("a", @simulator.SimValue::from_int(8, 41))
@@ -166,13 +163,7 @@ test "external aggregate ports are flattened for primitive models" {
   let circuit = @driver.compile_simulation(path="fixture.yodl", ext~)
   let models : Map[String, @simulator.PrimitiveModel] = Map([])
   models["Box"] = {
-    eval: (sim) => {
-      for index in 0..<2 {
-        let suffix = index.to_string()
-        let value = sim.peek("a_" + suffix).as_bigint().to_int()
-        sim.poke("y_" + suffix, @simulator.SimValue::from_int(8, value + 1))
-      }
-    },
+    evaluate: (inputs) => inputs.map(value => @simulator.SimValue::from_int(8, value.as_bigint().to_int() + 1)),
   }
   let sim = @simulator.Simulator::from_circuit_with_models(circuit, "Top", models)
   sim.poke("a_0", @simulator.SimValue::from_int(8, 10))
@@ -211,4 +202,259 @@ test "boolean framebuffers execute as packed rows across word boundaries" {
   let frame = @simulator.simulator_frame(sim, display.ports, 35, 2, true)
   assert_eq(frame.words, [0U, 2U, 0U, 2U])
   assert_true(frame.valid.iter().all(word => word == 0xffffffffU))
+}
+
+fn compile_test_simulator(source: String) -> @simulator.Simulator raise {
+  let files: Map[String, String] = { "fixture.yodl": source }
+  let ext: @utils.Externals = {
+    fs: make_vfs(files), println: fn(_) { () }, get_args: fn() { [] }, exit: fn(_) { () },
+  }
+  @simulator.Simulator::from_circuit(@driver.compile_simulation(path="fixture.yodl", ext~), "Top")
+}
+
+test "asynchronous memory reads follow address and enable without an edge" {
+  let source =
+    #|module Top(clk: clock, addr: u2, wdata: u8, we: bool, en: bool) -> (rdata: u8) {
+    #|  let mem = Memory[T: u8, Depth: 4, ReadPorts: 1, WritePorts: 1, ReadLatency: 0, WriteLatency: 1](
+    #|    read: [(clk: clk, en: en, addr: addr)],
+    #|    write: [(clk: clk, en: we, addr: addr, data: wdata, mask: true)],
+    #|  )
+    #|  rdata = mem.q[0]
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("en", @simulator.SimValue::from_int(1, 1))
+  sim.poke("we", @simulator.SimValue::from_int(1, 1))
+  for address in 0..<2 {
+    sim.poke("addr", @simulator.SimValue::from_int(2, address))
+    sim.poke("wdata", @simulator.SimValue::from_int(8, (address + 1) * 11))
+    sim.step_clock("clk")
+  }
+  sim.poke("we", @simulator.SimValue::from_int(1, 0))
+  sim.poke("addr", @simulator.SimValue::from_int(2, 0))
+  sim.settle()
+  assert_eq(sim.peek("rdata").as_bigint().to_int(), 11)
+  assert_true(sim.peek("rdata").is_known())
+  sim.poke("en", @simulator.SimValue::from_int(1, 0))
+  sim.settle()
+  assert_false(sim.peek("rdata").is_known())
+  sim.poke("en", @simulator.SimValue::from_int(1, 1))
+  sim.settle()
+  assert_true(sim.peek("rdata").is_known())
+  assert_eq(sim.peek("rdata").as_bigint().to_int(), 11)
+}
+
+test "clock aliases drive local and nested registers in the selected domain" {
+  let source =
+    #|module Child(clk: clock, d: u8) -> (q: u8) {
+    #|  let c = clk
+    #|  let r = Reg[u8](clk: c)
+    #|  r.d = d
+    #|  q = r.q
+    #|}
+    #|module Top(clk: clock, other: clock, d: u8) -> (q: u8, nested: u8, independent: u8) {
+    #|  let c = clk
+    #|  let alias = c
+    #|  let r = Reg[u8](clk: alias)
+    #|  r.d = d
+    #|  q = r.q
+    #|  let child = Child(clk: alias, d: d)
+    #|  nested = child.q
+    #|  let separate = Child(clk: other, d: d)
+    #|  independent = separate.q
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("d", @simulator.SimValue::from_int(8, 23))
+  sim.step_clock("clk")
+  for name in ["q", "nested"] {
+    assert_true(sim.peek(name).is_known())
+    assert_eq(sim.peek(name).as_bigint().to_int(), 23)
+  }
+  assert_false(sim.peek("independent").is_known())
+  sim.step_clock("other")
+  assert_eq(sim.peek("independent").as_bigint().to_int(), 23)
+}
+
+test "nested asynchronous resets settle through combinational reset logic" {
+  let source =
+    #|module Child(clk: clock, rst: bool, d: u8) -> (q: u8) {
+    #|  let r = RegAsyncReset[u8](clk, rst: rst)
+    #|  r.d = d
+    #|  q = r.q
+    #|}
+    #|module Middle(clk: clock, rst: bool, d: u8) -> (q: u8) {
+    #|  let child = Child(clk, rst: rst, d: d)
+    #|  q = child.q
+    #|}
+    #|module Top(clk: clock, rst: bool, enable: bool, d: u8) -> (q: u8) {
+    #|  let child = Middle(clk, rst: rst and enable, d: d)
+    #|  q = child.q
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("d", @simulator.SimValue::from_int(8, 23))
+  sim.poke("enable", @simulator.SimValue::from_int(1, 1))
+  sim.step_clock("clk")
+  assert_eq(sim.peek("q").as_bigint().to_int(), 23)
+  sim.poke("rst", @simulator.SimValue::from_int(1, 1))
+  sim.settle()
+  assert_true(sim.peek("q").is_known())
+  assert_eq(sim.peek("q").as_bigint().to_int(), 0)
+  sim.step_clock("clk")
+  assert_eq(sim.peek("q").as_bigint().to_int(), 0)
+  sim.poke("rst", @simulator.SimValue::from_int(1, 0))
+  sim.settle()
+  assert_eq(sim.peek("q").as_bigint().to_int(), 0)
+  sim.step_clock("clk")
+  assert_eq(sim.peek("q").as_bigint().to_int(), 23)
+}
+
+test "signed widening and unsigned negation preserve operand interpretation" {
+  let source =
+    #|module Top(a: s8, u: u8, wide: s24, uwide: u24) -> (
+    #|  implicit: s16, explicit: s16, unsigned: u16, neg: s9,
+    #|  implicit_wide: s32, explicit_wide: s32, neg_wide: s25,
+    #|) {
+    #|  implicit = a
+    #|  explicit = pad!(a, 16)
+    #|  unsigned = pad!(u, 16)
+    #|  neg = -u
+    #|  implicit_wide = wide
+    #|  explicit_wide = pad!(wide, 32)
+    #|  neg_wide = -uwide
+    #|}
+  let sim = compile_test_simulator(source)
+  for pair in [("a", 8), ("u", 8), ("wide", 24), ("uwide", 24)] {
+    let (name, width) = pair
+    sim.poke(name, @simulator.SimValue::from_int(width, (1 << width) - 1))
+  }
+  sim.settle()
+  for name in ["implicit", "explicit"] {
+    assert_eq(sim.peek(name).as_bigint().to_string(), "65535")
+  }
+  for name in ["implicit_wide", "explicit_wide"] {
+    assert_eq(sim.peek(name).as_bigint().to_string(), "4294967295")
+  }
+  assert_eq(sim.peek("unsigned").as_bigint().to_int(), 255)
+  assert_eq(sim.peek("neg").as_bigint().to_int(), 257)
+  assert_eq(sim.peek("neg_wide").as_bigint().to_int(), 16777217)
+  sim.poke("a", @simulator.SimValue::from_int(8, 12))
+  sim.settle()
+  assert_eq(sim.peek("implicit").as_bigint().to_int(), 12)
+  sim.poke("a", @simulator.SimValue::new(8, 255, known=false))
+  sim.settle()
+  assert_false(sim.peek("implicit").is_known())
+  assert_false(sim.peek("explicit").is_known())
+}
+
+test "clocked commands sample the pre-edge register state" {
+  let source =
+    #|module Top(clk: clock, rst: bool) -> (q: u8) {
+    #|  let r = RegAsyncReset[u8](clk, rst: rst)
+    #|  r.d = r.q + 1'b1
+    #|  q = r.q
+    #|  printf!("counter %d", r.q)
+    #|  assert!(r.q == 0)
+    #|  if r.q == 1 { stop!(); }
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("rst", @simulator.SimValue::from_int(1, 1))
+  sim.settle()
+  sim.poke("rst", @simulator.SimValue::from_int(1, 0))
+  sim.step_clock("clk")
+  assert_eq(sim.messages().map(m => m.text()), ["counter 0"])
+  assert_eq(sim.failure(), None)
+  assert_false(sim.is_halted())
+  assert_eq(sim.peek("q").as_bigint().to_int(), 1)
+  sim.step_clock("clk")
+  assert_true(sim.failure() is Some(_))
+  assert_true(sim.is_halted())
+  assert_eq(sim.peek("q").as_bigint().to_int(), 2)
+}
+
+test "clocked commands use the shared FIRRTL formatter" {
+  let source =
+    #|module Top(clk: clock) -> () {
+    #|  printf!("b=%b c=%c d=%d x=%x %%", 8'd42, 8'd42, 8'd42, 8'd42)
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.step_clock("clk")
+  assert_eq(sim.messages().map(m => m.text()), ["b=00101010 c=* d=42 x=2a %"])
+}
+
+test "tied child clocks sample a pipeline simultaneously through hierarchy" {
+  let source =
+    #|module Child(c1: clock, c2: clock, d: u8) -> (q: u8) {
+    #|  let a = Reg[u8](clk: c1)
+    #|  let b = Reg[u8](clk: c2)
+    #|  a.d = d
+    #|  b.d = a.q
+    #|  q = b.q
+    #|}
+    #|module Middle(c1: clock, c2: clock, d: u8) -> (q: u8) {
+    #|  let child = Child(c1: c1, c2: c2, d: d)
+    #|  q = child.q
+    #|}
+    #|module Top(clk: clock, d: u8) -> (q: u8) {
+    #|  let child = Middle(c1: clk, c2: clk, d: d)
+    #|  q = child.q
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("d", @simulator.SimValue::from_int(8, 23))
+  sim.step_clock("clk")
+  assert_false(sim.peek("q").is_known())
+  sim.poke("d", @simulator.SimValue::from_int(8, 42))
+  sim.step_clock("clk")
+  assert_true(sim.peek("q").is_known())
+  assert_eq(sim.peek("q").as_bigint().to_int(), 23)
+  sim.step_clock("clk")
+  assert_eq(sim.peek("q").as_bigint().to_int(), 42)
+}
+
+test "asynchronous memory reads preserve unknown address and enable" {
+  let source =
+    #|module Top(clk: clock, addr: u2, en: bool, we: bool, data: u8) -> (q: u8) {
+    #|  let mem = Memory[T: u8, Depth: 4, ReadPorts: 1, WritePorts: 1, ReadLatency: 0, WriteLatency: 1](
+    #|    read: [(clk: clk, en: en, addr: addr)],
+    #|    write: [(clk: clk, en: we, addr: 2'd0, data: data, mask: true)])
+    #|  q = mem.q[0]
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("en", @simulator.SimValue::from_int(1, 1))
+  sim.poke("we", @simulator.SimValue::from_int(1, 1))
+  sim.poke("data", @simulator.SimValue::from_int(8, 23))
+  sim.step_clock("clk")
+  assert_true(sim.peek("q").is_known())
+  assert_eq(sim.peek("q").as_bigint().to_int(), 23)
+  sim.poke("addr", @simulator.SimValue::new(2, 0, known=false))
+  sim.settle()
+  assert_false(sim.peek("q").is_known())
+  sim.poke("addr", @simulator.SimValue::from_int(2, 0))
+  sim.poke("en", @simulator.SimValue::new(1, 1, known=false))
+  sim.settle()
+  assert_false(sim.peek("q").is_known())
+  sim.poke("en", @simulator.SimValue::from_int(1, 1))
+  sim.settle()
+  assert_true(sim.peek("q").is_known())
+  assert_eq(sim.peek("q").as_bigint().to_int(), 23)
+}
+
+test "tied child clocks preserve synchronous read-under-write collisions" {
+  let source =
+    #|module Child(c1: clock, c2: clock, we: bool) -> (q: u8) {
+    #|  let mem = Memory[T: u8, Depth: 4, ReadPorts: 1, WritePorts: 1, ReadLatency: 1, WriteLatency: 1](
+    #|    read: [(clk: c2, en: true, addr: 2'd0)],
+    #|    write: [(clk: c1, en: we, addr: 2'd0, data: 8'd23, mask: true)])
+    #|  q = mem.q[0]
+    #|}
+    #|module Top(clk: clock, we: bool) -> (q: u8) {
+    #|  let child = Child(c1: clk, c2: clk, we: we)
+    #|  q = child.q
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("we", @simulator.SimValue::from_int(1, 1))
+  sim.step_clock("clk")
+  assert_false(sim.peek("q").is_known())
+  sim.poke("we", @simulator.SimValue::from_int(1, 0))
+  sim.step_clock("clk")
+  assert_true(sim.peek("q").is_known())
+  assert_eq(sim.peek("q").as_bigint().to_int(), 23)
 }

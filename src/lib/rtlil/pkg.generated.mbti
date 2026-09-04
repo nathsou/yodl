@@ -126,4 +126,3 @@ pub(all) struct Wire {
 // Type aliases
 
 // Traits
-

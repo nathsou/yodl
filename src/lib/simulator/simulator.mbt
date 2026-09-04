@@ -12,7 +12,6 @@ using @firrtl {
   type TypedRef,
   type Type,
   type PrimOp,
-  type Command,
 }
 
 pub(all) struct SimValue {
@@ -73,15 +72,34 @@ pub(all) enum SimExpr {
 pub(all) enum SimStmt {
   Node(name~: String, expr~: SimExpr)
   Connect(name~: String, expr~: SimExpr)
-  When(cond~: SimExpr, body~: Array[SimStmt], otherwise~: Array[SimStmt])
   Other
 }
 
-/// A host-provided implementation for an external FIRRTL module.  Models are
-/// invoked after their input ports are propagated; they can read inputs with
-/// peek() and drive outputs with poke().
+pub enum SimFormatPart {
+  Text(String)
+  Binary
+  Character
+  Decimal
+  Hexadecimal
+}
+
+pub enum SimCommandAction {
+  Printf(parts~: Array[SimFormatPart], args~: Array[(SimExpr, Bool)])
+  Assert(pred~: SimExpr, parts~: Array[SimFormatPart], args~: Array[(SimExpr, Bool)])
+  Stop(code~: Int)
+}
+
+pub struct SimCommand {
+  clock: String
+  enable: SimExpr
+  action: SimCommandAction
+}
+
+/// A host-provided implementation for an external FIRRTL module. Inputs and
+/// outputs follow the ExtModule port declaration order, filtered by direction.
+/// Models are combinational: they must return one value for every output.
 pub(all) struct PrimitiveModel {
-  eval: (Simulator) -> Unit raise SimulatorError
+  evaluate: (Array[SimValue]) -> Array[SimValue] raise SimulatorError
 }
 
 suberror SimulatorError {
@@ -121,8 +139,9 @@ pub(all) struct RegisterState {
   name: String
   width: Int
   clock: String
-  reset: TypedExpr?
-  init: TypedExpr?
+  reset: SimExpr?
+  init: SimExpr?
+  async_reset: Bool
   previous_clock: Bool
 }
 
@@ -130,7 +149,6 @@ struct MemoryState {
   width: Int
   depth: Int
   read_latency: Int
-  write_latency: Int
   read_under_write: @firrtl.ReadUnderWrite
   readers: Array[String]
   writers: Array[String]
@@ -140,12 +158,12 @@ struct MemoryState {
 }
 
 priv struct MemoryWrite {
-  address: Int
+  address: Int?
   data: SimValue
   mask: SimValue
 }
 
-pub(all) struct Simulator {
+pub struct Simulator {
   design: TypedModule
   program: Array[SimStmt]
   signals: Map[String, SimValue]
@@ -167,14 +185,16 @@ pub(all) struct Simulator {
   // A reverse dependency index lets settle() revisit only statements affected
   // by a poke, clock edge, register update, or child output change.
   dependents: Map[String, Array[Int]]
-  mut pending: Array[Int]
-  mut queued: Array[Bool]
-  primitive_models: Map[String, PrimitiveModel]
+  pending: Array[Int]
+  queued: Array[Bool]
   primitive_model: PrimitiveModel?
+  commands: Array[SimCommand]
 }
 
 pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
-  Simulator::new_with_modules(design, modules=Map([]), primitive_models=Map([]), primitive_model=None)
+  let circuit: TypedCircuit = { version: @firrtl.min_version(), id: design.id, annotations: [], decls: [@firrtl.Decl::Module(design)] }
+  let circuit = prepare_simulation_circuit(circuit)
+  Simulator::from_circuit(circuit, design.id.inner())
 }
 
 /// Build a hierarchical simulator for one module in a typed FIRRTL circuit.
@@ -207,7 +227,7 @@ pub fn Simulator::from_circuit_with_models(
     Some(design) => design
     None => {
       // Imported modules are namespace-qualified by elaboration (for example
-      // `LifeSim` becomes `Life_LifeSim`).  Accept the source-level leaf name
+      // `GameOfLifeSim` becomes `GameOfLife_GameOfLifeSim`). Accept the source-level leaf name
       // when it resolves unambiguously so playground users do not need to
       // know the compiler's internal prefix.
       let suffix = "_" + top
@@ -218,7 +238,18 @@ pub fn Simulator::from_circuit_with_models(
       }
     }
   }
-  Simulator::new_with_modules(design, modules~, primitive_models~, primitive_model=None)
+  Simulator::new_with_modules(design, modules~, primitive_model=primitive_models.get(design.id.inner()), primitive_models~)
+}
+
+/// Normalize raw typed FIRRTL once before constructing a simulator. Driver
+/// output already satisfies this contract; `Simulator::new` uses it for
+/// hand-built modules.
+pub fn prepare_simulation_circuit(circuit: TypedCircuit) -> TypedCircuit raise SimulatorError {
+  try {
+    @firrtl.LowerAggregateTypesPass::new(split_memories=false, packed_bool_rows=true).prepare_simulation(circuit)
+  } catch {
+    err => raise Unsupported(message=err.to_string())
+  }
 }
 
 fn Simulator::new_with_modules(
@@ -228,6 +259,11 @@ fn Simulator::new_with_modules(
   primitive_model~: PrimitiveModel?,
 ) -> Simulator raise SimulatorError {
   let design = { ..design, body: order_simulation_body(design.body) }
+  for stmt in design.body {
+    if stmt is @firrtl.Stmt::When(_) {
+      raise Unsupported(message="simulation requires normalized FIRRTL; remaining conditional statements are not supported")
+    }
+  }
   let signals: Map[String, SimValue] = Map([])
   let registers: Map[String, RegisterState] = Map([])
   let next_registers: Map[String, SimValue] = Map([])
@@ -237,6 +273,7 @@ fn Simulator::new_with_modules(
   let child_message_offsets: Map[String, Int] = Map([])
   let memory_clocks: Map[String, String] = Map([])
   let program = design.body.map(compile_stmt)
+  let commands = compile_commands(design)
   let dependents: Map[String, Array[Int]] = Map([])
   let pending = Array::new(capacity=design.body.length())
   let queued = Array::new(capacity=design.body.length())
@@ -263,25 +300,36 @@ fn Simulator::new_with_modules(
       @firrtl.Stmt::Reg(id~, ty~, clock~) => {
         let name = id.inner()
         let clock = clock_name(clock)
+        let clock = require_clock_source(design, clock)
         let width = type_width(ty)
         signals[name] = SimValue::new(width, 0, known=false)
         registers[name] = {
-          name, width, clock, reset: None, init: None, previous_clock: false,
+          name, width, clock, reset: None, init: None, async_reset: false, previous_clock: false,
         }
         next_registers[name] = signals[name]
       }
       @firrtl.Stmt::RegReset(id~, ty~, clock~, reset~, init~) => {
         let name = id.inner()
         let clock = clock_name(clock)
+        let clock = require_clock_source(design, clock)
         let width = type_width(ty)
         signals[name] = SimValue::new(width, 0, known=false)
         registers[name] = {
-          name, width, clock, reset: Some(reset), init: Some(init), previous_clock: false,
+          name,
+          width,
+          clock,
+          reset: Some(compile_expr(reset)),
+          init: Some(compile_expr(init)),
+          async_reset: reset.ty() is @firrtl.Type::AsyncReset,
+          previous_clock: false,
         }
         next_registers[name] = signals[name]
       }
       @firrtl.Stmt::Mem(mem) => {
         let id = mem.id.inner()
+        if mem.read_latency < 0 || mem.read_latency > 1 || mem.write_latency != 1 {
+          raise Unsupported(message="memory '{id}' requires read latency 0 or 1 and write latency 1")
+        }
         let width = type_width(mem.data_type)
         let data = Array::new(capacity=mem.depth)
         for _ in 0..<mem.depth { data.push(SimValue::new(width, 0, known=false)) }
@@ -289,7 +337,6 @@ fn Simulator::new_with_modules(
           width,
           depth: mem.depth,
           read_latency: mem.read_latency,
-          write_latency: mem.write_latency,
           read_under_write: mem.read_under_write,
           readers: mem.readers.map(id => id.inner()),
           writers: mem.writers.map(id => id.inner()),
@@ -297,17 +344,13 @@ fn Simulator::new_with_modules(
           data,
           read_data: Map([]),
         }
-        for reader in mem.readers {
+        for reader in mem.readers + mem.readwriters {
           let name = id + "." + reader.inner()
-          if find_signal_source(design, name + ".clk") is Some(clock) {
-            memory_clocks[name] = clock
-          }
+          memory_clocks[name] = require_clock_source(design, name + ".clk")
         }
         for writer in mem.writers {
           let name = id + "." + writer.inner()
-          if find_signal_source(design, name + ".clk") is Some(clock) {
-            memory_clocks[name] = clock
-          }
+          memory_clocks[name] = require_clock_source(design, name + ".clk")
         }
       }
       @firrtl.Stmt::Inst(id~, of~, sig~) => {
@@ -350,6 +393,9 @@ fn Simulator::new_with_modules(
           primitive_model=model,
         )
         for port_name, port in sig.ports {
+          if port.dir is @parse.PortDir::Input && port.ty is @firrtl.Type::Clock {
+            let _ = require_clock_source(design, instance + "." + port_name)
+          }
           signals[instance + "." + port_name] = SimValue::new(type_width(port.ty), 0, known=false)
         }
       }
@@ -362,6 +408,18 @@ fn Simulator::new_with_modules(
     collect_stmt_refs(stmt, refs)
     for name in refs {
       add_dependent(dependents, name, i)
+      // Asynchronous read data also depends on the read-port controls.
+      for memory_id, memory in memories {
+        if memory.read_latency != 0 { continue }
+        for reader in memory.readers + memory.readwriters {
+          let port = memory_id + "." + reader
+          if name == port + ".data" || name == port + ".rdata" {
+            for control in ["addr", "en", "wmode"] {
+              add_dependent(dependents, port + "." + control, i)
+            }
+          }
+        }
+      }
     }
     // All combinational statements are evaluated once on the first settle.
     pending.push(i)
@@ -390,8 +448,8 @@ fn Simulator::new_with_modules(
     dependents,
     pending,
     queued,
-    primitive_models,
     primitive_model,
+    commands,
   }
 }
 
@@ -466,13 +524,86 @@ fn collect_ref_refs(reference: @firrtl.TypedRef, refs: Array[String]) -> Unit {
 fn compile_stmt(stmt: @firrtl.TypedStmt) -> SimStmt {
   match stmt {
     @firrtl.Stmt::Node(id~, expr~) => SimStmt::Node(name=id.inner(), expr=compile_expr(expr))
-    @firrtl.Stmt::Connect(lhs, rhs) => SimStmt::Connect(name=ref_name(lhs), expr=compile_expr(rhs))
-    @firrtl.Stmt::When(when) => SimStmt::When(
-      cond=compile_expr(when.cond),
-      body=when.body.map(compile_stmt),
-      otherwise=when.otherwise.unwrap_or([]).map(compile_stmt),
-    )
+    @firrtl.Stmt::Connect(lhs, rhs) => {
+      let expr = compile_expr(rhs)
+      let width = type_width(lhs.ty())
+      // Hand-built typed FIRRTL may widen a connection without an explicit pad.
+      let expr = if type_signed(rhs.ty()) && width > type_width(rhs.ty()) {
+        SimExpr::Prim(op=@firrtl.PrimOp::Pad, args=[expr], width~, signed=true)
+      } else { expr }
+      SimStmt::Connect(name=ref_name(lhs), expr~)
+    }
     _ => SimStmt::Other
+  }
+}
+
+fn compile_commands(design: TypedModule) -> Array[SimCommand] raise SimulatorError {
+  let commands = []
+  for stmt in design.body {
+    guard stmt is @firrtl.Stmt::Command(command) else { continue }
+    match command {
+      @firrtl.Command::Printf(clk~, en~, fmt~, args~) => {
+        let clock = require_clock_source(design, clock_name(clk))
+        commands.push({
+          clock,
+          enable: compile_expr(en),
+          action: SimCommandAction::Printf(
+            parts=compile_format(fmt, args),
+            args=args.map(arg => (compile_expr(arg), type_signed(arg.ty()))),
+          ),
+        })
+      }
+      @firrtl.Command::Assert(clk~, en~, pred~, fmt~, args~) => {
+        let clock = require_clock_source(design, clock_name(clk))
+        commands.push({
+          clock,
+          enable: compile_expr(en),
+          action: SimCommandAction::Assert(
+            pred=compile_expr(pred),
+            parts=compile_format(fmt, args),
+            args=args.map(arg => (compile_expr(arg), type_signed(arg.ty()))),
+          ),
+        })
+      }
+      @firrtl.Command::Stop(clk~, en~, code~) => {
+        let clock = require_clock_source(design, clock_name(clk))
+        commands.push({ clock, enable: compile_expr(en), action: SimCommandAction::Stop(code~) })
+      }
+    }
+  }
+  commands
+}
+
+fn compile_format(fmt: String, args: Array[TypedExpr]) -> Array[SimFormatPart] raise SimulatorError {
+  let parsed = try @firrtl.FormatString::parse(fmt) catch {
+    err => raise Unsupported(message=err.to_string())
+  }
+  let parts = []
+  let mut placeholders = 0
+  for part in parsed.parts {
+    match part {
+      @firrtl.FormatStringPart::StringPart(text) => parts.push(SimFormatPart::Text(text))
+      @firrtl.FormatStringPart::EscapedChar(char) => parts.push(SimFormatPart::Text(char.to_string()))
+      @firrtl.FormatStringPart::BinaryPlaceholder => { placeholders += 1; parts.push(SimFormatPart::Binary) }
+      @firrtl.FormatStringPart::AsciiPlaceholder => { placeholders += 1; parts.push(SimFormatPart::Character) }
+      @firrtl.FormatStringPart::DecimalPlaceholder => { placeholders += 1; parts.push(SimFormatPart::Decimal) }
+      @firrtl.FormatStringPart::HexadecimalPlaceholder => { placeholders += 1; parts.push(SimFormatPart::Hexadecimal) }
+    }
+  }
+  if placeholders != args.length() {
+    raise Unsupported(message="format string has \{placeholders} placeholders for \{args.length()} arguments")
+  }
+  parts
+}
+
+// Operand interpretation is shared by compiled data paths and command/reset evaluation.
+fn primitive_signed(op: PrimOp, args: Array[TypedExpr], ty: Type) -> Bool {
+  match op {
+    @firrtl.PrimOp::Lt | @firrtl.PrimOp::Leq | @firrtl.PrimOp::Gt | @firrtl.PrimOp::Geq |
+    @firrtl.PrimOp::Eq | @firrtl.PrimOp::Neq | @firrtl.PrimOp::And | @firrtl.PrimOp::Or |
+    @firrtl.PrimOp::Xor | @firrtl.PrimOp::Neg | @firrtl.PrimOp::Dshl =>
+      args.get(0).map(expr => type_signed(expr.ty())).unwrap_or(false)
+    _ => type_signed(ty)
   }
 }
 
@@ -486,11 +617,7 @@ fn compile_expr(expr: @firrtl.TypedExpr) -> SimExpr {
       fval=compile_expr(fval),
     )
     @firrtl.Expr::PrimOp(op~, args~, ty~) => {
-      let signed = match op {
-        @firrtl.PrimOp::Lt | @firrtl.PrimOp::Leq | @firrtl.PrimOp::Gt | @firrtl.PrimOp::Geq =>
-          args.get(0).map(expr => type_signed(expr.ty())).unwrap_or(false)
-        _ => type_signed(ty)
-      }
+      let signed = primitive_signed(op, args, ty)
       SimExpr::Prim(
         op~,
         args=args.map(compile_expr),
@@ -587,6 +714,18 @@ pub fn Simulator::peek(self: Simulator, name: String) -> SimValue raise Simulato
 /// allowing a malformed design to hang a testbench or browser worker.
 pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
   if self.halted { return }
+  self.settle_pending()
+}
+
+fn Simulator::settle_pending(self: Simulator) -> Unit raise SimulatorError {
+  // The normalized program has a deterministic producer order. Evaluate every
+  // combinational node at the start of a public settle rather than depending
+  // on ad-hoc dependency exceptions for memory controls or model inputs.
+  // The reverse index remains useful for follow-up propagation within this
+  // sweep, after a register, asynchronous reset, or child output changes.
+  for index in 0..<self.program.length() {
+    self.enqueue_statement(index)
+  }
   let mut evaluated = 0
   while true {
     // Process in source/enqueue order. A stack repeatedly propagates partially
@@ -604,6 +743,7 @@ pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
       self.eval_combinational_stmt(self.program[index])
     }
     self.pending.clear()
+    self.apply_async_resets()
     let child_changed = self.settle_children()
     if self.pending.length() == 0 && !child_changed { break }
   }
@@ -622,47 +762,7 @@ fn Simulator::eval_combinational_stmt(self: Simulator, stmt: SimStmt) -> Unit ra
         let _ = self.assign_signal(name, value)
       }
     }
-    SimStmt::When(cond~, body~, otherwise~) => {
-      let condition = self.eval_compiled_expr(cond)
-      if !condition.known {
-        // A conditional assignment with an unknown predicate cannot safely
-        // choose one branch. Mark the values written by either branch as
-        // unknown instead of silently taking the false branch.
-        let names = []
-        for nested in body { collect_sim_stmt_assignments(nested, names) }
-        for nested in otherwise { collect_sim_stmt_assignments(nested, names) }
-        for name in names {
-          match self.signals.get(name) {
-            Some(value) => {
-              let unknown = SimValue::new(value.width, 0, known=false)
-              if self.registers.contains(name) {
-                self.next_registers[name] = unknown
-              } else {
-                let _ = self.assign_signal(name, unknown)
-              }
-            }
-            None => ()
-          }
-        }
-      } else {
-        let selected = if condition.raw != 0 { body } else { otherwise }
-        for nested in selected {
-          self.eval_combinational_stmt(nested)
-        }
-      }
-    }
     SimStmt::Other => ()
-  }
-}
-
-fn collect_sim_stmt_assignments(stmt: SimStmt, names: Array[String]) -> Unit {
-  match stmt {
-    SimStmt::Connect(name~, ..) => if !names.contains(name) { names.push(name) }
-    SimStmt::When(body~, otherwise~, ..) => {
-      for nested in body { collect_sim_stmt_assignments(nested, names) }
-      for nested in otherwise { collect_sim_stmt_assignments(nested, names) }
-    }
-    _ => ()
   }
 }
 
@@ -726,10 +826,29 @@ fn Simulator::settle_children(self: Simulator) -> Bool raise SimulatorError {
         }
       }
     }
-    if input_changed || child.pending.length() > 0 {
-      match child.primitive_model {
-        Some(model) => (model.eval)(child)
-        None => child.settle()
+    match child.primitive_model {
+      Some(model) => {
+        let inputs = []
+        for port in child.design.ports {
+          if port.dir is @parse.PortDir::Input {
+            inputs.push(self.signals.get(instance + "." + port.id.inner()).unwrap_or(SimValue::zero(type_width(port.ty))))
+          }
+        }
+        let outputs = (model.evaluate)(inputs)
+        let output_ports = child.design.ports.filter(port => port.dir is @parse.PortDir::Output)
+        if outputs.length() != output_ports.length() {
+          raise Unsupported(message="primitive model for '\{child.design.id.inner()}' returned \{outputs.length()} outputs for \{output_ports.length()} ports")
+        }
+        for pair in @utils.zip2(output_ports, outputs) {
+          let (port, value) = pair
+          if value.width != type_width(port.ty) {
+            raise Unsupported(message="primitive model for '\{child.design.id.inner()}' returned width \{value.width} for output '\{port.id.inner()}', expected \{type_width(port.ty)}")
+          }
+          let _ = child.assign_signal(port.id.inner(), value)
+        }
+      }
+      None => if input_changed || child.pending.length() > 0 {
+        child.settle()
       }
     }
     for port in child.design.ports {
@@ -759,22 +878,15 @@ pub fn Simulator::set_clock(self: Simulator, name: String, high: Bool) -> Unit r
 
 fn Simulator::apply_async_resets(self: Simulator) -> Unit raise SimulatorError {
   for name, reg in self.registers {
-    let is_async = match reg.reset {
-      Some(expr) => expr.ty() is @firrtl.Type::AsyncReset
-      None => false
-    }
-    if !is_async { continue }
-    let asserted = match reg.reset {
-      Some(expr) => self.eval_expr(expr).raw != 0
-      None => false
-    }
-    if !asserted { continue }
-    let value = match reg.init {
-      Some(expr) => self.eval_expr(expr)
+    if !reg.async_reset { continue }
+    let reset = self.eval_compiled_expr(reg.reset.unwrap())
+    let init = match reg.init {
+      Some(expr) => self.eval_compiled_expr(expr)
       None => SimValue::zero(reg.width)
     }
+    let value = select_value(reset, init, self.signals[name], reg.width)
+    // Reset changes Q, not the cached combinational D input.
     let _ = self.assign_signal(name, value)
-    self.next_registers[name] = value
   }
 }
 
@@ -786,39 +898,50 @@ pub fn Simulator::step_clock(self: Simulator, name: String) -> Unit raise Simula
 }
 
 fn Simulator::commit_clock(self: Simulator, clock: String) -> Unit raise SimulatorError {
-  self.commit_children(clock)
-  for name, reg in self.registers {
-    if reg.clock != clock { continue }
-    let reset = match reg.reset {
-      Some(expr) => self.eval_expr(expr).raw != 0
-      None => false
-    }
-    let value = if reset {
-      match reg.init {
-        Some(expr) => self.eval_expr(expr)
-        None => SimValue::zero(reg.width)
-      }
-    } else {
-      self.next_registers.get(name).unwrap_or(self.signals[name])
-    }
-    let _ = self.assign_signal(name, value)
-    self.next_registers[name] = value
-  }
-  self.commit_memories(clock)
-  self.run_commands(clock)
-  self.settle()
+  self.commit_clocks([clock])
 }
 
-fn Simulator::commit_children(self: Simulator, clock: String) -> Unit raise SimulatorError {
+// All clock ports driven by the same parent edge sample one pre-edge state.
+fn Simulator::commit_clocks(self: Simulator, clocks: Array[String]) -> Unit raise SimulatorError {
+  let updates: Array[(String, SimValue)] = []
+  for name, reg in self.registers {
+    if !clocks.contains(reg.clock) { continue }
+    let next = self.next_registers.get(name).unwrap_or(self.signals[name])
+    let value = match reg.reset {
+      Some(expr) => {
+        let init = match reg.init {
+          Some(expr) => self.eval_compiled_expr(expr)
+          None => SimValue::zero(reg.width)
+        }
+        select_value(self.eval_compiled_expr(expr), init, next, reg.width)
+      }
+      None => next
+    }
+    updates.push((name, value))
+  }
+  for clock in clocks { self.run_commands(clock) }
+  self.commit_children(clocks)
+  self.commit_memories(clocks)
+  for update in updates {
+    let (name, value) = update
+    let _ = self.assign_signal(name, value)
+  }
+  // A stop command still completes its triggering edge and output propagation.
+  self.settle_pending()
+}
+
+fn Simulator::commit_children(self: Simulator, clocks: Array[String]) -> Unit raise SimulatorError {
   for instance, child in self.children {
+    let child_clocks: Array[String] = []
     for port in child.design.ports {
       if port.dir is @parse.PortDir::Input && port.ty is @firrtl.Type::Clock {
         let source = clock_source(self.design, instance, port.id.inner())
-        if source == Some(clock) && child.clocks.get(port.id.inner()).unwrap_or(false) {
-          child.commit_clock(port.id.inner())
+        if source.map(clock => clocks.contains(clock)).unwrap_or(false) && child.clocks.get(port.id.inner()).unwrap_or(false) {
+          child_clocks.push(port.id.inner())
         }
       }
     }
+    if !child_clocks.is_empty() { child.commit_clocks(child_clocks) }
     let offset = self.child_message_offsets.get(instance).unwrap_or(0)
     let child_messages = child.messages()
     for i in offset..<child_messages.length() {
@@ -845,104 +968,132 @@ fn clock_source(design: TypedModule, instance: String, port: String) -> String? 
           ..
         ),
         @firrtl.Expr::Reference(@firrtl.Reference::Id(clock, ..), ..),
-      ) if id.inner() == instance && field.inner() == port => return Some(clock.inner())
+      ) if id.inner() == instance && field.inner() == port => return find_signal_source(design, clock.inner())
       _ => ()
     }
   }
   None
+}
+
+// Follow direct clock aliases to their input port. Cyclic or computed
+// sources are left unresolved rather than recursing indefinitely.
+fn require_clock_source(design: TypedModule, target: String) -> String raise SimulatorError {
+  match find_signal_source(design, target) {
+    Some(clock) => clock
+    None => raise Unsupported(message="clock '{target}' must be driven by a direct input clock or alias; derived clocks are not supported")
+  }
 }
 
 fn find_signal_source(design: TypedModule, target: String) -> String? {
-  for stmt in design.body {
-    match stmt {
-      @firrtl.Stmt::Connect(lhs, @firrtl.Expr::Reference(@firrtl.Reference::Id(source, ..), ..)) if ref_name(lhs) == target => {
-          for port in design.ports {
-            if port.id.inner() == source.inner() && port.ty is @firrtl.Type::Clock {
-              return Some(source.inner())
-            }
-          }
-          return find_signal_source(design, source.inner())
-        }
-      _ => ()
+  let visited: Set[String] = Set([])
+  let mut current = target
+  while !visited.contains(current) {
+    visited.add(current)
+    for port in design.ports {
+      if port.id.inner() == current && port.dir is @parse.PortDir::Input && port.ty is @firrtl.Type::Clock {
+        return Some(current)
+      }
+    }
+    let mut source: String? = None
+    for stmt in design.body {
+      match stmt {
+        @firrtl.Stmt::Connect(lhs, @firrtl.Expr::Reference(@firrtl.Reference::Id(id, ..), ..)) if ref_name(lhs) == current => source = Some(id.inner())
+        @firrtl.Stmt::Node(id~, expr=@firrtl.Expr::Reference(@firrtl.Reference::Id(ref_id, ..), ..)) if id.inner() == current => source = Some(ref_id.inner())
+        _ => ()
+      }
+    }
+    match source {
+      Some(name) => current = name
+      None => return None
     }
   }
   None
 }
 
-fn Simulator::commit_memories(self: Simulator, clock: String) -> Unit raise SimulatorError {
+// Sample every active port before mutating memory or synchronous read outputs.
+fn Simulator::commit_memories(self: Simulator, clocks: Array[String]) -> Unit {
   for id, memory in self.memories {
-    if memory.read_latency < 0 || memory.read_latency > 1 || memory.write_latency < 0 || memory.write_latency > 1 {
-      raise Unsupported(message="memory '{id}' latencies above one cycle are not supported")
-    }
     let prefix = id + "."
-    let writes : Array[MemoryWrite] = []
-    for writer in memory.writers {
+    let writes: Array[MemoryWrite] = []
+    for writer in memory.writers + memory.readwriters {
       let port = prefix + writer
-      let port_clock = self.signal_or_zero(port + ".clk")
-      if self.memory_clocks.get(port) is Some(source) && source != clock { continue }
-      if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
-      let address = self.signal_or_zero(port + ".addr").raw.to_int()
-      if address < 0 || address >= memory.depth { continue }
-      let data = self.signal_or_zero(port + ".data")
-      let mask_value = self.signal_or_zero(port + ".mask")
-      if memory.width > 0 { writes.push({ address, data, mask: mask_value }) }
+      if !clocks.contains(self.memory_clocks[port]) { continue }
+      let enabled = self.signal_or_zero(port + ".en")
+      if enabled.known && enabled.raw == 0 { continue }
+      let rw = memory.readwriters.contains(writer)
+      let mode = if rw { self.signal_or_zero(port + ".wmode") } else { SimValue::from_int(1, 1) }
+      if mode.known && mode.raw == 0 { continue }
+      let mask_name = if rw { port + ".wmask" } else { port + ".mask" }
+      let mask_value = self.signal_or_zero(mask_name)
+      if mask_value.known && mask_value.raw == 0 { continue }
+      let address_value = self.signal_or_zero(port + ".addr")
+      if address_value.known && address_value.raw >= BigInt::from_int(memory.depth) { continue }
+      let address = if address_value.known { Some(address_value.raw.to_int()) } else { None }
+      let data_name = if rw { port + ".wdata" } else { port + ".data" }
+      let data = self.signal_or_zero(data_name)
+      let data = with_known(data, data.known && enabled.known && mode.known && address_value.known)
+      writes.push({ address, data, mask: mask_value })
     }
 
-    for readwriter in memory.readwriters {
-      let port = prefix + readwriter
-      let port_clock = self.signal_or_zero(port + ".clk")
-      if self.memory_clocks.get(port) is Some(source) && source != clock { continue }
-      if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
-      let address = self.signal_or_zero(port + ".addr").raw.to_int()
-      if address < 0 || address >= memory.depth { continue }
-      if self.signal_or_zero(port + ".wmode").raw != 0 {
-        let data = self.signal_or_zero(port + ".wdata")
-        let mask_value = self.signal_or_zero(port + ".wmask")
-        if memory.width > 0 { writes.push({ address, data, mask: mask_value }) }
-      } else if memory.read_latency > 0 {
-        memory.read_data[readwriter] = memory.read_value(address, writes)
-        self.enqueue_signal(port + ".rdata")
+    if memory.read_latency == 1 {
+      for reader in memory.readers + memory.readwriters {
+        let port = prefix + reader
+        if !clocks.contains(self.memory_clocks[port]) { continue }
+        let enabled = self.signal_or_zero(port + ".en")
+        let address = self.signal_or_zero(port + ".addr")
+        let rw = memory.readwriters.contains(reader)
+        let mode = if rw { self.signal_or_zero(port + ".wmode") } else { SimValue::zero(1) }
+        let value = if enabled.known && enabled.raw != 0 && address.known &&
+            address.raw < BigInt::from_int(memory.depth) && mode.known && mode.raw == 0 {
+          memory.read_value(address.raw.to_int(), writes)
+        } else {
+          SimValue::new(memory.width, 0, known=false)
+        }
+        memory.read_data[reader] = value
       }
     }
 
-    for reader in memory.readers {
-      let port = prefix + reader
-      let port_clock = self.signal_or_zero(port + ".clk")
-      if self.memory_clocks.get(port) is Some(source) && source != clock { continue }
-      if port_clock.raw == 0 || self.signal_or_zero(port + ".en").raw == 0 { continue }
-      let address = self.signal_or_zero(port + ".addr").raw.to_int()
-      if address < 0 || address >= memory.depth { continue }
-      if memory.read_latency > 0 {
-        memory.read_data[reader] = memory.read_value(address, writes)
-        self.enqueue_signal(port + ".data")
+    for address in 0..<memory.depth {
+      let matching = writes.filter(w => w.address is None || w.address == Some(address))
+      if !matching.is_empty() {
+        memory.data[address] = resolve_writes(memory.data[address], matching, memory.width)
       }
     }
-
-    for write in writes {
-      memory.data[write.address] = masked_write(memory.data[write.address], write.data, write.mask, memory.width)
-    }
-    // Zero-latency readers observe writes after the edge.  Queue their users
-    // even when no read-data register was updated.
-    for reader in memory.readers {
-      self.enqueue_signal(prefix + reader + ".data")
-    }
-    for readwriter in memory.readwriters {
-      self.enqueue_signal(prefix + readwriter + ".rdata")
-    }
+    for reader in memory.readers { self.enqueue_signal(prefix + reader + ".data") }
+    for reader in memory.readwriters { self.enqueue_signal(prefix + reader + ".rdata") }
   }
+}
+
+fn resolve_writes(old: SimValue, writes: Array[MemoryWrite], width: Int) -> SimValue {
+  let mut result = old
+  let mut written: BigInt = 0
+  for write in writes {
+    if !write.mask.known { return SimValue::new(width, 0, known=false) }
+    let granularity = if write.mask.width == 0 { width } else { width / write.mask.width }
+    let mut bits: BigInt = 0
+    for lane in 0..<write.mask.width {
+      if ((write.mask.raw >> lane) & 1) != 0 {
+        bits = bits | (mask(granularity) << (lane * granularity))
+      }
+    }
+    if (written & bits) != 0 { return SimValue::new(width, 0, known=false) }
+    written = written | bits
+    result = masked_write(result, write.data, write.mask, width)
+  }
+  // Disjoint writes may jointly initialize a previously unknown word.
+  if written == mask(width) && writes.iter().all(w => w.data.known && w.mask.known) {
+    result = with_known(result, true)
+  }
+  result
 }
 
 fn MemoryState::read_value(self: MemoryState, address: Int, writes: Array[MemoryWrite]) -> SimValue {
   let old = self.data[address]
-  let matching = writes.filter(write => write.address == address)
+  let matching = writes.filter(write => write.address is None || write.address == Some(address))
   if matching.is_empty() { return old }
-  if matching.length() > 1 {
-    return SimValue::new(self.width, 0, known=false)
-  }
-  let write = matching[0]
   match self.read_under_write {
     @firrtl.ReadUnderWrite::Old => old
-    @firrtl.ReadUnderWrite::New => masked_write(old, write.data, write.mask, self.width)
+    @firrtl.ReadUnderWrite::New => resolve_writes(old, matching, self.width)
     @firrtl.ReadUnderWrite::Undefined => SimValue::new(self.width, 0, known=false)
   }
 }
@@ -950,8 +1101,10 @@ fn MemoryState::read_value(self: MemoryState, address: Int, writes: Array[Memory
 fn Simulator::live_memory_read(self: Simulator, memory_id: String, memory: MemoryState, reader: String, width: Int) -> SimValue {
   let port = memory_id + "." + reader
   let enabled = self.signal_or_zero(port + ".en")
-  let address = self.signal_or_zero(port + ".addr").raw.to_int()
-  if enabled.raw == 0 || address < 0 || address >= memory.depth {
+  let address_value = self.signal_or_zero(port + ".addr")
+  let address = address_value.raw.to_int()
+  let mode = if memory.readwriters.contains(reader) { self.signal_or_zero(port + ".wmode") } else { SimValue::zero(1) }
+  if !mode.known || mode.raw != 0 || !enabled.known || !address_value.known || enabled.raw == 0 || address_value.raw >= BigInt::from_int(memory.depth) || address < 0 || address >= memory.depth {
     SimValue::new(width, 0, known=false)
   } else {
     memory.data[address]
@@ -960,6 +1113,17 @@ fn Simulator::live_memory_read(self: Simulator, memory_id: String, memory: Memor
 
 fn Simulator::signal_or_zero(self: Simulator, name: String) -> SimValue {
   self.signals.get(name).unwrap_or(SimValue::zero(1))
+}
+
+fn select_value(condition: SimValue, yes: SimValue, no: SimValue, width: Int) -> SimValue {
+  if condition.known {
+    let value = if condition.raw != 0 { yes } else { no }
+    SimValue::new(width, value.raw, known=value.known)
+  } else if yes.known && no.known && normalize(yes.raw, width) == normalize(no.raw, width) {
+    SimValue::new(width, yes.raw)
+  } else {
+    SimValue::new(width, 0, known=false)
+  }
 }
 
 fn masked_write(old: SimValue, value: SimValue, mask_value: SimValue, width: Int) -> SimValue {
@@ -975,46 +1139,83 @@ fn masked_write(old: SimValue, value: SimValue, mask_value: SimValue, width: Int
 }
 
 fn Simulator::run_commands(self: Simulator, clock: String) -> Unit raise SimulatorError {
-  for stmt in self.design.body {
-    match stmt {
-      @firrtl.Stmt::Command(command) => {
-        let (clk, en) = command_clock_enable(command, self)
-        if clk != clock || en.raw == 0 { continue }
-        match command {
-          @firrtl.Command::Printf(fmt~, args~, ..) => {
-            let mut text = fmt
-            for arg in args {
-              text = text + " " + Show::to_string(self.eval_expr(arg))
-            }
-            self.messages.push({ kind: "printf", text })
-          }
-          @firrtl.Command::Assert(pred~, fmt~, args~, ..) => {
-            if self.eval_expr(pred).raw == 0 {
-              let mut text = fmt
-              for arg in args {
-                text = text + " " + Show::to_string(self.eval_expr(arg))
-              }
-              self.failure = Some(text)
-              self.messages.push({ kind: "assert", text })
-            }
-          }
-          @firrtl.Command::Stop(code~, ..) => {
-            self.halted = true
-            self.exit_code = Some(code)
-          }
+  for command in self.commands {
+    if command.clock != clock { continue }
+    let enabled = self.eval_compiled_expr(command.enable)
+    if !enabled.known {
+      raise Unsupported(message="command enable is unknown on clock '\{clock}'")
+    }
+    if enabled.raw == 0 { continue }
+    match command.action {
+      SimCommandAction::Printf(parts~, args~) => {
+        self.messages.push({ kind: "printf", text: self.format_command(parts, args) })
+      }
+      SimCommandAction::Assert(pred~, parts~, args~) => {
+        let predicate = self.eval_compiled_expr(pred)
+        if !predicate.known {
+          raise Unsupported(message="assertion predicate is unknown on clock '\{clock}'")
+        }
+        if predicate.raw == 0 {
+          let text = self.format_command(parts, args)
+          self.failure = Some(text)
+          self.messages.push({ kind: "assert", text })
         }
       }
-      _ => ()
+      SimCommandAction::Stop(code~) => {
+        self.halted = true
+        self.exit_code = Some(code)
+      }
     }
   }
 }
 
-fn command_clock_enable(command: Command[Type], sim: Simulator) -> (String, SimValue) raise SimulatorError {
-  match command {
-    @firrtl.Command::Printf(clk~, en~, ..) | @firrtl.Command::Assert(clk~, en~, ..) | @firrtl.Command::Stop(clk~, en~, ..) => {
-      (clock_name(clk), sim.eval_expr(en))
+fn Simulator::format_command(
+  self: Simulator,
+  parts: Array[SimFormatPart],
+  args: Array[(SimExpr, Bool)],
+) -> String raise SimulatorError {
+  let text = StringBuilder()
+  let mut next = 0
+  for part in parts {
+    match part {
+      SimFormatPart::Text(value) => text.write_string(value)
+      SimFormatPart::Binary | SimFormatPart::Character | SimFormatPart::Decimal | SimFormatPart::Hexadecimal => {
+        let (expr, signed) = args[next]
+        next += 1
+        let value = self.eval_compiled_expr(expr)
+        match part {
+          SimFormatPart::Binary => text.write_string(format_binary(value))
+          SimFormatPart::Character => text.write_char(Int::unsafe_to_char((value.raw & 255).to_int()))
+          SimFormatPart::Decimal => text.write_string(if value.known { (if signed { signed_value(value) } else { value.raw }).to_string() } else { "x" })
+          SimFormatPart::Hexadecimal => text.write_string(format_hex(value))
+          SimFormatPart::Text(_) => ()
+        }
+      }
     }
   }
+  text.to_string()
+}
+
+fn format_binary(value: SimValue) -> String {
+  if !value.known { return "x" }
+  let text = StringBuilder()
+  for i in 0..<value.width {
+    let bit = value.width - i - 1
+    text.write_char(if ((value.raw >> bit) & 1) == 0 { '0' } else { '1' })
+  }
+  text.to_string()
+}
+
+fn format_hex(value: SimValue) -> String {
+  if !value.known { return "x" }
+  let text = StringBuilder()
+  let digits = (value.width + 3) / 4
+  for i in 0..<digits {
+    let shift = (digits - i - 1) * 4
+    let nibble = ((value.raw >> shift) & 15).to_int()
+    text.write_char(if nibble < 10 { Int::unsafe_to_char('0'.to_int() + nibble) } else { Int::unsafe_to_char('a'.to_int() + nibble - 10) })
+  }
+  text.to_string()
 }
 
 fn Simulator::assign_signal(self: Simulator, name: String, value: SimValue) -> Bool {
@@ -1032,99 +1233,16 @@ fn Simulator::assign_signal(self: Simulator, name: String, value: SimValue) -> B
   }
 }
 
-fn Simulator::eval_expr(self: Simulator, expr: TypedExpr) -> SimValue raise SimulatorError {
-  match expr {
-    @firrtl.Expr::Reference(reference, ty~) => self.eval_ref(reference, type_width(ty))
-    @firrtl.Expr::Literal(lit, ty~) => SimValue::new(type_width(ty), lit.as_bigint())
-    @firrtl.Expr::Mux(cond~, tval~, fval~, ..) => {
-      let condition = self.eval_expr(cond)
-      if condition.known {
-        return self.eval_expr(if condition.raw != 0 { tval } else { fval })
-      }
-      let when_true = self.eval_expr(tval)
-      let when_false = self.eval_expr(fval)
-      if !condition.known {
-        if when_true.known && when_false.known && when_true.raw == when_false.raw {
-          when_true
-        } else {
-          SimValue::new(when_true.width, 0, known=false)
-        }
-      } else if condition.raw != 0 {
-        when_true
-      } else {
-        when_false
-      }
-    }
-    @firrtl.Expr::PrimOp(op~, args~, ty~) => {
-      let values = args.map((expr: TypedExpr) => self.eval_expr(expr))
-      let signed = match op {
-        @firrtl.PrimOp::Lt | @firrtl.PrimOp::Leq | @firrtl.PrimOp::Gt | @firrtl.PrimOp::Geq =>
-          args.get(0).map(expr => type_signed(expr.ty())).unwrap_or(false)
-        _ => type_signed(ty)
-      }
-      eval_prim(op, values, type_width(ty), signed)
-    }
-  }
-}
-
-fn Simulator::eval_ref(self: Simulator, reference: TypedRef, width: Int) -> SimValue raise SimulatorError {
-  match reference {
-    @firrtl.Reference::Id(id, ..) => {
-      match self.signals.get(id.inner()) {
-        Some(value) => value
-        None => raise MissingSignal(name=id.inner())
-      }
-    }
-    @firrtl.Reference::StaticIndexing(lhs~, index~, ty~) => {
-      let element_width = type_width(ty)
-      let source = self.eval_ref(lhs, type_width(lhs.ty()))
-      SimValue::new(element_width, source.raw >> (index * element_width), known=source.known)
-    }
-    @firrtl.Reference::FieldAccess(
-      lhs=@firrtl.Reference::FieldAccess(
-        lhs=@firrtl.Reference::Id(memory_id, ..),
-        field=reader,
-        ..
-      ),
-      field=data_field,
-      ..
-    ) if data_field.inner() == "data" => {
-      match self.memories.get(memory_id.inner()) {
-              Some(memory) if memory.read_latency > 0 => memory.read_data.get(reader.inner()).unwrap_or(SimValue::new(width, 0, known=false))
-              Some(memory) => self.live_memory_read(memory_id.inner(), memory, reader.inner(), width)
-        None => raise MissingSignal(name=memory_id.inner())
-      }
-    }
-    @firrtl.Reference::FieldAccess(lhs~, field~, ..) => {
-      let name = ref_name(reference)
-      match self.signals.get(name) {
-        Some(value) => value
-        None => {
-          let parts: Array[String] = name.split(".").map(part => part.to_owned()).collect()
-          if parts.length() >= 3 && parts[parts.length() - 1] == "data" {
-            let memory_id = parts[0]
-            let reader = parts[1]
-            match self.memories.get(memory_id) {
-              Some(memory) if memory.read_latency > 0 => memory.read_data.get(reader).unwrap_or(SimValue::new(width, 0, known=false))
-              Some(memory) => self.live_memory_read(memory_id, memory, reader, width)
-              None => self.eval_ref(lhs, width)
-            }
-          } else {
-            self.eval_ref(lhs, width)
-          }
-        }
-      }
-    }
-    @firrtl.Reference::DynamicIndexing(..) => raise Unsupported(message="dynamic references must be expanded before simulation")
-  }
-}
-
 fn eval_prim(
   op: PrimOp,
   values: Array[SimValue],
   width: Int,
   signed: Bool,
-) -> SimValue raise SimulatorError {
+) -> SimValue {
+  if (op is @firrtl.PrimOp::Div || op is @firrtl.PrimOp::Rem) &&
+      values.get(1).map(v => !v.known || v.raw == 0).unwrap_or(true) {
+    return SimValue::new(width, 0, known=false)
+  }
   // Most generated control/data paths (including the playground's VGA and
   // Game of Life examples) are comfortably within a machine word.  Avoiding
   // BigInt arithmetic for those paths is the largest single speedup available
@@ -1153,9 +1271,9 @@ fn eval_prim_fast(
     @firrtl.PrimOp::AsUInt | @firrtl.PrimOp::AsSInt | @firrtl.PrimOp::AsClock | @firrtl.PrimOp::AsAsyncReset | @firrtl.PrimOp::Cvt => ar
     @firrtl.PrimOp::Neg => -av
     @firrtl.PrimOp::Not => normalize_int((1 << a.width) - 1 - ar, width)
-    @firrtl.PrimOp::And => ar & br
-    @firrtl.PrimOp::Or => ar | br
-    @firrtl.PrimOp::Xor => ar ^ br
+    @firrtl.PrimOp::And => av & bv
+    @firrtl.PrimOp::Or => av | bv
+    @firrtl.PrimOp::Xor => av ^ bv
     @firrtl.PrimOp::Add => av + bv
     @firrtl.PrimOp::Sub => av - bv
     @firrtl.PrimOp::Mul => av * bv
@@ -1165,9 +1283,9 @@ fn eval_prim_fast(
     @firrtl.PrimOp::Leq => (av <= bv).to_int()
     @firrtl.PrimOp::Gt => (av > bv).to_int()
     @firrtl.PrimOp::Geq => (av >= bv).to_int()
-    @firrtl.PrimOp::Eq => (ar == br).to_int()
-    @firrtl.PrimOp::Neq => (ar != br).to_int()
-    @firrtl.PrimOp::Dshl => if shift >= 31 { 0 } else { ar << shift }
+    @firrtl.PrimOp::Eq => (av == bv).to_int()
+    @firrtl.PrimOp::Neq => (av != bv).to_int()
+    @firrtl.PrimOp::Dshl => if shift >= 31 { 0 } else { av << shift }
     @firrtl.PrimOp::Dshr => if shift >= 31 { if signed && av < 0 { -1 } else { 0 } } else if signed { av >> shift } else { ar >> shift }
     @firrtl.PrimOp::Cat => {
       let mut result = 0
@@ -1177,7 +1295,7 @@ fn eval_prim_fast(
       }
       result
     }
-    @firrtl.PrimOp::Pad => ar
+    @firrtl.PrimOp::Pad => av
     @firrtl.PrimOp::Shl => if shift >= 31 { 0 } else { ar << shift }
     @firrtl.PrimOp::Shr => if shift >= 31 {
       if signed && av < 0 { -1 } else { 0 }
@@ -1209,9 +1327,9 @@ fn eval_prim_big(
     @firrtl.PrimOp::AsUInt | @firrtl.PrimOp::AsSInt | @firrtl.PrimOp::AsClock | @firrtl.PrimOp::AsAsyncReset | @firrtl.PrimOp::Cvt => a.raw
     @firrtl.PrimOp::Neg => -av
     @firrtl.PrimOp::Not => normalize((1 << a.width) - 1 - a.raw, width)
-    @firrtl.PrimOp::And => a.raw & b.raw
-    @firrtl.PrimOp::Or => a.raw | b.raw
-    @firrtl.PrimOp::Xor => a.raw ^ b.raw
+    @firrtl.PrimOp::And => av & bv
+    @firrtl.PrimOp::Or => av | bv
+    @firrtl.PrimOp::Xor => av ^ bv
     @firrtl.PrimOp::Add => av + bv
     @firrtl.PrimOp::Sub => av - bv
     @firrtl.PrimOp::Mul => av * bv
@@ -1221,23 +1339,27 @@ fn eval_prim_big(
     @firrtl.PrimOp::Leq => BigInt::from_int((av <= bv).to_int())
     @firrtl.PrimOp::Gt => BigInt::from_int((av > bv).to_int())
     @firrtl.PrimOp::Geq => BigInt::from_int((av >= bv).to_int())
-    @firrtl.PrimOp::Eq => BigInt::from_int((a.raw == b.raw).to_int())
-    @firrtl.PrimOp::Neq => BigInt::from_int((a.raw != b.raw).to_int())
-    @firrtl.PrimOp::Dshl => a.raw << b.raw.to_int()
-    @firrtl.PrimOp::Dshr => if signed { av >> b.raw.to_int() } else { a.raw >> b.raw.to_int() }
+    @firrtl.PrimOp::Eq => BigInt::from_int((av == bv).to_int())
+    @firrtl.PrimOp::Neq => BigInt::from_int((av != bv).to_int())
+    @firrtl.PrimOp::Dshl => if b.raw >= BigInt::from_int(width) { 0 } else { av << b.raw.to_int() }
+    @firrtl.PrimOp::Dshr => if b.raw >= BigInt::from_int(a.width) {
+      if signed && av < 0 { -1 } else { 0 }
+    } else if signed { av >> b.raw.to_int() } else { a.raw >> b.raw.to_int() }
     @firrtl.PrimOp::Cat => {
       let mut result = BigInt::from_int(0)
       for value in values { result = (result << value.width) | value.raw }
       result
     }
-    @firrtl.PrimOp::Pad => a.raw
-    @firrtl.PrimOp::Shl => a.raw << b.raw.to_int()
-    @firrtl.PrimOp::Shr => if signed { av >> b.raw.to_int() } else { a.raw >> b.raw.to_int() }
+    @firrtl.PrimOp::Pad => av
+    @firrtl.PrimOp::Shl => if b.raw >= BigInt::from_int(width) { 0 } else { a.raw << b.raw.to_int() }
+    @firrtl.PrimOp::Shr => if b.raw >= BigInt::from_int(a.width) {
+      if signed && av < 0 { -1 } else { 0 }
+    } else if signed { av >> b.raw.to_int() } else { a.raw >> b.raw.to_int() }
     @firrtl.PrimOp::Head => a.raw >> (a.width - width)
     @firrtl.PrimOp::Tail => a.raw & mask(width)
     @firrtl.PrimOp::Bits => {
-      let lo = values.get(2).unwrap_or(SimValue::zero(1)).raw.to_int()
-      (a.raw >> lo) & mask(width)
+      let lo = values.get(2).unwrap_or(SimValue::zero(1)).raw
+      if lo >= BigInt::from_int(a.width) { 0 } else { (a.raw >> lo.to_int()) & mask(width) }
     }
     @firrtl.PrimOp::Andr => BigInt::from_int(all_bits(a).to_int())
     @firrtl.PrimOp::Orr => BigInt::from_int(any_bits(a).to_int())
@@ -1545,14 +1667,42 @@ pub(all) struct SimulatorFrame {
 }
 
 pub fn simulator_frame(simulator: Simulator, ports: Array[String], width: Int, height: Int, binary: Bool) -> SimulatorFrame raise SimulatorError {
+  simulator_frame_with_layout(simulator, ports, width, height, packed_rows=binary, binary~)
+}
+
+/// Read display values using storage metadata that is independent from the
+/// requested rendering mode. `packed_rows` is true only for lowered Boolean
+/// rows; integer pixels are never reinterpreted as packed storage.
+pub fn simulator_frame_with_layout(
+  simulator: Simulator,
+  ports: Array[String],
+  width: Int,
+  height: Int,
+  packed_rows~: Bool,
+  binary~: Bool,
+) -> SimulatorFrame raise SimulatorError {
   let words: Array[UInt] = []
   let valid: Array[UInt] = []
   for row in 0..<height {
-    if binary {
+    if packed_rows {
       let value = simulator.peek(ports[row])
       for word in 0..<((width + 31) / 32) {
         words.push(((value.raw >> (word * 32)) & mask(32)).to_uint())
         valid.push(if value.known { 0xffffffffU } else { 0U })
+      }
+    } else if binary {
+      for word in 0..<((width + 31) / 32) {
+        let mut packed = 0U
+        let mut packed_valid = 0U
+        for bit in 0..<32 {
+          let col = word * 32 + bit
+          if col >= width { continue }
+          let value = simulator.peek(ports[row * width + col])
+          if value.raw != 0 { packed = packed | (1U << bit) }
+          if value.known { packed_valid = packed_valid | (1U << bit) }
+        }
+        words.push(packed)
+        valid.push(packed_valid)
       }
     } else {
       for col in 0..<width {

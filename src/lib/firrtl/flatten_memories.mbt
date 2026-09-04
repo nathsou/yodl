@@ -91,7 +91,7 @@ impl FIRRTLRewriter for FlattenMemoriesPass with rewrite_mem_stmt(self, mem, stm
               ty=port_ty,
             )
 
-            let flat_ty = Type::UInt(mem_flat_width)
+            let flat_ty = Type::UInt(if is_mask { mem_flat_width / mask_granularity } else { mem_flat_width })
             let flat_field = FieldAccess(
               lhs=mem_port_ref,
               field=field.id,
@@ -197,9 +197,11 @@ fn build_aggregate_connections(target: TypedRef, source: TypedRef, ty: Type) -> 
   fn aux(target: TypedRef, ty: Type, offset: Int) -> Unit {
     match ty {
       Bundle(fields) => {
+        let mut field_offset = offset
         for field in fields {
           let field_access = FieldAccess(lhs=target, field=field.id, ty=field.ty)
-          aux(field_access, field.ty, offset + field.ty.width())
+          aux(field_access, field.ty, field_offset)
+          field_offset += field.ty.width()
         }
       }
       Vec(elem_ty, size) => {

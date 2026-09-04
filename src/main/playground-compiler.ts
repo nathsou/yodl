@@ -8,7 +8,7 @@ import {
     simulator_messages,
     simulator_output_signals,
     simulator_inputs,
-    simulator_frame,
+    simulator_frame_with_layout,
     simulator_halted,
     simulator_visible_outputs,
     simulator_raster_new,
@@ -30,9 +30,9 @@ export type SimulationRequest = {
     clockHz?: number;
     /** Realtime canvas refresh limit; independent of simulated clock speed. */
     refreshFps?: number;
-    /** Logical display binding. Dimensions and binary mode are inferred from
+    /** Logical display-buffer binding. Dimensions and binary mode are inferred from
      * the typed aggregate output when they are omitted. */
-    display?: { signal?: string; stream?: string; width?: number; height?: number; valueMode?: 'binary' | 'gray' | 'rgb'; packing?: 'bits' | 'bits32' | 'rgb332x4'; pixelScale?: number; onColor?: number; offColor?: number };
+    display?: { buffer?: string; stream?: string; width?: number; height?: number; valueMode?: 'binary' | 'gray' | 'rgb'; packing?: 'bits' | 'bits32' | 'rgb332x4'; pixelScale?: number; onColor?: number; offColor?: number };
 };
 type ResolvedFramebuffer = NonNullable<SimulationRequest['display']> & { signal: string; width: number; height: number };
 export type CompileRequest = { id: number; source: string; path: string; stage: Stage; files?: Record<string, string>; simulate?: SimulationRequest };
@@ -62,14 +62,14 @@ export type SimulationStreamEvent = {
     cyclesPerSecond?: number;
 };
 
-type DisplayDescriptor = { signal: string; width: number; height: number; bits: number; ports: string[] };
+type DisplayDescriptor = { buffer: string; width: number; height: number; bits: number; ports: string[] };
 
 function inferFramebuffer(displays: DisplayDescriptor[], selected?: string): ResolvedFramebuffer | undefined {
-    const display = selected ? displays.find(d => d.signal === selected)
+    const display = selected ? displays.find(d => d.buffer === selected)
         : displays.length === 1 ? displays[0] : undefined;
-    if (selected && !display) throw new Error(`Display '${selected}' must name a two-dimensional unsigned output array.`);
+    if (selected && !display) throw new Error(`Display buffer '${selected}' must name a two-dimensional unsigned output array.`);
     if (!display) return undefined;
-    return { signal: display.signal, width: display.width, height: display.height, valueMode: display.bits === 1 ? 'binary' : 'rgb' };
+    return { signal: display.buffer, width: display.width, height: display.height, valueMode: display.bits === 1 ? 'binary' : 'rgb' };
 }
 
 function outputValues(signals: SimulationSignal[]): Record<string, number> {
@@ -89,7 +89,7 @@ function nonNegative(value: string | undefined): number | undefined {
 function metadataFromPairs(pairs: Array<{ _0: string; _1: string }>): SimulationMetadata | undefined {
     if (!pairs.length) return undefined;
     const values = Object.fromEntries(pairs.map(pair => [pair._0, pair._1]));
-    const allowed = new Set(['location', 'module', 'top', 'clock', 'reset', 'reset.signal', 'reset.cycles', 'display.signal', 'display.stream', 'display.width', 'display.height', 'display.mode', 'display.packing', 'display.pixel_scale', 'display.on_color', 'display.off_color', 'cycles_per_frame', 'clock_hz']);
+    const allowed = new Set(['location', 'module', 'top', 'clock', 'reset', 'reset.signal', 'reset.cycles', 'display.buffer', 'display.stream', 'display.width', 'display.height', 'display.mode', 'display.packing', 'display.pixel_scale', 'display.on_color', 'display.off_color', 'cycles_per_frame', 'clock_hz']);
     for (const [key, value] of Object.entries(values)) {
         if (!allowed.has(key)) throw new Error(`Unknown @simulation option '${key}'.`);
         if (/(width|height|cycles|frames|hz|rate|scale)$/.test(key) && (!Number.isSafeInteger(Number(value)) || Number(value) < 0)) throw new Error(`@simulation '${key}' must be a nonnegative integer.`);
@@ -98,13 +98,13 @@ function metadataFromPairs(pairs: Array<{ _0: string; _1: string }>): Simulation
     }
     if (values.cycles_per_frame !== undefined && (!Number.isSafeInteger(Number(values.cycles_per_frame)) || Number(values.cycles_per_frame) < 1 || Number(values.cycles_per_frame) > 100000)) throw new Error('cycles_per_frame must be an integer between 1 and 100000.');
     const hasDisplay = Object.keys(values).some(key => key.startsWith('display.'));
-    if (hasDisplay && !values['display.signal'] && !values['display.stream']) throw new Error('The display object requires signal (array output) or stream (pixel stream).');
-    if (values['display.signal'] && values['display.stream']) throw new Error('Choose either display.signal or display.stream.');
+    if (hasDisplay && !values['display.buffer'] && !values['display.stream']) throw new Error('The display object requires buffer (array output) or stream (pixel stream).');
+    if (values['display.buffer'] && values['display.stream']) throw new Error('Choose either display.buffer or display.stream.');
     if (values['display.packing'] && (!positive(values['display.width']) || !positive(values['display.height']))) throw new Error('Explicitly packed displays require positive width and height.');
     const resetSignal = values['reset.signal'] ?? values.reset;
-    const logicalDisplaySignal = values['display.signal'];
-    const display = logicalDisplaySignal || values['display.stream'] ? {
-        signal: logicalDisplaySignal,
+    const logicalDisplayBuffer = values['display.buffer'];
+    const display = logicalDisplayBuffer || values['display.stream'] ? {
+        buffer: logicalDisplayBuffer,
         stream: values['display.stream'],
         width: positive(values['display.width']),
         height: positive(values['display.height']),
@@ -211,6 +211,7 @@ export class SimulationSession {
     private design: any;
     private hidden: string[] = [];
     private nativeDisplay = false;
+    private packedDisplayRows = false;
     private messageOffset = 0;
     private inputs: NonNullable<SimulationRequest['inputs']>;
     private options: SimulationRequest;
@@ -230,23 +231,24 @@ export class SimulationSession {
         if (this.clock && !clocks.includes(this.clock)) throw new Error(`Unknown clock '${this.clock}'.`);
         this.stream = Boolean(options.display?.stream);
         if (this.stream) {
-            if (options.display?.signal) throw new Error("Choose either an array signal or a pixel stream.");
+            if (options.display?.buffer) throw new Error("Choose either an array buffer or a pixel stream.");
             this.framebuffer = { signal: options.display!.stream!, width: options.display!.width!, height: options.display!.height!, valueMode: 'rgb' };
             this.hidden = ['x', 'y', 'valid', 'r', 'g', 'b'].map(suffix => `${this.framebuffer!.signal}_${suffix}`);
         } else {
-            const selected = options.display?.signal;
+            const selected = options.display?.buffer;
             const inferred = inferFramebuffer(compiled.displays, selected);
             this.framebuffer = inferred ? { ...inferred, ...Object.fromEntries(Object.entries(options.display ?? {}).filter(([, v]) => v !== undefined)) } : undefined;
-            const descriptor = compiled.displays.find((d: DisplayDescriptor) => d.signal === this.framebuffer?.signal);
+            const descriptor = compiled.displays.find((d: DisplayDescriptor) => d.buffer === this.framebuffer?.signal);
             this.nativeDisplay = Boolean(descriptor && !this.framebuffer?.packing);
             if (descriptor) {
+                this.packedDisplayRows = descriptor.bits === 1;
                 if (descriptor.bits === 1 && this.framebuffer?.valueMode !== 'binary') throw new Error("Boolean displays use binary mode; set on_color and off_color to change their colors.");
                 if (this.nativeDisplay && (this.framebuffer!.width !== descriptor.width || this.framebuffer!.height !== descriptor.height)) throw new Error('Display dimensions come from the output type; use UI zoom to resize it.');
                 this.hidden = descriptor.ports;
             }
         }
         if (this.framebuffer && (!Number.isSafeInteger(this.framebuffer.width) || !Number.isSafeInteger(this.framebuffer.height) || this.framebuffer.width < 1 || this.framebuffer.height < 1 || this.framebuffer.width * this.framebuffer.height > 4_194_304)) throw new Error('Display dimensions must be positive integers with at most 4,194,304 pixels.');
-        this.metadata = { top: options.top, clock: this.clock, reset: options.reset, clockHz: options.clockHz, cyclesPerFrame: options.cyclesPerFrame, display: options.display ?? (this.framebuffer ? { signal: this.framebuffer.signal } : undefined) };
+        this.metadata = { top: options.top, clock: this.clock, reset: options.reset, clockHz: options.clockHz, cyclesPerFrame: options.cyclesPerFrame, display: options.display ?? (this.framebuffer ? { buffer: this.framebuffer.signal } : undefined) };
         this.initialize();
     }
     private initialize() {
@@ -290,7 +292,7 @@ export class SimulationSession {
             if (this.stream) frames.push({ width: fb.width, height: fb.height, signal: fb.signal, rgb: Uint32Array.from(this.raster.pixels), valid: Uint32Array.from(this.raster.valid) });
             else if (this.nativeDisplay) {
                 const binary = fb.valueMode === 'binary';
-                const frame: any = unwrap(simulator_frame(this.machine, this.hidden, fb.width, fb.height, binary));
+                const frame: any = unwrap(simulator_frame_with_layout(this.machine, this.hidden, fb.width, fb.height, this.packedDisplayRows, binary));
                 const words = Uint32Array.from(frame.words);
                 if (fb.valueMode === 'gray') for (let i = 0; i < words.length; i++) words[i] = (words[i] & 255) * 0x010101;
                 frames.push({ width: fb.width, height: fb.height, signal: fb.signal, ...(binary ? { packed: words } : { rgb: words }), valid: Uint32Array.from(frame.valid), onColor: fb.onColor, offColor: fb.offColor });
@@ -332,7 +334,11 @@ export function compile(request: CompileRequest): CompileResult {
                     if (!Number.isSafeInteger(frames) || frames < 1 || frames > 600) throw new Error("captureFrames must be an integer between 1 and 600.");
                     for (let i = 1; i < frames; i++) {
                         if (session.clock) cycles += session.advance(cyclesPerFrame);
-                        simulation.framebuffers!.push(...session.snapshot().framebuffers!);
+                        const snapshot = session.snapshot();
+                        simulation.framebuffers!.push(...snapshot.framebuffers!);
+                        simulation.outputs = snapshot.outputs;
+                        simulation.inputs = snapshot.inputs;
+                        simulation.messages.push(...snapshot.messages);
                     }
                 } else if (session.clock) {
                     cycles += session.advance(Math.max(0, Math.min(100000, request.simulate.cycles ?? 1)));

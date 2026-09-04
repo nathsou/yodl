@@ -292,13 +292,36 @@ test "external primitive models drive instance outputs" {
   }
   let models : Map[String, @simulator.PrimitiveModel] = Map([])
   models["Box"] = {
-    eval: fn(sim) {
-      let input = sim.peek("a")
-      sim.poke("y", @simulator.SimValue::from_int(8, input.as_bigint().to_int() + 1))
-    },
+    evaluate: (inputs) => [@simulator.SimValue::from_int(8, inputs[0].as_bigint().to_int() + 1)],
   }
   let sim = @simulator.Simulator::from_circuit_with_models(circuit, "Top", models)
   sim.poke("a", @simulator.SimValue::from_int(8, 41))
   sim.settle()
   assert_eq(sim.peek("y").as_bigint().to_int(), 42)
+}
+
+test "typed signed connections widen combinational and register inputs" {
+  let s8 = Type::SInt(8)
+  let s16 = Type::SInt(16)
+  let design: Module[Type] = {
+    public: true,
+    id: @firrtl.Id::Ident("Top"),
+    ports: [
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("clk"), ty: Type::Clock },
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("a"), ty: s8 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("out"), ty: s16 },
+    ],
+    body: [
+      @firrtl.Stmt::Reg(id=@firrtl.Id::Ident("r"), ty=s16, clock=ref_expr("clk", Type::Clock)),
+      @firrtl.Stmt::Connect(id("r", s16), ref_expr("a", s8)),
+      @firrtl.Stmt::Connect(id("out", s16), ref_expr("a", s8)),
+    ],
+  }
+  let sim = @simulator.Simulator::new(design)
+  sim.poke("a", @simulator.SimValue::from_int(8, 255))
+  sim.step_clock("clk")
+  for name in ["r", "out"] {
+    assert_true(sim.peek(name).is_known())
+    assert_eq(sim.peek(name).as_bigint().to_int(), 65535)
+  }
 }

@@ -4,7 +4,7 @@
 const LIFE_ROWS = 480 / 16
 const LIFE_COLS = 640 / 16
 
-module LifePattern() -> (pattern: [LIFE_ROWS][LIFE_COLS]bool) {
+module GameOfLifePattern() -> (pattern: [LIFE_ROWS][LIFE_COLS]bool) {
     pattern = [
         rev!([..40'b0000000000000000000000000000000000000000]),
         rev!([..40'b0000000000000000000000000000000000000000]),
@@ -42,10 +42,10 @@ module LifePattern() -> (pattern: [LIFE_ROWS][LIFE_COLS]bool) {
 // One clk edge advances one Game of Life generation. The vector register
 // keeps all 1,200 cells in one sequential object.
 @simulation({
-    display: { signal: "state" },
+    display: { buffer: "state" },
     reset: "init",
 })
-module LifeSim(
+module GameOfLifeSim(
     clk: clock,
     rst: bool,
     init: bool,
@@ -53,7 +53,7 @@ module LifeSim(
     state: [LIFE_ROWS][LIFE_COLS]bool,
     ready: bool,
 ) {
-    let pattern = LifePattern().pattern
+    let pattern = GameOfLifePattern().pattern
     let cells = Reg[[LIFE_ROWS][LIFE_COLS]bool](clk, rst)
 
     for row in 0..<LIFE_ROWS {
@@ -81,7 +81,7 @@ module LifeSim(
     ready = init ? 1'b0 : 1'b1
 }
 
-// Conventional CLI entry point with the same semantic outputs as LifeSim.
+// Conventional CLI entry point with the same semantic outputs as GameOfLifeSim.
 // It deliberately exposes the logical cell state instead of display timing.
 module Top(
     clk: clock,
@@ -91,7 +91,7 @@ module Top(
     state: [LIFE_ROWS][LIFE_COLS]bool,
     ready: bool,
 ) {
-    let life = LifeSim(clk, rst, init)
+    let life = GameOfLifeSim(clk, rst, init)
     state = life.state
     ready = life.ready
 }

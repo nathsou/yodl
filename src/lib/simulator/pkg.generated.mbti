@@ -8,9 +8,13 @@ import {
 }
 
 // Values
+pub fn prepare_simulation_circuit(@firrtl.Circuit[@firrtl.Type]) -> @firrtl.Circuit[@firrtl.Type] raise SimulatorError
+
 pub fn simulator_clocks(Simulator) -> Array[String]
 
 pub fn simulator_frame(Simulator, Array[String], Int, Int, Bool) -> SimulatorFrame raise SimulatorError
+
+pub fn simulator_frame_with_layout(Simulator, Array[String], Int, Int, packed_rows~ : Bool, binary~ : Bool) -> SimulatorFrame raise SimulatorError
 
 pub fn simulator_halted(Simulator) -> Bool
 
@@ -58,16 +62,29 @@ pub fn Framebuffer::write(Self, Int, Int, Int, Int, Int) -> Unit
 type MemoryState
 
 pub(all) struct PrimitiveModel {
-  eval : (Simulator) -> Unit raise SimulatorError
+  evaluate : (Array[SimValue]) -> Array[SimValue] raise SimulatorError
 }
 
 pub(all) struct RegisterState {
   name : String
   width : Int
   clock : String
-  reset : @firrtl.Expr[@firrtl.Type]?
-  init : @firrtl.Expr[@firrtl.Type]?
+  reset : SimExpr?
+  init : SimExpr?
+  async_reset : Bool
   previous_clock : Bool
+}
+
+pub struct SimCommand {
+  clock : String
+  enable : SimExpr
+  action : SimCommandAction
+}
+
+pub enum SimCommandAction {
+  Printf(parts~ : Array[SimFormatPart], args~ : Array[(SimExpr, Bool)])
+  Assert(pred~ : SimExpr, parts~ : Array[SimFormatPart], args~ : Array[(SimExpr, Bool)])
+  Stop(code~ : Int)
 }
 
 pub(all) enum SimExpr {
@@ -77,6 +94,14 @@ pub(all) enum SimExpr {
   Literal(value~ : SimValue)
   Mux(cond~ : SimExpr, tval~ : SimExpr, fval~ : SimExpr)
   Prim(op~ : @firrtl.PrimOp, args~ : Array[SimExpr], width~ : Int, signed~ : Bool)
+}
+
+pub enum SimFormatPart {
+  Text(String)
+  Binary
+  Character
+  Decimal
+  Hexadecimal
 }
 
 pub(all) struct SimMessage {
@@ -89,7 +114,6 @@ pub fn SimMessage::text(Self) -> String
 pub(all) enum SimStmt {
   Node(name~ : String, expr~ : SimExpr)
   Connect(name~ : String, expr~ : SimExpr)
-  When(cond~ : SimExpr, body~ : Array[SimStmt], otherwise~ : Array[SimStmt])
   Other
 }
 
@@ -106,7 +130,7 @@ pub fn SimValue::new(Int, @bigint.BigInt, known? : Bool) -> Self
 pub fn SimValue::zero(Int) -> Self
 pub impl Show for SimValue
 
-pub(all) struct Simulator {
+pub struct Simulator {
   design : @firrtl.Module[@firrtl.Type]
   program : Array[SimStmt]
   signals : Map[String, SimValue]
@@ -126,10 +150,10 @@ pub(all) struct Simulator {
   mut waveform : Waveform?
   mut waveform_filter : Array[String]
   dependents : Map[String, Array[Int]]
-  mut pending : Array[Int]
-  mut queued : Array[Bool]
-  primitive_models : Map[String, PrimitiveModel]
+  pending : Array[Int]
+  queued : Array[Bool]
   primitive_model : PrimitiveModel?
+  commands : Array[SimCommand]
 }
 pub fn Simulator::cycle(Self) -> Int
 pub fn Simulator::disable_waveform(Self) -> Unit

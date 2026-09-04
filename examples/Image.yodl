@@ -1,7 +1,7 @@
 // A 40x30 (4x decimated) extract of res/york.mem, packed as eight 3-bit
 // palette indices per u24 word.
 @simulation({
-    display: { signal: "pixel" },
+    display: { buffer: "pixel" },
 })
 module ImageSim() -> (pixel: [30][40]u24) {
     const image: [30][5]u24 = [

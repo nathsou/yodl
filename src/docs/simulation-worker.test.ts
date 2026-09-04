@@ -18,7 +18,7 @@ async function waitFor(type: string, from = 0) {
 }
 
 test('manual stepping, low-frequency resume and input snapshots share one worker machine', async () => {
-    send({ id: 100, path: 'test.yodl', stage: 'write_low_firrtl', source: `@simulation({display: { signal: "pixel" }, reset: "rst"})
+    send({ id: 100, path: 'test.yodl', stage: 'write_low_firrtl', source: `@simulation({display: { buffer: "pixel" }, reset: "rst"})
 module Top(clk: clock, rst: bool, a: bool) -> (pixel: [1][2]bool, count: u8) {
     let counter = Reg[u8](clk, rst)
     counter.d = counter.q + 1

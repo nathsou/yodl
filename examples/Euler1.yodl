@@ -13,7 +13,7 @@ module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
 }
 
 @simulation({
-    display: { signal: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 16096865, off_color: 1773349 },
+    display: { buffer: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 16096865, off_color: 1773349 },
     reset: "rst",
     clock_hz: 60,
 })

@@ -1,7 +1,7 @@
 import Font
 
 @simulation({
-    display: { signal: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 8116210, off_color: 1056800 },
+    display: { buffer: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 8116210, off_color: 1056800 },
 })
 module HelloSim() -> (pixel: [300][13]u32) {
     let message = "YODL; Yet anOther Description Language by Nathan Soufflet!"

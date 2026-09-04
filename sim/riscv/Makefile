@@ -12,13 +12,13 @@ VTop: VTop.mk
 	make -C ./obj_dir -f VTop.mk
 
 RISCV.rtlil: prog.hex
-	cd ../.. && moon run src/main examples/SOC.yodl "write_rtlil sim/riscv/RISCV.rtlil"
+	cd ../.. && moon run src/main examples/RISCV.yodl "write_rtlil sim/riscv/RISCV.rtlil"
 
 RISCV.rtlil.sv: RISCV.rtlil
 	yosys -p "read_rtlil RISCV.rtlil; opt; write_verilog RISCV.rtlil.sv"
 
 RISCV.fir: prog.hex
-	cd ../.. && moon run src/main examples/SOC.yodl "write_low_firrtl sim/riscv/RISCV.fir"
+	cd ../.. && moon run src/main examples/RISCV.yodl "write_low_firrtl sim/riscv/RISCV.fir"
 
 RISCV.fir.sv: RISCV.fir
 	firtool -O=release --format=fir --verilog -disable-all-randomization -strip-debug-info RISCV.fir -o RISCV.fir.sv

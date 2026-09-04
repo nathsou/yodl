@@ -39,7 +39,7 @@ pub(all) struct SimulationDesign {
 }
 
 pub(all) struct SimulationDisplay {
-  signal : String
+  buffer : String
   width : Int
   height : Int
   bits : Int

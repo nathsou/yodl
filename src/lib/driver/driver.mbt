@@ -262,12 +262,9 @@ pub fn compile_simulation(
   try elaborator.lower(simplified_decls.iter()) catch {
     err => raise Failure::Failure(err.to_string())
   }
-  let circuit = lower_firrtl(elaborator, passes=[
-    @firrtl.ExpandConnectsPass::new(),
-    @firrtl.ExpandWhensPass::new(),
-  ])
+  let circuit = lower_firrtl(elaborator, passes=[])
   let pass = @firrtl.LowerAggregateTypesPass::new(split_memories=false, packed_bool_rows=true)
-  let lowered = pass.run(circuit)
+  let lowered = pass.prepare_simulation(circuit)
   let candidates = circuit.decls.filter_map(decl => match decl {
     @firrtl.Decl::Module(mod) if mod.id.inner() == top || mod.id.inner().has_suffix("_" + top) => Some(mod)
     _ => None
@@ -292,7 +289,7 @@ pub fn compile_simulation(
             }
           }
         }
-        displays.push({ signal: port.id.inner(), width, height, bits, ports })
+        displays.push({ buffer: port.id.inner(), width, height, bits, ports })
       }
     }
   }
@@ -300,7 +297,7 @@ pub fn compile_simulation(
 }
 
 pub(all) struct SimulationDisplay {
-  signal: String
+  buffer: String
   width: Int
   height: Int
   bits: Int
@@ -353,8 +350,8 @@ pub fn simulation_metadata(
               if key == "display" {
                 match value {
                   @parse.AttributeValue::Dict(fields) => {
-                    if !fields.contains("signal") && !fields.contains("stream") {
-                      raise Failure::Failure("display requires a signal or stream at \{span}")
+                    if !fields.contains("buffer") && !fields.contains("stream") {
+                      raise Failure::Failure("display requires a buffer or stream at \{span}")
                     }
                   }
                   _ => raise Failure::Failure("display must be an object at \{span}")

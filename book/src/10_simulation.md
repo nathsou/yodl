@@ -50,13 +50,13 @@ for sample in sim.waveform() {
 }
 ```
 
-External FIRRTL modules can be supplied by a host model. The model is called
-after input propagation and can use `peek`/`poke` on the primitive's ports:
+External FIRRTL modules can be supplied by a host model. The model receives its
+input values and returns output values in declared port order:
 
 ```moonbit
 let models : Map[String, @simulator.PrimitiveModel] = Map([])
 models["TimerIP"] = {
-  eval: fn(ip) { ip.poke("done", @simulator.SimValue::from_int(1, 1)) },
+  evaluate: (_) => [@simulator.SimValue::from_int(1, 1)],
 }
 let sim = @simulator.Simulator::from_circuit_with_models(circuit, "Top", models)
 ```
@@ -67,17 +67,17 @@ simulation host. `Framebuffer` stores RGB pixels for a browser canvas, and
 same logical signals to a physical display or serial link when targeting an
 FPGA, but the simulation top does not need those timing signals.
 
-The playground uses this separation for the Game of Life example: `LifeSim`
+The playground uses this separation for the Game of Life example: `GameOfLifeSim`
 loads its 30×40 vector register in one cycle, advances one generation per
 clock, and returns the aggregate state as a framebuffer.
 
 A simulation display can be a logical array or a pixel stream. The compiler
 binds displays to typed outputs; signal names do not need a special prefix.
 A sole two-dimensional unsigned output is detected automatically. Use
-`display: { signal: "name" }` to choose between multiple arrays.
+`display: { buffer: "name" }` to choose between multiple arrays.
 
 ```yodl id=ex-simulation-annotation
-@simulation({ display: { signal: "pixel" }, reset: "rst" })
+@simulation({ display: { buffer: "pixel" }, reset: "rst" })
 module VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {
     for row in 0..<30 {
         for col in 0..<40 {
@@ -104,14 +104,14 @@ exporting one decimal string per pixel. Validity is conservative at the row
 level: if any bit is unknown, the row can be shown as unknown.
 
 Other unsigned element types default to RGB integers (`0xRRGGBB`). Use
-`display: { signal: "image", mode: "gray" }` for grayscale or set `on_color`
+`display: { buffer: "image", mode: "gray" }` for grayscale or set `on_color`
 and `off_color` for monochrome colors. Mode never depends on the current
 pixel values, so an initially black RGB image remains an RGB image.
 The panel shows unknown values in magenta and reports an initialization hint.
 Zoom is a canvas setting and does not change the circuit or framebuffer shape.
 
 `Noise.yodl` exposes an 80×60 logical RGB framebuffer with
-`@simulation({ display: { signal: "pixel" }, reset: "rst" })`. Each pixel consumes a
+`@simulation({ display: { buffer: "pixel" }, reset: "rst" })`. Each pixel consumes a
 successive LFSR state in row-major order. One clock edge advances the seed by
 one complete frame, so adjacent frames continue the sequence without
 reusing overlapping samples. The example has no scan counters or VGA signals;
@@ -165,16 +165,16 @@ Capture length and canvas refresh are run options, not circuit annotations.
 The batch API accepts `captureFrames` (default one) and optional
 `cyclesPerFrame`; realtime playback accepts `refreshFps`. A clockless design
 settles and displays its image without any timing configuration. For example,
-ImageSim needs only `@simulation({ display: { signal: "pixel" } })`.
+ImageSim needs only `@simulation({ display: { buffer: "pixel" } })`.
 
 Every framebuffer annotation uses the same `display` object. Logical arrays
-need only `signal`; colors and grayscale mode are optional fields in that
+need only `buffer`; colors and grayscale mode are optional fields in that
 object. Designs that expose explicitly packed words use that same object with
 `width`, `height`, and `packing`, for example:
 
 ```text
 display: {
-    signal: "pixel",
+    buffer: "pixel",
     width: 400,
     height: 300,
     mode: "binary",
@@ -212,5 +212,5 @@ playback and leave short interactive steps roughly unchanged; startup,
 serialization, and browser support for `wasm-gc` still make JavaScript the
 better default today. The recommended path is to keep the current JS backend,
 add a batched WASM worker behind the same `SimulationRequest` protocol, and
-choose it only after measuring representative designs such as Life, Image,
+choose it only after measuring representative designs such as GameOfLife, Image,
 and Noise.

@@ -177,6 +177,17 @@ test "constant assertions fold through explicit coercions" {
 }
 
 ///|
+test "clockless modules may contain constant assertions and diagnostics" {
+  let source =
+    #|module Top() -> () {
+    #|  assert!(1'b1)
+    #|  printf!("checked")
+    #|}
+  let firrtl = compile_stage(source, "write_firrtl")
+  assert_true(firrtl.contains("asClock"))
+}
+
+///|
 test "inferred unsigned literals cannot acquire signedness from context" {
   let source =
     #|module Top() -> () {

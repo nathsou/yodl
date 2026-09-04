@@ -363,6 +363,21 @@ fn LowerAggregateTypesPass::rewrite_expr(self: Self, expr: TypedExpr, body: Arra
         } else {
           raise Failure::Failure("Reference maps to multiple new references, cannot rewrite: \{reference}")
         }
+      } else if self.packed_bool_rows && !ty.is_ground() {
+        // A reference to a subaggregate can outlive its declaration after
+        // flattening (for example the input to a nested width coercion).
+        // Rebuild its packed value from mapped leaves, least-significant first.
+        let leaves = flatten_ref(reference)
+        if leaves.iter().all(r => self.table.ref_mapping.contains(r)) {
+          let packed = concat_refs(leaves.map(r => self.table.ref_mapping[r][0]))
+          match packed {
+            PrimOp(op~, args~, ..) => PrimOp(op~, args~, ty~)
+            Reference(r, ..) => Reference(r, ty~)
+            _ => packed
+          }
+        } else {
+          Reference(reference, ty~)
+        }
       } else {
         Reference(reference, ty~)
       }
@@ -550,13 +565,13 @@ fn LowerAggregateTypesPass::expr_as_ref(self: Self, expr: TypedExpr, body: Array
 
 fn LowerAggregateTypesPass::sub_exprs_dfs(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> Array[TypedExpr] {
   match expr {
-    Mux(cond~, tval~, fval~, ty~) => {
+    Mux(cond~, tval~, fval~, ..) => {
       let texprs = self.sub_exprs_dfs(tval, body)
       let fexprs = self.sub_exprs_dfs(fval, body)
       let results = Array::new(capacity=texprs.length())
 
       for tval_i, fval_i in @utils.zip2(texprs, fexprs) {
-        results.push(Mux(cond~, tval=tval_i, fval=fval_i, ty~))
+        results.push(Mux(cond~, tval=tval_i, fval=fval_i, ty=tval_i.ty()))
       }
 
       results

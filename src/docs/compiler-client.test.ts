@@ -93,7 +93,7 @@ test('real-time simulation uses a persistent worker control stream', () => {
     globalThis.Worker = FakeWorker as any;
     const client = new RealtimeSimulationClient();
     const events: string[] = [];
-    client.start({ ...request, simulate: { action: 'run', display: { width: 2, height: 2, signal: 'pixel' }, refreshFps: 60, cyclesPerFrame: 1 } }, event => events.push(event.type));
+    client.start({ ...request, simulate: { action: 'run', display: { width: 2, height: 2, buffer: 'pixel' }, refreshFps: 60, cyclesPerFrame: 1 } }, event => events.push(event.type));
     const worker = FakeWorker.instances[0];
     expect(worker.messages[0].simulate).toMatchObject({ mode: 'realtime', action: 'run' });
     client.pause();
@@ -121,11 +121,11 @@ test('each compile has an isolated dependency filesystem', () => {
 });
 
 test('simulation metadata comes from parsed compiler attributes', () => {
-    const metadata = readSimulationMetadata({ source: files['examples/Life.yodl'], path: 'examples/Life.yodl', files });
+    const metadata = readSimulationMetadata({ source: files['examples/GameOfLife.yodl'], path: 'examples/GameOfLife.yodl', files });
     expect(metadata).toMatchObject({
-        top: 'LifeSim',
+        top: 'GameOfLifeSim',
         reset: { signal: 'init' },
-        display: { signal: 'state' },
+        display: { buffer: 'state' },
     });
     expect(readSimulationMetadata({ source: files['examples/Image.yodl'], path: 'examples/Image.yodl', files })?.cyclesPerFrame).toBeUndefined();
 });
@@ -179,14 +179,14 @@ test('simulation preserves unknown muxes and signed dynamic shifts', () => {
 test('logical display bindings infer matrix dimensions and pack rows internally', () => {
     const result = compile({
         id: 8,
-        source: files['examples/Life.yodl'],
-        path: 'examples/Life.yodl',
+        source: files['examples/GameOfLife.yodl'],
+        path: 'examples/GameOfLife.yodl',
         stage: 'write_low_firrtl',
         files,
-        simulate: { action: 'reset', top: 'LifeSim' },
+        simulate: { action: 'reset', top: 'GameOfLifeSim' },
     });
     expect(result.error).toBeUndefined();
-    expect(result.simulation?.metadata?.display?.signal).toBe('state');
+    expect(result.simulation?.metadata?.display?.buffer).toBe('state');
     expect(result.simulation?.framebuffers?.[0]).toMatchObject({ width: 40, height: 30 });
     expect(result.simulation?.framebuffers?.[0].packed).toBeInstanceOf(Uint32Array);
     expect(result.simulation?.framebuffers?.[0].packed).toHaveLength(60);
@@ -194,19 +194,19 @@ test('logical display bindings infer matrix dimensions and pack rows internally'
 });
 
 test('Game of Life simulation returns playable framebuffer frames', () => {
-    const source = files['examples/Life.yodl'];
+    const source = files['examples/GameOfLife.yodl'];
     const result = compile({
         id: 4,
         source,
-        path: 'examples/Life.yodl',
+        path: 'examples/GameOfLife.yodl',
         stage: 'write_low_firrtl',
         files,
         simulate: {
-            top: 'LifeSim',
+            top: 'GameOfLifeSim',
             clock: 'clk',
             captureFrames: 4,
             cyclesPerFrame: 1,
-            display: { signal: 'state' },
+            display: { buffer: 'state' },
             reset: { signal: 'init' },
         },
     });
@@ -275,7 +275,7 @@ test('pixel matrices from user circuits are rendered automatically', () => {
 test('packed framebuffers reconstruct their declared display size', () => {
     const result = compile({
         id: 12,
-        source: '@simulation({ display: { signal: "pixel", width: 4, height: 2, mode: "binary", packing: "bits32", pixel_scale: 2, on_color: 1193046 } })\nmodule Top() -> (pixel: [1][1]u32) { pixel = [[32\'d3]]; }',
+        source: '@simulation({ display: { buffer: "pixel", width: 4, height: 2, mode: "binary", packing: "bits32", pixel_scale: 2, on_color: 1193046 } })\nmodule Top() -> (pixel: [1][1]u32) { pixel = [[32\'d3]]; }',
         path: 'examples/Packed.yodl',
         stage: 'write_low_firrtl',
         simulate: {
@@ -289,19 +289,19 @@ test('packed framebuffers reconstruct their declared display size', () => {
 });
 
 test('simulation step actions continue the worker session', () => {
-    const source = files['examples/Life.yodl'];
+    const source = files['examples/GameOfLife.yodl'];
     const request = (action: 'reset' | 'step_frame' | 'step_cycle') => compile({
         id: 8,
         source,
-        path: 'examples/Life.yodl',
+        path: 'examples/GameOfLife.yodl',
         stage: 'write_low_firrtl',
         files,
         simulate: {
             action,
-            top: 'LifeSim',
+            top: 'GameOfLifeSim',
             clock: 'clk',
             cyclesPerFrame: 1,
-            display: { signal: 'state' },
+            display: { buffer: 'state' },
             reset: { signal: 'init' },
         },
     });
@@ -342,7 +342,7 @@ test('Noise exposes complete framebuffer frames with successive LFSR samples', (
 }, 30_000);
 
 test('typed displays select the requested shape, preserve black RGB and reject name heuristics', () => {
-    const source = `@simulation({display: { signal: "image" }})
+    const source = `@simulation({display: { buffer: "image" }})
 module Top() -> (pixel: [1][1]bool, image: [2][3]u24, state_count: u8) {
     pixel = [[true]]
     image = [[0, 0, 0], [0, 0, 0]]
@@ -357,8 +357,18 @@ module Top() -> (pixel: [1][1]bool, image: [2][3]u24, state_count: u8) {
     expect(fake.simulation!.framebuffers).toEqual([]);
 });
 
+test('binary rendering packs integer pixels by value rather than storage layout', () => {
+    const source = `@simulation({display: { buffer: "pixel" }})
+module Top() -> (pixel: [1][2]u8) { pixel = [[1, 1]]; }`;
+    const result = compile({ ...request, id: 921, source, simulate: { display: { buffer: 'pixel', valueMode: 'binary' } } });
+    expect(result.error).toBeUndefined();
+    const frame = result.simulation!.framebuffers![0];
+    expect(frame.packed).toEqual(new Uint32Array([3]));
+    expect(frame.valid).toEqual(new Uint32Array([3]));
+});
+
 test('settling inputs refreshes packed displays and retains unknown validity', () => {
-    const source = `@simulation({display: { signal: "pixel" }})
+    const source = `@simulation({display: { buffer: "pixel" }})
 module Top(clk: clock, a: bool) -> (pixel: [1][33]bool) {
     let uninitialized = Reg[bool](clk)
     uninitialized.d = uninitialized.q
@@ -398,7 +408,7 @@ module Top(clk: clock, rst: bool) -> (video: (x: u2, y: u1, valid: bool, r: u1, 
 });
 
 test('display descriptors survive flattened-name collisions', () => {
-    const result = compile({ ...request, id: 98, source: `@simulation({display: { signal: "pixel" }})
+    const result = compile({ ...request, id: 98, source: `@simulation({display: { buffer: "pixel" }})
 module Top() -> (pixel_0: bool, pixel: [1][2]bool) {
     pixel_0 = false
     pixel = [[true, false]]
@@ -410,10 +420,10 @@ module Top() -> (pixel_0: bool, pixel: [1][2]bool) {
 
 
 test('all graphical examples use the same display annotation object', () => {
-    for (const name of ['Noise', 'Life', 'Image', 'Hello', 'Clock', 'Euler1']) {
+    for (const name of ['Noise', 'GameOfLife', 'Image', 'Hello', 'Clock', 'Euler1']) {
         const path = `examples/${name}.yodl`;
         const metadata = readSimulationMetadata({ path, source: files[path], files });
-        expect(metadata?.display?.signal).toBe(name === 'Life' ? 'state' : 'pixel');
+        expect(metadata?.display?.buffer).toBe(name === 'GameOfLife' ? 'state' : 'pixel');
         expect(metadata).not.toHaveProperty('framebuffer');
     }
 });
@@ -421,10 +431,11 @@ test('all graphical examples use the same display annotation object', () => {
 test('simulation accepts only the display object syntax', () => {
     for (const options of [
         'display: "pixel"',
-        'framebuffer: { signal: "pixel", width: 1, height: 1 }',
+        'framebuffer: { buffer: "pixel", width: 1, height: 1 }',
         'display: { state_prefix: "pixel" }',
         'display: {}',
-        'display: { signal: "pixel", packing: "bits32" }',
+        'display: { signal: "pixel" }',
+        'display: { buffer: "pixel", packing: "bits32" }',
     ]) {
         const source = `@simulation({ ${options} })\nmodule Top() -> (pixel: [1][1]bool) { pixel = [[true]]; }`;
         const result = compile({ ...request, id: 99, source, simulate: {} });
@@ -434,7 +445,7 @@ test('simulation accepts only the display object syntax', () => {
 });
 
 test('capture count is a run option and cycles_per_frame is a positive design interval', () => {
-    const source = `@simulation({display: {signal: "pixel"}, reset: "rst", cycles_per_frame: 3})
+    const source = `@simulation({display: {buffer: "pixel"}, reset: "rst", cycles_per_frame: 3})
 module Top(clk: clock, rst: bool) -> (pixel: [1][1]u24) {
     let count = Reg[u24](clk, rst)
     count.d = count.q + 1
@@ -482,10 +493,30 @@ test('source tabs receive only files actually read, including transitive imports
     expect(Object.keys(fresh.sources!)).toEqual(['examples/Main.yodl']);
 });
 
-test('Life is the sole Game of Life example and simulation exposes its loaded source', () => {
+test('GameOfLife is the sole Game of Life example and simulation exposes its loaded source', () => {
     expect(files['examples/Sim.yodl']).toBeUndefined();
-    const path = 'examples/Life.yodl';
+    const path = 'examples/GameOfLife.yodl';
     const session = new SimulationSession({ id: 501, path, source: files[path], files, stage: 'write_low_firrtl' });
     expect(session.sources[path]).toBe(files[path]);
-    expect(session.metadata.top).toBe('LifeSim');
+    expect(session.metadata.top).toBe('GameOfLifeSim');
+});
+
+test('batch capture retains final scalar state and messages from every frame', () => {
+    const result = compile({
+        id: 901, path: 'Capture.yodl', stage: 'write_firrtl',
+        source: `module Top(clk: clock, rst: bool) -> (q: u8, pixel: [1][1]u24) {
+            let r = RegAsyncReset[u8](clk, rst: rst)
+            r.d = r.q + 1'b1
+            q = r.q
+            pixel[0][0] = r.q
+            printf!("counter %d", r.q)
+        }`,
+        simulate: { reset: { signal: 'rst' }, captureFrames: 3 },
+    });
+    expect(result.error).toBeUndefined();
+    const simulation = result.simulation!;
+    expect(simulation.cycles).toBe(2);
+    expect(simulation.outputs.find(signal => signal.name === 'q')?.value).toBe('2');
+    expect(simulation.framebuffers!.map(frame => Array.from(frame.rgb!))).toEqual([[0], [1], [2]]);
+    expect(simulation.messages).toEqual(['counter 0', 'counter 0', 'counter 1']);
 });

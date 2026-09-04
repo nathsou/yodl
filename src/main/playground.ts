@@ -256,7 +256,7 @@ function choose(next: Selection) {
     resetSourceWorkspace();
     // Simulation fields describe the selected design. Do not carry a top or
     // clock from a previous example into the next one (that made Image/Noise
-    // appear broken after running LifeSim).
+    // appear broken after running GameOfLifeSim).
     for (const id of ['simulation-top', 'simulation-clock', 'simulation-inputs']) {
         element<HTMLInputElement>(id).value = '';
     }
@@ -361,6 +361,7 @@ function renderSimulationFrames(frames: SimulationFramebuffer[]) {
     const canvas = element<HTMLCanvasElement>('simulation-framebuffer');
     const frame = frames.at(-1);
     lastFrame = frame;
+    element('simulation-zoom-control').hidden = !frame;
     if (!frame) { canvas.hidden = true; return; }
     canvas.hidden = false;
     if (canvas.width !== frame.width || canvas.height !== frame.height) {
@@ -454,6 +455,7 @@ function handleRealtimeEvent(event: SimulationStreamEvent) {
         : event.type === 'stepping' ? 'stepping'
         : event.type === 'frame' || event.type === 'resumed' ? 'running' : 'paused';
     if (event.frame) renderSimulationFrames([event.frame]);
+    else if (event.metadata && !event.metadata.display) renderSimulationFrames([]);
     if (event.outputs) renderSimulationOutput(event.outputs, event.messages ?? [], event.totalCycles ?? 0, event.frame?.signal);
     if (event.inputs) renderSimulationInputs(event.inputs);
     button('simulation-step-cycle').disabled = !event.clock || simulationState === 'halted';

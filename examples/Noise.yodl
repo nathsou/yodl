@@ -4,7 +4,7 @@
 const WIDTH = 80
 const HEIGHT = 60
 
-@simulation({ display: { signal: "pixel" }, reset: "rst" })
+@simulation({ display: { buffer: "pixel" }, reset: "rst" })
 module NoiseSim(clk: clock, rst: bool) -> (pixel: [HEIGHT][WIDTH]u24) {
     let seed = Reg[u32](clk, rst)
     let samples: [WIDTH * HEIGHT + 1]u32

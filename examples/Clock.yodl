@@ -2,7 +2,7 @@ import Text
 import Font
 
 @simulation({
-    display: { signal: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 9485933, off_color: 1118744 },
+    display: { buffer: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 9485933, off_color: 1118744 },
     reset: "rst",
     clock_hz: 1,
 })

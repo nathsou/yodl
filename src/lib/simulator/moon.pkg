@@ -1,6 +1,7 @@
 import {
   "nathsou/yodl/lib/firrtl",
   "nathsou/yodl/lib/parse",
+  "nathsou/yodl/lib/utils",
   "moonbitlang/core/bigint",
 }
 
@@ -19,6 +20,7 @@ options(
         "simulator_output_signals",
         "simulator_inputs",
         "simulator_frame",
+        "simulator_frame_with_layout",
         "simulator_raster_new",
         "simulator_raster_step",
         "simulator_halted",
