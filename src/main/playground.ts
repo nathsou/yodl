@@ -371,6 +371,8 @@ function annotatedSimulation(source: string, requestedTop: string, dependencies:
         height,
         statePrefix,
         valueMode: (stringOption(rawFramebuffer?.mode) ?? stringOption(rawFramebuffer?.value_mode) ?? 'binary') as 'binary' | 'gray' | 'rgb',
+        packing: (stringOption(rawFramebuffer?.packing) ?? undefined) as 'bits' | 'bits32' | 'rgb332x4' | undefined,
+        pixelScale: numberOption(rawFramebuffer?.pixel_scale) ?? numberOption(rawFramebuffer?.pixelScale),
         onColor: numberOption(rawFramebuffer?.on_color) ?? numberOption(rawFramebuffer?.onColor),
         offColor: numberOption(rawFramebuffer?.off_color) ?? numberOption(rawFramebuffer?.offColor),
         initSignal: stringOption(annotation.init_signal) ?? stringOption(annotation.initSignal),
@@ -389,61 +391,13 @@ function annotatedSimulation(source: string, requestedTop: string, dependencies:
     };
 }
 
-function visualSimulation(path: string, requestedTop: string, source = '', dependencies: Iterable<string> = []): VisualSimulation {
+function visualSimulation(requestedTop: string, source = '', dependencies: Iterable<string> = []): VisualSimulation {
     const annotated = annotatedSimulation(source, requestedTop, dependencies);
     if (annotated && (!requestedTop || annotated.top?.toLowerCase() === requestedTop.toLowerCase())) return annotated;
-    const name = path.split('/').at(-1)?.toLowerCase() ?? '';
-    const top = requestedTop.toLowerCase();
-    if ((top === 'lifesim' && hasModule(source, 'LifeSim')) || ((name === 'sim.yodl' || name === 'life.yodl') && !requestedTop && hasModule(source, 'LifeSim'))) {
-        return {
-            top: 'LifeSim',
-            framebuffer: { width: 40, height: 30, statePrefix: 'state', initSignal: 'init', initCycles: 1, onColor: 0x1f6a4, offColor: 0x000000 },
-            frameCycles: 1,
-            clocked: true,
-        };
-    }
-    if ((top === 'imagesim' && hasModule(source, 'ImageSim')) || (name === 'image.yodl' && !requestedTop && hasModule(source, 'ImageSim'))) {
-        return {
-            top: 'ImageSim',
-            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'binary', onColor: 0xd8b35a, offColor: 0x141414 },
-            frames: 1,
-            frameCycles: 0,
-            clocked: false,
-        };
-    }
-    if ((top === 'noisesim' && hasModule(source, 'NoiseSim')) || (name === 'noise.yodl' && !requestedTop && hasModule(source, 'NoiseSim'))) {
-        return {
-            top: 'NoiseSim',
-            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'rgb', initSignal: 'rst', initCycles: 1 },
-            frameCycles: 1,
-            clocked: true,
-        };
-    }
-    if ((top === 'hellosim' && hasModule(source, 'HelloSim')) || (name === 'hello.yodl' && !requestedTop && hasModule(source, 'HelloSim'))) {
-        return {
-            top: 'HelloSim',
-            framebuffer: { width: 80, height: 60, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x7bdff2, offColor: 0x101820, initSignal: 'rst', initCycles: 1 },
-            frameCycles: 1,
-            clocked: true,
-        };
-    }
-    if ((top === 'euler1sim' && hasModule(source, 'Euler1Sim')) || (name === 'euler1.yodl' && !requestedTop && hasModule(source, 'Euler1Sim'))) {
-        return {
-            top: 'Euler1Sim',
-            framebuffer: { width: 80, height: 60, statePrefix: 'pixel', valueMode: 'binary', onColor: 0xf4a261, offColor: 0x1b1725, initSignal: 'rst', initCycles: 1 },
-            frameCycles: 1,
-            clocked: true,
-        };
-    }
-    if ((top === 'clocksim' && hasModule(source, 'ClockSim')) || (name === 'clock.yodl' && !requestedTop && hasModule(source, 'ClockSim'))) {
-        return {
-            top: 'ClockSim',
-            framebuffer: { width: 80, height: 60, statePrefix: 'pixel', valueMode: 'binary', onColor: 0x90be6d, offColor: 0x111a18, initSignal: 'rst', initCycles: 1 },
-            frameCycles: 1,
-            clocked: true,
-        };
-    }
-    return { clocked: true };
+    // Simulator behavior is explicit: without a valid @simulation annotation
+    // the compiler may still run a scalar design, but the playground does not
+    // infer visual tops or framebuffer formats from filenames.
+    return { clocked: false };
 }
 let framebufferAnimation: number | undefined;
 function renderSimulationFrames(frames: Array<{ width: number; height: number; pixels: number[] }>, frameRate = 60) {
@@ -504,7 +458,7 @@ async function runSimulation(action: SimulationRequest['action'] = 'run') {
     const dependencies = Object.entries({ ...files, ...sharedFiles })
         .filter(([path]) => path !== entryPath)
         .map(([, content]) => content);
-    const visual = visualSimulation(entryPath, requestedTop, source, dependencies);
+    const visual = visualSimulation(requestedTop, source, dependencies);
     // A source edit can remove an annotated/fallback simulator top while the
     // text field still contains its old value. Let the simulator infer the
     // actual top in that case instead of issuing a guaranteed missing-module

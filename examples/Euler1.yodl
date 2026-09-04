@@ -1,5 +1,9 @@
+import VGA
 import Text
+import Font
 
+// VGA is used only by the FPGA-facing Top below; Euler1Sim is
+// framebuffer-only.
 module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
     const N = 1000
     let counter = Reg[uint[clog2!(N)]](clk, rst)
@@ -12,10 +16,10 @@ module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
 }
 
 // Semantic framebuffer used by the playground. It renders the same result
-// string as the VGA path while avoiding scan timing.
+// string with the VGA-independent Font rasterizer while avoiding scan timing.
 @simulation({
     "clock": "clk",
-    framebuffer: { width: 80, height: 60, state_prefix: "pixel", mode: "binary", on_color: 16096865, off_color: 1773349 },
+    framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 16096865, off_color: 1773349 },
     init_signal: "rst",
     init_cycles: 1,
     frame_cycles: 1,
@@ -26,14 +30,14 @@ module Euler1Sim(
     clk: clock,
     rst: bool,
 ) -> (
-    pixel: [60][80]bool,
+    pixel: [300][13]u32,
     value: u18,
 ) {
     let euler = Euler1(clk, rst)
     value = euler.q
     let hex = Text::Hex[20](n: cat!(2'0, euler.q)).chars
     let message = [.."Euler 1: ", ..hex]
-    Text::TextFramebuffer[Length: 14, Width: 80, Height: 60, X: 1, Y: 4, Scale: 5](text: message, pixel)
+    Font::TextFramebufferWords[Length: 14, Width: 400, Height: 300, PackedWidth: 13, X: 2, Y: 4, Scale: 8](text: message, pixel)
 }
 
 module Top(

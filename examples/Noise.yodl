@@ -1,13 +1,14 @@
 import VGA
 import LFSR
 
+// VGA is used only by the FPGA-facing Top below; NoiseSim is framebuffer-only.
 // Logical noise source used by the playground. The hardware Top below keeps
 // the VGA timing path; simulation renders the same kind of RGB noise directly
 // without spending 420,000 cycles on a VGA scan.
 @simulation({
     top: "NoiseSim",
     "clock": "clk",
-    framebuffer: { width: 40, height: 30, state_prefix: "pixel", mode: "rgb" },
+    framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "rgb", packing: "rgb332x4", pixel_scale: 2 },
     init_signal: "rst",
     init_cycles: 1,
     frame_cycles: 1,
@@ -17,20 +18,30 @@ import LFSR
 module NoiseSim(
     clk: clock,
     rst: bool,
-) -> (pixel: [30][40]u24) {
+) -> (pixel: [150][50]u32) {
     let seed = Reg[u32](clk, rst)
     seed.d = seed.q + 32'd1
-    for row in 0..<30 {
-        for col in 0..<40 {
+    for row in 0..<150 {
+        for col in 0..<50 {
             // Mix the frame counter with the pixel coordinate. The hardware
             // LFSR advances once per VGA pixel; this equivalent hash keeps
-            // the same changing, full-colour appearance at 40x30.
-            const offset = row * 37 + col * 101
-            let mix = seed.q xor uint!(offset)
-            let red = cat!(mix[2:0], mix[2:0], mix[2:1])
-            let green = cat!(mix[5:3], mix[5:3], mix[5:4])
-            let blue = cat!(mix[8:6], mix[8:6], mix[8:7])
-            pixel[row][col] = cat!(red, green, blue)
+            // the same changing, full-colour appearance at 400x300 while
+            // packing four RGB332 pixels per output word and expanding each
+            // source pixel to an explicit 2x2 display block.
+            const x0 = col * 8
+            const x1 = x0 + 2
+            const x2 = x0 + 4
+            const x3 = x0 + 6
+            const y = row * 2
+            let mix0 = seed.q xor uint!(y * 37 + x0 * 101)
+            let mix1 = seed.q xor uint!(y * 37 + x1 * 101)
+            let mix2 = seed.q xor uint!(y * 37 + x2 * 101)
+            let mix3 = seed.q xor uint!(y * 37 + x3 * 101)
+            let color0 = cat!(mix0[2:0], mix0[5:3], mix0[8:7])
+            let color1 = cat!(mix1[2:0], mix1[5:3], mix1[8:7])
+            let color2 = cat!(mix2[2:0], mix2[5:3], mix2[8:7])
+            let color3 = cat!(mix3[2:0], mix3[5:3], mix3[8:7])
+            pixel[row][col] = cat!(color3, color2, color1, color0)
         }
     }
 }

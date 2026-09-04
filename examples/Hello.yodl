@@ -1,27 +1,31 @@
+import VGA
 import Timing
 import LFSR
 import Text
+import Font
 
+// VGA is used only by the FPGA-facing Top below; HelloSim is framebuffer-only.
 // Semantic framebuffer used by the playground. The FPGA Top below retains
 // the VGA/scrolling implementation; this compact adapter renders the same
-// message through the shared text rasterizer without scan timing.
+// message through the VGA-independent Font rasterizer without scan timing.
 @simulation({
     "clock": "clk",
-    framebuffer: { width: 80, height: 60, state_prefix: "pixel", mode: "binary", on_color: 8116210, off_color: 1056800 },
+    framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 8116210, off_color: 1056800 },
     init_signal: "rst",
     init_cycles: 1,
     frame_cycles: 1,
     clock_hz: 60,
     frame_rate: 30,
+    frames: 1,
 })
 module HelloSim(
     clk: clock,
     rst: bool,
-) -> (pixel: [60][80]bool) {
+) -> (pixel: [300][13]u32) {
     // The hardware message changes only after a very long timer interval;
     // keep the initial message stable while the playground captures frames.
     let message = "YODL; Yet anOther (hardware) Description Language by Nathan Soufflet!"
-    Text::TextFramebuffer[Length: 69, Width: 80, Height: 60, X: 0, Y: 1, Scale: 5](text: message, pixel)
+    Font::TextFramebufferWords[Length: 69, Width: 400, Height: 300, PackedWidth: 13, X: 1, Y: 2, Scale: 8](text: message, pixel)
 }
 
 module Top(

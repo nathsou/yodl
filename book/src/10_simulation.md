@@ -110,15 +110,23 @@ module VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {
 }
 ```
 
-`width`, `height`, and `state_prefix` describe the flattened output names;
-`mode` can be `binary`, `gray`, or `rgb`. `clock_hz` is the simulated design
-clock and `frame_rate` is the preferred display cadence, so a host can derive
+`width`, `height`, and `state_prefix` describe the displayed image and its
+flattened output names; `mode` can be `binary`, `gray`, or `rgb`. Large images
+may use explicit packing: `bits32` stores 32 horizontal binary pixels in each
+`u32`, while `rgb332x4` stores four RGB332 pixels in each `u32`. `pixel_scale`
+expands each packed source pixel into a square display block, so a compact
+simulation can still declare (for example) a 400x300 output without creating
+120,000 simulator ports. `clock_hz` is the simulated design clock and
+`frame_rate` is the preferred display cadence, so a host can derive
 `frame_cycles` when it is omitted. The playground exposes these values as
 defaults in its Options panel. Width, height, frame count, clock frequency,
-display rate, top, clock, and input values can be overridden per run. A design
-that has no framebuffer metadata still works with scalar outputs and textual
-messages, and a matrix output can be inferred from its `prefix_row_col` port
-names.
+display rate, top, clock, and input values can be overridden per run.
+
+Visual behavior is never selected from a filename. A design that wants a
+particular top, framebuffer shape, packing, or cadence must declare it in an
+`@simulation` annotation. Designs without metadata still work with scalar
+outputs and textual messages, and a matrix output can be inferred from its
+`prefix_row_col` port names.
 
 The simulation panel keeps one worker-side machine alive for manual
 interaction. `Reset` creates a fresh machine, `Step cycle` advances one clock,

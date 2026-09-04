@@ -144,19 +144,20 @@ test('visual examples expose simulation-friendly pixel outputs', () => {
             clock: 'clk',
             frames: 2,
             frameCycles: 1,
-            framebuffer: { width: 40, height: 30, statePrefix: 'pixel', valueMode: 'rgb', initSignal: 'rst', initCycles: 1 },
+            framebuffer: { width: 400, height: 300, statePrefix: 'pixel', valueMode: 'rgb', packing: 'rgb332x4', pixelScale: 2, initSignal: 'rst', initCycles: 1 },
         },
     });
     expect(noise.error).toBeUndefined();
     expect(noise.simulation?.framebuffers).toHaveLength(2);
-    expect(noise.simulation?.framebuffers?.[0]).toMatchObject({ width: 40, height: 30 });
+    expect(noise.simulation?.framebuffers?.[0]).toMatchObject({ width: 400, height: 300 });
     expect(new Set(noise.simulation?.framebuffers?.[0].pixels).size).toBeGreaterThan(4);
+    expect(noise.simulation?.framebuffers?.[0].pixels.slice(-400).some(pixel => pixel !== 0)).toBe(true);
     expect(noise.simulation?.framebuffers?.[0].pixels).not.toEqual(noise.simulation?.framebuffers?.[1].pixels);
 
     for (const [id, file, top, width] of [
-        [9, 'examples/Hello.yodl', 'HelloSim', 80],
-        [10, 'examples/Euler1.yodl', 'Euler1Sim', 80],
-        [11, 'examples/Clock.yodl', 'ClockSim', 80],
+        [9, 'examples/Hello.yodl', 'HelloSim', 400],
+        [10, 'examples/Euler1.yodl', 'Euler1Sim', 400],
+        [11, 'examples/Clock.yodl', 'ClockSim', 400],
     ] as const) {
         const visual = compile({
             id,
@@ -169,15 +170,15 @@ test('visual examples expose simulation-friendly pixel outputs', () => {
                 clock: 'clk',
                 frames: 2,
                 frameCycles: 1,
-                framebuffer: { width, height: 60, statePrefix: 'pixel', valueMode: 'binary', initSignal: 'rst', initCycles: 1 },
+                framebuffer: { width, height: 300, statePrefix: 'pixel', valueMode: 'binary', packing: 'bits32', initSignal: 'rst', initCycles: 1 },
             },
         });
         expect(visual.error).toBeUndefined();
         expect(visual.simulation?.framebuffers).toHaveLength(2);
-        expect(visual.simulation?.framebuffers?.[0]).toMatchObject({ width, height: 60 });
+        expect(visual.simulation?.framebuffers?.[0]).toMatchObject({ width, height: 300 });
         expect(visual.simulation?.framebuffers?.[0].pixels.some(pixel => pixel !== 0)).toBe(true);
     }
-});
+}, 60_000);
 
 test('pixel matrices from user circuits are rendered automatically', () => {
     const source = 'module Top() -> (pixel: [2][3]u8) { pixel = [[1, 2, 3], [4, 5, 6]]; }';
@@ -186,6 +187,24 @@ test('pixel matrices from user circuits are rendered automatically', () => {
     expect(result.simulation?.framebuffers).toHaveLength(1);
     expect(result.simulation?.framebuffers?.[0]).toMatchObject({ width: 3, height: 2 });
     expect(result.simulation?.framebuffers?.[0].pixels).toEqual([1, 2, 3, 4, 5, 6]);
+});
+
+test('packed framebuffers reconstruct their declared display size', () => {
+    const result = compile({
+        id: 12,
+        source: 'module Top() -> (pixel: [1][1]u32) { pixel = [[32\'d3]]; }',
+        path: 'examples/Packed.yodl',
+        stage: 'write_low_firrtl',
+        simulate: {
+            top: 'Top',
+            frames: 1,
+            frameCycles: 0,
+            framebuffer: { width: 4, height: 2, statePrefix: 'pixel', valueMode: 'binary', packing: 'bits32', pixelScale: 2, onColor: 0x123456 },
+        },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.simulation?.framebuffers?.[0]).toMatchObject({ width: 4, height: 2 });
+    expect(result.simulation?.framebuffers?.[0].pixels).toEqual(new Array(8).fill(0x123456));
 });
 
 test('simulation step actions continue the worker session', () => {

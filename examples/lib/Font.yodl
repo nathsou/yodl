@@ -1,0 +1,201 @@
+// VGA-independent character primitives shared by semantic playground
+// adapters. Keeping this file free of VGA imports makes framebuffer examples
+// explicit about the hardware interfaces they actually use.
+type Char = u8
+
+module AsciiTable(char: Char) -> (q: u64) {
+    q = match char[6:0] {
+        7'h21 => 64'h000C000C0C1E1E0C
+        7'h22 => 64'h0000000000363636
+        7'h23 => 64'h0036367F367F3636
+        7'h24 => 64'h000C1F301E033E0C
+        7'h25 => 64'h0063660C18336300
+        7'h26 => 64'h006E333B6E1C361C
+        7'h27 => 64'h0000000000030606
+        7'h28 => 64'h00180C0606060C18
+        7'h29 => 64'h00060C1818180C06
+        7'h2a => 64'h0000663CFF3C6600
+        7'h2b => 64'h00000C0C3F0C0C00
+        7'h2c => 64'h060C0C0000000000
+        7'h2d => 64'h000000003F000000
+        7'h2e => 64'h000C0C0000000000
+        7'h2f => 64'h000103060C183060
+        7'h30 => 64'h003E676F7B73633E
+        7'h31 => 64'h003F0C0C0C0C0E0C
+        7'h32 => 64'h003F33061C30331E
+        7'h33 => 64'h001E33301C30331E
+        7'h34 => 64'h0078307F33363C38
+        7'h35 => 64'h001E3330301F033F
+        7'h36 => 64'h001E33331F03061C
+        7'h37 => 64'h000C0C0C1830333F
+        7'h38 => 64'h001E33331E33331E
+        7'h39 => 64'h000E18303E33331E
+        7'h3a => 64'h000C0C00000C0C00
+        7'h3b => 64'h060C0C00000C0C00
+        7'h3c => 64'h00180C0603060C18
+        7'h3d => 64'h00003F00003F0000
+        7'h3e => 64'h00060C1830180C06
+        7'h3f => 64'h000C000C1830331E
+        7'h40 => 64'h001E037B7B7B633E
+        7'h41 => 64'h0033333F33331E0C
+        7'h42 => 64'h003F66663E66663F
+        7'h43 => 64'h003C66030303663C
+        7'h44 => 64'h001F36666666361F
+        7'h45 => 64'h007F46161E16467F
+        7'h46 => 64'h000F06161E16467F
+        7'h47 => 64'h007C66730303663C
+        7'h48 => 64'h003333333F333333
+        7'h49 => 64'h001E0C0C0C0C0C1E
+        7'h4a => 64'h001E333330303078
+        7'h4b => 64'h006766361E366667
+        7'h4c => 64'h007F66460606060F
+        7'h4d => 64'h0063636B7F7F7763
+        7'h4e => 64'h006363737B6F6763
+        7'h4f => 64'h001C36636363361C
+        7'h50 => 64'h000F06063E66663F
+        7'h51 => 64'h00381E3B3333331E
+        7'h52 => 64'h006766363E66663F
+        7'h53 => 64'h001E33180C06331E
+        7'h54 => 64'h001E0C0C0C0C2D3F
+        7'h55 => 64'h003F333333333333
+        7'h56 => 64'h000C1E3333333333
+        7'h57 => 64'h0063777F6B636363
+        7'h58 => 64'h0063361C1C366363
+        7'h59 => 64'h001E0C0C1E333333
+        7'h5a => 64'h007F664C1831637F
+        7'h5b => 64'h001E06060606061E
+        7'h5c => 64'h00406030180C0603
+        7'h5d => 64'h001E18181818181E
+        7'h5e => 64'h0000000063361C08
+        7'h5f => 64'hFF00000000000000
+        7'h60 => 64'h0000000000180C0C
+        7'h61 => 64'h006E333E301E0000
+        7'h62 => 64'h003B66663E060607
+        7'h63 => 64'h001E3303331E0000
+        7'h64 => 64'h006E33333E303038
+        7'h65 => 64'h001E033F331E0000
+        7'h66 => 64'h000F06060F06361C
+        7'h67 => 64'h1F303E33336E0000
+        7'h68 => 64'h006766666E360607
+        7'h69 => 64'h001E0C0C0C0E000C
+        7'h6a => 64'h1E33333030300030
+        7'h6b => 64'h0067361E36660607
+        7'h6c => 64'h001E0C0C0C0C0C0E
+        7'h6d => 64'h00636B7F7F330000
+        7'h6e => 64'h00333333331F0000
+        7'h6f => 64'h001E3333331E0000
+        7'h70 => 64'h0F063E66663B0000
+        7'h71 => 64'h78303E33336E0000
+        7'h72 => 64'h000F06666E3B0000
+        7'h73 => 64'h001F301E033E0000
+        7'h74 => 64'h00182C0C0C3E0C08
+        7'h75 => 64'h006E333333330000
+        7'h76 => 64'h000C1E3333330000
+        7'h77 => 64'h00367F7F6B630000
+        7'h78 => 64'h0063361C36630000
+        7'h79 => 64'h1F303E3333330000
+        7'h7a => 64'h003F260C193F0000
+        7'h7b => 64'h00380C0C070C0C38
+        7'h7c => 64'h0018181800181818
+        7'h7d => 64'h00070C0C380C0C07
+        7'h7e => 64'h0000000000003B6E
+        7'h7f => 64'h007F6363361C0800
+        _ => 64'h0000000000000000
+    }
+}
+
+// Render text into a semantic framebuffer. Glyphs are enlarged to Scale
+// pixels and long strings wrap at the framebuffer edge, keeping text legible
+// in the playground without emulating VGA scan timing.
+module TextFramebuffer[Length: Nat, Width: Nat, Height: Nat, X: Nat, Y: Nat, Scale: Nat](
+    text: [Length]Char,
+) -> (pixel: [Height][Width]bool) {
+    const cells_per_row = Width / Scale
+    const chars_per_row = cells_per_row - X
+    for row in 0..<Height {
+        for col in 0..<Width {
+            const cell_x = col / Scale
+            const cell_y = row / Scale
+            const text_row = cell_y >= Y ? cell_y - Y : 0
+            const text_col = cell_x >= X ? cell_x - X : 0
+            const text_idx = text_row * chars_per_row + text_col
+            const glyph_x0 = ((col % Scale) * 8) / Scale
+            const glyph_x1 = (((col % Scale) + 1) * 8) / Scale - 1
+            const glyph_y0 = ((row % Scale) * 8) / Scale
+            const glyph_y1 = (((row % Scale) + 1) * 8) / Scale - 1
+            let char = cell_x >= X and cell_x < cells_per_row and cell_y >= Y and text_idx < Length ? text[text_idx] : ' '
+            let bitmap = AsciiTable(char).q
+            let row0 = (bitmap shr (glyph_y0 * 8))[glyph_x1:glyph_x0]
+            let row1 = (bitmap shr (glyph_y1 * 8))[glyph_x1:glyph_x0]
+            pixel[row][col] = orr row0 or orr row1
+        }
+    }
+}
+
+// Bit-packed variant for larger semantic framebuffers. Eight horizontal
+// pixels share one output byte, reducing simulator port traffic while the
+// playground reconstructs the declared Width x Height image.
+module TextFramebufferBits[Length: Nat, Width: Nat, Height: Nat, PackedWidth: Nat, X: Nat, Y: Nat, Scale: Nat](
+    text: [Length]Char,
+) -> (pixel: [Height][PackedWidth]u8) {
+    const cells_per_row = Width / Scale
+    const chars_per_row = cells_per_row - X
+    for row in 0..<Height {
+        for packed_col in 0..<PackedWidth {
+            let bits = fill!(8, 1'b0)
+            for bit in 0..<8 {
+                const col = packed_col * 8 + bit
+                const cell_x = col / Scale
+                const cell_y = row / Scale
+                const text_row = cell_y >= Y ? cell_y - Y : 0
+                const text_col = cell_x >= X ? cell_x - X : 0
+                const text_idx = text_row * chars_per_row + text_col
+                const glyph_x0 = ((col % Scale) * 8) / Scale
+                const glyph_x1 = (((col % Scale) + 1) * 8) / Scale - 1
+                const glyph_y0 = ((row % Scale) * 8) / Scale
+                const glyph_y1 = (((row % Scale) + 1) * 8) / Scale - 1
+                let char = cell_x >= X and cell_x < cells_per_row and cell_y >= Y and text_idx < Length ? text[text_idx] : ' '
+                let bitmap = AsciiTable(char).q
+                let row0 = (bitmap shr (glyph_y0 * 8))[glyph_x1:glyph_x0]
+                let row1 = (bitmap shr (glyph_y1 * 8))[glyph_x1:glyph_x0]
+                bits[bit] = orr row0 or orr row1
+            }
+            pixel[row][packed_col] = uint!(bits)
+        }
+    }
+}
+
+// Word-packed variant for the 400x300 playground text outputs. At Scale=8 a
+// framebuffer byte is exactly one font row; four bytes therefore cover one
+// u32 output word without a per-pixel output port.
+module TextFramebufferWords[Length: Nat, Width: Nat, Height: Nat, PackedWidth: Nat, X: Nat, Y: Nat, Scale: Nat](
+    text: [Length]Char,
+) -> (pixel: [Height][PackedWidth]u32) {
+    const cells_per_row = Width / Scale
+    const chars_per_word = 4
+    const chars_per_row = cells_per_row - X
+    for row in 0..<Height {
+        const cell_y = row / Scale
+        const glyph_y = row % Scale
+        const text_row = cell_y >= Y ? cell_y - Y : 0
+        for word in 0..<PackedWidth {
+            const cell0 = word * chars_per_word
+            const cell1 = cell0 + 1
+            const cell2 = cell0 + 2
+            const cell3 = cell0 + 3
+            const idx0 = text_row * chars_per_row + (cell0 >= X ? cell0 - X : 0)
+            const idx1 = text_row * chars_per_row + (cell1 >= X ? cell1 - X : 0)
+            const idx2 = text_row * chars_per_row + (cell2 >= X ? cell2 - X : 0)
+            const idx3 = text_row * chars_per_row + (cell3 >= X ? cell3 - X : 0)
+            let char0 = cell0 >= X and cell0 < cells_per_row and cell_y >= Y and idx0 < Length ? text[idx0] : ' '
+            let char1 = cell1 >= X and cell1 < cells_per_row and cell_y >= Y and idx1 < Length ? text[idx1] : ' '
+            let char2 = cell2 >= X and cell2 < cells_per_row and cell_y >= Y and idx2 < Length ? text[idx2] : ' '
+            let char3 = cell3 >= X and cell3 < cells_per_row and cell_y >= Y and idx3 < Length ? text[idx3] : ' '
+            let byte0 = (AsciiTable(char: char0).q shr (glyph_y * 8))[7:0]
+            let byte1 = (AsciiTable(char: char1).q shr (glyph_y * 8))[7:0]
+            let byte2 = (AsciiTable(char: char2).q shr (glyph_y * 8))[7:0]
+            let byte3 = (AsciiTable(char: char3).q shr (glyph_y * 8))[7:0]
+            pixel[row][word] = cat!(byte3, byte2, byte1, byte0)
+        }
+    }
+}

@@ -25,6 +25,8 @@ export type SimulationRequest = {
         initSignal?: string;
         initCycles?: number;
         valueMode?: 'binary' | 'gray' | 'rgb';
+        packing?: 'bits' | 'bits32' | 'rgb332x4';
+        pixelScale?: number;
         onColor?: number;
         offColor?: number;
     };
@@ -78,19 +80,58 @@ function simulationFramebuffer(values: Record<string, number>, framebuffer: Simu
     if (!framebuffer) return undefined;
     const pixels = new Array(framebuffer.width * framebuffer.height).fill(framebuffer.offColor ?? 0);
     const prefix = `${framebuffer.statePrefix}_`;
+    const pixelScale = Number.isInteger(framebuffer.pixelScale) && framebuffer.pixelScale! > 0 ? framebuffer.pixelScale! : 1;
+    const putPixel = (row: number, col: number, color: number) => {
+        for (let dy = 0; dy < pixelScale; dy++) {
+            for (let dx = 0; dx < pixelScale; dx++) {
+                const y = row * pixelScale + dy;
+                const x = col * pixelScale + dx;
+                if (y < framebuffer.height && x < framebuffer.width) pixels[y * framebuffer.width + x] = color;
+            }
+        }
+    };
     for (const [name, value] of Object.entries(values)) {
-        if (!name.startsWith(prefix) || value === 0) continue;
+        if (!name.startsWith(prefix)) continue;
+        if (framebuffer.packing !== 'rgb332x4' && value === 0) continue;
         const parts = name.slice(prefix.length).split('_');
         if (parts.length !== 2) continue;
         const row = Number(parts[0]);
         const col = Number(parts[1]);
         if (Number.isInteger(row) && Number.isInteger(col) && row >= 0 && row < framebuffer.height && col >= 0 && col < framebuffer.width) {
+            if (framebuffer.packing === 'bits') {
+                if (value === 0) continue;
+                for (let bit = 0; bit < 8; bit++) {
+                    const x = col * 8 + bit;
+                    if (((value >>> bit) & 1) !== 0) putPixel(row, x, framebuffer.onColor ?? 0xffffff);
+                }
+                continue;
+            }
+            if (framebuffer.packing === 'bits32') {
+                if (value === 0) continue;
+                for (let bit = 0; bit < 32; bit++) {
+                    const x = col * 32 + bit;
+                    if (((value >>> bit) & 1) !== 0) putPixel(row, x, framebuffer.onColor ?? 0xffffff);
+                }
+                continue;
+            }
+            if (framebuffer.packing === 'rgb332x4') {
+                for (let lane = 0; lane < 4; lane++) {
+                    const x = col * 4 + lane;
+                    if (x >= framebuffer.width) continue;
+                    const packed = (value >>> (lane * 8)) & 0xff;
+                    const red = Math.round(((packed >>> 5) & 0x7) * 255 / 7);
+                    const green = Math.round(((packed >>> 2) & 0x7) * 255 / 7);
+                    const blue = Math.round((packed & 0x3) * 255 / 3);
+                    putPixel(row, x, (red << 16) | (green << 8) | blue);
+                }
+                continue;
+            }
             const color = framebuffer.valueMode === 'rgb'
                 ? value & 0xffffff
                 : framebuffer.valueMode === 'gray'
                     ? ((value & 0xff) * 0x010101) & 0xffffff
                     : framebuffer.onColor ?? 0xffffff;
-            pixels[row * framebuffer.width + col] = color;
+            putPixel(row, col, color);
         }
     }
     return { width: framebuffer.width, height: framebuffer.height, pixels };

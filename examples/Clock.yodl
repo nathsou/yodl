@@ -1,5 +1,9 @@
+import VGA
 import Text
+import Font
 
+// VGA is used only by the FPGA-facing Clock/Top modules; ClockSim is
+// framebuffer-only.
 const CLOCK_FREQ = 25_000_000 // 25 Mhz on Nandland Go
 
 module Dabble(bin: u4) -> (q: u4) {
@@ -28,11 +32,11 @@ module TicTac[Max: Nat](clk: clock, en: bool, rst: bool) -> (tick: bool, count: 
 }
 
 // Semantic framebuffer used by the playground. It preserves the Clock
-// module's seven-segment-like text output while using a short simulation
-// divider instead of requiring the 25 MHz hardware clock divider.
+// module's seven-segment-like text output with the VGA-independent Font
+// rasterizer and a short simulation divider.
 @simulation({
     "clock": "clk",
-    framebuffer: { width: 80, height: 60, state_prefix: "pixel", mode: "binary", on_color: 9485933, off_color: 1118744 },
+    framebuffer: { width: 400, height: 300, state_prefix: "pixel", mode: "binary", packing: "bits32", on_color: 9485933, off_color: 1118744 },
     init_signal: "rst",
     init_cycles: 1,
     frame_cycles: 1,
@@ -43,7 +47,7 @@ module ClockSim(
     clk: clock,
     rst: bool,
 ) -> (
-    pixel: [60][80]bool,
+    pixel: [300][13]u32,
     seconds: u8,
 ) {
     let counter = Reg[u8](clk, rst)
@@ -58,7 +62,7 @@ module ClockSim(
         ':',
         ..Text::Dec[8](n: counter.q % 60).chars,
     ]
-    Text::TextFramebuffer[Length: 8, Width: 80, Height: 60, X: 1, Y: 3, Scale: 7](text: clock_text, pixel)
+    Font::TextFramebufferWords[Length: 8, Width: 400, Height: 300, PackedWidth: 13, X: 2, Y: 3, Scale: 8](text: clock_text, pixel)
 }
 
 module Clock(
