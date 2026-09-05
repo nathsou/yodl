@@ -484,6 +484,31 @@ test "unknown assertion predicates are structured failures without implicit halt
   assert_eq(sim.cycle(), 2)
 }
 
+test "compiled simulation programs can construct independent instances" {
+  let source =
+    #|module Top(clk: clock, d: u8) -> (q: u8) {
+    #|  let state = Reg[u8](clk)
+    #|  state.d = d
+    #|  q = state.q
+    #|}
+  let files: Map[String, String] = { "fixture.yodl": source }
+  let ext: @utils.Externals = {
+    fs: make_vfs(files), println: fn(_) { () }, get_args: fn() { [] }, exit: fn(_) { () },
+  }
+  let circuit = @driver.compile_simulation(path="fixture.yodl", ext~)
+  let program = @simulator.compile_simulation(circuit, "Top")
+  let first = @simulator.Simulator::from_compiled(program)
+  let second = @simulator.Simulator::from_compiled(program)
+  first.poke("d", @simulator.SimValue::from_int(8, 11))
+  second.poke("d", @simulator.SimValue::from_int(8, 22))
+  first.step_clock("clk")
+  second.step_clock("clk")
+  assert_eq(first.peek("q").as_bigint().to_int(), 11)
+  assert_eq(second.peek("q").as_bigint().to_int(), 22)
+  assert_eq(first.cycle(), 1)
+  assert_eq(second.cycle(), 1)
+}
+
 test "simulation compilation rejects clockless runtime commands at their span" {
   for command in ["printf!(\"checked\")", "assert!(input)"] {
     let source = "module Top(input: bool) -> () {\n  " + command + "\n}\n"

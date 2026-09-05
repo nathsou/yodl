@@ -220,29 +220,6 @@ pub struct Simulator {
   commands: Array[SimCommand]
 }
 
-/// Immutable, validated input for an execution instance.  Runtime state is
-/// never constructed directly from an arbitrary FIRRTL circuit through this
-/// API; use `compile_simulation` first.
-pub struct CompiledSimulation {
-  circuit: TypedCircuit
-  top: String
-}
-
-pub fn compile_simulation(circuit: TypedCircuit, top: String) -> CompiledSimulation raise SimulatorError {
-  let circuit = prepare_simulation_circuit(circuit)
-  let selected = if top.is_empty() { circuit.id.inner() } else { top }
-  let exists = circuit.decls.iter().any(decl => match decl {
-    @firrtl.Decl::Module(mod) => mod.id.inner() == selected || mod.id.inner().has_suffix("_" + selected)
-    @firrtl.Decl::ExtModule(_) => false
-  })
-  if !exists { raise MissingSignal(name="top module " + selected) }
-  { circuit, top: selected }
-}
-
-pub fn Simulator::from_compiled(compiled: CompiledSimulation) -> Simulator raise SimulatorError {
-  Simulator::from_prepared_circuit(compiled.circuit, compiled.top, Map([]))
-}
-
 pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
   let circuit: TypedCircuit = { version: @firrtl.min_version(), id: design.id, annotations: [], decls: [@firrtl.Decl::Module(design)] }
   Simulator::from_compiled(compile_simulation(circuit, design.id.inner()))
@@ -1710,62 +1687,6 @@ pub fn Testbench::run(self: Testbench, clock: String, cycles: Int) -> Unit raise
 pub fn Testbench::cycle(self: Testbench) -> Int { self.cycles }
 
 pub fn Testbench::simulator(self: Testbench) -> Simulator { self.simulator }
-
-/// A semantic video sink for simulation-only adapters. Hardware wrappers can
-/// turn the same logical pixels into VGA timing; the playground can render the
-/// completed buffer directly.
-pub(all) struct Framebuffer {
-  width: Int
-  height: Int
-  pixels: Array[Int]
-}
-
-pub fn Framebuffer::new(width: Int, height: Int) -> Framebuffer {
-  let pixels = Array::new(capacity=width * height)
-  for _ in 0..<(width * height) { pixels.push(0) }
-  { width, height, pixels }
-}
-
-pub fn Framebuffer::width(self: Framebuffer) -> Int { self.width }
-
-pub fn Framebuffer::height(self: Framebuffer) -> Int { self.height }
-
-pub fn Framebuffer::clear(self: Framebuffer, color~: Int = 0) -> Unit {
-  for i in 0..<self.pixels.length() { self.pixels[i] = color }
-}
-
-pub fn Framebuffer::write(self: Framebuffer, x: Int, y: Int, red: Int, green: Int, blue: Int) -> Unit {
-  if x < 0 || x >= self.width || y < 0 || y >= self.height { return }
-  let color = ((red & 255) << 16) | ((green & 255) << 8) | (blue & 255)
-  self.pixels[y * self.width + x] = color
-}
-
-pub fn Framebuffer::pixel(self: Framebuffer, x: Int, y: Int) -> Int {
-  if x < 0 || x >= self.width || y < 0 || y >= self.height { return 0 }
-  self.pixels[y * self.width + x]
-}
-
-pub fn Framebuffer::pixels(self: Framebuffer) -> Array[Int] { self.pixels }
-
-pub(all) struct TextSink {
-  mut bytes: Array[Int]
-}
-
-pub fn TextSink::new() -> TextSink { { bytes: [] } }
-
-pub fn TextSink::write(self: TextSink, byte: Int) -> Unit {
-  self.bytes.push(byte & 255)
-}
-
-pub fn TextSink::bytes(self: TextSink) -> Array[Int] { self.bytes }
-
-pub fn TextSink::text(self: TextSink) -> String {
-  let builder = StringBuilder()
-  for byte in self.bytes {
-    builder.write_char(byte.to_char().unwrap_or('\u{0}'))
-  }
-  builder.to_string()
-}
 
 // JavaScript-facing helpers expose a legacy integer view plus a lossless
 // signal view. Native callers can use SimValue::new directly.
