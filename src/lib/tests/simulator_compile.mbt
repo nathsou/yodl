@@ -531,6 +531,73 @@ test "reference and incremental settling agree while unrelated logic stays cold"
   assert_eq(incremental.peek("right").as_bigint(), reference.peek("right").as_bigint())
 }
 
+test "reference and incremental schedulers agree across hierarchy and memory sequences" {
+  let source =
+    #|module Child(clk: clock, rst: bool, d: u8) -> (q: u8) {
+    #|  let state = RegAsyncReset[u8](clk, rst: rst)
+    #|  state.d = d + 1
+    #|  q = state.q
+    #|}
+    #|module Top(clk: clock, rst: bool, addr: u2, we: bool, d: u8) -> (q: u8, rdata: u8) {
+    #|  let child = Child(clk, rst, d)
+    #|  let mem = Memory[T: u8, Depth: 4, ReadPorts: 1, WritePorts: 1, ReadLatency: 0, WriteLatency: 1](
+    #|    read: [(clk: clk, en: true, addr: addr)],
+    #|    write: [(clk: clk, en: we, addr: addr, data: d, mask: true)])
+    #|  q = child.q
+    #|  rdata = mem.q[0]
+    #|}
+  let incremental = compile_test_simulator(source)
+  let reference = compile_test_simulator(source)
+  let mut random = 17
+  for cycle in 0..<64 {
+    random = (random * 73 + 19) & 0x7fff
+    let rst = (cycle < 2).to_int()
+    let we = ((random >> 2) & 1)
+    let addr = random & 3
+    let data = (random >> 4) & 0xff
+    for sim in [incremental, reference] {
+      sim.poke("rst", @simulator.SimValue::from_int(1, rst))
+      sim.poke("we", @simulator.SimValue::from_int(1, we))
+      sim.poke("addr", @simulator.SimValue::from_int(2, addr))
+      sim.poke("d", @simulator.SimValue::from_int(8, data))
+    }
+    incremental.settle()
+    reference.settle_reference()
+    for name in ["q", "rdata"] {
+      assert_eq(incremental.peek(name).as_bigint(), reference.peek(name).as_bigint())
+      assert_eq(incremental.peek(name).known_mask(), reference.peek(name).known_mask())
+    }
+    incremental.step_clock("clk")
+    reference.step_clock_reference("clk")
+    for name in ["q", "rdata"] {
+      assert_eq(incremental.peek(name).as_bigint(), reference.peek(name).as_bigint())
+      assert_eq(incremental.peek(name).known_mask(), reference.peek(name).known_mask())
+    }
+  }
+}
+
+test "known-address memory edges do not scan memory depth" {
+  for depth in [16, 256, 4096] {
+    let address_width = match depth { 16 => 4; 256 => 8; _ => 12 }
+    let source = "module Top(clk: clock, addr: u" + address_width.to_string() + ", we: bool, data: u8) -> () {\n" +
+      "  let mem = Memory[T: u8, Depth: " + depth.to_string() + ", ReadPorts: 0, WritePorts: 1, ReadLatency: 0, WriteLatency: 1](\n" +
+      "    read: [],\n" +
+      "    write: [(clk: clk, en: we, addr: addr, data: data, mask: true)])\n" +
+      "}\n"
+    let sim = compile_test_simulator(source)
+    sim.poke("we", @simulator.SimValue::from_int(1, 0))
+    sim.step_clock("clk")
+    assert_eq(sim.memory_words_examined(), 0)
+    sim.poke("we", @simulator.SimValue::from_int(1, 1))
+    sim.poke("addr", @simulator.SimValue::from_int(address_width, depth - 1))
+    sim.step_clock("clk")
+    assert_eq(sim.memory_words_examined(), 1)
+    sim.poke("addr", @simulator.SimValue::new(address_width, 0, known=false))
+    sim.step_clock("clk")
+    assert_eq(sim.memory_words_examined(), depth)
+  }
+}
+
 test "simulation compilation rejects clockless runtime commands at their span" {
   for command in ["printf!(\"checked\")", "assert!(input)"] {
     let source = "module Top(input: bool) -> () {\n  " + command + "\n}\n"

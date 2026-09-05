@@ -116,7 +116,7 @@ suberror SimulatorError {
   InvalidWidth(width~: Int)
   MissingSignal(name~: String)
   Unsupported(message~: String)
-  CombinationalLoop(message~: String)
+  WorkLimit(message~: String)
   ExpectationFailed(name~: String, expected~: String, actual~: String)
 } derive(Debug)
 
@@ -209,6 +209,7 @@ pub struct Simulator {
   memory_clocks: Map[String, String]
   mut cycle: Int
   mut last_evaluations: Int
+  mut memory_words_examined: Int
   mut waveform: Waveform?
   mut waveform_filter: Array[String]
   // A reverse dependency index lets settle() revisit only statements affected
@@ -556,6 +557,7 @@ fn Simulator::new_with_modules(
     memory_clocks,
     cycle: 0,
     last_evaluations: 0,
+    memory_words_examined: 0,
     waveform: None,
     waveform_filter: [],
     dependents,
@@ -872,7 +874,33 @@ pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
 /// Deterministic reference executor used by equivalence tests and debugging.
 /// It intentionally sweeps the complete validated program.
 pub fn Simulator::settle_reference(self: Simulator) -> Unit raise SimulatorError {
-  self.settle_pending(true)
+  self.pending.clear()
+  for i in 0..<self.queued.length() { self.queued[i] = false }
+  let mut evaluated = 0
+  while true {
+    let before: Map[String, SimValue] = Map([])
+    for name, value in self.signals { before[name] = value }
+    for stmt in self.program {
+      evaluated += 1
+      if evaluated > 1_000_000 {
+        raise WorkLimit(message="reference settling exceeded 1,000,000 evaluations")
+      }
+      self.eval_combinational_stmt(stmt)
+    }
+    self.pending.clear()
+    for i in 0..<self.queued.length() { self.queued[i] = false }
+    self.apply_async_resets()
+    let child_changed = self.settle_children(reference=true)
+    let mut changed = child_changed
+    for name, value in self.signals {
+      match before.get(name) {
+        Some(old) => if old.raw != value.raw || old.known_mask != value.known_mask { changed = true }
+        None => changed = true
+      }
+    }
+    if !changed { break }
+  }
+  self.last_evaluations = evaluated
 }
 
 fn Simulator::settle_pending(self: Simulator, force_all: Bool) -> Unit raise SimulatorError {
@@ -891,19 +919,23 @@ fn Simulator::settle_pending(self: Simulator, force_all: Bool) -> Unit raise Sim
       self.queued[index] = false
       evaluated += 1
       if evaluated > 1_000_000 {
-        raise CombinationalLoop(message="dirty worklist exceeded 1,000,000 evaluations")
+        raise WorkLimit(message="dirty worklist exceeded 1,000,000 evaluations; the limit is not proof of a combinational loop")
       }
       self.eval_combinational_stmt(self.program[index])
     }
     self.pending.clear()
     self.apply_async_resets()
-    let child_changed = self.settle_children()
+    let child_changed = self.settle_children(reference=false)
     if self.pending.length() == 0 && !child_changed { break }
   }
   self.last_evaluations = evaluated
 }
 
 pub fn Simulator::last_evaluations(self: Simulator) -> Int { self.last_evaluations }
+
+/// Number of memory words considered by the most recent clock commit. Used by
+/// performance regressions without depending on noisy wall-clock timing.
+pub fn Simulator::memory_words_examined(self: Simulator) -> Int { self.memory_words_examined }
 
 fn Simulator::eval_combinational_stmt(self: Simulator, stmt: SimStmt) -> Unit raise SimulatorError {
   match stmt {
@@ -955,7 +987,7 @@ fn Simulator::eval_memory_data(self: Simulator, memory_id: String, reader: Strin
   }
 }
 
-fn Simulator::settle_children(self: Simulator) -> Bool raise SimulatorError {
+fn Simulator::settle_children(self: Simulator, reference~: Bool) -> Bool raise SimulatorError {
   let mut changed = false
   for instance, child in self.children {
     let mut input_changed = false
@@ -990,8 +1022,8 @@ fn Simulator::settle_children(self: Simulator) -> Bool raise SimulatorError {
           let _ = child.assign_signal(port.id.inner(), value)
         }
       }
-      None => if input_changed || child.pending.length() > 0 {
-        child.settle()
+      None => if input_changed || child.pending.length() > 0 || reference {
+        if reference { child.settle_reference() } else { child.settle() }
       }
     }
     for port in child.design.ports {
@@ -1006,16 +1038,20 @@ fn Simulator::settle_children(self: Simulator) -> Bool raise SimulatorError {
 
 /// Drive a clock and commit the registers on a rising edge.
 pub fn Simulator::set_clock(self: Simulator, name: String, high: Bool) -> Unit raise SimulatorError {
+  self.set_clock_mode(name, high, reference=false)
+}
+
+fn Simulator::set_clock_mode(self: Simulator, name: String, high: Bool, reference~: Bool) -> Unit raise SimulatorError {
   if !self.clocks.contains(name) {
     raise MissingSignal(name~)
   }
   let old = self.clocks.get(name).unwrap()
   self.clocks[name] = high
   let _ = self.assign_signal(name, SimValue::from_int(1, high.to_int()))
-  self.settle()
+  if reference { self.settle_reference() } else { self.settle() }
   self.apply_async_resets()
   if !old && high {
-    self.commit_clock(name)
+    self.commit_clocks([name], reference~)
   }
 }
 
@@ -1040,12 +1076,16 @@ pub fn Simulator::step_clock(self: Simulator, name: String) -> Unit raise Simula
   self.cycle += 1
 }
 
-fn Simulator::commit_clock(self: Simulator, clock: String) -> Unit raise SimulatorError {
-  self.commit_clocks([clock])
+/// Advance one edge using the independent full-sweep scheduler.
+pub fn Simulator::step_clock_reference(self: Simulator, name: String) -> Unit raise SimulatorError {
+  if self.halted { return }
+  self.set_clock_mode(name, true, reference=true)
+  self.set_clock_mode(name, false, reference=true)
+  self.cycle += 1
 }
 
 // All clock ports driven by the same parent edge sample one pre-edge state.
-fn Simulator::commit_clocks(self: Simulator, clocks: Array[String]) -> Unit raise SimulatorError {
+fn Simulator::commit_clocks(self: Simulator, clocks: Array[String], reference~: Bool) -> Unit raise SimulatorError {
   let updates: Array[(String, SimValue)] = []
   for name, reg in self.registers {
     if !clocks.contains(reg.clock) { continue }
@@ -1063,17 +1103,17 @@ fn Simulator::commit_clocks(self: Simulator, clocks: Array[String]) -> Unit rais
     updates.push((name, value))
   }
   for clock in clocks { self.run_commands(clock) }
-  self.commit_children(clocks)
+  self.commit_children(clocks, reference~)
   self.commit_memories(clocks)
   for update in updates {
     let (name, value) = update
     let _ = self.assign_signal(name, value)
   }
   // A stop command still completes its triggering edge and output propagation.
-  self.settle_pending(false)
+  if reference { self.settle_reference() } else { self.settle_pending(false) }
 }
 
-fn Simulator::commit_children(self: Simulator, clocks: Array[String]) -> Unit raise SimulatorError {
+fn Simulator::commit_children(self: Simulator, clocks: Array[String], reference~: Bool) -> Unit raise SimulatorError {
   for instance, child in self.children {
     let child_clocks: Array[String] = []
     for port in child.design.ports {
@@ -1089,7 +1129,7 @@ fn Simulator::commit_children(self: Simulator, clocks: Array[String]) -> Unit ra
       // on the parent's clock, rather than on an instance-local counter that
       // is never advanced through this path.
       child.cycle = self.cycle
-      child.commit_clocks(child_clocks)
+      child.commit_clocks(child_clocks, reference~)
     }
     let child_messages = child.drain_events()
     for event in child_messages {
@@ -1160,6 +1200,7 @@ fn find_signal_source(design: TypedModule, target: String) -> String? {
 
 // Sample every active port before mutating memory or synchronous read outputs.
 fn Simulator::commit_memories(self: Simulator, clocks: Array[String]) -> Unit {
+  self.memory_words_examined = 0
   for id, memory in self.memories {
     let prefix = id + "."
     let mut memory_changed = false
@@ -1209,8 +1250,6 @@ fn Simulator::commit_memories(self: Simulator, clocks: Array[String]) -> Unit {
     }
 
     if writes.is_empty() {
-      for reader in memory.readers { self.enqueue_signal(prefix + reader + ".data") }
-      for reader in memory.readwriters { self.enqueue_signal(prefix + reader + ".rdata") }
       if read_changed {
         for reader in memory.readers { self.enqueue_signal(prefix + reader + ".data") }
         for reader in memory.readwriters { self.enqueue_signal(prefix + reader + ".rdata") }
@@ -1231,6 +1270,7 @@ fn Simulator::commit_memories(self: Simulator, clocks: Array[String]) -> Unit {
       }
     }
     for address, matching in grouped {
+      self.memory_words_examined += 1
       let all = if unknown_address.is_empty() { matching } else { matching + unknown_address }
       let old = memory.data[address]
       let next = resolve_writes(old, all, memory.width)
@@ -1239,6 +1279,7 @@ fn Simulator::commit_memories(self: Simulator, clocks: Array[String]) -> Unit {
     }
     if !unknown_address.is_empty() {
       for address in 0..<memory.depth {
+        self.memory_words_examined += 1
         if !grouped.contains(address) {
           let old = memory.data[address]
           let next = resolve_writes(old, unknown_address, memory.width)
@@ -2091,7 +2132,7 @@ pub fn simulator_raster_step(simulator: Simulator, raster: SimulatorRaster, cloc
 // Lowering may place temporary nodes before their source connections. Order
 // combinational producers before consumers once, rather than propagating a
 // partially settled value down a long feed-forward chain on every iteration.
-fn order_simulation_body(body: Array[@firrtl.TypedStmt]) -> Array[@firrtl.TypedStmt] {
+fn order_simulation_body(body: Array[@firrtl.TypedStmt]) -> Array[@firrtl.TypedStmt] raise SimulatorError {
   // Hand-built FIRRTL can contain ordered conditional/multiple assignments.
   // Preserve that order; the compiler normalizes them before this optimization.
   let assigned: Set[String] = Set([])
@@ -2151,6 +2192,9 @@ fn order_simulation_body(body: Array[@firrtl.TypedStmt]) -> Array[@firrtl.TypedS
       if indegree[successor] == 0 { queue.push(successor) }
     }
   }
-  // Cyclic graphs still go through the ordinary convergence diagnostic.
-  if ordered.length() == body.length() { ordered } else { body }
+  if ordered.length() == body.length() {
+    ordered
+  } else {
+    raise Unsupported(message="combinational cycle detected while preparing simulation")
+  }
 }

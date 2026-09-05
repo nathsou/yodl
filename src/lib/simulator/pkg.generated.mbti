@@ -192,6 +192,7 @@ pub struct Simulator {
   memory_clocks : Map[String, String]
   mut cycle : Int
   mut last_evaluations : Int
+  mut memory_words_examined : Int
   mut waveform : Waveform?
   mut waveform_filter : Array[String]
   dependents : Map[String, Array[Int]]
@@ -211,6 +212,7 @@ pub fn Simulator::from_circuit_with_models(@firrtl.Circuit[@firrtl.Type], String
 pub fn Simulator::from_compiled(CompiledSimulation) -> Self raise SimulatorError
 pub fn Simulator::is_halted(Self) -> Bool
 pub fn Simulator::last_evaluations(Self) -> Int
+pub fn Simulator::memory_words_examined(Self) -> Int
 pub fn Simulator::messages(Self) -> Array[SimMessage]
 pub fn Simulator::new(@firrtl.Module[@firrtl.Type]) -> Self raise SimulatorError
 pub fn Simulator::peek(Self, String) -> SimValue raise SimulatorError
@@ -221,6 +223,7 @@ pub fn Simulator::settle(Self) -> Unit raise SimulatorError
 pub fn Simulator::settle_reference(Self) -> Unit raise SimulatorError
 pub fn Simulator::status(Self) -> SimulationStatus
 pub fn Simulator::step_clock(Self, String) -> Unit raise SimulatorError
+pub fn Simulator::step_clock_reference(Self, String) -> Unit raise SimulatorError
 pub fn Simulator::testbench(Self) -> Testbench
 pub fn Simulator::waveform(Self) -> Array[WaveSample]
 
