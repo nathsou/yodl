@@ -16,6 +16,12 @@ The minimum matrix is:
 | memory-heavy design | idle memory, one write/cycle, multiple ports, and unknown-address writes at several depths |
 | pixel stream | bounded frame advancement and raster conversion separately |
 
+Run the executable matrix with `bun run benchmark:sim`. It reports compilation,
+execution, and framebuffer conversion separately as JSON lines. The matrix
+contains the scalar counter, four-instance hierarchy, three memory depths, a
+two-port memory, pixel stream, and Game of Life; timings are intentionally not
+checked into tests because they are host-dependent.
+
 For memory cases, report depths 16, 256, and 4096 and include an idle cycle.
 Known-address writes should not scale with depth; unknown-address writes are a
 separate conservative baseline. For display cases, report simulator cycles
