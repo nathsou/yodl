@@ -432,6 +432,41 @@ test('batch status distinguishes assertion failure and nonzero stop', () => {
     expect(result.simulation!.events).toContainEqual(expect.objectContaining({ kind: 'assert_failure' }));
 });
 
+test('batch framebuffer capture retains outcomes from later frames', () => {
+    const result = compile({ ...request, id: 9721, source: `@simulation({display: {buffer: "pixel"}})
+module Top(clk: clock, predicate: bool) -> (pixel: [1][1]u8) {
+    pixel = [[0]]
+    assert!(predicate, "later failure")
+    stop!(7)
+}`, simulate: { captureFrames: 2 } });
+    expect(result.error).toBeUndefined();
+    expect(result.simulation!.status).toMatchObject({ halted: true, failed: true, exit_code: 7 });
+    expect(result.simulation!.events).toContainEqual(expect.objectContaining({ kind: 'assert_failure', cycle: 1 }));
+});
+
+test('first failure remains stable and reset clears it', () => {
+    const session = new SimulationSession({ ...request, id: 9722, source: `module Top(clk: clock, predicate: bool) -> () {
+        assert!(predicate, "persistent failure")
+    }`, simulate: {} });
+    session.advanceCycles(1);
+    expect(session.snapshot().status.first_failure?.cycle).toBe(1);
+    session.advanceCycles(1);
+    expect(session.snapshot().status.first_failure?.cycle).toBe(1);
+    session.reset();
+    expect(session.snapshot().status).toEqual({ halted: false, failed: false });
+});
+
+test('hierarchical command events use the parent cycle', () => {
+    const session = new SimulationSession({ ...request, id: 9723, source: `module Child(clk: clock) -> () {
+    printf!("tick")
+}
+module Top(clk: clock) -> () {
+    let child = Child(clk)
+}`, simulate: {} });
+    session.advanceCycles(3);
+    expect(session.snapshot().events.map(event => event.cycle)).toEqual([1, 2, 3]);
+});
+
 test('stream descriptors survive source-level flattened-name collisions', () => {
     const source = `@simulation({display: {stream: "video", width: 2, height: 1}, reset: "rst"})
 module Top(clk: clock, rst: bool) -> (video_x: u8, video: (x: u1, y: u1, valid: bool, r: u1, g: u1, b: u1)) {

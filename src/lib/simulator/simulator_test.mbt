@@ -327,3 +327,38 @@ test "typed signed connections widen combinational and register inputs" {
     assert_eq(sim.peek(name).as_bigint().to_int(), 65535)
   }
 }
+
+test "right shifts preserve signed values and unknown source bits" {
+  let s8 = Type::SInt(8)
+  let s4 = Type::SInt(4)
+  let u8 = Type::UInt(8)
+  let u4 = Type::UInt(4)
+  let shift = lit(4, 3)
+  let design: Module[Type] = {
+    public: true,
+    id: @firrtl.Id::Ident("Top"),
+    ports: [
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("signed_in"), ty: s8 },
+      { dir: PortDir::Input, id: @firrtl.Id::Ident("unknown_in"), ty: u8 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("signed_out"), ty: s4 },
+      { dir: PortDir::Output, id: @firrtl.Id::Ident("unknown_out"), ty: u4 },
+    ],
+    body: [
+      @firrtl.Stmt::Connect(
+        id("signed_out", s4),
+        @firrtl.Expr::PrimOp(op=@firrtl.PrimOp::Shr, args=[ref_expr("signed_in", s8), shift], ty=s4),
+      ),
+      @firrtl.Stmt::Connect(
+        id("unknown_out", u4),
+        @firrtl.Expr::PrimOp(op=@firrtl.PrimOp::Shr, args=[ref_expr("unknown_in", u8), shift], ty=u4),
+      ),
+    ],
+  }
+  let sim = @simulator.Simulator::new(design)
+  sim.poke("signed_in", @simulator.SimValue::from_int(8, 128))
+  sim.poke("unknown_in", @simulator.SimValue::new(8, 0, known=false))
+  sim.settle()
+  assert_eq(sim.peek("signed_out").as_bigint().to_int(), 8)
+  assert_false(sim.peek("unknown_out").is_known())
+  assert_eq(sim.peek("unknown_out").known_mask().to_int(), 0)
+}

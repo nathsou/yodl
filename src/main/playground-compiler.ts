@@ -283,6 +283,7 @@ export class SimulationSession {
     reset() {
         this.machine = unwrap(simulator_new_compiled(unwrap(simulator_compile(this.design, this.options.top ?? ''))));
         simulator_set_history_retention(this.machine, false);
+        this.firstFailure = undefined;
         this.initialize();
     }
     setInputs(inputs: NonNullable<SimulationRequest['inputs']>) {
@@ -341,8 +342,8 @@ export class SimulationSession {
         const events = (simulator_drain_events(this.machine) as any[]).map(normalizeEvent);
         const messages = events.map(event => event.text);
         const rawStatus: any = simulator_status(this.machine);
-        const firstFailure = events.find(event => event.kind === 'assert_failure' || event.kind === 'assert_unknown') ?? this.firstFailure;
-        if (!this.firstFailure && firstFailure) this.firstFailure = firstFailure;
+        if (!this.firstFailure) this.firstFailure = events.find(event => event.kind === 'assert_failure' || event.kind === 'assert_unknown');
+        const firstFailure = this.firstFailure;
         const status: SimulationStatus = {
             halted: rawStatus.halted,
             failed: rawStatus.failed,
@@ -386,6 +387,8 @@ export function compile(request: CompileRequest): CompileResult {
                         simulation.outputs = snapshot.outputs;
                         simulation.inputs = snapshot.inputs;
                         simulation.messages.push(...snapshot.messages);
+                        simulation.events.push(...snapshot.events);
+                        simulation.status = snapshot.status;
                     }
                 } else if (session.clock) {
                     cycles += session.advanceCycles(Math.max(0, Math.min(100000, request.simulate.cycles ?? 1))).cycles;
@@ -394,6 +397,7 @@ export function compile(request: CompileRequest): CompileResult {
             }
             simulation.cycles = cycles;
             simulation.halted = session.halted;
+            simulation.status.halted = session.halted;
             return { id: request.id, duration: performance.now() - started, sources: session.sources, simulation };
         }
         const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source }, (path, source) => { sources[path] = source; });

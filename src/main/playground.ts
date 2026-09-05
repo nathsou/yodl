@@ -469,10 +469,12 @@ function handleRealtimeEvent(event: SimulationStreamEvent) {
     }
     const time = event.simulatedSeconds === undefined ? '' : ` · ${event.simulatedSeconds.toFixed(3)} simulated s`;
     const throughput = event.cyclesPerSecond === undefined ? '' : ` · ${Math.round(event.cyclesPerSecond).toLocaleString()} cycles/s achieved`;
-    const label = simulationState[0].toUpperCase() + simulationState.slice(1);
-    element('simulation-state').textContent = `${label} · ${(event.totalCycles ?? 0).toLocaleString()} cycles${time}${throughput}`;
+    const failed = event.status?.failed ?? false;
+    const label = failed ? 'Failed' : simulationState[0].toUpperCase() + simulationState.slice(1);
+    const exit = event.status?.exit_code === undefined ? '' : ` · exit ${event.status.exit_code}`;
+    element('simulation-state').textContent = `${label}${exit} · ${(event.totalCycles ?? 0).toLocaleString()} cycles${time}${throughput}`;
     updateSimulationControls();
-    setStatus(simulationState === 'running' || simulationState === 'stepping' ? 'Simulating…' : `Simulation ${simulationState}`);
+    setStatus(failed ? `Simulation failed${event.status?.first_failure ? `: ${event.status.first_failure.message}` : ''}` : simulationState === 'running' || simulationState === 'stepping' ? 'Simulating…' : `Simulation ${simulationState}`, failed ? 'error' : undefined);
 }
 
 async function runSimulation(action: SimulationRequest['action'] = 'run') {

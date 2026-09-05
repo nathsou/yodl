@@ -206,7 +206,6 @@ pub struct Simulator {
   mut first_failure: SimMessage?
   modules: Map[String, TypedModule]
   children: Map[String, Simulator]
-  child_message_offsets: Map[String, Int]
   memory_clocks: Map[String, String]
   mut cycle: Int
   mut last_evaluations: Int
@@ -308,7 +307,6 @@ fn Simulator::new_with_modules(
   let memories: Map[String, MemoryState] = Map([])
   let clocks: Map[String, Bool] = Map([])
   let children: Map[String, Simulator] = Map([])
-  let child_message_offsets: Map[String, Int] = Map([])
   let memory_clocks: Map[String, String] = Map([])
   let program = design.body.map(compile_stmt)
   let commands = compile_commands(design)
@@ -503,7 +501,6 @@ fn Simulator::new_with_modules(
     first_failure: None,
     modules,
     children,
-    child_message_offsets,
     memory_clocks,
     cycle: 0,
     last_evaluations: 0,
@@ -749,6 +746,7 @@ pub fn Simulator::messages(self: Simulator) -> Array[SimMessage] {
 
 pub fn Simulator::set_history_retention(self: Simulator, retain: Bool) -> Unit {
   self.retain_history = retain
+  for _, child in self.children { child.set_history_retention(retain) }
 }
 
 pub fn Simulator::drain_events(self: Simulator) -> Array[SimMessage] {
@@ -1034,14 +1032,17 @@ fn Simulator::commit_children(self: Simulator, clocks: Array[String]) -> Unit ra
         }
       }
     }
-    if !child_clocks.is_empty() { child.commit_clocks(child_clocks) }
-    let offset = self.child_message_offsets.get(instance).unwrap_or(0)
-    let child_messages = child.messages()
-    for i in offset..<child_messages.length() {
-      let event = child_messages[i]
+    if !child_clocks.is_empty() {
+      // A hierarchy observes one logical edge. Keep child command timestamps
+      // on the parent's clock, rather than on an instance-local counter that
+      // is never advanced through this path.
+      child.cycle = self.cycle
+      child.commit_clocks(child_clocks)
+    }
+    let child_messages = child.drain_events()
+    for event in child_messages {
       self.messages.push({ ..event, instance_path: if event.instance_path.is_empty() { instance } else { instance + "." + event.instance_path } })
     }
-    self.child_message_offsets[instance] = child_messages.length()
     if self.failure is None && child.failure is Some(failure) {
       self.failure = Some(failure)
       self.first_failure = child.first_failure.map(event => { ..event, instance_path: if event.instance_path.is_empty() { instance } else { instance + "." + event.instance_path } })
@@ -1471,8 +1472,13 @@ fn eval_validity_prim(
       if !b.is_known() { Some(SimValue::new(width, 0, known=false)) } else {
         let shift = b.raw.to_int()
         let kept_mask: BigInt = if shift >= a.width { BigInt::from_int(0) } else { a.known_mask >> shift }
-        let extension_width = if shift > width { width } else { shift }
-        let extension: BigInt = if extension_width == 0 { BigInt::from_int(0) } else { mask(extension_width) << (width - extension_width) }
+        // Static shr narrows its result, so all result bits can still come
+        // from the operand. Dynamic shifts retain the operand width and need
+        // zero/sign extension only above the remaining source bits.
+        let source_width = if shift >= a.width { 0 } else { a.width - shift }
+        let kept_width = if source_width < width { source_width } else { width }
+        let extension_width = width - kept_width
+        let extension: BigInt = if extension_width == 0 { BigInt::from_int(0) } else { mask(extension_width) << kept_width }
         if signed && a.width > 0 {
           let sign_known = ((a.known_mask >> (a.width - 1)) & 1) != 0
           let sign_set = ((a.raw >> (a.width - 1)) & 1) != 0
