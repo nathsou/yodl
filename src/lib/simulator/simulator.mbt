@@ -220,10 +220,32 @@ pub struct Simulator {
   commands: Array[SimCommand]
 }
 
+/// Immutable, validated input for an execution instance.  Runtime state is
+/// never constructed directly from an arbitrary FIRRTL circuit through this
+/// API; use `compile_simulation` first.
+pub struct CompiledSimulation {
+  circuit: TypedCircuit
+  top: String
+}
+
+pub fn compile_simulation(circuit: TypedCircuit, top: String) -> CompiledSimulation raise SimulatorError {
+  let circuit = prepare_simulation_circuit(circuit)
+  let selected = if top.is_empty() { circuit.id.inner() } else { top }
+  let exists = circuit.decls.iter().any(decl => match decl {
+    @firrtl.Decl::Module(mod) => mod.id.inner() == selected || mod.id.inner().has_suffix("_" + selected)
+    @firrtl.Decl::ExtModule(_) => false
+  })
+  if !exists { raise MissingSignal(name="top module " + selected) }
+  { circuit, top: selected }
+}
+
+pub fn Simulator::from_compiled(compiled: CompiledSimulation) -> Simulator raise SimulatorError {
+  Simulator::from_prepared_circuit(compiled.circuit, compiled.top, Map([]))
+}
+
 pub fn Simulator::new(design: TypedModule) -> Simulator raise SimulatorError {
   let circuit: TypedCircuit = { version: @firrtl.min_version(), id: design.id, annotations: [], decls: [@firrtl.Decl::Module(design)] }
-  let circuit = prepare_simulation_circuit(circuit)
-  Simulator::from_circuit(circuit, design.id.inner())
+  Simulator::from_compiled(compile_simulation(circuit, design.id.inner()))
 }
 
 /// Build a hierarchical simulator for one module in a typed FIRRTL circuit.
@@ -235,6 +257,15 @@ pub fn Simulator::from_circuit(circuit: TypedCircuit, top: String) -> Simulator 
 /// declarations.  Primitive models keep board- or device-specific behaviour
 /// out of the FIRRTL evaluator while remaining usable from native testbenches.
 pub fn Simulator::from_circuit_with_models(
+  circuit: TypedCircuit,
+  top: String,
+  primitive_models: Map[String, PrimitiveModel],
+) -> Simulator raise SimulatorError {
+  let compiled = compile_simulation(circuit, top)
+  Simulator::from_prepared_circuit(compiled.circuit, compiled.top, primitive_models)
+}
+
+fn Simulator::from_prepared_circuit(
   circuit: TypedCircuit,
   top: String,
   primitive_models: Map[String, PrimitiveModel],
@@ -1746,6 +1777,14 @@ pub(all) struct SimulatorSignal {
 }
 pub fn simulator_new(circuit: TypedCircuit, top: String) -> Simulator raise SimulatorError {
   Simulator::from_circuit(circuit, top)
+}
+
+pub fn simulator_compile(circuit: TypedCircuit, top: String) -> CompiledSimulation raise SimulatorError {
+  compile_simulation(circuit, top)
+}
+
+pub fn simulator_new_compiled(compiled: CompiledSimulation) -> Simulator raise SimulatorError {
+  Simulator::from_compiled(compiled)
 }
 
 pub fn simulator_poke_int(simulator: Simulator, name: String, width: Int, value: Int) -> Unit raise SimulatorError {

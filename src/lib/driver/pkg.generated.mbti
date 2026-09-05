@@ -35,7 +35,11 @@ pub(all) enum Command {
 
 pub(all) struct SimulationDesign {
   circuit : @firrtl.Circuit[@firrtl.Type]
+  top : String
   displays : Array[SimulationDisplay]
+  clock : String?
+  reset : String?
+  reset_cycles : Int
 }
 
 pub(all) struct SimulationDisplay {

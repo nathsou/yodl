@@ -1,6 +1,7 @@
 import { unwrap, yodl, ext, createInMemoryFileSystem } from './yodl.ts';
 import {
-    simulator_new,
+    simulator_compile,
+    simulator_new_compiled,
     simulator_poke_int,
     simulator_step,
     simulator_clocks,
@@ -233,7 +234,7 @@ export class SimulationSession {
         const compiled: any = unwrap(yodl.compile_simulation_design(request.path, { ...ext, fs, println: () => {} }, options.top === undefined ? { $tag: 0 } : { $tag: 1, _0: options.top }));
         this.design = compiled.circuit;
         this.inputs = options.inputs ?? {};
-        this.machine = unwrap(simulator_new(this.design, options.top ?? ''));
+        this.machine = unwrap(simulator_new_compiled(unwrap(simulator_compile(this.design, options.top ?? ''))));
         simulator_set_history_retention(this.machine, false);
         const clocks = simulator_clocks(this.machine) as string[];
         if (!options.clock && clocks.length > 1) throw new Error('Select a simulation clock: ' + clocks.join(', '));
@@ -280,7 +281,7 @@ export class SimulationSession {
         if (this.stream) this.raster = unwrap(simulator_raster_new_with_ports(this.machine, this.framebuffer!.signal!, this.streamPorts, this.framebuffer!.width, this.framebuffer!.height));
     }
     reset() {
-        this.machine = unwrap(simulator_new(this.design, this.options.top ?? ''));
+        this.machine = unwrap(simulator_new_compiled(unwrap(simulator_compile(this.design, this.options.top ?? ''))));
         simulator_set_history_retention(this.machine, false);
         this.initialize();
     }

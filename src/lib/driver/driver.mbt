@@ -328,7 +328,11 @@ pub(all) struct SimulationDisplay {
 
 pub(all) struct SimulationDesign {
   circuit: @firrtl.TypedCircuit
+  top: String
   displays: Array[SimulationDisplay]
+  clock: String?
+  reset: String?
+  reset_cycles: Int
 }
 
 pub fn compile_simulation_design(path~: String, ext~: @utils.Externals, top~: String? = None) -> SimulationDesign raise {
@@ -340,7 +344,17 @@ pub fn compile_simulation_design(path~: String, ext~: @utils.Externals, top~: St
     if key == "display.stream" { stream = Some(value) }
   }
   let circuit = compile_simulation(path~, ext~, top~, displays~, stream~)
-  { circuit, displays }
+  let mut selected_top = top.unwrap_or(circuit.id.inner())
+  let mut clock: String? = None
+  let mut reset: String? = None
+  let reset_cycles = 1
+  for item in metadata {
+    let (key, value) = item
+    if key == "top" && top is None { selected_top = value }
+    if key == "clock" { clock = Some(value) }
+    if key == "reset" { reset = Some(value) }
+  }
+  { circuit, top: selected_top, displays, clock, reset, reset_cycles }
 }
 
 /// Return the `@simulation` attribute attached to a source module as flat

@@ -8,9 +8,13 @@ import {
 }
 
 // Values
+pub fn compile_simulation(@firrtl.Circuit[@firrtl.Type], String) -> CompiledSimulation raise SimulatorError
+
 pub fn prepare_simulation_circuit(@firrtl.Circuit[@firrtl.Type]) -> @firrtl.Circuit[@firrtl.Type] raise SimulatorError
 
 pub fn simulator_clocks(Simulator) -> Array[String]
+
+pub fn simulator_compile(@firrtl.Circuit[@firrtl.Type], String) -> CompiledSimulation raise SimulatorError
 
 pub fn simulator_drain_events(Simulator) -> Array[SimMessage]
 
@@ -27,6 +31,8 @@ pub fn simulator_inputs(Simulator) -> Array[SimulatorSignal]
 pub fn simulator_messages(Simulator) -> Array[String]
 
 pub fn simulator_new(@firrtl.Circuit[@firrtl.Type], String) -> Simulator raise SimulatorError
+
+pub fn simulator_new_compiled(CompiledSimulation) -> Simulator raise SimulatorError
 
 pub fn simulator_output_signals(Simulator) -> Array[SimulatorSignal]
 
@@ -56,6 +62,11 @@ pub fn simulator_visible_outputs(Simulator, Array[String]) -> Array[SimulatorSig
 type SimulatorError derive(@debug.Debug)
 
 // Types and methods
+pub struct CompiledSimulation {
+  circuit : @firrtl.Circuit[@firrtl.Type]
+  top : String
+}
+
 pub(all) struct Framebuffer {
   width : Int
   height : Int
@@ -191,6 +202,7 @@ pub fn Simulator::exit_code(Self) -> Int?
 pub fn Simulator::failure(Self) -> String?
 pub fn Simulator::from_circuit(@firrtl.Circuit[@firrtl.Type], String) -> Self raise SimulatorError
 pub fn Simulator::from_circuit_with_models(@firrtl.Circuit[@firrtl.Type], String, Map[String, PrimitiveModel]) -> Self raise SimulatorError
+pub fn Simulator::from_compiled(CompiledSimulation) -> Self raise SimulatorError
 pub fn Simulator::is_halted(Self) -> Bool
 pub fn Simulator::messages(Self) -> Array[SimMessage]
 pub fn Simulator::new(@firrtl.Module[@firrtl.Type]) -> Self raise SimulatorError

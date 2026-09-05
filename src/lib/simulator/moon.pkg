@@ -11,6 +11,8 @@ options(
     "js": {
       "exports": [
         "simulator_new",
+        "simulator_compile",
+        "simulator_new_compiled",
         "simulator_poke_int",
         "simulator_peek_int",
         "simulator_step",
