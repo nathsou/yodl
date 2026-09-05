@@ -5,13 +5,16 @@ import {
     simulator_step,
     simulator_clocks,
     simulator_settle,
-    simulator_messages,
+    simulator_drain_events,
+    simulator_status,
+    simulator_exit_code,
+    simulator_set_history_retention,
     simulator_output_signals,
     simulator_inputs,
     simulator_frame_with_layout,
     simulator_halted,
     simulator_visible_outputs,
-    simulator_raster_new,
+    simulator_raster_new_with_ports,
     simulator_raster_step,
 } from '../../_build/js/release/build/lib/simulator/simulator.js';
 import type { Stage } from './compiler-stages.ts';
@@ -42,7 +45,10 @@ export type CompileRequest = { id: number; source: string; path: string; stage: 
 export type SimulationFramebuffer = { width: number; height: number; signal?: string; pixels?: number[]; packed?: Uint32Array; rgb?: Uint32Array; valid?: Uint32Array; onColor?: number; offColor?: number };
 export type SimulationSignal = { name: string; width: number; value: string; known: boolean };
 export type SimulationMetadata = { top?: string; clock?: string; reset?: NonNullable<SimulationRequest['reset']>; display?: NonNullable<SimulationRequest['display']>; cyclesPerFrame?: number; clockHz?: number };
-export type SimulationResult = { outputs: SimulationSignal[]; inputs: SimulationSignal[]; messages: string[]; cycles: number; halted?: boolean; clock?: string; metadata?: SimulationMetadata; framebuffers?: SimulationFramebuffer[] };
+export type SimulationEvent = { kind: 'printf' | 'assert_failure' | 'assert_unknown'; message: string; text: string; cycle: number; instancePath: string; source?: string };
+export type SimulationStatus = { halted: boolean; exit_code?: number; failed: boolean; first_failure?: SimulationEvent };
+export type SimulationAdvance = { cycles: number; boundaryComplete: boolean; halted: boolean };
+export type SimulationResult = { outputs: SimulationSignal[]; inputs: SimulationSignal[]; messages: string[]; events: SimulationEvent[]; status: SimulationStatus; cycles: number; halted?: boolean; clock?: string; metadata?: SimulationMetadata; framebuffers?: SimulationFramebuffer[] };
 export type CompileResult = { id: number; output?: string; error?: string; duration: number; sources?: Record<string, string>; simulation?: SimulationResult };
 export type SimulationStreamEvent = {
     id: number;
@@ -52,6 +58,8 @@ export type SimulationStreamEvent = {
     outputs?: SimulationSignal[];
     inputs?: SimulationSignal[];
     messages?: string[];
+    events?: SimulationEvent[];
+    status?: SimulationStatus;
     cycles?: number;
     totalCycles?: number;
     error?: string;
@@ -62,7 +70,7 @@ export type SimulationStreamEvent = {
     cyclesPerSecond?: number;
 };
 
-type DisplayDescriptor = { buffer: string; width: number; height: number; bits: number; ports: string[] };
+type DisplayDescriptor = { buffer: string; stream: boolean; width: number; height: number; bits: number; ports: string[] };
 
 function inferFramebuffer(displays: DisplayDescriptor[], selected?: string): ResolvedFramebuffer | undefined {
     const display = selected ? displays.find(d => d.buffer === selected)
@@ -212,7 +220,8 @@ export class SimulationSession {
     private hidden: string[] = [];
     private nativeDisplay = false;
     private packedDisplayRows = false;
-    private messageOffset = 0;
+    private streamPorts: string[] = [];
+    private firstFailure?: SimulationEvent;
     private inputs: NonNullable<SimulationRequest['inputs']>;
     private options: SimulationRequest;
     constructor(request: CompileRequest) {
@@ -225,6 +234,7 @@ export class SimulationSession {
         this.design = compiled.circuit;
         this.inputs = options.inputs ?? {};
         this.machine = unwrap(simulator_new(this.design, options.top ?? ''));
+        simulator_set_history_retention(this.machine, false);
         const clocks = simulator_clocks(this.machine) as string[];
         if (!options.clock && clocks.length > 1) throw new Error('Select a simulation clock: ' + clocks.join(', '));
         this.clock = options.clock ?? clocks[0];
@@ -233,7 +243,10 @@ export class SimulationSession {
         if (this.stream) {
             if (options.display?.buffer) throw new Error("Choose either an array buffer or a pixel stream.");
             this.framebuffer = { signal: options.display!.stream!, width: options.display!.width!, height: options.display!.height!, valueMode: 'rgb' };
-            this.hidden = ['x', 'y', 'valid', 'r', 'g', 'b'].map(suffix => `${this.framebuffer!.signal}_${suffix}`);
+            const descriptor = compiled.displays.find((display: DisplayDescriptor) => display.stream && display.buffer === this.framebuffer!.signal);
+            if (!descriptor) throw new Error(`Display stream '${this.framebuffer.signal}' must name an output record with x, y, valid, r, g, and b fields.`);
+            this.hidden = descriptor.ports;
+            this.streamPorts = descriptor.ports;
         } else {
             const selected = options.display?.buffer;
             const inferred = inferFramebuffer(compiled.displays, selected);
@@ -252,7 +265,6 @@ export class SimulationSession {
         this.initialize();
     }
     private initialize() {
-        this.messageOffset = 0;
         this.setInputs(this.inputs);
         if (this.options.reset) {
             if (!this.clock) throw new Error('Reset requires a clock.');
@@ -265,10 +277,11 @@ export class SimulationSession {
             unwrap(simulator_poke_int(this.machine, signal, 1, 0));
             unwrap(simulator_settle(this.machine));
         }
-        if (this.stream) this.raster = unwrap(simulator_raster_new(this.machine, this.framebuffer!.signal!, this.framebuffer!.width, this.framebuffer!.height));
+        if (this.stream) this.raster = unwrap(simulator_raster_new_with_ports(this.machine, this.framebuffer!.signal!, this.streamPorts, this.framebuffer!.width, this.framebuffer!.height));
     }
     reset() {
         this.machine = unwrap(simulator_new(this.design, this.options.top ?? ''));
+        simulator_set_history_retention(this.machine, false);
         this.initialize();
     }
     setInputs(inputs: NonNullable<SimulationRequest['inputs']>) {
@@ -284,6 +297,21 @@ export class SimulationSession {
         let advanced = 0;
         for (; advanced < cycles && !this.halted; advanced++) unwrap(simulator_step(this.machine, this.clock));
         return advanced;
+    }
+    advanceCycles(cycles: number): SimulationAdvance {
+        const advanced = this.advance(cycles, false);
+        return { cycles: advanced, boundaryComplete: false, halted: this.halted };
+    }
+    advanceTowardFrame(cycleBudget: number): SimulationAdvance {
+        const startFrame = this.frames;
+        const advanced = this.advance(cycleBudget, true);
+        return { cycles: advanced, boundaryComplete: this.frames > startFrame, halted: this.halted };
+    }
+    advanceFrame(cycleBudget = 10_000_000): SimulationAdvance {
+        if (!this.stream) return this.advanceCycles(this.options.cyclesPerFrame ?? 1);
+        const { cycles: advanced, boundaryComplete } = this.advanceTowardFrame(cycleBudget);
+        if (!boundaryComplete && !this.halted) throw new Error(`No frame boundary after ${cycleBudget} cycles. Check the stream coordinates and valid signal.`);
+        return { cycles: advanced, boundaryComplete, halted: this.halted };
     }
     snapshot(cycles = 0): SimulationResult {
         const frames: SimulationFramebuffer[] = [];
@@ -301,11 +329,28 @@ export class SimulationSession {
                 if (frame) frames.push(frame);
             }
         }
-        const messages = (simulator_messages(this.machine) as string[]).slice(this.messageOffset);
-        this.messageOffset += messages.length;
+        const normalizeEvent = (event: any): SimulationEvent => ({
+            kind: event.kind,
+            message: event.text,
+            text: event.text,
+            cycle: event.cycle,
+            instancePath: event.instance_path,
+            ...(event.source?.$tag === 1 ? { source: event.source._0 } : {}),
+        });
+        const events = (simulator_drain_events(this.machine) as any[]).map(normalizeEvent);
+        const messages = events.map(event => event.text);
+        const rawStatus: any = simulator_status(this.machine);
+        const firstFailure = events.find(event => event.kind === 'assert_failure' || event.kind === 'assert_unknown') ?? this.firstFailure;
+        if (!this.firstFailure && firstFailure) this.firstFailure = firstFailure;
+        const status: SimulationStatus = {
+            halted: rawStatus.halted,
+            failed: rawStatus.failed,
+            ...(simulator_exit_code(this.machine) >= 0 ? { exit_code: simulator_exit_code(this.machine) } : {}),
+            ...(firstFailure ? { first_failure: firstFailure } : {}),
+        };
         const unknown = frames.reduce((n, frame) => n + (frame.valid?.filter(word => word === 0).length ?? 0), 0);
         if (unknown) messages.push(this.stream ? 'Uncaptured or unknown pixels are shown in magenta.' : 'Display contains unknown values (magenta). Check reset and initialization.');
-        return { outputs: simulator_visible_outputs(this.machine, this.hidden) as SimulationSignal[], inputs: simulator_inputs(this.machine) as SimulationSignal[], messages, cycles, halted: this.halted, clock: this.clock, metadata: this.metadata, framebuffers: frames };
+        return { outputs: simulator_visible_outputs(this.machine, this.hidden) as SimulationSignal[], inputs: simulator_inputs(this.machine) as SimulationSignal[], messages, events, status, cycles, halted: status.halted, clock: this.clock, metadata: this.metadata, framebuffers: frames };
     }
 }
 
@@ -325,15 +370,16 @@ export function compile(request: CompileRequest): CompileResult {
             const cyclesPerFrame = request.simulate.cyclesPerFrame ?? session.metadata.cyclesPerFrame ?? 1;
             if (!Number.isSafeInteger(cyclesPerFrame) || cyclesPerFrame < 1 || cyclesPerFrame > 100000) throw new Error('cyclesPerFrame must be an integer between 1 and 100000.');
             let cycles = 0;
-            if (action === 'step_cycle') cycles = session.advance(1);
-            if (action === 'step_frame') cycles = session.advance(cyclesPerFrame);
+            if (action === 'step_cycle') cycles = session.advanceCycles(1).cycles;
+            if (action === 'step_frame') cycles = (session.stream ? session.advanceFrame() : session.advanceCycles(cyclesPerFrame)).cycles;
+            if (action === 'run' && session.stream) cycles = session.advanceFrame().cycles;
             const simulation = session.snapshot(cycles);
             if (action === 'run') {
                 if (session.framebuffer) {
                     const frames = request.simulate.captureFrames ?? 1;
                     if (!Number.isSafeInteger(frames) || frames < 1 || frames > 600) throw new Error("captureFrames must be an integer between 1 and 600.");
                     for (let i = 1; i < frames; i++) {
-                        if (session.clock) cycles += session.advance(cyclesPerFrame);
+                        if (session.clock) cycles += (session.stream ? session.advanceFrame() : session.advanceCycles(cyclesPerFrame)).cycles;
                         const snapshot = session.snapshot();
                         simulation.framebuffers!.push(...snapshot.framebuffers!);
                         simulation.outputs = snapshot.outputs;
@@ -341,7 +387,7 @@ export function compile(request: CompileRequest): CompileResult {
                         simulation.messages.push(...snapshot.messages);
                     }
                 } else if (session.clock) {
-                    cycles += session.advance(Math.max(0, Math.min(100000, request.simulate.cycles ?? 1)));
+                    cycles += session.advanceCycles(Math.max(0, Math.min(100000, request.simulate.cycles ?? 1))).cycles;
                     return { id: request.id, duration: performance.now() - started, sources: session.sources, simulation: session.snapshot(cycles) };
                 }
             }

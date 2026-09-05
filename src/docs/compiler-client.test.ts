@@ -407,6 +407,46 @@ module Top(clk: clock, rst: bool) -> (video: (x: u2, y: u1, valid: bool, r: u1, 
     expect(session.snapshot().framebuffers![0].rgb).toEqual(new Uint32Array([0x00ff00, 0xffff00, 0x00ff00, 0xffff00]));
 });
 
+test('batch stream capture completes its first frame and reports actual cycles', () => {
+    const source = `@simulation({display: {stream: "video", width: 4, height: 1}, reset: "rst"})
+module Top(clk: clock, rst: bool) -> (video: (x: u2, y: u1, valid: bool, r: u1, g: u1, b: u1)) {
+    let count = Reg[u8](clk, rst)
+    count.d = count.q + 1
+    video = (x: count.q[1:0], y: 0, valid: true, r: count.q[0], g: false, b: false)
+}`;
+    const result = compile({ ...request, id: 971, source, simulate: {} });
+    expect(result.error).toBeUndefined();
+    expect(result.simulation!.cycles).toBe(4);
+    expect(result.simulation!.framebuffers![0].rgb).toEqual(new Uint32Array([0, 0xff0000, 0, 0xff0000]));
+});
+
+test('batch status distinguishes assertion failure and nonzero stop', () => {
+    const source = `module Top(clk: clock, predicate: bool) -> () {
+    assert!(predicate, "predicate failed")
+    stop!(7)
+}`;
+    const result = compile({ ...request, id: 972, source, simulate: { inputs: { predicate: { width: 1, value: 0 } } } });
+    expect(result.error).toBeUndefined();
+    expect(result.simulation!.status).toMatchObject({ halted: true, failed: true, exit_code: 7 });
+    expect(result.simulation!.status.first_failure).toMatchObject({ kind: 'assert_failure', message: 'predicate failed', cycle: 1, instancePath: '' });
+    expect(result.simulation!.events).toContainEqual(expect.objectContaining({ kind: 'assert_failure' }));
+});
+
+test('stream descriptors survive source-level flattened-name collisions', () => {
+    const source = `@simulation({display: {stream: "video", width: 2, height: 1}, reset: "rst"})
+module Top(clk: clock, rst: bool) -> (video_x: u8, video: (x: u1, y: u1, valid: bool, r: u1, g: u1, b: u1)) {
+    let count = Reg[u8](clk, rst)
+    count.d = count.q + 1
+    video_x = 99
+    video = (x: count.q[0], y: 0, valid: true, r: count.q[0], g: false, b: false)
+}`;
+    const result = compile({ ...request, id: 973, source, simulate: {} });
+    expect(result.error).toBeUndefined();
+    expect(result.simulation!.cycles).toBe(2);
+    expect(result.simulation!.framebuffers![0].rgb).toEqual(new Uint32Array([0, 0xff0000]));
+    expect(result.simulation!.outputs).toContainEqual({ name: 'video_x', width: 8, value: '99', known: true });
+});
+
 test('display descriptors survive flattened-name collisions', () => {
     const result = compile({ ...request, id: 98, source: `@simulation({display: { buffer: "pixel" }})
 module Top() -> (pixel_0: bool, pixel: [1][2]bool) {

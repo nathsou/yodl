@@ -123,11 +123,27 @@ suberror SimulatorError {
 pub(all) struct SimMessage {
   kind: String
   text: String
+  cycle: Int
+  instance_path: String
+  source: String?
 }
 
 pub fn SimMessage::kind(self: SimMessage) -> String { self.kind }
 
 pub fn SimMessage::text(self: SimMessage) -> String { self.text }
+
+pub fn SimMessage::cycle(self: SimMessage) -> Int { self.cycle }
+
+pub fn SimMessage::instance_path(self: SimMessage) -> String { self.instance_path }
+
+pub fn SimMessage::source(self: SimMessage) -> String? { self.source }
+
+pub(all) struct SimulationStatus {
+  halted: Bool
+  exit_code: Int?
+  failed: Bool
+  first_failure: SimMessage?
+}
 
 pub(all) struct WaveSample {
   cycle: Int
@@ -182,9 +198,12 @@ pub struct Simulator {
   memories: Map[String, MemoryState]
   clocks: Map[String, Bool]
   messages: Array[SimMessage]
+  mut message_cursor: Int
+  mut retain_history: Bool
   mut halted: Bool
   mut exit_code: Int?
   mut failure: String?
+  mut first_failure: SimMessage?
   modules: Map[String, TypedModule]
   children: Map[String, Simulator]
   child_message_offsets: Map[String, Int]
@@ -445,9 +464,12 @@ fn Simulator::new_with_modules(
     memories,
     clocks,
     messages: [],
+    message_cursor: 0,
+    retain_history: true,
     halted: false,
     exit_code: None,
     failure: None,
+    first_failure: None,
     modules,
     children,
     child_message_offsets,
@@ -679,11 +701,35 @@ pub fn Simulator::messages(self: Simulator) -> Array[SimMessage] {
   self.messages
 }
 
+pub fn Simulator::set_history_retention(self: Simulator, retain: Bool) -> Unit {
+  self.retain_history = retain
+}
+
+pub fn Simulator::drain_events(self: Simulator) -> Array[SimMessage] {
+  let events = self.messages[self.message_cursor:].iter().collect()
+  if self.retain_history {
+    self.message_cursor = self.messages.length()
+  } else {
+    self.messages.clear()
+    self.message_cursor = 0
+  }
+  events
+}
+
 pub fn Simulator::is_halted(self: Simulator) -> Bool { self.halted }
 
 pub fn Simulator::exit_code(self: Simulator) -> Int? { self.exit_code }
 
 pub fn Simulator::failure(self: Simulator) -> String? { self.failure }
+
+pub fn Simulator::status(self: Simulator) -> SimulationStatus {
+  {
+    halted: self.halted,
+    exit_code: self.exit_code,
+    failed: self.failure is Some(_),
+    first_failure: self.first_failure,
+  }
+}
 
 /// Enable transition tracing.  An empty filter records every changed signal;
 /// otherwise only the named signals are retained.  Tracing is opt-in so it
@@ -942,11 +988,13 @@ fn Simulator::commit_children(self: Simulator, clocks: Array[String]) -> Unit ra
     let offset = self.child_message_offsets.get(instance).unwrap_or(0)
     let child_messages = child.messages()
     for i in offset..<child_messages.length() {
-      self.messages.push(child_messages[i])
+      let event = child_messages[i]
+      self.messages.push({ ..event, instance_path: if event.instance_path.is_empty() { instance } else { instance + "." + event.instance_path } })
     }
     self.child_message_offsets[instance] = child_messages.length()
-    if child.failure is Some(failure) {
+    if self.failure is None && child.failure is Some(failure) {
       self.failure = Some(failure)
+      self.first_failure = child.first_failure.map(event => { ..event, instance_path: if event.instance_path.is_empty() { instance } else { instance + "." + event.instance_path } })
     }
     if child.halted {
       self.halted = true
@@ -1154,17 +1202,24 @@ fn Simulator::run_commands(self: Simulator, clock: String) -> Unit raise Simulat
     if enabled.raw == 0 { continue }
     match command.action {
       SimCommandAction::Printf(parts~, args~) => {
-        self.messages.push({ kind: "printf", text: self.format_command(parts, args) })
+        self.messages.push({ kind: "printf", text: self.format_command(parts, args), cycle: self.cycle + 1, instance_path: "", source: None })
       }
       SimCommandAction::Assert(pred~, parts~, args~) => {
         let predicate = self.eval_compiled_expr(pred)
         if !predicate.is_known() {
-          raise Unsupported(message="assertion predicate is unknown on clock '\{clock}'")
+          let text = "assertion predicate is unknown on clock '\{clock}'"
+          if self.failure is None { self.failure = Some(text) }
+          let event = { kind: "assert_unknown", text, cycle: self.cycle + 1, instance_path: "", source: None }
+          if self.first_failure is None { self.first_failure = Some(event) }
+          self.messages.push(event)
+          continue
         }
         if predicate.raw == 0 {
           let text = self.format_command(parts, args)
-          self.failure = Some(text)
-          self.messages.push({ kind: "assert", text })
+          if self.failure is None { self.failure = Some(text) }
+          let event = { kind: "assert_failure", text, cycle: self.cycle + 1, instance_path: "", source: None }
+          if self.first_failure is None { self.first_failure = Some(event) }
+          self.messages.push(event)
         }
       }
       SimCommandAction::Stop(code~) => {
@@ -1713,6 +1768,24 @@ pub fn simulator_messages(simulator: Simulator) -> Array[String] {
   simulator.messages().map(message => message.text())
 }
 
+pub fn simulator_drain_events(simulator: Simulator) -> Array[SimMessage] {
+  simulator.drain_events()
+}
+
+pub fn simulator_status(simulator: Simulator) -> SimulationStatus {
+  simulator.status()
+}
+
+/// JavaScript hosts use -1 for the absence of a stop code because nullable
+/// MoonBit options are represented differently across JS toolchain releases.
+pub fn simulator_exit_code(simulator: Simulator) -> Int {
+  simulator.exit_code().unwrap_or(-1)
+}
+
+pub fn simulator_set_history_retention(simulator: Simulator, retain: Bool) -> Unit {
+  simulator.set_history_retention(retain)
+}
+
 /// Legacy integer output view retained for native callers. New hosts should
 /// use `simulator_output_signals` so wide values and unknown state survive the
 /// boundary.
@@ -1835,6 +1908,7 @@ pub fn simulator_visible_outputs(simulator: Simulator, hidden: Array[String]) ->
 
 pub(all) struct SimulatorRaster {
   signal: String
+  ports: Array[String]
   width: Int
   height: Int
   pixels: Array[UInt]
@@ -1845,17 +1919,21 @@ pub(all) struct SimulatorRaster {
 }
 
 pub fn simulator_raster_new(simulator: Simulator, signal: String, width: Int, height: Int) -> SimulatorRaster raise SimulatorError {
-  for suffix in ["x", "y", "valid", "r", "g", "b"] {
-    let name = signal + "_" + suffix
+  simulator_raster_new_with_ports(simulator, signal, ["x", "y", "valid", "r", "g", "b"].map(suffix => signal + "_" + suffix), width, height)
+}
+
+pub fn simulator_raster_new_with_ports(simulator: Simulator, signal: String, ports: Array[String], width: Int, height: Int) -> SimulatorRaster raise SimulatorError {
+  if ports.length() != 6 { raise Unsupported(message="pixel stream requires six resolved fields") }
+  for index, name in ports {
     if !simulator.design.ports.iter().any(p => p.id.inner() == name && p.dir is @parse.PortDir::Output) {
       raise Unsupported(message="pixel stream requires output '\{name}'")
     }
     let value = simulator.peek(name)
-    if (suffix == "r" || suffix == "g" || suffix == "b") && (value.width < 1 || value.width > 8) {
+    if index >= 3 && (value.width < 1 || value.width > 8) {
       raise Unsupported(message="pixel stream color channels must have 1 to 8 bits")
     }
   }
-  { signal, width, height, pixels: Array::make(width * height, 0U), valid: Array::make(width * height, 0U), frames: 0, started: false, at_origin: false }
+  { signal, ports, width, height, pixels: Array::make(width * height, 0U), valid: Array::make(width * height, 0U), frames: 0, started: false, at_origin: false }
 }
 
 /// Sample the pre-edge pixel, then advance the hardware. The worker calls this
@@ -1865,9 +1943,9 @@ pub fn simulator_raster_step(simulator: Simulator, raster: SimulatorRaster, cloc
   let mut advanced = 0
   for _ in 0..<cycles {
     if simulator.halted { break }
-    let x = simulator.peek(raster.signal + "_x")
-    let y = simulator.peek(raster.signal + "_y")
-    let valid = simulator.peek(raster.signal + "_valid")
+    let x = simulator.peek(raster.ports[0])
+    let y = simulator.peek(raster.ports[1])
+    let valid = simulator.peek(raster.ports[2])
     if (x.is_known() && x.raw != 0) || (y.is_known() && y.raw != 0) || (valid.is_known() && valid.raw == 0) {
       raster.at_origin = false
     }
@@ -1883,9 +1961,9 @@ pub fn simulator_raster_step(simulator: Simulator, raster: SimulatorRaster, cloc
         raster.at_origin = false
       }
       if col >= 0 && col < raster.width && row >= 0 && row < raster.height {
-        let r = simulator.peek(raster.signal + "_r")
-        let g = simulator.peek(raster.signal + "_g")
-        let b = simulator.peek(raster.signal + "_b")
+        let r = simulator.peek(raster.ports[3])
+        let g = simulator.peek(raster.ports[4])
+        let b = simulator.peek(raster.ports[5])
         let red = (r.raw.to_int() * 255 / ((1 << r.width) - 1)).reinterpret_as_uint()
         let green = (g.raw.to_int() * 255 / ((1 << g.width) - 1)).reinterpret_as_uint()
         let blue = (b.raw.to_int() * 255 / ((1 << b.width) - 1)).reinterpret_as_uint()

@@ -12,6 +12,10 @@ pub fn prepare_simulation_circuit(@firrtl.Circuit[@firrtl.Type]) -> @firrtl.Circ
 
 pub fn simulator_clocks(Simulator) -> Array[String]
 
+pub fn simulator_drain_events(Simulator) -> Array[SimMessage]
+
+pub fn simulator_exit_code(Simulator) -> Int
+
 pub fn simulator_frame(Simulator, Array[String], Int, Int, Bool) -> SimulatorFrame raise SimulatorError
 
 pub fn simulator_frame_with_layout(Simulator, Array[String], Int, Int, packed_rows~ : Bool, binary~ : Bool) -> SimulatorFrame raise SimulatorError
@@ -34,9 +38,15 @@ pub fn simulator_poke_int(Simulator, String, Int, Int) -> Unit raise SimulatorEr
 
 pub fn simulator_raster_new(Simulator, String, Int, Int) -> SimulatorRaster raise SimulatorError
 
+pub fn simulator_raster_new_with_ports(Simulator, String, Array[String], Int, Int) -> SimulatorRaster raise SimulatorError
+
 pub fn simulator_raster_step(Simulator, SimulatorRaster, String, Int, Bool) -> Int raise SimulatorError
 
+pub fn simulator_set_history_retention(Simulator, Bool) -> Unit
+
 pub fn simulator_settle(Simulator) -> Unit raise SimulatorError
+
+pub fn simulator_status(Simulator) -> SimulationStatus
 
 pub fn simulator_step(Simulator, String) -> Unit raise SimulatorError
 
@@ -107,8 +117,14 @@ pub enum SimFormatPart {
 pub(all) struct SimMessage {
   kind : String
   text : String
+  cycle : Int
+  instance_path : String
+  source : String?
 }
+pub fn SimMessage::cycle(Self) -> Int
+pub fn SimMessage::instance_path(Self) -> String
 pub fn SimMessage::kind(Self) -> String
+pub fn SimMessage::source(Self) -> String?
 pub fn SimMessage::text(Self) -> String
 
 pub(all) enum SimStmt {
@@ -132,6 +148,13 @@ pub fn SimValue::with_mask(Int, @bigint.BigInt, @bigint.BigInt) -> Self
 pub fn SimValue::zero(Int) -> Self
 pub impl Show for SimValue
 
+pub(all) struct SimulationStatus {
+  halted : Bool
+  exit_code : Int?
+  failed : Bool
+  first_failure : SimMessage?
+}
+
 pub struct Simulator {
   design : @firrtl.Module[@firrtl.Type]
   program : Array[SimStmt]
@@ -141,9 +164,12 @@ pub struct Simulator {
   memories : Map[String, MemoryState]
   clocks : Map[String, Bool]
   messages : Array[SimMessage]
+  mut message_cursor : Int
+  mut retain_history : Bool
   mut halted : Bool
   mut exit_code : Int?
   mut failure : String?
+  mut first_failure : SimMessage?
   modules : Map[String, @firrtl.Module[@firrtl.Type]]
   children : Map[String, Simulator]
   child_message_offsets : Map[String, Int]
@@ -159,6 +185,7 @@ pub struct Simulator {
 }
 pub fn Simulator::cycle(Self) -> Int
 pub fn Simulator::disable_waveform(Self) -> Unit
+pub fn Simulator::drain_events(Self) -> Array[SimMessage]
 pub fn Simulator::enable_waveform(Self, signals? : Array[String]) -> Unit
 pub fn Simulator::exit_code(Self) -> Int?
 pub fn Simulator::failure(Self) -> String?
@@ -170,7 +197,9 @@ pub fn Simulator::new(@firrtl.Module[@firrtl.Type]) -> Self raise SimulatorError
 pub fn Simulator::peek(Self, String) -> SimValue raise SimulatorError
 pub fn Simulator::poke(Self, String, SimValue) -> Unit raise SimulatorError
 pub fn Simulator::set_clock(Self, String, Bool) -> Unit raise SimulatorError
+pub fn Simulator::set_history_retention(Self, Bool) -> Unit
 pub fn Simulator::settle(Self) -> Unit raise SimulatorError
+pub fn Simulator::status(Self) -> SimulationStatus
 pub fn Simulator::step_clock(Self, String) -> Unit raise SimulatorError
 pub fn Simulator::testbench(Self) -> Testbench
 pub fn Simulator::waveform(Self) -> Array[WaveSample]
@@ -182,6 +211,7 @@ pub(all) struct SimulatorFrame {
 
 pub(all) struct SimulatorRaster {
   signal : String
+  ports : Array[String]
   width : Int
   height : Int
   pixels : Array[UInt]

@@ -31,7 +31,7 @@ function send(type: SimulationStreamEvent['type']) {
     const event: SimulationStreamEvent = {
         id: state.id, type: result.halted ? 'halted' : type,
         frame: result.framebuffers?.at(-1), outputs: result.outputs, inputs: result.inputs,
-        messages: result.messages, totalCycles: state.totalCycles, clock: result.clock,
+        messages: result.messages, events: result.events, status: result.status, totalCycles: state.totalCycles, clock: result.clock,
         sources: type === 'started' ? state.session.sources : undefined,
         metadata: result.metadata,
         playback: { refreshFps: state.refreshFps, clockHz: state.clockHz, cyclesPerFrame: state.cyclesPerFrame },
@@ -59,7 +59,11 @@ function tick() {
         current.lastTick = start;
         let budget = manual ? current.remaining : hz ? Math.floor(current.credit) : 4096;
         while ((current.running || manual) && budget > 0 && performance.now() - start < 8) {
-            const count = current.session.advance(Math.min(current.session.stream ? 128 : 1, budget), current.targetFrame !== undefined);
+            const chunk = Math.min(current.session.stream ? 128 : 1, budget);
+            const outcome = current.targetFrame !== undefined
+                ? current.session.advanceTowardFrame(chunk)
+                : current.session.advanceCycles(chunk);
+            const count = outcome.cycles;
             current.totalCycles += count;
             budget -= count;
             if (manual) current.remaining -= count;

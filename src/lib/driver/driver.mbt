@@ -209,6 +209,7 @@ pub fn compile_simulation(
   ext~: @utils.Externals,
   top~: String? = None,
   displays~: Array[SimulationDisplay] = [],
+  stream~: String? = None,
 ) -> @firrtl.TypedCircuit raise {
   if !path.has_suffix(".yodl") {
     raise Failure::Failure("Input file must have a .yodl extension")
@@ -289,7 +290,27 @@ pub fn compile_simulation(
             }
           }
         }
-        displays.push({ buffer: port.id.inner(), width, height, bits, ports })
+        displays.push({ buffer: port.id.inner(), stream: false, width, height, bits, ports })
+      } else if stream == Some(port.id.inner()) && port.dir is @parse.PortDir::Output &&
+        port.ty is @firrtl.Type::Bundle(fields) {
+        let ports = []
+        for required in ["x", "y", "valid", "r", "g", "b"] {
+          let mut matched: @firrtl.BundleField? = None
+          for field in fields {
+            if field.id.inner() == required { matched = Some(field) }
+          }
+          let field = matched.unwrap_or_error(Failure::Failure("Stream '\{port.id.inner()}' is missing '\{required}'"))
+          if !(field.ty is @firrtl.Type::UInt(_)) || (required == "valid" && !(field.ty is @firrtl.Type::UInt(1))) {
+            raise Failure::Failure("Stream '\{port.id.inner()}'.\{required} has an unsupported type")
+          }
+          let reference = @firrtl.Reference::FieldAccess(
+            lhs=@firrtl.Reference::Id(port.id, ty=port.ty),
+            field=field.id,
+            ty=field.ty,
+          )
+          ports.push(pass.lowered_name(mod.id.inner(), reference).unwrap_or_error(Failure::Failure("Missing lowered stream field '\{required}'")))
+        }
+        displays.push({ buffer: port.id.inner(), stream: true, width: 0, height: 0, bits: 0, ports })
       }
     }
   }
@@ -298,6 +319,7 @@ pub fn compile_simulation(
 
 pub(all) struct SimulationDisplay {
   buffer: String
+  stream: Bool
   width: Int
   height: Int
   bits: Int
@@ -311,7 +333,13 @@ pub(all) struct SimulationDesign {
 
 pub fn compile_simulation_design(path~: String, ext~: @utils.Externals, top~: String? = None) -> SimulationDesign raise {
   let displays = []
-  let circuit = compile_simulation(path~, ext~, top~, displays~)
+  let metadata = simulation_metadata(path~, ext~, top~)
+  let mut stream: String? = None
+  for item in metadata {
+    let (key, value) = item
+    if key == "display.stream" { stream = Some(value) }
+  }
+  let circuit = compile_simulation(path~, ext~, top~, displays~, stream~)
   { circuit, displays }
 }
 

@@ -10,7 +10,7 @@ import {
 // Values
 pub fn cli(@utils.Externals) -> Unit
 
-pub fn compile_simulation(path~ : String, ext~ : @utils.Externals, top? : String?, displays? : Array[SimulationDisplay]) -> @firrtl.Circuit[@firrtl.Type] raise
+pub fn compile_simulation(path~ : String, ext~ : @utils.Externals, top? : String?, displays? : Array[SimulationDisplay], stream? : String?) -> @firrtl.Circuit[@firrtl.Type] raise
 
 pub fn compile_simulation_design(path~ : String, ext~ : @utils.Externals, top? : String?) -> SimulationDesign raise
 
@@ -40,6 +40,7 @@ pub(all) struct SimulationDesign {
 
 pub(all) struct SimulationDisplay {
   buffer : String
+  stream : Bool
   width : Int
   height : Int
   bits : Int

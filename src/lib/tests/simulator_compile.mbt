@@ -438,6 +438,52 @@ test "clocked commands use the shared FIRRTL formatter" {
   assert_eq(sim.messages().map(m => m.text()), ["b=00101010 c=* d=42 x=2a %"])
 }
 
+test "assertion failure and nonzero stop have structured persistent outcomes" {
+  let source =
+    #|module Top(clk: clock, predicate: bool) -> () {
+    #|  assert!(predicate, "predicate failed")
+    #|  stop!(7)
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.poke("predicate", @simulator.SimValue::from_int(1, 0))
+  sim.step_clock("clk")
+  let status = sim.status()
+  assert_true(status.halted)
+  assert_true(status.failed)
+  assert_eq(status.exit_code, Some(7))
+  let failure = status.first_failure.unwrap()
+  assert_eq(failure.kind(), "assert_failure")
+  assert_eq(failure.text(), "predicate failed")
+  assert_eq(failure.cycle(), 1)
+  assert_eq(failure.instance_path(), "")
+  assert_eq(sim.cycle(), 1)
+
+  sim.set_history_retention(false)
+  assert_eq(sim.drain_events().map(event => event.kind()), ["assert_failure"])
+  assert_eq(sim.drain_events().length(), 0)
+  assert_true(sim.status().failed)
+  assert_eq(sim.status().first_failure.unwrap().text(), "predicate failed")
+}
+
+test "unknown assertion predicates are structured failures without implicit halt" {
+  let source =
+    #|module Top(clk: clock) -> () {
+    #|  let state = Reg[bool](clk)
+    #|  state.d = state.q
+    #|  assert!(state.q)
+    #|}
+  let sim = compile_test_simulator(source)
+  sim.step_clock("clk")
+  let status = sim.status()
+  assert_false(status.halted)
+  assert_true(status.failed)
+  assert_eq(status.exit_code, None)
+  assert_eq(status.first_failure.unwrap().kind(), "assert_unknown")
+  sim.step_clock("clk")
+  assert_true(sim.status().failed)
+  assert_eq(sim.cycle(), 2)
+}
+
 test "simulation compilation rejects clockless runtime commands at their span" {
   for command in ["printf!(\"checked\")", "assert!(input)"] {
     let source = "module Top(input: bool) -> () {\n  " + command + "\n}\n"
