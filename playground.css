@@ -72,6 +72,26 @@ h2 { font-size: 13px; font-weight: 650; margin: 0 0 9px; }
 .problems-header { display: flex; gap: 12px; align-items: center; justify-content: space-between; font-size: 12px; color: var(--error); }
 .problems-header button { color: var(--error); background: transparent; font-size: 11px; }
 .problems pre { font: 12px/1.6 "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.simulation-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; border-top: 1px solid var(--border); background: var(--background); padding: 14px; overflow: auto; }
+.simulation-title { display: flex; align-items: baseline; gap: 10px; color: var(--text); }
+.simulation-title span { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.simulation-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; color: var(--muted); font-size: 12px; }
+.simulation-controls { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.simulation-controls label { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; }
+.simulation-controls input { min-height: 27px; border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; background: var(--surface); color: var(--text); font-size: 11px; }
+.simulation-inputs { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.simulation-inputs label { display: inline-flex; align-items: center; gap: 4px; font: 12px/1.4 "SFMono-Regular", Consolas, monospace; }
+.simulation-inputs input[type="text"] { width: 92px; min-height: 27px; border: 1px solid var(--border); border-radius: 5px; padding: 3px 5px; background: var(--surface); color: var(--text); }
+#simulation-options { margin: 12px 0 0; color: var(--muted); font-size: 11px; }
+#simulation-options summary { display: inline-block; }
+#simulation-options .simulation-note { margin: 7px 0 0; font-size: 11px; color: var(--muted); }
+#simulation-options .simulation-controls { margin: 8px 0 0; }
+#simulation-output { flex: 1; min-height: 80px; margin: 12px 0 0; font: 12px/1.5 "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; overflow: auto; overflow-wrap: anywhere; color: var(--text); }
+#simulation-framebuffer { display: block; width: min(640px, 100%); max-width: 100%; max-height: 360px; object-fit: contain; image-rendering: pixelated; margin-top: 8px; background: #000; border: 1px solid var(--border); }
+.output-pane[data-view="simulation"] .stage-description, .output-pane[data-view="simulation"] #output-panel { display: none; }
+.output-pane[data-view="simulation"] > .panel-header { display: none; }
+.output-pane[data-view="simulation"] #simulation-panel { border-top: 0; }
+.output-pane:not([data-view="simulation"]) #simulation-panel { display: none; }
 .notice { padding: 9px 24px; color: var(--text); background: var(--accent-soft); font-size: 12px; }
 .notice button { margin-left: 12px; padding: 2px 7px; min-height: 25px; }
 .mobile-tabs { display: none; }
@@ -117,3 +137,20 @@ dialog input { display: block; width: 100%; padding: 10px; margin: 8px 0; border
     button, select { min-height: 40px; }
     .panel-actions button { min-height: 36px; }
 }
+
+.source-files { display: flex; flex-shrink: 0; gap: 2px; overflow-x: auto; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.source-files button { flex-shrink: 0; border-color: transparent; background: transparent; color: var(--muted); font-size: 11px; padding: 5px 8px; }
+.source-files button[aria-pressed="true"] { color: var(--text); border-color: var(--border); background: var(--surface); }
+
+/* Shared fixed header rows keep both code surfaces aligned at every split. */
+.editor-pane > .panel-header { height: 54px; min-height: 54px; flex: 0 0 54px; flex-wrap: nowrap; overflow: hidden; }
+.file-title { flex: 1; overflow: hidden; white-space: nowrap; }
+#input-filename { overflow: hidden; text-overflow: ellipsis; }
+.panel-actions, #source-kind, #draft-badge { flex-shrink: 0; }
+.source-files, .stage-description { box-sizing: border-box; height: 44px; min-height: 44px; flex: 0 0 44px; align-items: center; flex-wrap: nowrap; }
+.stage-description { overflow: hidden; }
+#stage-description { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#stage-command { flex-shrink: 0; }
+
+/* Collapse both secondary rows when there is only one source file. */
+.editors[data-imports="false"] .stage-description { display: none; }

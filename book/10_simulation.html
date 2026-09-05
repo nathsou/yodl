@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Simulation · Yodl</title><meta name="description" content="Simulation in Yodl. Learn the language with editable examples and inspect the hardware compiler output."><meta property="og:title" content="Simulation · Yodl"><meta property="og:description" content="Simulation in Yodl. Learn the language with editable examples and inspect the hardware compiler output."><meta property="og:type" content="article"><meta name="color-scheme" content="light dark"><link rel="stylesheet" href="../docs.css"><script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('yodl-playground-v2:theme');document.documentElement.dataset.theme=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light'}catch{}</script></head>
+<body><a class="skip-link" href="#content">Skip to content</a>
+<header class="site-header">
+<a class="site-brand" href="../book/" aria-label="Yodl home">yodl<span class="site-brand-divider">/</span><span class="site-section" id="site-section">documentation</span></a>
+<nav class="site-navigation" aria-label="Yodl">
+<a href="../book/" aria-current="page">Docs</a>
+<a href="../playground.html?lesson=gates">Tour</a><a href="../playground.html?mode=examples">Playground</a>
+</nav>
+<label class="site-theme"><span class="sr-only">Color theme</span><select id="theme-select" title="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
+</header>
+<div class="docs-layout"><aside class="sidebar"><details class="chapter-menu" open><summary>Chapters</summary><div class="sidebar-inner"><button id="search-open" class="search-trigger js-only">Search documentation <kbd>/</kbd></button><p class="eyebrow">THE LANGUAGE</p><nav aria-label="Chapters"><a href="./01_presentation.html" ><span>01</span>Presentation</a><a href="./02_getting_started.html" ><span>02</span>Getting Started</a><a href="./03_data_types.html" ><span>03</span>Data Types</a><a href="./04_constructs.html" ><span>04</span>Language Constructs</a><a href="./05_operators.html" ><span>05</span>Operators</a><a href="./06_control_flow.html" ><span>06</span>Control Flow</a><a href="./07_built_in_functions.html" ><span>07</span>Built-in Functions</a><a href="./08_primitive_modules.html" ><span>08</span>Primitive Modules</a><a href="./09_external_modules.html" ><span>09</span>External Modules</a><a href="./10_simulation.html" aria-current="page"><span>10</span>Simulation</a></nav><div class="sidebar-footer"><a href="https://github.com/nathsou/yodl">GitHub ↗</a><span>Yodl 0.3.1 · bfcc5bd</span></div></div></details></aside>
+<main id="content" tabindex="-1"><div class="chapter-meta"><span class="eyebrow">LANGUAGE GUIDE</span><span>10 / 10</span></div><article><h1 id="simulation"><a class="heading-anchor" href="#simulation">Simulation</a></h1>
+<p>Yodl's simulator executes the normalized, typed FIRRTL produced by the
+compiler. It is intended for deterministic testbenches and for interactive
+playground tools; it does not model gate delays or analogue timing.</p>
+<p>The low-level API accepts typed FIRRTL and prepares it into an executable
+design. <code>Simulator::from_circuit</code> remains a compatibility wrapper; hosts that
+run multiple instances should prepare once and reuse the compiled design:</p>
+<pre><code class="language-moonbit">let sim = @simulator.Simulator::from_circuit(circuit, &quot;Top&quot;)
+sim.poke(&quot;rst&quot;, @simulator.SimValue::from_int(1, 1))
+sim.step_clock(&quot;clk&quot;)
+let value = sim.peek(&quot;counter&quot;)
+</code></pre>
+<p>For procedural tests, wrap it in a testbench. <code>step</code> performs a rising and
+falling edge, while <code>run</code> repeats that operation and tracks the cycle count.</p>
+<pre><code class="language-moonbit">let tb = sim.testbench()
+tb.poke(&quot;rst&quot;, @simulator.SimValue::from_int(1, 1))
+tb.run(&quot;clk&quot;, 2)
+tb.expect(&quot;done&quot;, @simulator.SimValue::from_int(1, 1))
+</code></pre>
+<p>Values are arbitrary-width packed integers. A value can be marked unknown with
+<code>SimValue::new(..., known=false)</code>; unreset registers and uninitialised memory
+locations start unknown. This prevents a test from accidentally relying on an
+implicit zero initialisation. Unknownness is tracked per bit and unknown
+backing bits are canonicalized. <code>is_known()</code> is true only when every valid bit
+is known; extraction, concatenation, shifts, bitwise operations, masked writes,
+and muxes preserve bits that can be proven known. Arithmetic uses a documented
+conservative whole-result rule.</p>
+<p><code>poke</code> changes an input and <code>settle</code> reaches a stable combinational result,
+including asynchronous reset effects, without advancing a cycle. A rising
+edge samples register inputs, memory controls, and clocked commands from one
+settled state. Register and memory updates become visible together, followed
+by another settle; a <code>stop!</code> completes its triggering edge. The simulator
+settles combinational connections between clock events, commits
+registers and synchronous memories together on a rising edge, and executes
+clocked <code>printf!</code>, <code>assert!</code>, and <code>stop!</code> commands. A combinational loop or an
+external module without a registered simulation model is reported as an error.</p>
+<p>Clocked commands require a real input clock (direct aliases are allowed;
+derived clocks are rejected). Constant assertions are folded at compile time.
+Unsupported memory latencies and unsupported indexing fail during preparation.
+Outcomes expose persistent assertion failure separately from halting and
+preserve nonzero stop codes. <code>drain_events()</code> returns typed printf/assertion
+events incrementally; native testbenches may opt into full history.</p>
+<p>For long-running tests, the evaluator compiles typed FIRRTL into a small
+SimIR worklist. Only statements affected by a changed input, register, memory,
+or child output are revisited, and machine-word primitive operations avoid
+allocating arbitrary-precision temporaries for the common narrow-control paths.
+The resulting cycle/settle API is deterministic while remaining suitable for a
+future bytecode backend.</p>
+<p>Transition tracing is opt-in, so normal simulation remains fast:</p>
+<pre><code class="language-moonbit">sim.enable_waveform(signals=[&quot;valid&quot;, &quot;ready&quot;])
+sim.step_clock(&quot;clk&quot;)
+for sample in sim.waveform() {
+  println(&quot;{sample.cycle()}: {sample.signal()} = {sample.value()}&quot;)
+}
+</code></pre>
+<p>External FIRRTL modules can be supplied by a host model. The model receives its
+input values and returns output values in declared port order:</p>
+<pre><code class="language-moonbit">let models : Map[String, @simulator.PrimitiveModel] = Map([])
+models[&quot;TimerIP&quot;] = {
+  evaluate: (_) =&gt; [@simulator.SimValue::from_int(1, 1)],
+}
+let sim = @simulator.Simulator::from_circuit_with_models(circuit, &quot;Top&quot;, models)
+</code></pre>
+<p>Graphical and text-producing designs can expose semantic output protocols to a
+simulation host. <code>Framebuffer</code> stores RGB pixels for a browser canvas, and
+<code>TextSink</code> collects byte-oriented output. A hardware wrapper can connect those
+same logical signals to a physical display or serial link when targeting an
+FPGA, but the simulation top does not need those timing signals.</p>
+<p>The playground uses this separation for the Game of Life example: <code>GameOfLifeSim</code>
+loads its 30×40 vector register in one cycle, advances one generation per
+clock, and returns the aggregate state as a framebuffer.</p>
+<p>A simulation display can be a logical array or a pixel stream. The compiler
+binds displays to typed outputs; signal names do not need a special prefix.
+A sole two-dimensional unsigned output is detected automatically. Use
+<code>display: { buffer: &quot;name&quot; }</code> to choose between multiple arrays.</p>
+<section class="code-example" id="ex-simulation-annotation" aria-label="Example: simulation annotation">
+    <div class="example-header"><a class="example-title" href="#ex-simulation-annotation"><span class="file-dot"></span>Yodl <span class="example-number">/ simulation annotation</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code>@simulation({ display: { buffer: <span class="token-string">&quot;pixel&quot;</span> }, reset: <span class="token-string">&quot;rst&quot;</span> })
+<span class="token-keyword">module</span> VisualSim(clk: <span class="token-type">clock</span>, rst: <span class="token-type">bool</span>) -&gt; (pixel: [<span class="token-number">30</span>][<span class="token-number">40</span>]<span class="token-type">bool</span>) {
+    <span class="token-keyword">for</span> row <span class="token-keyword">in</span> <span class="token-number">0</span>..&lt;<span class="token-number">30</span> {
+        <span class="token-keyword">for</span> col <span class="token-keyword">in</span> <span class="token-number">0</span>..&lt;<span class="token-number">40</span> {
+            pixel[row][col] = rst
+        }
+    }
+}</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<p>The attribute selects the module it is attached to. A sole clock is inferred;
+multiple clocks require an explicit <code>&quot;clock&quot;: &quot;name&quot;</code>. <code>reset: &quot;rst&quot;</code> asserts
+that one-bit input for one cycle, then deasserts it. Use
+<code>reset: { signal: &quot;rst&quot;, cycles: 2 }</code> when more reset cycles are needed.
+Reset signals must actually initialize the design's registers: declaring a
+reset sequence alone does not initialize unconnected registers.</p>
+<p>For <code>[height][width]bool</code>, dimensions and monochrome mode come from the type.
+The simulation lowering keeps each boolean row as a packed value, combines
+its bit writes, and uses bit slices for reads. Registers and connections
+execute on those packed rows. The host reads them directly as <code>Uint32Array</code>
+words with <code>ceil(width / 32)</code> words per row; trailing bits are padding.
+The worker transfers a matching validity mask instead of exporting one decimal
+string per pixel, so an unknown bit affects only its corresponding pixel rather
+than the entire packed row.</p>
+<p>Other unsigned element types default to RGB integers (<code>0xRRGGBB</code>). Use
+<code>display: { buffer: &quot;image&quot;, mode: &quot;gray&quot; }</code> for grayscale or set <code>on_color</code>
+and <code>off_color</code> for monochrome colors. Mode never depends on the current
+pixel values, so an initially black RGB image remains an RGB image.
+The panel shows unknown values in magenta and reports an initialization hint.
+Zoom is a canvas setting and does not change the circuit or framebuffer shape.</p>
+<p><code>Noise.yodl</code> exposes an 80×60 logical RGB framebuffer with
+<code>@simulation({ display: { buffer: &quot;pixel&quot; }, reset: &quot;rst&quot; })</code>. Each pixel consumes a
+successive LFSR state in row-major order. One clock edge advances the seed by
+one complete frame, so adjacent frames continue the sequence without
+reusing overlapping samples. The example has no scan counters or VGA signals;
+canvas zoom controls its displayed size.</p>
+<p>Designs that already produce timed pixels can instead use a pixel stream:</p>
+<pre><code class="language-text">@simulation({
+    display: { stream: &quot;video&quot;, width: 640, height: 480 },
+    reset: &quot;rst&quot;,
+})
+</code></pre>
+<p>The <code>video</code> output is a named tuple with unsigned <code>x</code> and <code>y</code> coordinates,
+a boolean <code>valid</code>, and unsigned <code>r</code>, <code>g</code>, and <code>b</code> channels of one to eight
+bits. The host samples a valid pixel before each rising edge. A return to
+valid coordinate <code>(0, 0)</code> marks the next frame; blanking cycles still execute
+but do not paint pixels. Dimensions describe the active image, so blanking
+and counter widths need not match them. Pixels not yet captured are shown in
+magenta. The compiler resolves <code>x</code>, <code>y</code>, <code>valid</code>, and color channels through
+the typed lowering table, so a source output such as <code>video_x</code> cannot collide
+with the actual stream field binding.</p>
+<p>The panel uses one persistent worker session for Run, Pause, Resume, input
+edits, and manual steps. Changing an input settles the circuit and refreshes
+the canvas. Reset creates a fresh machine from the already compiled design.
+Stop releases the session; the next Run compiles a new one. Source edits also
+stop the session. Scalar signals and messages appear below the display.</p>
+<p>Source tabs load imported files and their dependencies automatically when you
+open or edit a design, independently of automatic compilation. Imports open read-only, with their full path in
+the editor header. The Main file remains the target for compilation, simulation,
+drafts, and sharing while you browse. Save downloads the file you are viewing.</p>
+<p>Step cycle advances one clock. For arrays, Step frame advances
+<code>cycles_per_frame</code> (default one). Declare it only when a complete frame needs
+multiple cycles; it must be a positive integer. For streams, Step frame runs
+until the next frame boundary and reports the actual cycles advanced. Batch
+capture completes the first stream frame before returning its first image.
+Execution is divided into bounded chunks so Pause can interrupt a long frame
+step; reaching the bounded budget without a frame boundary produces a specific
+diagnostic.</p>
+<p><code>clock_hz</code> sets the target simulation speed. Without it, clocked array and
+scalar designs default to 30 cycles per second; pixel streams run as fast as
+possible. The UI's <strong>Refresh FPS</strong> setting independently limits canvas updates
+(default 30). It never sets the clock speed or the number of cycles advanced
+by Step frame. The UI reports achieved cycles per second and simulated time
+when a target frequency is configured. Resolved defaults appear in Advanced
+settings. Timing changes apply on Resume or the next manual step; top/clock
+changes require Stop.</p>
+<p>Capture length and canvas refresh are run options, not circuit annotations.
+The batch API accepts <code>captureFrames</code> (default one) and optional
+<code>cyclesPerFrame</code>; realtime playback accepts <code>refreshFps</code>. A clockless design
+settles and displays its image without any timing configuration. For example,
+ImageSim needs only <code>@simulation({ display: { buffer: &quot;pixel&quot; } })</code>.</p>
+<p>Every framebuffer annotation uses the same <code>display</code> object. Logical arrays
+need only <code>buffer</code>; colors and grayscale mode are optional fields in that
+object. Designs that expose explicitly packed words use that same object with
+<code>width</code>, <code>height</code>, and <code>packing</code>, for example:</p>
+<pre><code class="language-text">display: {
+    buffer: &quot;pixel&quot;,
+    width: 400,
+    height: 300,
+    mode: &quot;binary&quot;,
+    packing: &quot;bits32&quot;,
+    on_color: 8116210,
+    off_color: 1056800,
+}
+</code></pre>
+<p><code>bits</code> and <code>bits32</code> store 8 and 32 horizontal monochrome pixels per word;
+<code>rgb332x4</code> stores four RGB332 pixels per word. <code>pixel_scale</code> expands each
+packed pixel into a square block when decoding. Prefer logical arrays for
+new hardware: execution and transfer packing then remain internal.
+Batch capture is available through the compiler API for deterministic tests
+and snapshot generation. Normal settles use an incremental dependency
+worklist; a deterministic full sweep is available as a reference oracle.
+Known-address memory writes are grouped by word, while unknown addresses use
+a separate conservative path instead of scanning memory for every ordinary
+write.</p>
+<h2 id="javascript-and-webassembly-hosts"><a class="heading-anchor" href="#javascript-and-webassembly-hosts">JavaScript and WebAssembly hosts</a></h2>
+<p>The browser playground currently uses MoonBit's JavaScript target. This keeps
+the compiler and simulator directly importable as ES modules and makes the
+existing object/array API inexpensive to call from a worker. MoonBit also
+produces both classic WASM and <code>wasm-gc</code> artifacts, but a library package's
+<code>.wasm</code> file is not by itself a browser API: the host still needs an exported
+entry point, memory/string marshalling, and a stable ABI for compile, poke,
+step, and framebuffer reads.</p>
+<p>WASM is attractive for long, arithmetic-heavy runs because the hot loop avoids
+JavaScript's dynamic dispatch and garbage collector. In this simulator the
+compiler/elaboration pass and display rendering are also
+significant costs, so repeatedly crossing a JS/WASM boundary for individual
+signals can erase that gain. A practical WASM backend should therefore batch
+work (<code>compile</code> or load a serialized SimIR once, <code>step N</code>, then copy one packed
+framebuffer) and keep the worker session in WASM. That can improve sustained
+playback and leave short interactive steps roughly unchanged; startup,
+serialization, and browser support for <code>wasm-gc</code> still make JavaScript the
+better default today. The recommended path is to keep the current JS backend,
+add a batched WASM worker behind the same <code>SimulationRequest</code> protocol, and
+choose it only after measuring representative designs such as GameOfLife, Image,
+and Noise.</p>
+</article>
+
+<nav class="page-navigation" aria-label="Previous and next chapters"><a href="./09_external_modules.html"><small>← Previous</small>External Modules</a><span></span></nav><footer class="article-footer"><a href="https://github.com/nathsou/yodl/edit/main/book/src/10_simulation.md">Edit this page ↗</a><span>Examples compile locally in your browser.</span></footer></main>
+<aside class="page-toc"><p class="eyebrow">ON THIS PAGE</p><nav aria-label="On this page"><a href="#javascript-and-webassembly-hosts" class="toc-level-2">JavaScript and WebAssembly hosts</a></nav><a class="back-top" href="#content">Back to top ↑</a></aside></div>
+<dialog id="search-dialog"><div class="search-header"><label for="search-input" class="sr-only">Search documentation</label><input id="search-input" type="search" placeholder="Search concepts, syntax, and examples…" autocomplete="off"><button id="search-close" aria-label="Close search">Esc</button></div><p id="search-status" role="status">Type to search all chapters.</p><div id="search-results"></div></dialog>
+<dialog id="confirm-dialog"><h2 id="confirm-title">Reset this example?</h2><p id="confirm-message">Your local edits will be replaced by the original source.</p><form method="dialog"><button value="cancel">Keep edits</button><button value="reset" class="primary">Reset source</button></form></dialog>
+<dialog id="share-dialog"><h2>Share this example</h2><p>The link includes your edits and selected compiler stage. It uses the deployed compiler version.</p><input id="share-url" aria-label="Share URL" readonly><form method="dialog"><button>Close</button><button type="button" id="share-copy" class="primary">Copy link</button></form></dialog>
+<script id="chapter-data" type="application/json">{"slug":"10_simulation","version":"0.3.1","revision":"bfcc5bd","examples":[{"id":"ex-simulation-annotation","title":"simulation annotation","source":"@simulation({ display: { buffer: \"pixel\" }, reset: \"rst\" })\nmodule VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {\n    for row in 0..\u003c30 {\n        for col in 0..\u003c40 {\n            pixel[row][col] = rst\n        }\n    }\n}\n","display":"@simulation({ display: { buffer: \"pixel\" }, reset: \"rst\" })\nmodule VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {\n    for row in 0..\u003c30 {\n        for col in 0..\u003c40 {\n            pixel[row][col] = rst\n        }\n    }\n}","path":"book/src/10_simulation/ex-simulation-annotation.yodl","files":{},"stage":"write_firrtl","unsupported":[],"hash":"05a6cdfb9c954e82","live":true,"expect":"success","line":97}]}</script><script type="module" src="../bundle/docs-rhqcdzm9.js"></script></body></html>
