@@ -1,24 +1,23 @@
 import { unwrap, yodl, ext, createInMemoryFileSystem } from './yodl.ts';
-import {
-    simulator_compile,
-    simulator_new_compiled,
-    simulator_poke_int,
-    simulator_step,
-    simulator_clocks,
-    simulator_settle,
-    simulator_drain_events,
-    simulator_status,
-    simulator_exit_code,
-    simulator_set_history_retention,
-    simulator_output_signals,
-    simulator_inputs,
-    simulator_frame_with_layout,
-    simulator_halted,
-    simulator_visible_outputs,
-    simulator_raster_new_with_ports,
-    simulator_raster_step,
-} from '../../_build/js/release/build/lib/simulator/simulator.js';
 import type { Stage } from './compiler-stages.ts';
+
+const {
+    host_simulator_poke: simulator_poke_int,
+    host_simulator_step: simulator_step,
+    host_simulator_clocks: simulator_clocks,
+    host_simulator_settle: simulator_settle,
+    host_simulator_drain_events: simulator_drain_events,
+    host_simulator_status: simulator_status,
+    host_simulator_exit_code: simulator_exit_code,
+    host_simulator_set_history_retention: simulator_set_history_retention,
+    host_simulator_output_signals: simulator_output_signals,
+    host_simulator_inputs: simulator_inputs,
+    host_simulator_frame: simulator_frame_with_layout,
+    host_simulator_halted: simulator_halted,
+    host_simulator_visible_outputs: simulator_visible_outputs,
+    host_simulator_raster_new: simulator_raster_new_with_ports,
+    host_simulator_raster_step: simulator_raster_step,
+} = yodl as any;
 
 export type SimulationRequest = {
     action?: 'run' | 'reset' | 'step_cycle' | 'step_frame' | 'settle' | 'pause' | 'resume' | 'stop';
@@ -232,9 +231,9 @@ export class SimulationSession {
         const options = this.options;
         const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source }, (path, source) => { this.sources[path] = source; });
         const compiled: any = unwrap(yodl.compile_simulation_design(request.path, { ...ext, fs, println: () => {} }, options.top === undefined ? { $tag: 0 } : { $tag: 1, _0: options.top }));
-        this.design = compiled.circuit;
+        this.design = compiled;
         this.inputs = options.inputs ?? {};
-        this.machine = unwrap(simulator_new_compiled(unwrap(simulator_compile(this.design, options.top ?? ''))));
+        this.machine = unwrap(yodl.new_compiled_simulation(this.design));
         simulator_set_history_retention(this.machine, false);
         const clocks = simulator_clocks(this.machine) as string[];
         if (!options.clock && clocks.length > 1) throw new Error('Select a simulation clock: ' + clocks.join(', '));
@@ -281,7 +280,7 @@ export class SimulationSession {
         if (this.stream) this.raster = unwrap(simulator_raster_new_with_ports(this.machine, this.framebuffer!.signal!, this.streamPorts, this.framebuffer!.width, this.framebuffer!.height));
     }
     reset() {
-        this.machine = unwrap(simulator_new_compiled(unwrap(simulator_compile(this.design, this.options.top ?? ''))));
+        this.machine = unwrap(yodl.new_compiled_simulation(this.design));
         simulator_set_history_retention(this.machine, false);
         this.firstFailure = undefined;
         this.initialize();

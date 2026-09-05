@@ -238,44 +238,97 @@ pub fn Simulator::from_circuit_with_models(
   top: String,
   primitive_models: Map[String, PrimitiveModel],
 ) -> Simulator raise SimulatorError {
-  let compiled = compile_simulation(circuit, top)
-  Simulator::from_prepared_circuit(compiled.circuit, compiled.top, primitive_models)
+  Simulator::from_compiled(compile_simulation_with_models(circuit, top, primitive_models))
 }
 
-fn Simulator::from_prepared_circuit(
-  circuit: TypedCircuit,
-  top: String,
-  primitive_models: Map[String, PrimitiveModel],
-) -> Simulator raise SimulatorError {
-  let top = if top.is_empty() { circuit.id.inner() } else { top }
+fn Simulator::from_compiled_design(compiled: CompiledSimulation) -> Simulator raise SimulatorError {
   let modules: Map[String, TypedModule] = Map([])
-  for decl in circuit.decls {
-    match decl {
-      @firrtl.Decl::Module(design) => modules[design.id.inner()] = design
-      @firrtl.Decl::ExtModule(ext) => modules[ext.id.inner()] = {
-        public: false,
-        id: ext.id,
-        ports: ext.ports,
-        body: [],
-      }
+  for name, compiled_module in compiled.modules { modules[name] = compiled_module.design }
+  let program = compiled.modules.get(compiled.top).unwrap_or_error(MissingSignal(name="top module " + compiled.top))
+  Simulator::new_with_modules(
+    program.design,
+    modules~,
+    compiled_modules=compiled.modules,
+    primitive_model=compiled.primitive_models.get(program.design.id.inner()),
+    primitive_models=compiled.primitive_models,
+  )
+}
+
+fn validate_simulation_module(design: TypedModule) -> Unit raise SimulatorError {
+  let declared: Set[String] = Set([])
+  for port in design.ports { declared.add(port.id.inner()) }
+  for stmt in design.body {
+    match stmt {
+      @firrtl.Stmt::Wire(id~, ..) | @firrtl.Stmt::Node(id~, ..) |
+      @firrtl.Stmt::Reg(id~, ..) | @firrtl.Stmt::RegReset(id~, ..) |
+      @firrtl.Stmt::Inst(id~, ..) => declared.add(id.inner())
+      @firrtl.Stmt::Mem(mem) => declared.add(mem.id.inner())
+      _ => ()
     }
   }
-  let design = match modules.get(top) {
-    Some(design) => design
-    None => {
-      // Imported modules are namespace-qualified by elaboration (for example
-      // `GameOfLifeSim` becomes `GameOfLife_GameOfLifeSim`). Accept the source-level leaf name
-      // when it resolves unambiguously so playground users do not need to
-      // know the compiler's internal prefix.
-      let suffix = "_" + top
-      let matches = modules.values().filter(mod => mod.id.inner().has_suffix(suffix)).collect()
-      match matches {
-        [design] => design
-        _ => raise MissingSignal(name="top module " + top)
+  for stmt in design.body {
+    validate_simulation_stmt(stmt, declared)
+    match stmt {
+      @firrtl.Stmt::When(_) =>
+        raise Unsupported(message="simulation requires normalized FIRRTL; remaining conditional statements are not supported")
+      @firrtl.Stmt::Reg(clock~, ..) | @firrtl.Stmt::RegReset(clock~, ..) => {
+        let _ = require_clock_source(design, clock_name(clock))
       }
+      @firrtl.Stmt::Mem(mem) => {
+        if mem.depth <= 0 { raise Unsupported(message="memory '{mem.id.inner()}' must have positive depth") }
+        if mem.read_latency < 0 || mem.read_latency > 1 || mem.write_latency != 1 {
+          raise Unsupported(message="memory '{mem.id.inner()}' requires read latency 0 or 1 and write latency 1")
+        }
+        for reader in mem.readers + mem.readwriters {
+          let _ = require_clock_source(design, mem.id.inner() + "." + reader.inner() + ".clk")
+        }
+        for writer in mem.writers {
+          let _ = require_clock_source(design, mem.id.inner() + "." + writer.inner() + ".clk")
+        }
+      }
+      @firrtl.Stmt::Inst(id~, sig~, ..) => for port_name, port in sig.ports {
+        if port.dir is @parse.PortDir::Input && port.ty is @firrtl.Type::Clock {
+          let _ = require_clock_source(design, id.inner() + "." + port_name)
+        }
+      }
+      _ => ()
     }
   }
-  Simulator::new_with_modules(design, modules~, primitive_model=primitive_models.get(design.id.inner()), primitive_models~)
+}
+
+fn validate_simulation_stmt(stmt: @firrtl.TypedStmt, declared: Set[String]) -> Unit raise SimulatorError {
+  match stmt {
+    @firrtl.Stmt::Node(expr~, ..) => validate_simulation_expr(expr, declared)
+    @firrtl.Stmt::Connect(lhs, rhs) => { validate_simulation_ref(lhs, declared); validate_simulation_expr(rhs, declared) }
+    @firrtl.Stmt::When(when) => {
+      validate_simulation_expr(when.cond, declared)
+      for nested in when.body { validate_simulation_stmt(nested, declared) }
+      for nested in when.otherwise.unwrap_or([]) { validate_simulation_stmt(nested, declared) }
+    }
+    @firrtl.Stmt::Command(command) => match command {
+      @firrtl.Command::Printf(clk~, en~, args~, ..) => { validate_simulation_expr(clk, declared); validate_simulation_expr(en, declared); for arg in args { validate_simulation_expr(arg, declared) } }
+      @firrtl.Command::Assert(clk~, pred~, en~, args~, ..) => { validate_simulation_expr(clk, declared); validate_simulation_expr(pred, declared); validate_simulation_expr(en, declared); for arg in args { validate_simulation_expr(arg, declared) } }
+      @firrtl.Command::Stop(clk~, en~, ..) => { validate_simulation_expr(clk, declared); validate_simulation_expr(en, declared) }
+    }
+    _ => ()
+  }
+}
+
+fn validate_simulation_expr(expr: TypedExpr, declared: Set[String]) -> Unit raise SimulatorError {
+  match expr {
+    @firrtl.Expr::Reference(reference, ..) => validate_simulation_ref(reference, declared)
+    @firrtl.Expr::Mux(cond~, tval~, fval~, ..) => { validate_simulation_expr(cond, declared); validate_simulation_expr(tval, declared); validate_simulation_expr(fval, declared) }
+    @firrtl.Expr::PrimOp(args~, ..) => for arg in args { validate_simulation_expr(arg, declared) }
+    @firrtl.Expr::Literal(_) => ()
+  }
+}
+
+fn validate_simulation_ref(reference: TypedRef, declared: Set[String]) -> Unit raise SimulatorError {
+  match reference {
+    @firrtl.Reference::DynamicIndexing(_) => raise Unsupported(message="dynamic aggregate indexing is not supported by simulation")
+    @firrtl.Reference::StaticIndexing(lhs~, ..) | @firrtl.Reference::FieldAccess(lhs~, ..) => validate_simulation_ref(lhs, declared)
+    @firrtl.Reference::Id(id, ..) => if !declared.contains(id.inner()) { raise MissingSignal(name=id.inner()) }
+  }
 }
 
 /// Normalize raw typed FIRRTL once before constructing a simulator. Driver
@@ -292,15 +345,12 @@ pub fn prepare_simulation_circuit(circuit: TypedCircuit) -> TypedCircuit raise S
 fn Simulator::new_with_modules(
   design: TypedModule,
   modules~: Map[String, TypedModule],
+  compiled_modules~: Map[String, CompiledModule],
   primitive_models~: Map[String, PrimitiveModel],
   primitive_model~: PrimitiveModel?,
 ) -> Simulator raise SimulatorError {
-  let design = { ..design, body: order_simulation_body(design.body) }
-  for stmt in design.body {
-    if stmt is @firrtl.Stmt::When(_) {
-      raise Unsupported(message="simulation requires normalized FIRRTL; remaining conditional statements are not supported")
-    }
-  }
+  let compiled = compiled_modules.get(design.id.inner()).unwrap_or_error(MissingSignal(name="compiled module " + design.id.inner()))
+  let design = compiled.design
   let signals: Map[String, SimValue] = Map([])
   let registers: Map[String, RegisterState] = Map([])
   let next_registers: Map[String, SimValue] = Map([])
@@ -308,8 +358,8 @@ fn Simulator::new_with_modules(
   let clocks: Map[String, Bool] = Map([])
   let children: Map[String, Simulator] = Map([])
   let memory_clocks: Map[String, String] = Map([])
-  let program = design.body.map(compile_stmt)
-  let commands = compile_commands(design)
+  let program = compiled.program
+  let commands = compiled.commands
   let dependents: Map[String, Array[Int]] = Map([])
   let pending = Array::new(capacity=design.body.length())
   let queued = Array::new(capacity=design.body.length())
@@ -413,6 +463,7 @@ fn Simulator::new_with_modules(
                 body: [],
               }
               modules[of.inner()] = synthetic
+              compiled_modules[of.inner()] = { design: synthetic, program: [], commands: [] }
               synthetic
             }
             None => raise Unsupported(message="external or unknown module '{of.inner()}' has no simulation model")
@@ -425,6 +476,7 @@ fn Simulator::new_with_modules(
         children[instance] = Simulator::new_with_modules(
           child_design,
           modules~,
+          compiled_modules~,
           primitive_models~,
           primitive_model=model,
         )

@@ -8,6 +8,8 @@ import {
 }
 
 // Values
+pub fn compile_prepared_simulation(@firrtl.Circuit[@firrtl.Type], String) -> CompiledSimulation raise SimulatorError
+
 pub fn compile_simulation(@firrtl.Circuit[@firrtl.Type], String) -> CompiledSimulation raise SimulatorError
 
 pub fn prepare_simulation_circuit(@firrtl.Circuit[@firrtl.Type]) -> @firrtl.Circuit[@firrtl.Type] raise SimulatorError
@@ -62,9 +64,13 @@ pub fn simulator_visible_outputs(Simulator, Array[String]) -> Array[SimulatorSig
 type SimulatorError derive(@debug.Debug)
 
 // Types and methods
+type CompiledModule
+
 pub struct CompiledSimulation {
   circuit : @firrtl.Circuit[@firrtl.Type]
   top : String
+  modules : Map[String, CompiledModule]
+  primitive_models : Map[String, PrimitiveModel]
 }
 
 pub(all) struct Framebuffer {
@@ -183,7 +189,6 @@ pub struct Simulator {
   mut first_failure : SimMessage?
   modules : Map[String, @firrtl.Module[@firrtl.Type]]
   children : Map[String, Simulator]
-  child_message_offsets : Map[String, Int]
   memory_clocks : Map[String, String]
   mut cycle : Int
   mut last_evaluations : Int

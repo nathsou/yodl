@@ -328,6 +328,7 @@ pub(all) struct SimulationDisplay {
 
 pub(all) struct SimulationDesign {
   circuit: @firrtl.TypedCircuit
+  compiled: @simulator.CompiledSimulation
   top: String
   displays: Array[SimulationDisplay]
   clock: String?
@@ -354,8 +355,35 @@ pub fn compile_simulation_design(path~: String, ext~: @utils.Externals, top~: St
     if key == "clock" { clock = Some(value) }
     if key == "reset" { reset = Some(value) }
   }
-  { circuit, top: selected_top, displays, clock, reset, reset_cycles }
+  let compiled = @simulator.compile_prepared_simulation(circuit, selected_top)
+  { circuit, compiled, top: selected_top, displays, clock, reset, reset_cycles }
 }
+
+/// Construct a browser simulator in the same linked module that prepared the
+/// opaque design. Separate JavaScript bundles must not exchange MoonBit maps,
+/// whose runtime representation is bundle-local.
+pub fn new_compiled_simulation(design: SimulationDesign) -> @simulator.Simulator raise {
+  @simulator.Simulator::from_compiled(design.compiled)
+}
+
+// Browser host operations live in this linked package so opaque simulator
+// values never cross between independently generated MoonBit JavaScript
+// runtimes.
+pub fn host_simulator_poke(sim: @simulator.Simulator, name: String, width: Int, value: Int) -> Unit raise { @simulator.simulator_poke_int(sim, name, width, value) }
+pub fn host_simulator_step(sim: @simulator.Simulator, clock: String) -> Unit raise { @simulator.simulator_step(sim, clock) }
+pub fn host_simulator_settle(sim: @simulator.Simulator) -> Unit raise { @simulator.simulator_settle(sim) }
+pub fn host_simulator_clocks(sim: @simulator.Simulator) -> Array[String] { @simulator.simulator_clocks(sim) }
+pub fn host_simulator_drain_events(sim: @simulator.Simulator) -> Array[@simulator.SimMessage] { @simulator.simulator_drain_events(sim) }
+pub fn host_simulator_status(sim: @simulator.Simulator) -> @simulator.SimulationStatus { @simulator.simulator_status(sim) }
+pub fn host_simulator_exit_code(sim: @simulator.Simulator) -> Int { @simulator.simulator_exit_code(sim) }
+pub fn host_simulator_set_history_retention(sim: @simulator.Simulator, retain: Bool) -> Unit { @simulator.simulator_set_history_retention(sim, retain) }
+pub fn host_simulator_output_signals(sim: @simulator.Simulator) -> Array[@simulator.SimulatorSignal] { @simulator.simulator_output_signals(sim) }
+pub fn host_simulator_inputs(sim: @simulator.Simulator) -> Array[@simulator.SimulatorSignal] { @simulator.simulator_inputs(sim) }
+pub fn host_simulator_frame(sim: @simulator.Simulator, hidden: Array[String], width: Int, height: Int, packed_rows: Bool, binary: Bool) -> @simulator.SimulatorFrame raise { @simulator.simulator_frame_with_layout(sim, hidden, width, height, packed_rows~, binary~) }
+pub fn host_simulator_halted(sim: @simulator.Simulator) -> Bool { @simulator.simulator_halted(sim) }
+pub fn host_simulator_visible_outputs(sim: @simulator.Simulator, hidden: Array[String]) -> Array[@simulator.SimulatorSignal] { @simulator.simulator_visible_outputs(sim, hidden) }
+pub fn host_simulator_raster_new(sim: @simulator.Simulator, stream: String, ports: Array[String], width: Int, height: Int) -> @simulator.SimulatorRaster raise { @simulator.simulator_raster_new_with_ports(sim, stream, ports, width, height) }
+pub fn host_simulator_raster_step(sim: @simulator.Simulator, raster: @simulator.SimulatorRaster, clock: String, cycles: Int, until_frame: Bool) -> Int raise { @simulator.simulator_raster_step(sim, raster, clock, cycles, until_frame) }
 
 /// Return the `@simulation` attribute attached to a source module as flat
 /// key/value pairs. Hosts use this descriptor instead of trying to reparse
