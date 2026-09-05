@@ -1,12 +1,14 @@
 
 pub struct LowerAggregateTypesPass {
   split_memories: Bool
+  packed_bool_rows: Bool
   mut table: LoweringTable
   module_signatures: Map[Id, ModuleSignature]
+  tables: Map[String, LoweringTable]
 }
 
-pub fn LowerAggregateTypesPass::new(split_memories~: Bool = true) -> Self {
-  { split_memories, table: LoweringTable::new(), module_signatures: {} }
+pub fn LowerAggregateTypesPass::new(split_memories~: Bool = true, packed_bool_rows~: Bool = false) -> Self {
+  { split_memories, packed_bool_rows, table: LoweringTable::new(), module_signatures: {}, tables: Map([]) }
 }
 
 pub impl FIRRTLPass for LowerAggregateTypesPass with run(self, circuit: TypedCircuit) -> TypedCircuit {
@@ -34,6 +36,13 @@ fn LoweringTable::register(self: Self, old_ref: TypedRef, new_ref: TypedRef) -> 
   } else {
     self.ref_mapping[old_ref] = [new_ref]
   }
+  if old_ref.ty() is Vec(UInt(1), size) {
+    for i in 0..<size {
+      self.ref_mapping[StaticIndexing(lhs=old_ref, index=i, ty=UInt(1))] = [
+        StaticIndexing(lhs=new_ref, index=i, ty=UInt(1)),
+      ]
+    }
+  }
 }
 
 fn lookup_target(module_tables: Map[Id, LoweringTable], target: AnnotationTarget) -> Array[TypedRef]? {
@@ -51,12 +60,25 @@ fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> Ty
   let new_decls = Array::new(capacity=circuit.decls.length())
   let module_tables: Map[Id, LoweringTable] = Map([])
 
+  // Populate every module signature before rewriting any body. Modules are not
+  // required to appear after the declarations they instantiate (in
+  // particular, an external module may be listed after its parent), so a
+  // single declaration-order pass can otherwise miss the instance's target.
+  for decl in circuit.decls {
+    let ports = match decl {
+      Module(mod) => mod.ports
+      ExtModule(extmod) => extmod.ports
+    }
+    self.module_signatures[decl.id()] = self.signature_for_ports(ports)
+  }
+
   for decl in circuit.decls {
     let module_table = LoweringTable::new()
     self.table = module_table
     let new_decl = self.process_decl(decl, self.split_memories)
     new_decls.push(new_decl)
     module_tables[decl.id()] = module_table
+    self.tables[decl.id().inner()] = module_table
   }
 
   {
@@ -65,6 +87,24 @@ fn LowerAggregateTypesPass::lower_types(self: Self, circuit: TypedCircuit) -> Ty
     annotations: rewrite_annotations(module_tables, circuit.annotations),
     decls: new_decls,
   }
+}
+
+fn LowerAggregateTypesPass::signature_for_ports(self: Self, ports: Array[Port]) -> ModuleSignature {
+  // Use a fresh lowering table so collecting signatures does not affect the
+  // reference mappings of the declaration currently being rewritten.
+  let helper = LowerAggregateTypesPass::new(split_memories=self.split_memories, packed_bool_rows=self.packed_bool_rows)
+  let flat_ports = helper.flatten_ports(ports)
+  {
+    ports: Map::from_array(flat_ports.map(port => (port.id.inner(), PortSignature::from(port))))
+  }
+}
+
+fn LowerAggregateTypesPass::signature_for_instance(self: Self, sig: ModuleSignature) -> ModuleSignature {
+  let ports: Array[Port] = []
+  for name, port in sig.ports.iter2() {
+    ports.push({ dir: port.dir, id: Id::from(name), ty: port.ty })
+  }
+  self.signature_for_ports(ports)
 }
 
 fn rewrite_annotations(module_tables: Map[Id, LoweringTable], annotations: Array[Annotation]) -> Array[Annotation] raise {
@@ -127,7 +167,7 @@ fn LowerAggregateTypesPass::process_module(self: Self, mod: TypedModule, split_m
   {
     ..mod,
     ports: new_ports,
-    body: new_body,
+    body: if self.packed_bool_rows { pack_row_connects(new_body) } else { new_body },
   }
 }
 
@@ -227,19 +267,24 @@ fn LowerAggregateTypesPass::process_stmt(self: Self, stmt: TypedStmt, body: Arra
       let new_name = self.uniquify(id.value(), inst_ty)
       let old_inst_ref = Id(id, ty=inst_ty)
       let new_inst_ref = Id(Id::from(new_name), ty=inst_ty)
-      let new_sig = self.module_signatures[of]
+      // External declarations may not be present in the lowered circuit
+      // (they are represented by the instance signature alone). Preserve that
+      // signature when there is no declaration to look up.
+      let new_sig = self.module_signatures.get(of).unwrap_or(self.signature_for_instance(sig))
 
       if inst_ty is Bundle(fields) {
+        let helper = LowerAggregateTypesPass::new(packed_bool_rows=self.packed_bool_rows)
         for field in fields {
           let old_ref = FieldAccess(lhs=old_inst_ref, field=field.id, ty=field.ty)
-          for flat in subcomponents(field.id.value(), old_ref) {
+          for pair in helper.flatten(prefix=field.id.value(), old_ref~) {
+            let (reference, name) = pair
             let new_ref = FieldAccess(
               lhs=new_inst_ref,
-              field=Id::from(flat.name),
-              ty=flat.ty,
+              field=Id::from(name),
+              ty=reference.ty(),
             )
 
-            self.table.register(flat.reference, new_ref)
+            self.table.register(reference, new_ref)
           }
         }
       }
@@ -318,6 +363,21 @@ fn LowerAggregateTypesPass::rewrite_expr(self: Self, expr: TypedExpr, body: Arra
         } else {
           raise Failure::Failure("Reference maps to multiple new references, cannot rewrite: \{reference}")
         }
+      } else if self.packed_bool_rows && !ty.is_ground() {
+        // A reference to a subaggregate can outlive its declaration after
+        // flattening (for example the input to a nested width coercion).
+        // Rebuild its packed value from mapped leaves, least-significant first.
+        let leaves = flatten_ref(reference)
+        if leaves.iter().all(r => self.table.ref_mapping.contains(r)) {
+          let packed = concat_refs(leaves.map(r => self.table.ref_mapping[r][0]))
+          match packed {
+            PrimOp(op~, args~, ..) => PrimOp(op~, args~, ty~)
+            Reference(r, ..) => Reference(r, ty~)
+            _ => packed
+          }
+        } else {
+          Reference(reference, ty~)
+        }
       } else {
         Reference(reference, ty~)
       }
@@ -352,6 +412,10 @@ fn LowerAggregateTypesPass::flatten(self: Self, prefix~: String, old_ref~: Typed
         results.push_iter(self.flatten(prefix=new_id, old_ref=field_ref).iter())
       }
     }
+    Vec(UInt(1), _) if self.packed_bool_rows => {
+      self.table.namespace_.add(safe_prefix)
+      results.push((old_ref, safe_prefix))
+    }
     Vec(elem_ty, size) => {
       for i in 0 ..<size {
         let new_id = "\{safe_prefix}\{delim}\{i}"
@@ -375,7 +439,7 @@ fn LowerAggregateTypesPass::uniquify(self: Self, prefix: String, ty: Type) -> St
   // "If a name is already taken, that name will be made unique by appending a suffix _<i> to the
   // name, where i is the lowest nonnegative integer that gives a unique name."
 
-  while subcomponents(current_prefix, Id(Id::from(prefix), ty~)).iter().any(field => self.table.namespace_.contains(field.name)) {
+  while (self.packed_bool_rows && ty is Vec(UInt(1), _) && self.table.namespace_.contains(current_prefix)) || subcomponents(current_prefix, Id(Id::from(prefix), ty~)).iter().any(field => self.table.namespace_.contains(field.name)) {
     current_prefix = "\{prefix}\{delim}\{iterations}"
     iterations += 1
   }
@@ -501,13 +565,13 @@ fn LowerAggregateTypesPass::expr_as_ref(self: Self, expr: TypedExpr, body: Array
 
 fn LowerAggregateTypesPass::sub_exprs_dfs(self: Self, expr: TypedExpr, body: Array[TypedStmt]) -> Array[TypedExpr] {
   match expr {
-    Mux(cond~, tval~, fval~, ty~) => {
+    Mux(cond~, tval~, fval~, ..) => {
       let texprs = self.sub_exprs_dfs(tval, body)
       let fexprs = self.sub_exprs_dfs(fval, body)
       let results = Array::new(capacity=texprs.length())
 
       for tval_i, fval_i in @utils.zip2(texprs, fexprs) {
-        results.push(Mux(cond~, tval=tval_i, fval=fval_i, ty~))
+        results.push(Mux(cond~, tval=tval_i, fval=fval_i, ty=tval_i.ty()))
       }
 
       results
@@ -524,6 +588,7 @@ fn LowerAggregateTypesPass::sub_exprs_dfs(self: Self, expr: TypedExpr, body: Arr
 
         results
       }
+      Vec(UInt(1), _) if self.packed_bool_rows => [expr]
       Vec(elem_ty, size) => {
         let results = Array::new()
         let expr_ref = self.expr_as_ref(expr, body)
@@ -594,4 +659,43 @@ fn LowerAggregateTypesPass::split_mem(self: Self, mem: Mem) -> Array[Mem] {
     id: Id::from(flat.name),
     data_type: flat.ty,
   })
+}
+
+// Keep each boolean row as one packed sequential/combinational value. Reads
+// remain typed bit slices; all writes to a row are assembled once per settle.
+fn pack_row_connects(body: Array[TypedStmt]) -> Array[TypedStmt] {
+  let rows: Map[TypedRef, Array[TypedExpr]] = Map([])
+  let result: Array[TypedStmt] = []
+  for stmt in body {
+    match stmt {
+      Connect(StaticIndexing(lhs~, index~, ty=UInt(1)), rhs) if lhs.ty() is Vec(UInt(1), size) => {
+        let bits = match rows.get(lhs) {
+          Some(bits) => bits
+          None => {
+            let bits = Array::makei(size, i => Reference(StaticIndexing(lhs~, index=i, ty=UInt(1)), ty=UInt(1)))
+            rows[lhs] = bits
+            bits
+          }
+        }
+        bits[index] = rhs
+      }
+      _ => result.push(stmt)
+    }
+  }
+  for lhs, bits in rows {
+    let mut value = bits[bits.length() - 1]
+    for i = bits.length() - 2; i >= 0; i = i - 1 {
+      value = PrimOp(op=Cat, args=[value, bits[i]], ty=UInt(bits.length() - i))
+    }
+    result.push(Connect(lhs, value))
+  }
+  result
+}
+
+/// Resolve a typed source reference to its actual lowered port name.
+pub fn LowerAggregateTypesPass::lowered_name(self: Self, mod: String, reference: TypedRef) -> String? {
+  match self.tables.get(mod).map(table => table.ref_mapping.get(reference)).unwrap_or(None) {
+    Some([Id(id, ..)]) => Some(id.inner())
+    _ => None
+  }
 }

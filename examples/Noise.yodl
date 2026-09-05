@@ -1,25 +1,28 @@
-import VGA
-import LFSR
+// A logical framebuffer: one clock edge advances one complete noise frame.
+// Each pixel consumes the next 32-bit LFSR state in row-major order.
+// Keep the logical image small for interactive execution; use canvas zoom.
+const WIDTH = 80
+const HEIGHT = 60
 
-module Top(
-    clk: clock,
-) -> (
-    led: u4,
-    vga_hsync: bool,
-    vga_vsync: bool,
-    vga_red: u3,
-    vga_green: u3,
-    vga_blue: u3,
-) {
-    let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync)
-    let rand_color = LFSR::LFSR[32](clk, enable: vga.new_pixel).q[8:0]
-    let color = match vga.is_active_area {
-        1'b0 => (r: 3'd0, g: 3'd0, b: 3'd0)
-        1'b1 => (r: rand_color[2-:3], g: rand_color[5-:3], b: rand_color[8-:3])
+@simulation({ display: { buffer: "pixel" }, reset: "rst" })
+module NoiseSim(clk: clock, rst: bool) -> (pixel: [HEIGHT][WIDTH]u24) {
+    let seed = Reg[u32](clk, rst)
+    let samples: [WIDTH * HEIGHT + 1]u32
+    samples[0] = seed.q
+
+    for row in 0..<HEIGHT {
+        for col in 0..<WIDTH {
+            const i = row * WIDTH + col
+            let random = samples[i]
+            let feedback = random[31] xnor random[21] xnor random[1] xnor random[0]
+            samples[i + 1] = cat!(random[30:0], feedback)
+
+            let r = random[2:0]
+            let g = random[5:3]
+            let b = random[8:6]
+            // Expand each three-bit channel to eight bits for RGB output.
+            pixel[row][col] = cat!(r, r, r[2:1], g, g, g[2:1], b, b, b[2:1])
+        }
     }
-
-    vga_red = color.r
-    vga_green = color.g
-    vga_blue = color.b
-    led = 4'd0
+    seed.d = samples[WIDTH * HEIGHT]
 }

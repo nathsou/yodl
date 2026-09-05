@@ -5,13 +5,14 @@ import {
   "nathsou/yodl/lib/utils",
   "nathsou/yodl/lib/firrtl",
   "nathsou/yodl/lib/rtlil",
+  "nathsou/yodl/lib/simulator",
   "moonbitlang/core/debug",
 }
 
 options(
   "is-main": false,
   link: {
-    "js": { "exports": [ "run", "parse_commands" ], "format": "esm" },
+    "js": { "exports": [ "run", "parse_commands", "compile_simulation", "compile_simulation_design", "new_compiled_simulation", "host_simulator_poke", "host_simulator_step", "host_simulator_settle", "host_simulator_clocks", "host_simulator_drain_events", "host_simulator_status", "host_simulator_exit_code", "host_simulator_exit_codes", "host_simulator_set_history_retention", "host_simulator_output_signals", "host_simulator_inputs", "host_simulator_frame", "host_simulator_halted", "host_simulator_visible_outputs", "host_simulator_raster_new", "host_simulator_raster_step", "simulation_metadata" ], "format": "esm" },
     "native": { "exports": [ "run", "parse_commands" ] },
     "wasm": { "exports": [ "run", "parse_commands" ] },
   },

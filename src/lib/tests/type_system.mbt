@@ -177,6 +177,23 @@ test "constant assertions fold through explicit coercions" {
 }
 
 ///|
+test "clockless modules keep folded assertions but reject runtime commands" {
+  let constant_assertion =
+    #|module Top() -> () {
+    #|  assert!(1'b1)
+    #|}
+  let firrtl = compile_stage(constant_assertion, "write_firrtl")
+  assert_false(firrtl.contains("assert("))
+
+  for command in ["printf!(\"checked\")", "assert!(input)"] {
+    let source = "module Top(input: bool) -> () {\n  " + command + "\n}\n"
+    let diagnostic = compile_error(source)
+    assert_true(diagnostic.contains("No clock found in current module"))
+    assert_true(diagnostic.contains("fixture.yodl:2"))
+  }
+}
+
+///|
 test "inferred unsigned literals cannot acquire signedness from context" {
   let source =
     #|module Top() -> () {

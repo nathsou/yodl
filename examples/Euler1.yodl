@@ -1,4 +1,5 @@
 import Text
+import Font
 
 module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
     const N = 1000
@@ -11,39 +12,21 @@ module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
     is_ready = not is_active
 }
 
-module Top(
+@simulation({
+    display: { buffer: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 16096865, off_color: 1773349 },
+    reset: "rst",
+    clock_hz: 60,
+})
+module Euler1Sim(
     clk: clock,
-    button: u4,
+    rst: bool,
 ) -> (
-    led: u4,
-    vga_hsync: bool,
-    vga_vsync: bool,
-    vga_red: u3,
-    vga_green: u3,
-    vga_blue: u3,
+    pixel: [300][13]u32,
+    value: u18,
 ) {
-    let rst = orr button
-    let vga = VGA::SyncPulses(
-        pixel_clk: clk,
-        hsync: vga_hsync,
-        vsync: vga_vsync,
-    )
-
-    let euler1 = Euler1(clk, rst)
-    let hex = Text::Hex[20](n: cat!(2'0, euler1.q))
-    let text = Text::Text[Length: 40, X: 20, Y: 30](
-        text: [.."The solution to Project Euler 1 is ", ..hex.chars],
-        screen_x: vga.col,
-        screen_y: vga.row,
-    )
-
-    let color = match vga.is_active_area and text.is_active {
-        1'b0 => (r: 3'd0, g: 3'd0, b: 3'd0)
-        1'b1 => (r: 3'd1, g: 3'd5, b: 3'd6)
-    }
-
-    vga_red = color.r
-    vga_green = color.g
-    vga_blue = color.b
-    led = uint!(cat!(fill!(4, euler1.is_ready)))
+    let euler = Euler1(clk, rst)
+    value = euler.q
+    let hex = Text::Hex[20](n: cat!(2'0, euler.q)).chars
+    let message = [.."Euler 1: ", ..hex]
+    Font::TextFramebufferWords[Length: 14, Width: 400, Height: 300, PackedWidth: 13, X: 2, Y: 4, Scale: 8](text: message, pixel)
 }

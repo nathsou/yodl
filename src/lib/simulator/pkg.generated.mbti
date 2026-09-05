@@ -1,0 +1,294 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/simulator"
+
+import {
+  "moonbitlang/core/bigint",
+  "moonbitlang/core/debug",
+  "nathsou/yodl/lib/firrtl",
+}
+
+// Values
+pub fn compile_prepared_simulation(@firrtl.Circuit[@firrtl.Type], String) -> CompiledSimulation raise SimulatorError
+
+pub fn compile_simulation(@firrtl.Circuit[@firrtl.Type], String) -> CompiledSimulation raise SimulatorError
+
+pub fn prepare_simulation_circuit(@firrtl.Circuit[@firrtl.Type]) -> @firrtl.Circuit[@firrtl.Type] raise SimulatorError
+
+pub fn simulator_clocks(Simulator) -> Array[String]
+
+pub fn simulator_compile(@firrtl.Circuit[@firrtl.Type], String) -> CompiledSimulation raise SimulatorError
+
+pub fn simulator_drain_events(Simulator) -> Array[SimMessage]
+
+pub fn simulator_exit_code(Simulator) -> Int
+
+pub fn simulator_exit_codes(Simulator) -> Array[Int]
+
+pub fn simulator_frame(Simulator, Array[String], Int, Int, Bool) -> SimulatorFrame raise SimulatorError
+
+pub fn simulator_frame_with_layout(Simulator, Array[String], Int, Int, packed_rows~ : Bool, binary~ : Bool) -> SimulatorFrame raise SimulatorError
+
+pub fn simulator_halted(Simulator) -> Bool
+
+pub fn simulator_inputs(Simulator) -> Array[SimulatorSignal]
+
+pub fn simulator_messages(Simulator) -> Array[String]
+
+pub fn simulator_new(@firrtl.Circuit[@firrtl.Type], String) -> Simulator raise SimulatorError
+
+pub fn simulator_new_compiled(CompiledSimulation) -> Simulator raise SimulatorError
+
+pub fn simulator_output_signals(Simulator) -> Array[SimulatorSignal]
+
+pub fn simulator_outputs(Simulator) -> Array[(String, Int)]
+
+pub fn simulator_peek_int(Simulator, String) -> Int raise SimulatorError
+
+pub fn simulator_poke_int(Simulator, String, Int, Int) -> Unit raise SimulatorError
+
+pub fn simulator_raster_new(Simulator, String, Int, Int) -> SimulatorRaster raise SimulatorError
+
+pub fn simulator_raster_new_with_ports(Simulator, String, Array[String], Int, Int) -> SimulatorRaster raise SimulatorError
+
+pub fn simulator_raster_step(Simulator, SimulatorRaster, String, Int, Bool) -> Int raise SimulatorError
+
+pub fn simulator_set_history_retention(Simulator, Bool) -> Unit
+
+pub fn simulator_settle(Simulator) -> Unit raise SimulatorError
+
+pub fn simulator_status(Simulator) -> SimulationStatus
+
+pub fn simulator_step(Simulator, String) -> Unit raise SimulatorError
+
+pub fn simulator_visible_outputs(Simulator, Array[String]) -> Array[SimulatorSignal]
+
+// Errors
+type SimulatorError derive(@debug.Debug)
+
+// Types and methods
+type CompiledModule
+
+pub struct CompiledSimulation {
+  circuit : @firrtl.Circuit[@firrtl.Type]
+  top : String
+  modules : Map[String, CompiledModule]
+  primitive_models : Map[String, PrimitiveModel]
+}
+
+pub(all) struct Framebuffer {
+  width : Int
+  height : Int
+  pixels : Array[Int]
+}
+pub fn Framebuffer::clear(Self, color? : Int) -> Unit
+pub fn Framebuffer::height(Self) -> Int
+pub fn Framebuffer::new(Int, Int) -> Self
+pub fn Framebuffer::pixel(Self, Int, Int) -> Int
+pub fn Framebuffer::pixels(Self) -> Array[Int]
+pub fn Framebuffer::width(Self) -> Int
+pub fn Framebuffer::write(Self, Int, Int, Int, Int, Int) -> Unit
+
+type MemoryState
+
+pub(all) struct PrimitiveModel {
+  evaluate : (Array[SimValue]) -> Array[SimValue] raise SimulatorError
+}
+
+pub(all) struct RegisterState {
+  name : String
+  width : Int
+  clock : String
+  reset : SimExpr?
+  init : SimExpr?
+  async_reset : Bool
+  previous_clock : Bool
+}
+
+pub struct SimCommand {
+  clock : String
+  enable : SimExpr
+  action : SimCommandAction
+}
+
+pub enum SimCommandAction {
+  Printf(parts~ : Array[SimFormatPart], args~ : Array[(SimExpr, Bool)])
+  Assert(pred~ : SimExpr, parts~ : Array[SimFormatPart], args~ : Array[(SimExpr, Bool)])
+  Stop(code~ : Int)
+}
+
+pub(all) enum SimExpr {
+  Signal(id~ : Int, width~ : Int)
+  MemoryData(memory~ : String, reader~ : String, width~ : Int)
+  Slice(source~ : SimExpr, index~ : Int, width~ : Int)
+  Literal(value~ : SimValue)
+  Mux(cond~ : SimExpr, tval~ : SimExpr, fval~ : SimExpr)
+  Prim(op~ : @firrtl.PrimOp, args~ : Array[SimExpr], width~ : Int, signed~ : Bool)
+}
+
+pub enum SimFormatPart {
+  Text(String)
+  Binary
+  Character
+  Decimal
+  Hexadecimal
+}
+
+pub(all) struct SimMessage {
+  kind : String
+  text : String
+  cycle : Int
+  instance_path : String
+  source : String?
+}
+pub fn SimMessage::cycle(Self) -> Int
+pub fn SimMessage::instance_path(Self) -> String
+pub fn SimMessage::kind(Self) -> String
+pub fn SimMessage::source(Self) -> String?
+pub fn SimMessage::text(Self) -> String
+
+pub(all) enum SimStmt {
+  Node(id~ : Int, name~ : String, expr~ : SimExpr)
+  Connect(id~ : Int, name~ : String, expr~ : SimExpr)
+  Other
+}
+
+pub(all) struct SimValue {
+  width : Int
+  raw : @bigint.BigInt
+  known_mask : @bigint.BigInt
+}
+pub fn SimValue::as_bigint(Self) -> @bigint.BigInt
+pub fn SimValue::bit(Self, Int) -> Self
+pub fn SimValue::from_int(Int, Int) -> Self
+pub fn SimValue::is_known(Self) -> Bool
+pub fn SimValue::known_mask(Self) -> @bigint.BigInt
+pub fn SimValue::new(Int, @bigint.BigInt, known? : Bool) -> Self
+pub fn SimValue::with_mask(Int, @bigint.BigInt, @bigint.BigInt) -> Self
+pub fn SimValue::zero(Int) -> Self
+pub impl Show for SimValue
+
+pub(all) struct SimulationStatus {
+  halted : Bool
+  exit_code : Int?
+  failed : Bool
+  first_failure : SimMessage?
+}
+
+pub struct Simulator {
+  design : @firrtl.Module[@firrtl.Type]
+  program : Array[SimStmt]
+  signals : Map[String, SimValue]
+  signal_values : Array[SimValue]
+  signal_ids : Map[String, Int]
+  registers : Map[String, RegisterState]
+  next_registers : Map[String, SimValue]
+  memories : Map[String, MemoryState]
+  clocks : Map[String, Bool]
+  messages : Array[SimMessage]
+  mut message_cursor : Int
+  mut retain_history : Bool
+  mut halted : Bool
+  mut exit_code : Int?
+  mut failure : String?
+  mut first_failure : SimMessage?
+  modules : Map[String, @firrtl.Module[@firrtl.Type]]
+  children : Map[String, Simulator]
+  memory_clocks : Map[String, String]
+  mut cycle : Int
+  mut last_evaluations : Int
+  mut memory_words_examined : Int
+  mut waveform : Waveform?
+  mut waveform_filter : Array[String]
+  dependents : Map[String, Array[Int]]
+  pending : Array[Int]
+  queued : Array[Bool]
+  primitive_model : PrimitiveModel?
+  commands : Array[SimCommand]
+}
+pub fn Simulator::cycle(Self) -> Int
+pub fn Simulator::disable_waveform(Self) -> Unit
+pub fn Simulator::drain_events(Self) -> Array[SimMessage]
+pub fn Simulator::enable_waveform(Self, signals? : Array[String]) -> Unit
+pub fn Simulator::exit_code(Self) -> Int?
+pub fn Simulator::failure(Self) -> String?
+pub fn Simulator::from_circuit(@firrtl.Circuit[@firrtl.Type], String) -> Self raise SimulatorError
+pub fn Simulator::from_circuit_with_models(@firrtl.Circuit[@firrtl.Type], String, Map[String, PrimitiveModel]) -> Self raise SimulatorError
+pub fn Simulator::from_compiled(CompiledSimulation) -> Self raise SimulatorError
+pub fn Simulator::is_halted(Self) -> Bool
+pub fn Simulator::last_evaluations(Self) -> Int
+pub fn Simulator::memory_words_examined(Self) -> Int
+pub fn Simulator::messages(Self) -> Array[SimMessage]
+pub fn Simulator::new(@firrtl.Module[@firrtl.Type]) -> Self raise SimulatorError
+pub fn Simulator::peek(Self, String) -> SimValue raise SimulatorError
+pub fn Simulator::poke(Self, String, SimValue) -> Unit raise SimulatorError
+pub fn Simulator::set_clock(Self, String, Bool) -> Unit raise SimulatorError
+pub fn Simulator::set_history_retention(Self, Bool) -> Unit
+pub fn Simulator::settle(Self) -> Unit raise SimulatorError
+pub fn Simulator::settle_reference(Self) -> Unit raise SimulatorError
+pub fn Simulator::status(Self) -> SimulationStatus
+pub fn Simulator::step_clock(Self, String) -> Unit raise SimulatorError
+pub fn Simulator::step_clock_reference(Self, String) -> Unit raise SimulatorError
+pub fn Simulator::testbench(Self) -> Testbench
+pub fn Simulator::waveform(Self) -> Array[WaveSample]
+
+pub(all) struct SimulatorFrame {
+  words : Array[UInt]
+  valid : Array[UInt]
+}
+
+pub(all) struct SimulatorRaster {
+  signal : String
+  ports : Array[String]
+  width : Int
+  height : Int
+  pixels : Array[UInt]
+  valid : Array[UInt]
+  mut frames : Int
+  mut started : Bool
+  mut at_origin : Bool
+}
+
+pub(all) struct SimulatorSignal {
+  name : String
+  width : Int
+  value : String
+  known : Bool
+}
+
+pub(all) struct Testbench {
+  simulator : Simulator
+  mut cycles : Int
+}
+pub fn Testbench::cycle(Self) -> Int
+pub fn Testbench::expect(Self, String, SimValue) -> Unit raise SimulatorError
+pub fn Testbench::peek(Self, String) -> SimValue raise SimulatorError
+pub fn Testbench::poke(Self, String, SimValue) -> Unit raise SimulatorError
+pub fn Testbench::run(Self, String, Int) -> Unit raise SimulatorError
+pub fn Testbench::settle(Self) -> Unit raise SimulatorError
+pub fn Testbench::simulator(Self) -> Simulator
+pub fn Testbench::step(Self, String) -> Unit raise SimulatorError
+
+pub(all) struct TextSink {
+  mut bytes : Array[Int]
+}
+pub fn TextSink::bytes(Self) -> Array[Int]
+pub fn TextSink::new() -> Self
+pub fn TextSink::text(Self) -> String
+pub fn TextSink::write(Self, Int) -> Unit
+
+pub(all) struct WaveSample {
+  cycle : Int
+  signal : String
+  value : SimValue
+}
+pub fn WaveSample::cycle(Self) -> Int
+pub fn WaveSample::signal(Self) -> String
+pub fn WaveSample::value(Self) -> SimValue
+
+pub(all) struct Waveform {
+  samples : Array[WaveSample]
+}
+
+// Type aliases
+
+// Traits

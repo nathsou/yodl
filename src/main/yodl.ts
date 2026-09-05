@@ -95,7 +95,7 @@ function dirName(path: string): string | undefined {
     return parsePath(path).at(-1);
 }
 
-export function createInMemoryFileSystem(files: Record<string, string>): FileSystem & { root: DirectoryNode } {
+export function createInMemoryFileSystem(files: Record<string, string>, onRead?: (path: string, content: string) => void): FileSystem & { root: DirectoryNode } {
     const root = createTree(files);
 
     return {
@@ -151,6 +151,7 @@ export function createInMemoryFileSystem(files: Record<string, string>): FileSys
                 return Err(`File does not exist for path '${path}'`);
             }
 
+            onRead?.(parsePath(path).join('/'), node.content);
             return Ok(node.content);
         },
     };

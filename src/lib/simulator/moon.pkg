@@ -1,0 +1,40 @@
+import {
+  "nathsou/yodl/lib/firrtl",
+  "nathsou/yodl/lib/parse",
+  "nathsou/yodl/lib/utils",
+  "moonbitlang/core/bigint",
+}
+
+options(
+  "is-main": false,
+  link: {
+    "js": {
+      "exports": [
+        "simulator_new",
+        "simulator_compile",
+        "simulator_new_compiled",
+        "simulator_poke_int",
+        "simulator_peek_int",
+        "simulator_step",
+        "simulator_settle",
+        "simulator_messages",
+        "simulator_drain_events",
+        "simulator_status",
+        "simulator_exit_code",
+        "simulator_set_history_retention",
+        "simulator_outputs",
+        "simulator_output_signals",
+        "simulator_inputs",
+        "simulator_frame",
+        "simulator_frame_with_layout",
+        "simulator_raster_new",
+        "simulator_raster_new_with_ports",
+        "simulator_raster_step",
+        "simulator_halted",
+        "simulator_visible_outputs",
+        "simulator_clocks",
+      ],
+      "format": "esm",
+    },
+  },
+)

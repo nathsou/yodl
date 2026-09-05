@@ -167,4 +167,3 @@ pub(open) trait BinaryLike {
   fn from_bool(Bool) -> Self
 }
 pub impl BinaryLike for Bool
-

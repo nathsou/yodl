@@ -1,0 +1,97 @@
+// Fully parallel game of life simulation
+// adapted from https://k155la3.blog/2020/10/09/conways-game-of-life-on-fpga/
+
+const LIFE_ROWS = 480 / 16
+const LIFE_COLS = 640 / 16
+
+module GameOfLifePattern() -> (pattern: [LIFE_ROWS][LIFE_COLS]bool) {
+    pattern = [
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000010000000000000]),
+        rev!([..40'b0000000000000000000000001010000000000000]),
+        rev!([..40'b0000000000000011000000110000000000001100]),
+        rev!([..40'b0000000000000100010000110000000000001100]),
+        rev!([..40'b0011000000001000001000110000000000000000]),
+        rev!([..40'b0011000000001000101100001010000000000000]),
+        rev!([..40'b0000000000001000001000000010000000000000]),
+        rev!([..40'b0000000000000100010000000000000000000000]),
+        rev!([..40'b0000000000000011000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+        rev!([..40'b0000000000000000000000000000000000001100]),
+        rev!([..40'b0000000000000000000000000000000000001010]),
+        rev!([..40'b0000000000000000000000000000000000000010]),
+        rev!([..40'b0000000000000000000000000000000000000011]),
+        rev!([..40'b0000000000000000000000000000000000000000]),
+    ]
+}
+
+// One clk edge advances one Game of Life generation. The vector register
+// keeps all 1,200 cells in one sequential object.
+@simulation({
+    display: { buffer: "state" },
+    reset: "init",
+})
+module GameOfLifeSim(
+    clk: clock,
+    rst: bool,
+    init: bool,
+) -> (
+    state: [LIFE_ROWS][LIFE_COLS]bool,
+    ready: bool,
+) {
+    let pattern = GameOfLifePattern().pattern
+    let cells = Reg[[LIFE_ROWS][LIFE_COLS]bool](clk, rst)
+
+    for row in 0..<LIFE_ROWS {
+        for col in 0..<LIFE_COLS {
+            const prev_row = row == 0 ? LIFE_ROWS - 1 : row - 1
+            const next_row = row == LIFE_ROWS - 1 ? 0 : row + 1
+            const prev_col = col == 0 ? LIFE_COLS - 1 : col - 1
+            const next_col = col == LIFE_COLS - 1 ? 0 : col + 1
+
+            let count: u3 = cells.q[prev_row][prev_col] + cells.q[prev_row][col] + cells.q[prev_row][next_col] +
+                            cells.q[row][prev_col] + cells.q[row][next_col] +
+                            cells.q[next_row][prev_col] + cells.q[next_row][col] + cells.q[next_row][next_col]
+            cells.d[row][col] = if init {
+                pattern[row][col]
+            } else {
+                match count {
+                    3'd2 => cells.q[row][col]
+                    3'd3 => true
+                    _ => false
+                }
+            }
+            state[row][col] = cells.q[row][col]
+        }
+    }
+    ready = init ? 1'b0 : 1'b1
+}
+
+// Conventional CLI entry point with the same semantic outputs as GameOfLifeSim.
+// It deliberately exposes the logical cell state instead of display timing.
+module Top(
+    clk: clock,
+    rst: bool,
+    init: bool,
+) -> (
+    state: [LIFE_ROWS][LIFE_COLS]bool,
+    ready: bool,
+) {
+    let life = GameOfLifeSim(clk, rst, init)
+    state = life.state
+    ready = life.ready
+}

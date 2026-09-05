@@ -1,9 +1,11 @@
 import { chapterLessons } from '../docs/links.ts';
 import { examples, files, tour, stages, blankPath, initialSelection, validSelection, encodeShare, decodeShare, diagnosticLocation } from './playground-model.ts';
 import type { Selection, Stage, Mode } from './playground-model.ts';
-import { CompilerClient } from './compiler-client.ts';
+import { CompilerClient, RealtimeSimulationClient } from './compiler-client.ts';
+import type { SimulationStreamEvent } from './playground-compiler.ts';
 import { setupTheme } from './theme.ts';
 import { loadEditors, monaco } from './playground-editor.ts';
+import type { SimulationFramebuffer, SimulationRequest, SimulationSignal } from './playground-compiler.ts';
 
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const button = (id: string) => element<HTMLButtonElement>(id);
@@ -62,11 +64,91 @@ try {
 } catch (error) { notice((error as Error).message); }
 let editors: Awaited<ReturnType<typeof loadEditors>>;
 let loadingSource = false;
+let entryModel: any;
+let activeSourcePath = '';
+let errorPath = '';
+const importedModels = new Map<string, any>();
+const sourceViews = new Map<string, any>();
+const entryPath = () => sharedEntryPath ?? selection.path;
+const entrySource = () => entryModel.getValue() as string;
+function openSource(path: string) {
+    const model = path === entryPath() ? entryModel : importedModels.get(path);
+    if (!model) return;
+    if (activeSourcePath) sourceViews.set(activeSourcePath, editors.input.saveViewState());
+    activeSourcePath = path;
+    editors.input.setModel(model);
+    editors.input.updateOptions({ readOnly: path !== entryPath(), ariaLabel: `${path}${path === entryPath() ? ', main source' : ', imported, read only'}` });
+    const view = sourceViews.get(path);
+    if (view) editors.input.restoreViewState(view);
+    renderSourceTabs();
+    editors.input.layout();
+}
+function renderSourceTabs() {
+    const imported = activeSourcePath !== entryPath();
+    const hasImports = importedModels.size > 0;
+    element('source-files').hidden = !hasImports;
+    element('editors').dataset.imports = String(hasImports);
+    element('input-filename').textContent = activeSourcePath;
+    element('input-filename').title = activeSourcePath;
+    element('source-kind').textContent = imported ? 'Imported · read only' : '';
+    element('source-kind').hidden = !imported;
+    element('draft-badge').hidden = imported || entrySource() === originalSource();
+    button('reset-button').disabled = imported;
+    element('source-files').replaceChildren(...[entryPath(), ...importedModels.keys()].map(path => {
+        const tab = document.createElement('button');
+        tab.textContent = path.split('/').at(-1)!;
+        tab.title = path === entryPath() ? `${path} · compile and simulation target` : `${path} · imported, read only`;
+        tab.setAttribute('aria-pressed', String(path === activeSourcePath));
+        tab.onclick = () => openSource(path);
+        return tab;
+    }));
+}
+function updateImportedSources(sources: Record<string, string>) {
+    // Models come from actual compiler reads, so resolution and transitive
+    // imports cannot drift from the compiler's rules.
+    const imports = Object.entries(sources).filter(([path]) => path !== entryPath() && path.endsWith('.yodl'));
+    const wanted = new Set(imports.map(([path]) => path));
+    if (activeSourcePath !== entryPath() && !wanted.has(activeSourcePath)) openSource(entryPath());
+    for (const [path, model] of importedModels) {
+        if (!wanted.has(path)) { model.dispose(); importedModels.delete(path); sourceViews.delete(path); }
+    }
+    for (const [path, source] of imports) {
+        const existing = importedModels.get(path);
+        if (!existing) importedModels.set(path, monaco.editor.createModel(source, 'yodl'));
+        else if (existing.getValue() !== source) existing.setValue(source);
+    }
+    renderSourceTabs();
+}
+function resetSourceWorkspace() {
+    activeSourcePath = '';
+    sourceViews.clear();
+    editors.input.setModel(entryModel);
+    for (const model of importedModels.values()) model.dispose();
+    importedModels.clear();
+    openSource(entryPath());
+}
+
 let revision = 0;
 let lastOutput = '';
 let outputRevision = -1;
 let timer: ReturnType<typeof setTimeout> | undefined;
 const compiler = new CompilerClient();
+const importResolver = new CompilerClient();
+let importRevision = 0;
+let importTimer: ReturnType<typeof setTimeout> | undefined;
+async function loadImports() {
+    const current = ++importRevision;
+    const result = await importResolver.compile('imports', { source: entrySource(), path: entryPath(), stage: 'write_source', files: { ...files, ...sharedFiles } });
+    if (current === importRevision && result?.sources) updateImportedSources(result.sources);
+}
+function scheduleImports() {
+    ++importRevision;
+    importResolver.cancel('imports');
+    clearTimeout(importTimer);
+    importTimer = setTimeout(loadImports, 150);
+}
+const realtimeSimulation = new RealtimeSimulationClient();
+let simulationState: 'ready' | 'starting' | 'running' | 'paused' | 'stepping' | 'halted' | 'error' = 'ready';
 let requestId = 0;
 let latestRequest = 0;
 let errorRange: ReturnType<typeof diagnosticLocation> = null;
@@ -75,16 +157,28 @@ auto.checked = readStorage('auto') !== 'false';
 const defaultBlank = '// Start a new circuit here.\nmodule Top(a: bool) -> (q: bool) {\n    q = a\n}\n';
 const originals = (path: string) => files[path] ?? defaultBlank;
 const originalSource = () => sharedEntryPath && sharedSource !== null ? sharedSource : originals(selection.path);
-const draftKey = () => sharedDraftKey || `draft:${selection.path}`;
+function sourceRevision(source: string): string {
+    // A compact, deterministic revision keeps built-in example drafts from
+    // masking updated simulator adapters after a site deployment. User edits
+    // remain sticky until the example source itself changes again.
+    let hash = 2166136261;
+    for (let i = 0; i < source.length; i++) {
+        hash ^= source.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+}
+const draftKey = () => sharedDraftKey || `draft:${selection.path}:${sourceRevision(originals(selection.path))}`;
 
 function lessonIndex() { return tour.findIndex(lesson => `tour/${lesson.file}` === selection.path); }
 function saveDraft() {
-    writeStorage(draftKey(), editors.input.getValue());
+    writeStorage(draftKey(), entrySource());
     if (!sharedDraftKey) writeStorage('selection', JSON.stringify(selection));
     element('save-status').textContent = storageAvailable ? 'Draft saved locally' : 'Draft not saved · storage unavailable';
-    element('draft-badge').hidden = editors.input.getValue() === originalSource();
+    element('draft-badge').hidden = activeSourcePath !== entryPath() || entrySource() === originalSource();
 }
 function renderSelection() {
+    element('output-pane').dataset.view = 'output';
     const isTour = selection.mode === 'tour';
     element('site-section').textContent = isTour ? 'tour' : 'playground';
     button('tour-mode').setAttribute('aria-pressed', String(isTour));
@@ -98,8 +192,7 @@ function renderSelection() {
     ];
     for (const choice of choices) picker.add(new Option(choice.label, choice.value));
     picker.value = selection.path;
-    element('input-filename').textContent = (sharedEntryPath ?? selection.path).split('/').at(-1)!;
-    element('input-filename').title = sharedEntryPath ?? selection.path;
+    renderSourceTabs();
     const docLink = element<HTMLAnchorElement>('related-docs');
     const doc = Object.entries(chapterLessons).find(([, lessons]) => lessons.some(l => l.id === tour[lessonIndex()]?.id));
     docLink.hidden = !doc && !sharedOrigin;
@@ -127,17 +220,23 @@ function renderSelection() {
 function renderStage() {
     const stage = stages[selection.stage];
     element('stage-description').textContent = stage.description;
+    element('stage-description').title = stage.description;
+    select('pass-selector').title = stage.description;
     element('stage-command').textContent = selection.stage;
     monaco.editor.setModelLanguage(editors.output.getModel(), stage.language);
 }
 function clearDiagnostics() {
     element('problems').hidden = true;
     errorRange = null;
-    monaco.editor.setModelMarkers(editors.input.getModel(), 'yodl', []);
+    for (const model of [entryModel, ...importedModels.values()]) monaco.editor.setModelMarkers(model, 'yodl', []);
 }
 function markChanged() {
     compiler.cancel('playground');
+    realtimeSimulation.stop();
+    simulationState = 'ready';
+    updateSimulationControls();
     revision++;
+    scheduleImports();
     latestRequest = ++requestId;
     clearTimeout(timer);
     clearDiagnostics();
@@ -148,11 +247,19 @@ function markChanged() {
 }
 function choose(next: Selection) {
     saveDraft();
+    renderSimulationFrames([]);
     sharedDraftKey = '';
     sharedSource = null;
     sharedFiles = {}; sharedEntryPath = undefined; sharedOrigin = undefined;
     if (location.hash.startsWith('#code=')) history.replaceState(null, '', location.pathname + location.search);
     selection = next;
+    resetSourceWorkspace();
+    // Simulation fields describe the selected design. Do not carry a top or
+    // clock from a previous example into the next one (that made Image/Noise
+    // appear broken after running GameOfLifeSim).
+    for (const id of ['simulation-top', 'simulation-clock', 'simulation-inputs']) {
+        element<HTMLInputElement>(id).value = '';
+    }
     loadingSource = true;
     editors.input.setValue(readStorage(draftKey()) ?? originals(selection.path));
     loadingSource = false;
@@ -175,11 +282,13 @@ function changeMode(mode: Mode) {
     choose({ mode, path, stage: mode === 'tour' ? tour.find(l => `tour/${l.file}` === path)!.stage as Stage : 'write_firrtl' });
 }
 function changeStage(stage: Stage) {
+    renderSimulationFrames([]);
     selection.stage = stage;
     select('pass-selector').value = stage;
     editors.output.setValue('');
     lastOutput = '';
     renderStage();
+    element('output-pane').dataset.view = 'output';
     saveDraft();
     markChanged();
 }
@@ -190,35 +299,213 @@ function setMobileView(view: string) {
     editors.input.layout(); editors.output.layout();
 }
 function showError(message: string) {
+    element('output-pane').dataset.view = 'output';
     element('problems').hidden = false;
     element('error-message').textContent = message;
-    errorRange = diagnosticLocation(message, sharedEntryPath ?? selection.path);
+    errorPath = [entryPath(), ...importedModels.keys()].find(path => diagnosticLocation(message, path)) ?? entryPath();
+    errorRange = diagnosticLocation(message, errorPath);
     button('jump-error').hidden = errorRange === null;
     if (errorRange) {
-        const range = editors.input.getModel().validateRange(errorRange);
+        const model = errorPath === entryPath() ? entryModel : importedModels.get(errorPath);
+        const range = model.validateRange(errorRange);
         errorRange = range;
-        monaco.editor.setModelMarkers(editors.input.getModel(), 'yodl', [{ ...range, message, severity: monaco.MarkerSeverity.Error }]);
+        monaco.editor.setModelMarkers(model, 'yodl', [{ ...range, message, severity: monaco.MarkerSeverity.Error }]);
     }
     setStatus(lastOutput ? 'Compilation failed · showing previous output' : 'Compilation failed · check diagnostics', 'error');
 }
 async function runCompile() {
     clearTimeout(timer);
+    realtimeSimulation.stop();
+    simulationState = 'ready';
+    updateSimulationControls();
+    renderSimulationFrames([]);
     const id = ++requestId;
     latestRequest = id;
     const compiledRevision = revision;
     clearDiagnostics();
     setStatus('Compiling…', 'loading');
-    const result = await compiler.compile('playground', { source: editors.input.getValue(), path: sharedEntryPath ?? selection.path, stage: selection.stage, files: { ...files, ...sharedFiles } });
+    const result = await compiler.compile('playground', { source: entrySource(), path: sharedEntryPath ?? selection.path, stage: selection.stage, files: { ...files, ...sharedFiles } });
     if (!result || id !== latestRequest) return;
     if (result.error !== undefined) { showError(result.error); return; }
     lastOutput = result.output ?? '';
     outputRevision = compiledRevision;
     editors.output.setValue(lastOutput);
     renderStage();
+    element('output-pane').dataset.view = 'output';
     button('copy-output').disabled = !lastOutput;
     button('download-output').disabled = !lastOutput;
     setStatus(`✓ Compiled · ${Math.round(result.duration)} ms`, 'success');
 }
+function parseSimulationInputs(source: string): Record<string, { width: number; value: number }> {
+    const inputs: Record<string, { width: number; value: number }> = {};
+    for (const token of source.split(',')) {
+        const match = /^\s*([A-Za-z_$][\w$]*)(?::(\d+))?\s*=\s*(-?\d+)\s*$/.exec(token);
+        if (!token.trim()) continue;
+        if (!match) throw new Error(`Invalid input assignment: ${token}`);
+        if (!Number.isSafeInteger(Number(match[3]))) throw new Error("Input exceeds the safe integer range.");
+        inputs[match[1]] = { width: Number(match[2] ?? 32), value: Number(match[3]) };
+    }
+    return inputs;
+}
+function updateSimulationControls() {
+    const run = button('simulation-run');
+    const stop = button('simulation-stop');
+    run.textContent = simulationState === 'running' || simulationState === 'stepping' ? 'Pause' : simulationState === 'paused' ? 'Resume' : 'Run';
+    run.disabled = simulationState === 'starting' || simulationState === 'halted';
+    stop.disabled = simulationState === 'ready';
+}
+
+let canvasImage: ImageData | undefined;
+let lastFrame: SimulationFramebuffer | undefined;
+function renderSimulationFrames(frames: SimulationFramebuffer[]) {
+    const canvas = element<HTMLCanvasElement>('simulation-framebuffer');
+    const frame = frames.at(-1);
+    lastFrame = frame;
+    element('simulation-zoom-control').hidden = !frame;
+    if (!frame) { canvas.hidden = true; return; }
+    canvas.hidden = false;
+    if (canvas.width !== frame.width || canvas.height !== frame.height) {
+        canvas.width = frame.width;
+        canvas.height = frame.height;
+        canvasImage = undefined;
+    }
+    const availableWidth = canvas.parentElement?.clientWidth || 640;
+    const zoom = select('simulation-zoom').value;
+    const scale = zoom === 'fit' ? Math.min(availableWidth / frame.width, 480 / frame.height) : Number(zoom);
+    canvas.style.width = `${frame.width * scale}px`;
+    canvas.style.height = `${frame.height * scale}px`;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const image = canvasImage ??= context.createImageData(frame.width, frame.height);
+    const stride = Math.ceil(frame.width / 32);
+    for (let i = 0; i < frame.width * frame.height; i++) {
+        const row = Math.floor(i / frame.width), col = i % frame.width;
+        const word = row * stride + Math.floor(col / 32);
+        const known = !frame.valid || (frame.packed ? (frame.valid[word] & (1 << (col % 32))) !== 0 : frame.valid[i] !== 0);
+        const color = !known ? 0xff00ff : frame.packed
+            ? (frame.packed[word] & (1 << (col % 32))) !== 0 ? frame.onColor ?? 0xffffff : frame.offColor ?? 0
+            : frame.rgb?.[i] ?? frame.pixels?.[i] ?? 0;
+        image.data[i * 4] = color >>> 16 & 255;
+        image.data[i * 4 + 1] = color >>> 8 & 255;
+        image.data[i * 4 + 2] = color & 255;
+        image.data[i * 4 + 3] = 255;
+    }
+    context.putImageData(image, 0, 0);
+}
+
+function renderSimulationOutput(outputs: SimulationSignal[], messages: string[], cycles: number, framebufferSignal?: string) {
+    const lines = [`cycles: ${cycles}`];
+    const outputEntries = outputs;
+    for (const signal of outputEntries.slice(0, 100)) lines.push(`${signal.name}: u${signal.width} = ${signal.known ? signal.value : 'X'}`);
+    if (outputEntries.length > 100) lines.push(`… ${outputEntries.length - 100} more outputs`);
+    if (messages.length) lines.push('', ...messages);
+    element('simulation-output').textContent = lines.join('\n');
+}
+
+function renderSimulationInputs(inputs: SimulationSignal[]) {
+    const container = element('simulation-inputs-controls');
+    const signature = inputs.map(signal => `${signal.name}:${signal.width}:${signal.value}:${signal.known}`).join('|');
+    if (container.dataset.signature === signature) return;
+    container.dataset.signature = signature;
+    container.replaceChildren();
+    for (const signal of inputs) {
+        const label = document.createElement('label');
+        label.textContent = signal.name;
+        const input = document.createElement('input');
+        input.dataset.signal = signal.name;
+        input.dataset.width = String(signal.width);
+        if (signal.width === 1) {
+            input.type = 'checkbox';
+            input.checked = signal.value !== '0';
+        } else {
+            input.type = 'text';
+            input.value = signal.value;
+            input.inputMode = 'numeric';
+            input.title = `u${signal.width}`;
+        }
+        input.addEventListener('change', () => {
+            const assignments = [...container.querySelectorAll<HTMLInputElement>('input')].map(control => {
+                const value = control.type === 'checkbox' ? Number(control.checked) : control.value;
+                return `${control.dataset.signal}:${control.dataset.width}=${value}`;
+            });
+            element<HTMLInputElement>('simulation-inputs').value = assignments.join(', ');
+            try {
+                const inputs = parseSimulationInputs(assignments.join(', '));
+                input.setCustomValidity('');
+                if (simulationState !== 'ready') realtimeSimulation.setInputs(inputs);
+            } catch (error) { input.setCustomValidity(String(error)); input.reportValidity(); }
+        });
+        label.append(input);
+        container.append(label);
+    }
+    container.hidden = inputs.length === 0;
+}
+
+function handleRealtimeEvent(event: SimulationStreamEvent) {
+    if (event.type === 'error') {
+        simulationState = 'error';
+        element('simulation-output').textContent = event.error ?? 'Simulation failed.';
+        element('simulation-state').textContent = 'Error';
+        updateSimulationControls();
+        setStatus('Simulation failed', 'error');
+        return;
+    }
+    simulationState = event.type === 'halted' ? 'halted'
+        : event.type === 'stopped' ? 'ready'
+        : event.type === 'stepping' ? 'stepping'
+        : event.type === 'frame' || event.type === 'resumed' ? 'running' : 'paused';
+    if (event.frame) renderSimulationFrames([event.frame]);
+    else if (event.metadata && !event.metadata.display) renderSimulationFrames([]);
+    if (event.outputs) renderSimulationOutput(event.outputs, event.messages ?? [], event.totalCycles ?? 0, event.frame?.signal);
+    if (event.inputs) renderSimulationInputs(event.inputs);
+    button('simulation-step-cycle').disabled = !event.clock || simulationState === 'halted';
+    button('simulation-step-frame').hidden = !(event.frame && event.clock);
+    if (event.metadata) {
+        const values = { 'simulation-top': event.metadata.top, 'simulation-clock': event.clock, 'simulation-cycles-per-frame': event.playback?.cyclesPerFrame, 'simulation-clock-hz': event.playback?.clockHz ?? 'maximum', 'simulation-refresh-fps': event.playback?.refreshFps };
+        for (const [id, value] of Object.entries(values)) element<HTMLInputElement>(id).placeholder = String(value ?? 'automatic');
+        element<HTMLInputElement>('simulation-cycles-per-frame').disabled = !event.clock || Boolean(event.metadata.display?.stream);
+        element<HTMLInputElement>('simulation-clock-hz').disabled = !event.clock;
+        element<HTMLInputElement>('simulation-refresh-fps').disabled = !event.clock;
+    }
+    const time = event.simulatedSeconds === undefined ? '' : ` · ${event.simulatedSeconds.toFixed(3)} simulated s`;
+    const throughput = event.cyclesPerSecond === undefined ? '' : ` · ${Math.round(event.cyclesPerSecond).toLocaleString()} cycles/s achieved`;
+    const failed = event.status?.failed ?? false;
+    const label = failed ? 'Failed' : simulationState[0].toUpperCase() + simulationState.slice(1);
+    const exit = event.status?.exit_code === undefined ? '' : ` · exit ${event.status.exit_code}`;
+    element('simulation-state').textContent = `${label}${exit} · ${(event.totalCycles ?? 0).toLocaleString()} cycles${time}${throughput}`;
+    updateSimulationControls();
+    setStatus(failed ? `Simulation failed${event.status?.first_failure ? `: ${event.status.first_failure.message}` : ''}` : simulationState === 'running' || simulationState === 'stepping' ? 'Simulating…' : `Simulation ${simulationState}`, failed ? 'error' : undefined);
+}
+
+async function runSimulation(action: SimulationRequest['action'] = 'run') {
+    setMobileView('output');
+    const readPositive = (id: string) => {
+        const value = Number(element<HTMLInputElement>(id).value);
+        return Number.isFinite(value) && value > 0 ? value : undefined;
+    };
+    const options = { clockHz: readPositive('simulation-clock-hz'), refreshFps: readPositive('simulation-refresh-fps'), cyclesPerFrame: readPositive('simulation-cycles-per-frame') };
+    if (simulationState !== 'ready' && simulationState !== 'error') {
+        if (action === 'run') {
+            if (simulationState === 'running' || simulationState === 'stepping') realtimeSimulation.pause();
+            else realtimeSimulation.resume(options);
+        } else realtimeSimulation.command(action as 'reset' | 'step_cycle' | 'step_frame', options);
+        return;
+    }
+    const top = element<HTMLInputElement>('simulation-top').value.trim();
+    const clock = element<HTMLInputElement>('simulation-clock').value.trim();
+    element('output-pane').dataset.view = 'simulation';
+    element('simulation-state').textContent = 'Compiling simulation…';
+    simulationState = 'starting';
+    updateSimulationControls();
+    try {
+        realtimeSimulation.start({
+            source: entrySource(), path: sharedEntryPath ?? selection.path,
+            stage: 'write_low_firrtl', files: { ...files, ...sharedFiles },
+            simulate: { action, ...(top ? { top } : {}), ...(clock ? { clock } : {}), ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)), inputs: parseSimulationInputs(element<HTMLInputElement>('simulation-inputs').value) },
+        }, handleRealtimeEvent);
+    } catch (error) { handleRealtimeEvent({ id: 0, type: 'error', error: String(error) }); }
+}
+
 function download(name: string, content: string) {
     const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
     const link = document.createElement('a'); link.href = url; link.download = name; link.click();
@@ -238,6 +525,8 @@ async function copy(text: string, control: HTMLButtonElement) {
 }
 async function start() {
     editors = await loadEditors();
+    entryModel = editors.input.getModel();
+    activeSourcePath = entryPath();
     updateTheme();
     for (const [value, stage] of Object.entries(stages)) select('pass-selector').add(new Option(stage.label, value));
     loadingSource = true;
@@ -246,7 +535,7 @@ async function start() {
     renderSelection();
     if (matchMedia('(max-width: 820px)').matches) element<HTMLDetailsElement>('guide-details').open = false;
     saveDraft();
-    for (const id of ['share-button', 'source-selector', 'compile-button', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
+    for (const id of ['share-button', 'source-selector', 'compile-button', 'simulate-button', 'simulation-reset', 'simulation-step-cycle', 'simulation-step-frame', 'simulation-stop', 'simulation-run', 'simulation-top', 'simulation-clock', 'simulation-cycles-per-frame', 'simulation-clock-hz', 'simulation-refresh-fps', 'simulation-inputs', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
     const mac = /Mac|iPhone|iPad/.test(navigator.platform);
     element('compile-shortcut').textContent = mac ? '⌘ ↵' : 'Ctrl ↵';
     editors.input.addAction({ id: 'compile-yodl', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });
@@ -255,7 +544,7 @@ async function start() {
         if (!event.defaultPrevented && (event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); runCompile(); }
     });
     editors.input.onDidChangeModelContent(() => {
-        if (loadingSource) return;
+        if (loadingSource || editors.input.getModel() !== entryModel) return;
         saveDraft();
         markChanged();
     });
@@ -272,6 +561,19 @@ async function start() {
     button('suggested-stage').onclick = () => changeStage(tour[lessonIndex()].stage as Stage);
     select('pass-selector').onchange = () => changeStage(select('pass-selector').value as Stage);
     button('compile-button').onclick = runCompile;
+    button('simulate-button').onclick = () => runSimulation('run');
+    button('simulation-run').onclick = () => runSimulation('run');
+    button('simulation-reset').onclick = () => runSimulation('reset');
+    button('simulation-step-cycle').onclick = () => runSimulation('step_cycle');
+    button('simulation-step-frame').onclick = () => runSimulation('step_frame');
+    select('simulation-zoom').onchange = () => { if (lastFrame) renderSimulationFrames([lastFrame]); };
+    button('simulation-stop').onclick = () => {
+        realtimeSimulation.stop();
+        simulationState = 'ready';
+        updateSimulationControls();
+        element('simulation-state').textContent = 'Stopped';
+        setStatus('Simulation stopped');
+    };
     auto.onchange = () => {
         writeStorage('auto', String(auto.checked));
         clearTimeout(timer);
@@ -282,20 +584,21 @@ async function start() {
     button('jump-error').onclick = () => {
         if (!errorRange) return;
         setMobileView('source');
+        openSource(errorPath);
         editors.input.setSelection(errorRange); editors.input.revealRangeInCenter(errorRange); editors.input.focus();
     };
     button('reset-button').onclick = () => element<HTMLDialogElement>('reset-dialog').showModal();
     element<HTMLDialogElement>('reset-dialog').addEventListener('close', () => {
-        if (element<HTMLDialogElement>('reset-dialog').returnValue === 'reset') editors.input.setValue(originalSource());
+        if (element<HTMLDialogElement>('reset-dialog').returnValue === 'reset') entryModel.setValue(originalSource());
     });
-    button('download-source').onclick = () => download(selection.path.split('/').at(-1)!, editors.input.getValue());
+    button('download-source').onclick = () => download(activeSourcePath.split('/').at(-1)!, editors.input.getValue());
     button('download-output').onclick = () => {
         if (outputRevision === revision) download(`${selection.path.split('/').at(-1)!.replace(/\.yodl$/, '')}.${stages[selection.stage].extension}`, lastOutput);
     };
     button('copy-output').onclick = () => { if (outputRevision === revision) void copy(lastOutput, button('copy-output')); };
     button('share-button').onclick = () => {
         const url = new URL(location.href);
-        url.hash = `code=${encodeShare({ ...selection, source: editors.input.getValue(), files: sharedFiles, entryPath: sharedEntryPath, origin: sharedOrigin })}`;
+        url.hash = `code=${encodeShare({ ...selection, source: entrySource(), files: sharedFiles, entryPath: sharedEntryPath, origin: sharedOrigin })}`;
         if (url.href.length > 32_000) { notice('This circuit is too large for a reliable share link. Use Save to download the source instead.'); return; }
         element<HTMLInputElement>('share-url').value = url.href;
         element<HTMLDialogElement>('share-dialog').showModal();
@@ -304,6 +607,7 @@ async function start() {
     button('copy-share').onclick = () => void copy(element<HTMLInputElement>('share-url').value, button('copy-share'));
     installResizer();
     setStatus('Ready to compile');
+    void loadImports();
     if (auto.checked) runCompile();
 }
 function navigateLesson(delta: number) {

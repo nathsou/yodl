@@ -1,8 +1,8 @@
-import type { CompileRequest, CompileResult } from './playground-compiler.ts';
+import type { CompileRequest, CompileResult, SimulationStreamEvent } from './playground-compiler.ts';
 
 // Replaced by the site build with the content-hashed worker filename.
 declare const __YODL_COMPILER_WORKER__: string;
-const workerFile = typeof __YODL_COMPILER_WORKER__ === 'undefined' ? './playground-worker.js' : __YODL_COMPILER_WORKER__;
+export const compilerWorkerFile = typeof __YODL_COMPILER_WORKER__ === 'undefined' ? './playground-worker.js' : __YODL_COMPILER_WORKER__;
 
 type Job = { owner: string; request: CompileRequest; resolve: (result: CompileResult | null) => void };
 
@@ -59,7 +59,7 @@ export class CompilerClient {
             this.finish({ id: job.request.id, error, duration: 0 });
         };
         try {
-            this.worker ??= new Worker(new URL(workerFile, import.meta.url), { type: 'module' });
+            this.worker ??= new Worker(new URL(compilerWorkerFile, import.meta.url), { type: 'module' });
             this.worker.onmessage = (event: MessageEvent<CompileResult>) => {
                 if (this.active === job && event.data.id === job.request.id) this.finish(event.data);
             };
@@ -69,5 +69,65 @@ export class CompilerClient {
         } catch (error) {
             fail(`Could not start the compiler: ${(error as Error).message}`);
         }
+    }
+}
+
+type StreamRequest = Omit<CompileRequest, 'id'>;
+
+// Visual simulation has a separate worker so that a persistent real-time run
+// never blocks ordinary compilation or documentation examples. The worker
+// owns the simulator session and emits one framebuffer at a time.
+export class RealtimeSimulationClient {
+    private worker?: Worker;
+    private requestId = 0;
+    private activeId?: number;
+    private request?: StreamRequest;
+    private startupTimer?: ReturnType<typeof setTimeout>;
+    constructor(private startupTimeoutMs = 30_000) {}
+
+    start(request: StreamRequest, onEvent: (event: SimulationStreamEvent) => void) {
+        this.stop();
+        const id = ++this.requestId;
+        this.activeId = id;
+        this.request = request;
+        const worker = this.worker = new Worker(new URL(compilerWorkerFile, import.meta.url), { type: 'module' });
+        worker.onmessage = (message: MessageEvent<SimulationStreamEvent>) => {
+            if (this.worker !== worker || message.data.id !== id) return;
+            clearTimeout(this.startupTimer);
+            onEvent(message.data);
+        };
+        worker.onerror = () => {
+            if (this.worker !== worker) return;
+            this.stop();
+            onEvent({ id, type: 'error', error: 'The simulation worker could not run. Try Run again.' });
+        };
+        this.startupTimer = setTimeout(() => {
+            if (this.worker !== worker) return;
+            this.stop();
+            onEvent({ id, type: 'error', error: 'Simulation compilation timed out. Try a smaller design.' });
+        }, this.startupTimeoutMs);
+        worker.postMessage({ ...request, id, simulate: { ...request.simulate, mode: 'realtime', action: request.simulate?.action ?? 'run' } });
+    }
+
+    pause() { this.postControl('pause'); }
+    resume(options?: Pick<NonNullable<StreamRequest['simulate']>, 'clockHz' | 'refreshFps' | 'cyclesPerFrame'>) { this.postControl('resume', options); }
+    command(action: 'reset' | 'step_cycle' | 'step_frame', options?: Pick<NonNullable<StreamRequest['simulate']>, 'clockHz' | 'refreshFps' | 'cyclesPerFrame'>) { this.postControl(action, options); }
+    setInputs(inputs: NonNullable<StreamRequest['simulate']>['inputs']) {
+        if (!this.request?.simulate) return;
+        this.request = { ...this.request, simulate: { ...this.request.simulate, inputs } };
+        this.postControl('settle');
+    }
+
+    stop() {
+        clearTimeout(this.startupTimer);
+        this.worker?.terminate();
+        this.worker = undefined;
+        this.activeId = undefined;
+        this.request = undefined;
+    }
+
+    private postControl(action: 'pause' | 'resume' | 'reset' | 'step_cycle' | 'step_frame' | 'settle', options?: Pick<NonNullable<StreamRequest['simulate']>, 'clockHz' | 'refreshFps' | 'cyclesPerFrame'>) {
+        if (!this.worker || this.activeId === undefined || !this.request) return;
+        this.worker.postMessage({ id: this.activeId, control: { action, options, ...(action === 'settle' ? { inputs: this.request.simulate?.inputs } : {}) } });
     }
 }

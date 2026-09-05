@@ -1,56 +1,54 @@
-import VGA
-import LFSR
-import Timing
-
-module Top(
-    clk: clock,
-    button: u4,
-) -> (
-    led: u4,
-    vga_hsync: bool,
-    vga_vsync: bool,
-    vga_red: u3,
-    vga_green: u3,
-    vga_blue: u3,
-) {
-    let vga = VGA::SyncPulses(pixel_clk: clk, hsync: vga_hsync, vsync: vga_vsync)
-    let div = (x: vga.col[9:2], y: vga.row[9:2])
-    let cell_idx: u15 = div.y * 160 + div.x
-    let timer = Timing::Timer[100_000](clk)
-    let rand_cell = LFSR::LFSR[15](clk, enable: timer.q).q
-    let rand_color = LFSR::LFSR[3](clk, enable: timer.q).q
-    let add_noise = orr button
-
-    let mem = Memory[
-        T: u3,
-        Depth: (VGA::H_ACTIVE / 4) * (VGA::V_ACTIVE / 4),
-        ReadPorts: 1,
-        WritePorts: 1,
-    ](
-        read: [(clk: clk, en: vga.is_active_area, addr: cell_idx)],
-        write: [(clk: clk, en: add_noise and timer.q, addr: rand_cell, data: rand_color, mask: true)],
-    )
-
-    readmemb!("res/york.mem", mem)
-
-    let color_idx = mem.q[0]
-
-    let color = match vga.is_active_area {
-        1'b0 => (r: 3'd0, g: 3'd0, b: 3'd0)
-        1'b1 => match color_idx {
-            3'd0 => (r: 3'd3, g: 3'd5, b: 3'd7)
-            3'd1 => (r: 3'd2, g: 3'd2, b: 3'd2)
-            3'd2 => (r: 3'd0, g: 3'd0, b: 3'd0)
-            3'd3 => (r: 3'd1, g: 3'd1, b: 3'd0)
-            3'd4 => (r: 3'd1, g: 3'd1, b: 3'd1)
-            3'd5 => (r: 3'd7, g: 3'd7, b: 3'd6)
-            3'd6 => (r: 3'd7, g: 3'd7, b: 3'd7)
-            3'd7 => (r: 3'd3, g: 3'd3, b: 3'd3)
+// A 40x30 (4x decimated) extract of res/york.mem, packed as eight 3-bit
+// palette indices per u24 word.
+@simulation({
+    display: { buffer: "pixel" },
+})
+module ImageSim() -> (pixel: [30][40]u24) {
+    const image: [30][5]u24 = [
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [196608, 0, 0, 0, 8654144],
+        [2088960, 0, 0, 0, 1464952],
+        [14032192, 5, 0, 14376960, 16055925],
+        [14146472, 62, 0, 11984896, 9437039],
+        [14343543, 53, 0, 12025856, 6265125],
+        [12245941, 438, 0, 12550144, 16554303],
+        [12283317, 16552886, 16776783, 16764543, 2422975],
+        [14368118, 15007670, 16028623, 16252927, 2521199],
+        [13557102, 12283830, 14118270, 16228334, 16556031],
+        [12049454, 16702381, 16448447, 9671247, 9586980],
+        [13781998, 12049333, 3922879, 16750713, 2510415],
+        [14420846, 14146486, 3660735, 16751097, 2400039],
+        [14380470, 12049334, 3464127, 16775673, 15105639],
+        [2583499, 11984207, 16215406, 16752639, 16244735],
+        [2498505, 12243913, 8254429, 16777215, 16711679],
+        [2610907, 11983689, 15637245, 4768719, 2995986],
+        [14996447, 12049289, 16666191, 4856319, 9582354],
+        [2441087, 12050279, 16664697, 5118463, 6862610],
+        [9600603, 16241497, 16664895, 4756479, 6859034],
+        [8879867, 16244604, 4016487, 6856655, 8692698],
+        [7806825, 16555899, 3281529, 4756044, 6689636],
+        [3637244, 2472443, 8688201, 7452443, 9314250],
+        [3665983, 9288188, 8688227, 5322849, 5392666],
+        [3604335, 2410809, 9585249, 9586468, 8688227],
+        [16187391, 2396793, 9488457, 9550052, 7190307],
+        [14684159, 2593791, 9582881, 9585436, 7190812],
+        [16777215, 16777215, 9586767, 7194915, 9549387],
+    ]
+    for row in 0..<30 {
+        for col in 0..<40 {
+            let palette_index = (image[row][col / 8] shr ((col % 8) * 3))[2:0]
+            pixel[row][col] = match palette_index {
+                3'd0 => 24'h6DB6FF
+                3'd1 => 24'h494949
+                3'd2 => 24'h000000
+                3'd3 => 24'h242400
+                3'd4 => 24'h242424
+                3'd5 => 24'hFFFFDB
+                3'd6 => 24'hFFFFFF
+                _ => 24'h6D6D6D
+            }
         }
     }
-
-    vga_red = color.r
-    vga_green = color.g
-    vga_blue = color.b
-    led = uint!(fill!(4, add_noise))
 }

@@ -62,7 +62,7 @@ describe('documentation content contract', () => {
     });
     test('every chapter, example ID, lesson link, and legacy anchor remains valid', () => {
         const chapters = loadChapters();
-        expect(chapters).toHaveLength(9);
+        expect(chapters).toHaveLength(10);
         for (const chapter of chapters) {
             expect(chapter.html).not.toContain('data-yodl-example');
             expect(chapter.html).not.toMatch(/href="[^"#]+\.md/);

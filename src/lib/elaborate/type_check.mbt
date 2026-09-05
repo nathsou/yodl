@@ -1631,7 +1631,6 @@ fn is_valid_assignment_target(expr: Expr) -> Bool {
 priv enum AttributeValueType {
     Str
     Dict
-    // Int
 }
 
 let module_attribute_signatures: Map[String, Array[AttributeValueType]] = {
@@ -1640,6 +1639,9 @@ let module_attribute_signatures: Map[String, Array[AttributeValueType]] = {
     "flatten": [],
     "external": [Str, Str],
     "parameters": [Dict],
+    // Host-side simulation metadata. The dictionary is intentionally opaque
+    // to the compiler; playgrounds and testbenches may interpret its keys.
+    "simulation": [Dict],
     // "alias": [Str],
 }
 
@@ -1654,7 +1656,6 @@ fn check_attribute(attr: Attribute, signatures~: Map[String, Array[AttributeValu
 
             for arg, exp in zip2(attr.args, expected) {
                 match (arg, exp) {
-                    // (Int(_), Int) => ()
                     (String(_), Str) => ()
                     (Dict(_), Dict) => ()
                     _ => raise InvalidAttributeArgs(name=attr.name, args=attr.args, expected~, span=attr.span)

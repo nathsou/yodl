@@ -4,15 +4,56 @@ package "nathsou/yodl/lib/driver"
 import {
   "moonbitlang/core/debug",
   "nathsou/yodl/lib/firrtl",
+  "nathsou/yodl/lib/simulator",
   "nathsou/yodl/lib/utils",
 }
 
 // Values
 pub fn cli(@utils.Externals) -> Unit
 
+pub fn compile_simulation(path~ : String, ext~ : @utils.Externals, top? : String?, displays? : Array[SimulationDisplay], stream? : String?) -> @firrtl.Circuit[@firrtl.Type] raise
+
+pub fn compile_simulation_design(path~ : String, ext~ : @utils.Externals, top? : String?) -> SimulationDesign raise
+
+pub fn host_simulator_clocks(@simulator.Simulator) -> Array[String]
+
+pub fn host_simulator_drain_events(@simulator.Simulator) -> Array[@simulator.SimMessage]
+
+pub fn host_simulator_exit_code(@simulator.Simulator) -> Int
+
+pub fn host_simulator_exit_codes(@simulator.Simulator) -> Array[Int]
+
+pub fn host_simulator_frame(@simulator.Simulator, Array[String], Int, Int, Bool, Bool) -> @simulator.SimulatorFrame raise
+
+pub fn host_simulator_halted(@simulator.Simulator) -> Bool
+
+pub fn host_simulator_inputs(@simulator.Simulator) -> Array[@simulator.SimulatorSignal]
+
+pub fn host_simulator_output_signals(@simulator.Simulator) -> Array[@simulator.SimulatorSignal]
+
+pub fn host_simulator_poke(@simulator.Simulator, String, Int, Int) -> Unit raise
+
+pub fn host_simulator_raster_new(@simulator.Simulator, String, Array[String], Int, Int) -> @simulator.SimulatorRaster raise
+
+pub fn host_simulator_raster_step(@simulator.Simulator, @simulator.SimulatorRaster, String, Int, Bool) -> Int raise
+
+pub fn host_simulator_set_history_retention(@simulator.Simulator, Bool) -> Unit
+
+pub fn host_simulator_settle(@simulator.Simulator) -> Unit raise
+
+pub fn host_simulator_status(@simulator.Simulator) -> @simulator.SimulationStatus
+
+pub fn host_simulator_step(@simulator.Simulator, String) -> Unit raise
+
+pub fn host_simulator_visible_outputs(@simulator.Simulator, Array[String]) -> Array[@simulator.SimulatorSignal]
+
+pub fn new_compiled_simulation(SimulationDesign) -> @simulator.Simulator raise
+
 pub fn parse_commands(String) -> Array[Command] raise CommandParserError
 
 pub fn run(path~ : String, commands~ : Array[Command], ext~ : @utils.Externals) -> Unit raise
+
+pub fn simulation_metadata(path~ : String, ext~ : @utils.Externals, top? : String?) -> Array[(String, String)] raise
 
 // Errors
 type CommandParserError derive(@debug.Debug)
@@ -27,7 +68,52 @@ pub(all) enum Command {
   WriteRTLIL(path~ : String?)
 }
 
+pub(all) struct SimulationConfiguration {
+  top : String
+  clock : String?
+  reset : SimulationResetConfiguration?
+  display : SimulationDisplayConfiguration?
+  cycles_per_frame : Int?
+  clock_hz : Int?
+}
+
+pub(all) struct SimulationDesign {
+  circuit : @firrtl.Circuit[@firrtl.Type]
+  compiled : @simulator.CompiledSimulation
+  configuration : SimulationConfiguration
+  top : String
+  displays : Array[SimulationDisplay]
+  clock : String?
+  reset : String?
+  reset_cycles : Int
+}
+
+pub(all) struct SimulationDisplay {
+  buffer : String
+  stream : Bool
+  width : Int
+  height : Int
+  bits : Int
+  ports : Array[String]
+}
+
+pub(all) struct SimulationDisplayConfiguration {
+  buffer : String?
+  stream : String?
+  width : Int?
+  height : Int?
+  mode : String?
+  packing : String?
+  pixel_scale : Int?
+  on_color : Int?
+  off_color : Int?
+}
+
+pub(all) struct SimulationResetConfiguration {
+  signal : String
+  cycles : Int
+}
+
 // Type aliases
 
 // Traits
-
