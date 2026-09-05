@@ -1,5 +1,5 @@
 
-module Top() -> () {
+module Top(clk: clock) -> () {
     // static assertions checked by firtool
 
     // uint casting

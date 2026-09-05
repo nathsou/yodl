@@ -52,7 +52,6 @@ module ClockSim(
 ) {
     let state = ClockState(clk, rst)
     seconds = state.seconds
-    let text = ClockText(hours: state.hours, minutes: state.minutes, seconds: state.seconds)
-    let clock_text = text.chars
+    let clock_text = ClockText(hours: state.hours, minutes: state.minutes, seconds: state.seconds).chars
     Font::TextFramebufferWords[Length: 8, Width: 400, Height: 300, PackedWidth: 13, X: 2, Y: 3, Scale: 8](text: clock_text, pixel)
 }

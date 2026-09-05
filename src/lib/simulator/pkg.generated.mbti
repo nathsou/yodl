@@ -115,7 +115,7 @@ pub enum SimCommandAction {
 }
 
 pub(all) enum SimExpr {
-  Signal(name~ : String, width~ : Int)
+  Signal(id~ : Int, width~ : Int)
   MemoryData(memory~ : String, reader~ : String, width~ : Int)
   Slice(source~ : SimExpr, index~ : Int, width~ : Int)
   Literal(value~ : SimValue)
@@ -145,8 +145,8 @@ pub fn SimMessage::source(Self) -> String?
 pub fn SimMessage::text(Self) -> String
 
 pub(all) enum SimStmt {
-  Node(name~ : String, expr~ : SimExpr)
-  Connect(name~ : String, expr~ : SimExpr)
+  Node(id~ : Int, name~ : String, expr~ : SimExpr)
+  Connect(id~ : Int, name~ : String, expr~ : SimExpr)
   Other
 }
 
@@ -176,6 +176,8 @@ pub struct Simulator {
   design : @firrtl.Module[@firrtl.Type]
   program : Array[SimStmt]
   signals : Map[String, SimValue]
+  signal_values : Array[SimValue]
+  signal_ids : Map[String, Int]
   registers : Map[String, RegisterState]
   next_registers : Map[String, SimValue]
   memories : Map[String, MemoryState]

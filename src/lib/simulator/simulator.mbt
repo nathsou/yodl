@@ -14,64 +14,12 @@ using @firrtl {
   type PrimOp,
 }
 
-pub(all) struct SimValue {
-  width: Int
-  raw: BigInt
-  known_mask: BigInt
-}
-
-pub fn SimValue::new(width: Int, raw: BigInt, known~: Bool = true) -> SimValue {
-  let known_mask = if known { mask(width) } else { 0 }
-  SimValue::with_mask(width, raw, known_mask)
-}
-
-pub fn SimValue::with_mask(width: Int, raw: BigInt, known_mask: BigInt) -> SimValue {
-  let known_mask = normalize(known_mask, width)
-  { width, raw: normalize(raw, width) & known_mask, known_mask }
-}
-
-pub fn SimValue::zero(width: Int) -> SimValue {
-  SimValue::new(width, 0)
-}
-
-pub fn SimValue::from_int(width: Int, value: Int) -> SimValue {
-  SimValue::new(width, BigInt::from_int(value))
-}
-
-pub fn SimValue::as_bigint(self: SimValue) -> BigInt {
-  self.raw
-}
-
-pub fn SimValue::is_known(self: SimValue) -> Bool {
-  self.known_mask == mask(self.width)
-}
-
-pub fn SimValue::known_mask(self: SimValue) -> BigInt {
-  self.known_mask
-}
-
-pub fn SimValue::bit(self: SimValue, index: Int) -> SimValue {
-  if index < 0 || index >= self.width {
-    SimValue::new(1, 0, known=false)
-  } else {
-    SimValue::with_mask(1, (self.raw >> index) & 1, (self.known_mask >> index) & 1)
-  }
-}
-
-pub impl Show for SimValue with output(self, logger) {
-  if self.is_known() {
-    logger.write_string(self.raw.to_string())
-  } else {
-    logger.write_string("x")
-  }
-}
-
 /// The execution form used by the simulator.  It is deliberately small and
 /// backend-neutral: typed FIRRTL is compiled to this representation once when
 /// a simulator is constructed, so the hot loop does not repeatedly inspect
 /// type metadata or rebuild reference paths.
 pub(all) enum SimExpr {
-  Signal(name~: String, width~: Int)
+  Signal(id~: Int, width~: Int)
   MemoryData(memory~: String, reader~: String, width~: Int)
   Slice(source~: SimExpr, index~: Int, width~: Int)
   Literal(value~: SimValue)
@@ -80,8 +28,8 @@ pub(all) enum SimExpr {
 }
 
 pub(all) enum SimStmt {
-  Node(name~: String, expr~: SimExpr)
-  Connect(name~: String, expr~: SimExpr)
+  Node(id~: Int, name~: String, expr~: SimExpr)
+  Connect(id~: Int, name~: String, expr~: SimExpr)
   Other
 }
 
@@ -193,6 +141,8 @@ pub struct Simulator {
   design: TypedModule
   program: Array[SimStmt]
   signals: Map[String, SimValue]
+  signal_values: Array[SimValue]
+  signal_ids: Map[String, Int]
   registers: Map[String, RegisterState]
   next_registers: Map[String, SimValue]
   memories: Map[String, MemoryState]
@@ -353,6 +303,8 @@ fn Simulator::new_with_modules(
   let compiled = compiled_modules.get(design.id.inner()).unwrap_or_error(MissingSignal(name="compiled module " + design.id.inner()))
   let design = compiled.design
   let signals: Map[String, SimValue] = Map([])
+  let signal_values = Array::make(compiled.signal_names.length(), SimValue::zero(0))
+  let signal_ids = compiled.signal_ids
   let registers: Map[String, RegisterState] = Map([])
   let next_registers: Map[String, SimValue] = Map([])
   let memories: Map[String, MemoryState] = Map([])
@@ -370,7 +322,7 @@ fn Simulator::new_with_modules(
     let width = type_width(port.ty)
     if width < 0 { raise InvalidWidth(width~) }
     let name = port.id.inner()
-    signals[name] = SimValue::zero(width)
+    initialize_signal(signals, signal_values, signal_ids, name, SimValue::zero(width))
     if port.ty is @firrtl.Type::Clock {
       clocks[name] = false
     }
@@ -379,17 +331,17 @@ fn Simulator::new_with_modules(
   for stmt in design.body {
     match stmt {
       @firrtl.Stmt::Wire(id~, ty~) => {
-        signals[id.inner()] = SimValue::zero(type_width(ty))
+        initialize_signal(signals, signal_values, signal_ids, id.inner(), SimValue::zero(type_width(ty)))
       }
       @firrtl.Stmt::Node(id~, expr~) => {
-        signals[id.inner()] = SimValue::zero(type_width(expr.ty()))
+        initialize_signal(signals, signal_values, signal_ids, id.inner(), SimValue::zero(type_width(expr.ty())))
       }
       @firrtl.Stmt::Reg(id~, ty~, clock~) => {
         let name = id.inner()
         let clock = clock_name(clock)
         let clock = require_clock_source(design, clock)
         let width = type_width(ty)
-        signals[name] = SimValue::new(width, 0, known=false)
+        initialize_signal(signals, signal_values, signal_ids, name, SimValue::new(width, 0, known=false))
         registers[name] = {
           name, width, clock, reset: None, init: None, async_reset: false, previous_clock: false,
         }
@@ -400,13 +352,13 @@ fn Simulator::new_with_modules(
         let clock = clock_name(clock)
         let clock = require_clock_source(design, clock)
         let width = type_width(ty)
-        signals[name] = SimValue::new(width, 0, known=false)
+        initialize_signal(signals, signal_values, signal_ids, name, SimValue::new(width, 0, known=false))
         registers[name] = {
           name,
           width,
           clock,
-          reset: Some(compile_expr(reset)),
-          init: Some(compile_expr(init)),
+          reset: Some(compile_expr(reset, signal_ids)),
+          init: Some(compile_expr(init, signal_ids)),
           async_reset: reset.ty() is @firrtl.Type::AsyncReset,
           previous_clock: false,
         }
@@ -464,7 +416,10 @@ fn Simulator::new_with_modules(
                 body: [],
               }
               modules[of.inner()] = synthetic
-              compiled_modules[of.inner()] = { design: synthetic, program: [], commands: [] }
+              let signal_names = synthetic.ports.map(port => port.id.inner())
+              let signal_ids: Map[String, Int] = Map([])
+              for id, name in signal_names { signal_ids[name] = id }
+              compiled_modules[of.inner()] = { design: synthetic, program: [], commands: [], signal_names, signal_ids }
               synthetic
             }
             None => raise Unsupported(message="external or unknown module '\{of.inner()}' has no simulation model")
@@ -485,7 +440,7 @@ fn Simulator::new_with_modules(
           if port.dir is @parse.PortDir::Input && port.ty is @firrtl.Type::Clock {
             let _ = require_clock_source(design, instance + "." + port_name)
           }
-          signals[instance + "." + port_name] = SimValue::new(type_width(port.ty), 0, known=false)
+          initialize_signal(signals, signal_values, signal_ids, instance + "." + port_name, SimValue::new(type_width(port.ty), 0, known=false))
         }
       }
       _ => ()
@@ -520,7 +475,7 @@ fn Simulator::new_with_modules(
   // the same reverse index used by ordinary expressions.
   for i, stmt in program {
     let expr = match stmt {
-      SimStmt::Node(name=_, expr~) | SimStmt::Connect(name=_, expr~) => Some(expr)
+      SimStmt::Node(expr~, ..) | SimStmt::Connect(expr~, ..) => Some(expr)
       SimStmt::Other => None
     }
     match expr {
@@ -541,6 +496,8 @@ fn Simulator::new_with_modules(
     design,
     program,
     signals,
+    signal_values,
+    signal_ids,
     registers,
     next_registers,
     memories,
@@ -587,6 +544,40 @@ fn add_dependent(dependents: Map[String, Array[Int]], name: String, index: Int) 
     Some(indices) => if !indices.contains(index) { indices.push(index) }
     None => dependents[name] = [index]
   }
+}
+
+fn simulation_signal_names(design: TypedModule) -> Array[String] {
+  let names: Array[String] = []
+  let seen: Set[String] = Set([])
+  let add = fn(name: String) {
+    if !seen.contains(name) { seen.add(name); names.push(name) }
+  }
+  for port in design.ports { add(port.id.inner()) }
+  for stmt in design.body {
+    match stmt {
+      @firrtl.Stmt::Wire(id~, ..) | @firrtl.Stmt::Node(id~, ..) |
+      @firrtl.Stmt::Reg(id~, ..) | @firrtl.Stmt::RegReset(id~, ..) => add(id.inner())
+      @firrtl.Stmt::Mem(mem) => add(mem.id.inner())
+      @firrtl.Stmt::Inst(id~, sig~, ..) => for port_name, _ in sig.ports { add(id.inner() + "." + port_name) }
+      @firrtl.Stmt::Connect(lhs, _) => add(ref_name(lhs))
+      _ => ()
+    }
+    let refs: Array[String] = []
+    collect_stmt_refs(stmt, refs)
+    for name in refs { add(name) }
+  }
+  names
+}
+
+fn initialize_signal(
+  signals: Map[String, SimValue],
+  values: Array[SimValue],
+  ids: Map[String, Int],
+  name: String,
+  value: SimValue,
+) -> Unit {
+  signals[name] = value
+  if ids.get(name) is Some(id) { values[id] = value }
 }
 
 fn collect_stmt_refs(stmt: @firrtl.TypedStmt, refs: Array[String]) -> Unit {
@@ -650,23 +641,24 @@ fn collect_ref_refs(reference: @firrtl.TypedRef, refs: Array[String]) -> Unit {
   }
 }
 
-fn compile_stmt(stmt: @firrtl.TypedStmt) -> SimStmt {
+fn compile_stmt(stmt: @firrtl.TypedStmt, signal_ids: Map[String, Int]) -> SimStmt {
   match stmt {
-    @firrtl.Stmt::Node(id~, expr~) => SimStmt::Node(name=id.inner(), expr=compile_expr(expr))
+    @firrtl.Stmt::Node(id~, expr~) => SimStmt::Node(id=signal_ids[id.inner()], name=id.inner(), expr=compile_expr(expr, signal_ids))
     @firrtl.Stmt::Connect(lhs, rhs) => {
-      let expr = compile_expr(rhs)
+      let expr = compile_expr(rhs, signal_ids)
       let width = type_width(lhs.ty())
       // Hand-built typed FIRRTL may widen a connection without an explicit pad.
       let expr = if type_signed(rhs.ty()) && width > type_width(rhs.ty()) {
         SimExpr::Prim(op=@firrtl.PrimOp::Pad, args=[expr], width~, signed=true)
       } else { expr }
-      SimStmt::Connect(name=ref_name(lhs), expr~)
+      let name = ref_name(lhs)
+      SimStmt::Connect(id=signal_ids[name], name~, expr~)
     }
     _ => SimStmt::Other
   }
 }
 
-fn compile_commands(design: TypedModule) -> Array[SimCommand] raise SimulatorError {
+fn compile_commands(design: TypedModule, signal_ids: Map[String, Int]) -> Array[SimCommand] raise SimulatorError {
   let commands = []
   for stmt in design.body {
     guard stmt is @firrtl.Stmt::Command(command) else { continue }
@@ -675,10 +667,10 @@ fn compile_commands(design: TypedModule) -> Array[SimCommand] raise SimulatorErr
         let clock = require_clock_source(design, clock_name(clk))
         commands.push({
           clock,
-          enable: compile_expr(en),
+          enable: compile_expr(en, signal_ids),
           action: SimCommandAction::Printf(
             parts=compile_format(fmt, args),
-            args=args.map(arg => (compile_expr(arg), type_signed(arg.ty()))),
+            args=args.map(arg => (compile_expr(arg, signal_ids), type_signed(arg.ty()))),
           ),
         })
       }
@@ -686,17 +678,17 @@ fn compile_commands(design: TypedModule) -> Array[SimCommand] raise SimulatorErr
         let clock = require_clock_source(design, clock_name(clk))
         commands.push({
           clock,
-          enable: compile_expr(en),
+          enable: compile_expr(en, signal_ids),
           action: SimCommandAction::Assert(
-            pred=compile_expr(pred),
+            pred=compile_expr(pred, signal_ids),
             parts=compile_format(fmt, args),
-            args=args.map(arg => (compile_expr(arg), type_signed(arg.ty()))),
+            args=args.map(arg => (compile_expr(arg, signal_ids), type_signed(arg.ty()))),
           ),
         })
       }
       @firrtl.Command::Stop(clk~, en~, code~) => {
         let clock = require_clock_source(design, clock_name(clk))
-        commands.push({ clock, enable: compile_expr(en), action: SimCommandAction::Stop(code~) })
+        commands.push({ clock, enable: compile_expr(en, signal_ids), action: SimCommandAction::Stop(code~) })
       }
     }
   }
@@ -736,20 +728,20 @@ fn primitive_signed(op: PrimOp, args: Array[TypedExpr], ty: Type) -> Bool {
   }
 }
 
-fn compile_expr(expr: @firrtl.TypedExpr) -> SimExpr {
+fn compile_expr(expr: @firrtl.TypedExpr, signal_ids: Map[String, Int]) -> SimExpr {
   match expr {
-    @firrtl.Expr::Reference(reference, ty~) => compile_ref(reference, type_width(ty))
+    @firrtl.Expr::Reference(reference, ty~) => compile_ref(reference, type_width(ty), signal_ids)
     @firrtl.Expr::Literal(lit, ty~) => SimExpr::Literal(value=SimValue::new(type_width(ty), lit.as_bigint()))
     @firrtl.Expr::Mux(cond~, tval~, fval~, ..) => SimExpr::Mux(
-      cond=compile_expr(cond),
-      tval=compile_expr(tval),
-      fval=compile_expr(fval),
+      cond=compile_expr(cond, signal_ids),
+      tval=compile_expr(tval, signal_ids),
+      fval=compile_expr(fval, signal_ids),
     )
     @firrtl.Expr::PrimOp(op~, args~, ty~) => {
       let signed = primitive_signed(op, args, ty)
       SimExpr::Prim(
         op~,
-        args=args.map(compile_expr),
+        args=args.map(arg => compile_expr(arg, signal_ids)),
         width=type_width(ty),
         signed~,
       )
@@ -757,7 +749,7 @@ fn compile_expr(expr: @firrtl.TypedExpr) -> SimExpr {
   }
 }
 
-fn compile_ref(reference: @firrtl.TypedRef, width: Int) -> SimExpr {
+fn compile_ref(reference: @firrtl.TypedRef, width: Int, signal_ids: Map[String, Int]) -> SimExpr {
   match reference {
     @firrtl.Reference::FieldAccess(
       lhs=@firrtl.Reference::FieldAccess(
@@ -773,11 +765,11 @@ fn compile_ref(reference: @firrtl.TypedRef, width: Int) -> SimExpr {
       width~,
     )
     @firrtl.Reference::StaticIndexing(lhs~, index~, ty~) => SimExpr::Slice(
-      source=compile_ref(lhs, type_width(lhs.ty())),
+      source=compile_ref(lhs, type_width(lhs.ty()), signal_ids),
       index~,
       width=type_width(ty),
     )
-    _ => SimExpr::Signal(name=ref_name(reference), width~)
+    _ => SimExpr::Signal(id=signal_ids[ref_name(reference)], width~)
   }
 }
 
@@ -939,15 +931,15 @@ pub fn Simulator::memory_words_examined(self: Simulator) -> Int { self.memory_wo
 
 fn Simulator::eval_combinational_stmt(self: Simulator, stmt: SimStmt) -> Unit raise SimulatorError {
   match stmt {
-    SimStmt::Node(name~, expr~) => {
-      let _ = self.assign_signal(name, self.eval_compiled_expr(expr))
+    SimStmt::Node(id~, name~, expr~) => {
+      let _ = self.assign_signal_id(id, name, self.eval_compiled_expr(expr))
     }
-    SimStmt::Connect(name~, expr~) => {
+    SimStmt::Connect(id~, name~, expr~) => {
       let value = self.eval_compiled_expr(expr)
       if self.registers.contains(name) {
         self.next_registers[name] = value
       } else {
-        let _ = self.assign_signal(name, value)
+        let _ = self.assign_signal_id(id, name, value)
       }
     }
     SimStmt::Other => ()
@@ -956,7 +948,7 @@ fn Simulator::eval_combinational_stmt(self: Simulator, stmt: SimStmt) -> Unit ra
 
 fn Simulator::eval_compiled_expr(self: Simulator, expr: SimExpr) -> SimValue raise SimulatorError {
   match expr {
-    SimExpr::Signal(name~, width~) => self.signals.get(name).unwrap_or(SimValue::new(width, 0, known=false))
+    SimExpr::Signal(id~, width~) => self.signal_values.get(id).unwrap_or(SimValue::new(width, 0, known=false))
     SimExpr::MemoryData(memory~, reader~, width~) => self.eval_memory_data(memory, reader, width)
     SimExpr::Slice(source~, index~, width~) => {
       let value = self.eval_compiled_expr(source)
@@ -1473,10 +1465,18 @@ fn format_hex(value: SimValue) -> String {
 }
 
 fn Simulator::assign_signal(self: Simulator, name: String, value: SimValue) -> Bool {
+  match self.signal_ids.get(name) {
+    Some(id) => self.assign_signal_id(id, name, value)
+    None => false
+  }
+}
+
+fn Simulator::assign_signal_id(self: Simulator, id: Int, name: String, value: SimValue) -> Bool {
   let old = self.signals.get(name).unwrap_or(SimValue::zero(value.width))
   let value = SimValue::with_mask(old.width, value.raw, value.known_mask)
   if old.raw != value.raw || old.known_mask != value.known_mask {
     self.signals[name] = value
+    self.signal_values[id] = value
     self.enqueue_signal(name)
     if self.waveform is Some(trace) && (self.waveform_filter.is_empty() || self.waveform_filter.contains(name)) {
       trace.samples.push({ cycle: self.cycle, signal: name, value })

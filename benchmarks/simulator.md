@@ -22,3 +22,20 @@ separate conservative baseline. For display cases, report simulator cycles
 and framebuffer conversion as separate timings. Generated-input/reference
 comparison tests in `src/lib/tests/simulator_compile.mbt` are the correctness
 oracle before interpreting a performance change.
+
+## Deterministic memory results
+
+The performance regression records words examined by a clock commit, avoiding
+wall-clock noise in CI. On the pinned `v0.10.11+8f8e8db1e` toolchain:
+
+| Depth | Idle edge | One known-address write | Unknown-address write |
+| ---: | ---: | ---: | ---: |
+| 16 | 0 | 1 | 16 |
+| 256 | 0 | 1 | 256 |
+| 4096 | 0 | 1 | 4096 |
+
+Ordinary edges and known-address writes are therefore independent of memory
+depth; only the explicitly conservative unknown-address path visits every
+word. The suite also runs 64 generated cycles through hierarchy, asynchronous
+memory reads, writes, reset, and both schedulers, comparing raw data and every
+validity bit after each settle and edge.

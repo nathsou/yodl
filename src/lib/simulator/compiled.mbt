@@ -3,6 +3,8 @@ struct CompiledModule {
   design: TypedModule
   program: Array[SimStmt]
   commands: Array[SimCommand]
+  signal_names: Array[String]
+  signal_ids: Map[String, Int]
 }
 
 /// Opaque, validated input for execution. Runtime construction allocates only
@@ -45,10 +47,15 @@ fn compile_prepared_simulation_with_models(
       @firrtl.Decl::Module(design) => {
         let design = { ..design, body: order_simulation_body(design.body) }
         validate_simulation_module(design)
+        let signal_names = simulation_signal_names(design)
+        let signal_ids: Map[String, Int] = Map([])
+        for id, name in signal_names { signal_ids[name] = id }
         modules[design.id.inner()] = {
           design,
-          program: design.body.map(compile_stmt),
-          commands: compile_commands(design),
+          program: design.body.map(stmt => compile_stmt(stmt, signal_ids)),
+          commands: compile_commands(design, signal_ids),
+          signal_names,
+          signal_ids,
         }
       }
       @firrtl.Decl::ExtModule(ext) => {
@@ -56,7 +63,10 @@ fn compile_prepared_simulation_with_models(
           raise Unsupported(message="external module '\{ext.id.inner()}' has no simulation model")
         }
         let design: TypedModule = { public: false, id: ext.id, ports: ext.ports, body: [] }
-        modules[ext.id.inner()] = { design, program: [], commands: [] }
+        let signal_names = design.ports.map(port => port.id.inner())
+        let signal_ids: Map[String, Int] = Map([])
+        for id, name in signal_names { signal_ids[name] = id }
+        modules[ext.id.inner()] = { design, program: [], commands: [], signal_names, signal_ids }
       }
     }
   }
