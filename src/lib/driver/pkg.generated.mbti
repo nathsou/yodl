@@ -66,9 +66,19 @@ pub(all) enum Command {
   WriteRTLIL(path~ : String?)
 }
 
+pub(all) struct SimulationConfiguration {
+  top : String
+  clock : String?
+  reset : SimulationResetConfiguration?
+  display : SimulationDisplayConfiguration?
+  cycles_per_frame : Int?
+  clock_hz : Int?
+}
+
 pub(all) struct SimulationDesign {
   circuit : @firrtl.Circuit[@firrtl.Type]
   compiled : @simulator.CompiledSimulation
+  configuration : SimulationConfiguration
   top : String
   displays : Array[SimulationDisplay]
   clock : String?
@@ -83,6 +93,23 @@ pub(all) struct SimulationDisplay {
   height : Int
   bits : Int
   ports : Array[String]
+}
+
+pub(all) struct SimulationDisplayConfiguration {
+  buffer : String?
+  stream : String?
+  width : Int?
+  height : Int?
+  mode : String?
+  packing : String?
+  pixel_scale : Int?
+  on_color : Int?
+  off_color : Int?
+}
+
+pub(all) struct SimulationResetConfiguration {
+  signal : String
+  cycles : Int
 }
 
 // Type aliases

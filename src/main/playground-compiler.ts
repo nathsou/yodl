@@ -225,12 +225,30 @@ export class SimulationSession {
     private inputs: NonNullable<SimulationRequest['inputs']>;
     private options: SimulationRequest;
     constructor(request: CompileRequest) {
-        const metadata = readSimulationMetadata(request, request.simulate?.top);
         const requested = request.simulate ?? {};
+        const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source }, (path, source) => { this.sources[path] = source; });
+        const compiled: any = unwrap(yodl.compile_simulation_design(request.path, { ...ext, fs, println: () => {} }, requested.top === undefined ? { $tag: 0 } : { $tag: 1, _0: requested.top }));
+        const configuration = compiled.configuration;
+        const metadata: SimulationMetadata = {
+            top: configuration.top,
+            clock: configuration.clock,
+            reset: configuration.reset ? { signal: configuration.reset.signal, cycles: configuration.reset.cycles } : undefined,
+            display: configuration.display ? {
+                buffer: configuration.display.buffer,
+                stream: configuration.display.stream,
+                width: configuration.display.width,
+                height: configuration.display.height,
+                valueMode: configuration.display.mode,
+                packing: configuration.display.packing,
+                pixelScale: configuration.display.pixel_scale,
+                onColor: configuration.display.on_color,
+                offColor: configuration.display.off_color,
+            } : undefined,
+            cyclesPerFrame: configuration.cycles_per_frame,
+            clockHz: configuration.clock_hz,
+        };
         this.options = { ...metadata, ...requested, reset: requested.reset ?? metadata?.reset, display: requested.display ?? metadata?.display };
         const options = this.options;
-        const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source }, (path, source) => { this.sources[path] = source; });
-        const compiled: any = unwrap(yodl.compile_simulation_design(request.path, { ...ext, fs, println: () => {} }, options.top === undefined ? { $tag: 0 } : { $tag: 1, _0: options.top }));
         this.design = compiled;
         this.inputs = options.inputs ?? {};
         this.machine = unwrap(yodl.new_compiled_simulation(this.design));

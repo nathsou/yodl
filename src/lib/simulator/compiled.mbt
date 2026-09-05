@@ -53,7 +53,7 @@ fn compile_prepared_simulation_with_models(
       }
       @firrtl.Decl::ExtModule(ext) => {
         if !primitive_models.contains(ext.id.inner()) {
-          raise Unsupported(message="external module '{ext.id.inner()}' has no simulation model")
+          raise Unsupported(message="external module '\{ext.id.inner()}' has no simulation model")
         }
         let design: TypedModule = { public: false, id: ext.id, ports: ext.ports, body: [] }
         modules[ext.id.inner()] = { design, program: [], commands: [] }

@@ -35,7 +35,8 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> Fronte
   let simplified_emitter = @parse.AstEmitter::new()
   for decl in simplified_decls { simplified_emitter.emit_core_decl(decl); simplified_emitter.emit("\n") }
   let simplified_text = simplified_emitter.to_string()
-  let selected_top = match top {
+  let configured_top = match top { Some(name) => Some(name); None => simulation_top_from_package(pkg) }
+  let selected_top = match configured_top {
     Some(top) => top
     None => {
       let candidates = pkg.body.filter_map(decl => match decl {
@@ -55,6 +56,15 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> Fronte
     }
   }
   { pkg, simplified_decls, source_text, mono_text, typed_text, simplified_text, top: selected_top, port_usage: checker.port_usage() }
+}
+
+fn simulation_top_from_package(pkg: @parse.PackageDecl) -> String? {
+  for decl in pkg.body {
+    guard decl is @parse.Decl::Module({ attributes, .. }) else { continue }
+    guard attributes.get("simulation") is Some({ args: [@parse.AttributeValue::Dict(values)], .. }) else { continue }
+    if values.get("top") is Some(@parse.AttributeValue::String(name)) { return Some(name) }
+  }
+  None
 }
 
 pub fn run(
@@ -262,9 +272,36 @@ pub(all) struct SimulationDisplay {
   ports: Array[String]
 }
 
+pub(all) struct SimulationResetConfiguration {
+  signal: String
+  cycles: Int
+}
+
+pub(all) struct SimulationDisplayConfiguration {
+  buffer: String?
+  stream: String?
+  width: Int?
+  height: Int?
+  mode: String?
+  packing: String?
+  pixel_scale: Int?
+  on_color: Int?
+  off_color: Int?
+}
+
+pub(all) struct SimulationConfiguration {
+  top: String
+  clock: String?
+  reset: SimulationResetConfiguration?
+  display: SimulationDisplayConfiguration?
+  cycles_per_frame: Int?
+  clock_hz: Int?
+}
+
 pub(all) struct SimulationDesign {
   circuit: @firrtl.TypedCircuit
   compiled: @simulator.CompiledSimulation
+  configuration: SimulationConfiguration
   top: String
   displays: Array[SimulationDisplay]
   clock: String?
@@ -293,7 +330,73 @@ pub fn compile_simulation_design(path~: String, ext~: @utils.Externals, top~: St
     if key == "reset" { reset = Some(value) }
   }
   let compiled = @simulator.compile_prepared_simulation(circuit, selected_top)
-  { circuit, compiled, top: selected_top, displays, clock, reset, reset_cycles }
+  let configuration = typed_simulation_configuration(metadata, selected_top)
+  { circuit, compiled, configuration, top: selected_top, displays, clock, reset, reset_cycles }
+}
+
+fn metadata_string(metadata: Array[(String, String)], key: String) -> String? {
+  for item in metadata { let (item_key, value) = item; if item_key == key { return Some(value) } }
+  None
+}
+
+fn metadata_int(metadata: Array[(String, String)], key: String) -> Int? raise {
+  guard metadata_string(metadata, key) is Some(value) else { return None }
+  let mut result = 0
+  if value.is_empty() { raise Failure::Failure("@simulation option '\{key}' must be an integer") }
+  for char in value {
+    if char < '0' || char > '9' { raise Failure::Failure("@simulation option '\{key}' must be a non-negative integer") }
+    result = result * 10 + char.to_int() - '0'.to_int()
+  }
+  Some(result)
+}
+
+fn typed_simulation_configuration(metadata: Array[(String, String)], fallback_top: String) -> SimulationConfiguration raise {
+  let location = metadata_string(metadata, "location").unwrap_or("@simulation")
+  let buffer = metadata_string(metadata, "display.buffer")
+  let stream = metadata_string(metadata, "display.stream")
+  if buffer is Some(_) && stream is Some(_) { raise Failure::Failure("Choose either display.buffer or display.stream at \{location}") }
+  let display_width = metadata_int(metadata, "display.width")
+  let display_height = metadata_int(metadata, "display.height")
+  let pixel_scale = metadata_int(metadata, "display.pixel_scale")
+  for item in [("display.width", display_width), ("display.height", display_height), ("display.pixel_scale", pixel_scale)] {
+    let (name, value) = item
+    if value is Some(value) && value <= 0 { raise Failure::Failure("@simulation option '\{name}' must be positive at \{location}") }
+  }
+  let mode = metadata_string(metadata, "display.mode")
+  if mode is Some(value) && !["binary", "gray", "rgb"].contains(value) { raise Failure::Failure("display.mode must be binary, gray, or rgb at \{location}") }
+  let packing = metadata_string(metadata, "display.packing")
+  if packing is Some(value) && !["bits", "bits32", "rgb332x4"].contains(value) { raise Failure::Failure("unsupported display.packing at \{location}") }
+  if packing is Some(_) && (display_width is None || display_height is None) { raise Failure::Failure("explicit display packing requires width and height at \{location}") }
+  let display = if buffer is Some(_) || stream is Some(_) {
+    Some({
+      buffer,
+      stream,
+      width: display_width,
+      height: display_height,
+      mode,
+      packing,
+      pixel_scale,
+      on_color: metadata_int(metadata, "display.on_color"),
+      off_color: metadata_int(metadata, "display.off_color"),
+    })
+  } else { None }
+  let reset_signal = match metadata_string(metadata, "reset.signal") {
+    Some(signal) => Some(signal)
+    None => metadata_string(metadata, "reset")
+  }
+  let reset = reset_signal.map(signal => ({ signal, cycles: metadata_int(metadata, "reset.cycles").unwrap_or(1) } : SimulationResetConfiguration))
+  let cycles_per_frame = metadata_int(metadata, "cycles_per_frame")
+  let clock_hz = metadata_int(metadata, "clock_hz")
+  if cycles_per_frame is Some(value) && value <= 0 { raise Failure::Failure("cycles_per_frame must be positive at \{location}") }
+  if clock_hz is Some(value) && value <= 0 { raise Failure::Failure("clock_hz must be positive at \{location}") }
+  {
+    top: metadata_string(metadata, "top").unwrap_or(metadata_string(metadata, "module").unwrap_or(fallback_top)),
+    clock: metadata_string(metadata, "clock"),
+    reset,
+    display,
+    cycles_per_frame,
+    clock_hz,
+  }
 }
 
 /// Construct a browser simulator in the same linked module that prepared the

@@ -276,9 +276,9 @@ fn validate_simulation_module(design: TypedModule) -> Unit raise SimulatorError 
         let _ = require_clock_source(design, clock_name(clock))
       }
       @firrtl.Stmt::Mem(mem) => {
-        if mem.depth <= 0 { raise Unsupported(message="memory '{mem.id.inner()}' must have positive depth") }
+        if mem.depth <= 0 { raise Unsupported(message="memory '\{mem.id.inner()}' must have positive depth") }
         if mem.read_latency < 0 || mem.read_latency > 1 || mem.write_latency != 1 {
-          raise Unsupported(message="memory '{mem.id.inner()}' requires read latency 0 or 1 and write latency 1")
+          raise Unsupported(message="memory '\{mem.id.inner()}' requires read latency 0 or 1 and write latency 1")
         }
         for reader in mem.readers + mem.readwriters {
           let _ = require_clock_source(design, mem.id.inner() + "." + reader.inner() + ".clk")
@@ -415,7 +415,7 @@ fn Simulator::new_with_modules(
       @firrtl.Stmt::Mem(mem) => {
         let id = mem.id.inner()
         if mem.read_latency < 0 || mem.read_latency > 1 || mem.write_latency != 1 {
-          raise Unsupported(message="memory '{id}' requires read latency 0 or 1 and write latency 1")
+          raise Unsupported(message="memory '\{id}' requires read latency 0 or 1 and write latency 1")
         }
         let width = type_width(mem.data_type)
         let data = Array::new(capacity=mem.depth)
@@ -467,12 +467,12 @@ fn Simulator::new_with_modules(
               compiled_modules[of.inner()] = { design: synthetic, program: [], commands: [] }
               synthetic
             }
-            None => raise Unsupported(message="external or unknown module '{of.inner()}' has no simulation model")
+            None => raise Unsupported(message="external or unknown module '\{of.inner()}' has no simulation model")
           }
         }
         let model = primitive_models.get(of.inner())
         if child_design.body.is_empty() && model is None {
-          raise Unsupported(message="external module '{of.inner()}' has no simulation model")
+          raise Unsupported(message="external module '\{of.inner()}' has no simulation model")
         }
         children[instance] = Simulator::new_with_modules(
           child_design,
@@ -1168,7 +1168,7 @@ fn clock_source(design: TypedModule, instance: String, port: String) -> String? 
 fn require_clock_source(design: TypedModule, target: String) -> String raise SimulatorError {
   match find_signal_source(design, target) {
     Some(clock) => clock
-    None => raise Unsupported(message="clock '{target}' must be driven by a direct input clock or alias; derived clocks are not supported")
+    None => raise Unsupported(message="clock '\{target}' must be driven by a direct input clock or alias; derived clocks are not supported")
   }
 }
 
