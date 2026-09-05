@@ -1932,6 +1932,12 @@ pub fn simulator_exit_code(simulator: Simulator) -> Int {
   simulator.exit_code().unwrap_or(-1)
 }
 
+/// Lossless host representation; unlike the legacy -1 sentinel this
+/// preserves every signed FIRRTL stop code.
+pub fn simulator_exit_codes(simulator: Simulator) -> Array[Int] {
+  simulator.exit_code().map(code => [code]).unwrap_or([])
+}
+
 pub fn simulator_set_history_retention(simulator: Simulator, retain: Bool) -> Unit {
   simulator.set_history_retention(retain)
 }

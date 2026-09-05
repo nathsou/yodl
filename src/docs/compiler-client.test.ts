@@ -432,6 +432,14 @@ test('batch status distinguishes assertion failure and nonzero stop', () => {
     expect(result.simulation!.events).toContainEqual(expect.objectContaining({ kind: 'assert_failure' }));
 });
 
+test('structured status preserves negative stop codes without a sentinel collision', () => {
+    const result = compile({ ...request, id: 9720, source: `module Top(clk: clock) -> () {
+    stop!(-1)
+}`, simulate: {} });
+    expect(result.error).toBeUndefined();
+    expect(result.simulation!.status).toMatchObject({ halted: true, failed: false, exit_code: -1 });
+});
+
 test('batch framebuffer capture retains outcomes from later frames', () => {
     const result = compile({ ...request, id: 9721, source: `@simulation({display: {buffer: "pixel"}})
 module Top(clk: clock, predicate: bool) -> (pixel: [1][1]u8) {

@@ -21,6 +21,8 @@ pub fn host_simulator_drain_events(@simulator.Simulator) -> Array[@simulator.Sim
 
 pub fn host_simulator_exit_code(@simulator.Simulator) -> Int
 
+pub fn host_simulator_exit_codes(@simulator.Simulator) -> Array[Int]
+
 pub fn host_simulator_frame(@simulator.Simulator, Array[String], Int, Int, Bool, Bool) -> @simulator.SimulatorFrame raise
 
 pub fn host_simulator_halted(@simulator.Simulator) -> Bool

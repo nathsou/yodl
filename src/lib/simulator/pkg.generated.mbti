@@ -22,6 +22,8 @@ pub fn simulator_drain_events(Simulator) -> Array[SimMessage]
 
 pub fn simulator_exit_code(Simulator) -> Int
 
+pub fn simulator_exit_codes(Simulator) -> Array[Int]
+
 pub fn simulator_frame(Simulator, Array[String], Int, Int, Bool) -> SimulatorFrame raise SimulatorError
 
 pub fn simulator_frame_with_layout(Simulator, Array[String], Int, Int, packed_rows~ : Bool, binary~ : Bool) -> SimulatorFrame raise SimulatorError

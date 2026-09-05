@@ -416,6 +416,7 @@ pub fn host_simulator_clocks(sim: @simulator.Simulator) -> Array[String] { @simu
 pub fn host_simulator_drain_events(sim: @simulator.Simulator) -> Array[@simulator.SimMessage] { @simulator.simulator_drain_events(sim) }
 pub fn host_simulator_status(sim: @simulator.Simulator) -> @simulator.SimulationStatus { @simulator.simulator_status(sim) }
 pub fn host_simulator_exit_code(sim: @simulator.Simulator) -> Int { @simulator.simulator_exit_code(sim) }
+pub fn host_simulator_exit_codes(sim: @simulator.Simulator) -> Array[Int] { @simulator.simulator_exit_codes(sim) }
 pub fn host_simulator_set_history_retention(sim: @simulator.Simulator, retain: Bool) -> Unit { @simulator.simulator_set_history_retention(sim, retain) }
 pub fn host_simulator_output_signals(sim: @simulator.Simulator) -> Array[@simulator.SimulatorSignal] { @simulator.simulator_output_signals(sim) }
 pub fn host_simulator_inputs(sim: @simulator.Simulator) -> Array[@simulator.SimulatorSignal] { @simulator.simulator_inputs(sim) }

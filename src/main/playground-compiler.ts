@@ -8,7 +8,7 @@ const {
     host_simulator_settle: simulator_settle,
     host_simulator_drain_events: simulator_drain_events,
     host_simulator_status: simulator_status,
-    host_simulator_exit_code: simulator_exit_code,
+    host_simulator_exit_codes: simulator_exit_codes,
     host_simulator_set_history_retention: simulator_set_history_retention,
     host_simulator_output_signals: simulator_output_signals,
     host_simulator_inputs: simulator_inputs,
@@ -359,12 +359,13 @@ export class SimulationSession {
         const events = (simulator_drain_events(this.machine) as any[]).map(normalizeEvent);
         const messages = events.map(event => event.text);
         const rawStatus: any = simulator_status(this.machine);
+        const exitCodes = simulator_exit_codes(this.machine) as number[];
         if (!this.firstFailure) this.firstFailure = events.find(event => event.kind === 'assert_failure' || event.kind === 'assert_unknown');
         const firstFailure = this.firstFailure;
         const status: SimulationStatus = {
             halted: rawStatus.halted,
             failed: rawStatus.failed,
-            ...(simulator_exit_code(this.machine) >= 0 ? { exit_code: simulator_exit_code(this.machine) } : {}),
+            ...(exitCodes.length ? { exit_code: exitCodes[0] } : {}),
             ...(firstFailure ? { first_failure: firstFailure } : {}),
         };
         const unknown = frames.reduce((n, frame) => n + (frame.valid?.filter(word => word === 0).length ?? 0), 0);
