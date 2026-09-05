@@ -209,6 +209,7 @@ pub struct Simulator {
   child_message_offsets: Map[String, Int]
   memory_clocks: Map[String, String]
   mut cycle: Int
+  mut last_evaluations: Int
   mut waveform: Waveform?
   mut waveform_filter: Array[String]
   // A reverse dependency index lets settle() revisit only statements affected
@@ -450,7 +451,7 @@ fn Simulator::new_with_modules(
         if memory.read_latency != 0 { continue }
         for reader in memory.readers + memory.readwriters {
           let port = memory_id + "." + reader
-          if name == port + ".data" || name == port + ".rdata" {
+          if name == port + ".data" || name == port + ".rdata" || name.has_prefix(memory_id + ".") {
             for control in ["addr", "en", "wmode"] {
               add_dependent(dependents, port + "." + control, i)
             }
@@ -461,6 +462,28 @@ fn Simulator::new_with_modules(
     // All combinational statements are evaluated once on the first settle.
     pending.push(i)
     queued[i] = true
+  }
+
+  // Compiled memory reads are represented as MemoryData expressions rather
+  // than ordinary signal references. Add their implicit data dependency to
+  // the same reverse index used by ordinary expressions.
+  for i, stmt in program {
+    let expr = match stmt {
+      SimStmt::Node(name=_, expr~) | SimStmt::Connect(name=_, expr~) => Some(expr)
+      SimStmt::Other => None
+    }
+    match expr {
+      Some(expr) => {
+        let memory_reads: Array[(String, String)] = []
+        collect_sim_memory_refs(expr, memory_reads)
+        for pair in memory_reads {
+          let (memory, reader) = pair
+          add_dependent(dependents, memory + "." + reader + ".data", i)
+          add_dependent(dependents, memory + "." + reader + ".rdata", i)
+        }
+      }
+      None => ()
+    }
   }
 
   {
@@ -483,6 +506,7 @@ fn Simulator::new_with_modules(
     child_message_offsets,
     memory_clocks,
     cycle: 0,
+    last_evaluations: 0,
     waveform: None,
     waveform_filter: [],
     dependents,
@@ -490,6 +514,20 @@ fn Simulator::new_with_modules(
     queued,
     primitive_model,
     commands,
+  }
+}
+
+fn collect_sim_memory_refs(expr: SimExpr, refs: Array[(String, String)]) -> Unit {
+  match expr {
+    SimExpr::MemoryData(memory~, reader~, ..) => refs.push((memory, reader))
+    SimExpr::Slice(source~, ..) => collect_sim_memory_refs(source, refs)
+    SimExpr::Mux(cond~, tval~, fval~) => {
+      collect_sim_memory_refs(cond, refs)
+      collect_sim_memory_refs(tval, refs)
+      collect_sim_memory_refs(fval, refs)
+    }
+    SimExpr::Prim(args~, ..) => for arg in args { collect_sim_memory_refs(arg, refs) }
+    SimExpr::Signal(..) | SimExpr::Literal(..) => ()
   }
 }
 
@@ -778,17 +816,18 @@ pub fn Simulator::peek(self: Simulator, name: String) -> SimValue raise Simulato
 /// allowing a malformed design to hang a testbench or browser worker.
 pub fn Simulator::settle(self: Simulator) -> Unit raise SimulatorError {
   if self.halted { return }
-  self.settle_pending()
+  self.settle_pending(false)
 }
 
-fn Simulator::settle_pending(self: Simulator) -> Unit raise SimulatorError {
-  // The normalized program has a deterministic producer order. Evaluate every
-  // combinational node at the start of a public settle rather than depending
-  // on ad-hoc dependency exceptions for memory controls or model inputs.
-  // The reverse index remains useful for follow-up propagation within this
-  // sweep, after a register, asynchronous reset, or child output changes.
-  for index in 0..<self.program.length() {
-    self.enqueue_statement(index)
+/// Deterministic reference executor used by equivalence tests and debugging.
+/// It intentionally sweeps the complete validated program.
+pub fn Simulator::settle_reference(self: Simulator) -> Unit raise SimulatorError {
+  self.settle_pending(true)
+}
+
+fn Simulator::settle_pending(self: Simulator, force_all: Bool) -> Unit raise SimulatorError {
+  if force_all {
+    for index in 0..<self.program.length() { self.enqueue_statement(index) }
   }
   let mut evaluated = 0
   while true {
@@ -811,7 +850,10 @@ fn Simulator::settle_pending(self: Simulator) -> Unit raise SimulatorError {
     let child_changed = self.settle_children()
     if self.pending.length() == 0 && !child_changed { break }
   }
+  self.last_evaluations = evaluated
 }
+
+pub fn Simulator::last_evaluations(self: Simulator) -> Int { self.last_evaluations }
 
 fn Simulator::eval_combinational_stmt(self: Simulator, stmt: SimStmt) -> Unit raise SimulatorError {
   match stmt {
@@ -978,7 +1020,7 @@ fn Simulator::commit_clocks(self: Simulator, clocks: Array[String]) -> Unit rais
     let _ = self.assign_signal(name, value)
   }
   // A stop command still completes its triggering edge and output propagation.
-  self.settle_pending()
+  self.settle_pending(false)
 }
 
 fn Simulator::commit_children(self: Simulator, clocks: Array[String]) -> Unit raise SimulatorError {
@@ -1067,6 +1109,8 @@ fn find_signal_source(design: TypedModule, target: String) -> String? {
 fn Simulator::commit_memories(self: Simulator, clocks: Array[String]) -> Unit {
   for id, memory in self.memories {
     let prefix = id + "."
+    let mut memory_changed = false
+    let mut read_changed = false
     let writes: Array[MemoryWrite] = []
     for writer in memory.writers + memory.readwriters {
       let port = prefix + writer
@@ -1103,18 +1147,65 @@ fn Simulator::commit_memories(self: Simulator, clocks: Array[String]) -> Unit {
         } else {
           SimValue::new(memory.width, 0, known=false)
         }
+        let old_read = memory.read_data.get(reader)
+        if old_read is None || old_read.unwrap().raw != value.raw || old_read.unwrap().known_mask != value.known_mask {
+          read_changed = true
+        }
         memory.read_data[reader] = value
       }
     }
 
-    for address in 0..<memory.depth {
-      let matching = writes.filter(w => w.address is None || w.address == Some(address))
-      if !matching.is_empty() {
-        memory.data[address] = resolve_writes(memory.data[address], matching, memory.width)
+    if writes.is_empty() {
+      for reader in memory.readers { self.enqueue_signal(prefix + reader + ".data") }
+      for reader in memory.readwriters { self.enqueue_signal(prefix + reader + ".rdata") }
+      if read_changed {
+        for reader in memory.readers { self.enqueue_signal(prefix + reader + ".data") }
+        for reader in memory.readwriters { self.enqueue_signal(prefix + reader + ".rdata") }
+      }
+      continue
+    }
+    let grouped: Map[Int, Array[MemoryWrite]] = Map([])
+    let unknown_address: Array[MemoryWrite] = []
+    for write in writes {
+      match write.address {
+        Some(address) => {
+          match grouped.get(address) {
+            Some(existing) => existing.push(write)
+            None => grouped[address] = [write]
+          }
+        }
+        None => unknown_address.push(write)
       }
     }
-    for reader in memory.readers { self.enqueue_signal(prefix + reader + ".data") }
-    for reader in memory.readwriters { self.enqueue_signal(prefix + reader + ".rdata") }
+    for address, matching in grouped {
+      let all = if unknown_address.is_empty() { matching } else { matching + unknown_address }
+      let old = memory.data[address]
+      let next = resolve_writes(old, all, memory.width)
+      memory_changed = memory_changed || old.raw != next.raw || old.known_mask != next.known_mask
+      memory.data[address] = next
+    }
+    if !unknown_address.is_empty() {
+      for address in 0..<memory.depth {
+        if !grouped.contains(address) {
+          let old = memory.data[address]
+          let next = resolve_writes(old, unknown_address, memory.width)
+          memory_changed = memory_changed || old.raw != next.raw || old.known_mask != next.known_mask
+          memory.data[address] = next
+        }
+      }
+    }
+    if memory_changed || read_changed {
+      for reader in memory.readers { self.enqueue_signal(prefix + reader + ".data") }
+      for reader in memory.readwriters { self.enqueue_signal(prefix + reader + ".rdata") }
+    }
+    // Memory contents are an implicit dependency of every compiled read
+    // expression. Keep this explicit index so incremental settling does not
+    // fall back to a whole-program sweep after a write.
+    for dependency, indices in self.dependents {
+      if memory_changed && dependency.has_prefix(prefix) {
+        for index in indices { self.enqueue_statement(index) }
+      }
+    }
   }
 }
 

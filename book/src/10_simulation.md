@@ -4,7 +4,9 @@ Yodl's simulator executes the normalized, typed FIRRTL produced by the
 compiler. It is intended for deterministic testbenches and for interactive
 playground tools; it does not model gate delays or analogue timing.
 
-The low-level API accepts a compiled FIRRTL module:
+The low-level API accepts typed FIRRTL and prepares it into an executable
+design. `Simulator::from_circuit` remains a compatibility wrapper; hosts that
+run multiple instances should prepare once and reuse the compiled design:
 
 ```moonbit
 let sim = @simulator.Simulator::from_circuit(circuit, "Top")
@@ -26,12 +28,28 @@ tb.expect("done", @simulator.SimValue::from_int(1, 1))
 Values are arbitrary-width packed integers. A value can be marked unknown with
 `SimValue::new(..., known=false)`; unreset registers and uninitialised memory
 locations start unknown. This prevents a test from accidentally relying on an
-implicit zero initialisation.
+implicit zero initialisation. Unknownness is tracked per bit and unknown
+backing bits are canonicalized. `is_known()` is true only when every valid bit
+is known; extraction, concatenation, shifts, bitwise operations, masked writes,
+and muxes preserve bits that can be proven known. Arithmetic uses a documented
+conservative whole-result rule.
 
-The simulator settles combinational connections between clock events, commits
+`poke` changes an input and `settle` reaches a stable combinational result,
+including asynchronous reset effects, without advancing a cycle. A rising
+edge samples register inputs, memory controls, and clocked commands from one
+settled state. Register and memory updates become visible together, followed
+by another settle; a `stop!` completes its triggering edge. The simulator
+settles combinational connections between clock events, commits
 registers and synchronous memories together on a rising edge, and executes
 clocked `printf!`, `assert!`, and `stop!` commands. A combinational loop or an
 external module without a registered simulation model is reported as an error.
+
+Clocked commands require a real input clock (direct aliases are allowed;
+derived clocks are rejected). Constant assertions are folded at compile time.
+Unsupported memory latencies and unsupported indexing fail during preparation.
+Outcomes expose persistent assertion failure separately from halting and
+preserve nonzero stop codes. `drain_events()` returns typed printf/assertion
+events incrementally; native testbenches may opt into full history.
 
 For long-running tests, the evaluator compiles typed FIRRTL into a small
 SimIR worklist. Only statements affected by a changed input, register, memory,
@@ -99,9 +117,9 @@ The simulation lowering keeps each boolean row as a packed value, combines
 its bit writes, and uses bit slices for reads. Registers and connections
 execute on those packed rows. The host reads them directly as `Uint32Array`
 words with `ceil(width / 32)` words per row; trailing bits are padding.
-The worker transfers those buffers with validity information instead of
-exporting one decimal string per pixel. Validity is conservative at the row
-level: if any bit is unknown, the row can be shown as unknown.
+The worker transfers a matching validity mask instead of exporting one decimal
+string per pixel, so an unknown bit affects only its corresponding pixel rather
+than the entire packed row.
 
 Other unsigned element types default to RGB integers (`0xRRGGBB`). Use
 `display: { buffer: "image", mode: "gray" }` for grayscale or set `on_color`
@@ -133,7 +151,9 @@ bits. The host samples a valid pixel before each rising edge. A return to
 valid coordinate `(0, 0)` marks the next frame; blanking cycles still execute
 but do not paint pixels. Dimensions describe the active image, so blanking
 and counter widths need not match them. Pixels not yet captured are shown in
-magenta.
+magenta. The compiler resolves `x`, `y`, `valid`, and color channels through
+the typed lowering table, so a source output such as `video_x` cannot collide
+with the actual stream field binding.
 
 The panel uses one persistent worker session for Run, Pause, Resume, input
 edits, and manual steps. Changing an input settles the circuit and refreshes
@@ -149,8 +169,11 @@ drafts, and sharing while you browse. Save downloads the file you are viewing.
 Step cycle advances one clock. For arrays, Step frame advances
 `cycles_per_frame` (default one). Declare it only when a complete frame needs
 multiple cycles; it must be a positive integer. For streams, Step frame runs
-until the next frame boundary. Execution is divided into bounded chunks so
-Pause can interrupt a long frame step.
+until the next frame boundary and reports the actual cycles advanced. Batch
+capture completes the first stream frame before returning its first image.
+Execution is divided into bounded chunks so Pause can interrupt a long frame
+step; reaching the bounded budget without a frame boundary produces a specific
+diagnostic.
 
 `clock_hz` sets the target simulation speed. Without it, clocked array and
 scalar designs default to 30 cycles per second; pixel streams run as fast as
@@ -189,7 +212,11 @@ display: {
 packed pixel into a square block when decoding. Prefer logical arrays for
 new hardware: execution and transfer packing then remain internal.
 Batch capture is available through the compiler API for deterministic tests
-and snapshot generation.
+and snapshot generation. Normal settles use an incremental dependency
+worklist; a deterministic full sweep is available as a reference oracle.
+Known-address memory writes are grouped by word, while unknown addresses use
+a separate conservative path instead of scanning memory for every ordinary
+write.
 
 ## JavaScript and WebAssembly hosts
 

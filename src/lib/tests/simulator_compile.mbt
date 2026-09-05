@@ -509,6 +509,28 @@ test "compiled simulation programs can construct independent instances" {
   assert_eq(second.cycle(), 1)
 }
 
+test "reference and incremental settling agree while unrelated logic stays cold" {
+  let source =
+    #|module Top(a: u8, b: u8) -> (left: u8, right: u8) {
+    #|  left = a + 1
+    #|  right = b + 2
+    #|}
+  let incremental = compile_test_simulator(source)
+  let reference = compile_test_simulator(source)
+  incremental.settle()
+  reference.settle_reference()
+  incremental.poke("a", @simulator.SimValue::from_int(8, 7))
+  reference.poke("a", @simulator.SimValue::from_int(8, 7))
+  incremental.settle()
+  reference.settle_reference()
+  assert_eq(incremental.peek("left").as_bigint(), reference.peek("left").as_bigint())
+  assert_eq(incremental.peek("right").as_bigint(), reference.peek("right").as_bigint())
+  assert_true(incremental.last_evaluations() < reference.last_evaluations())
+  incremental.poke("a", @simulator.SimValue::from_int(8, 8))
+  incremental.settle()
+  assert_eq(incremental.peek("right").as_bigint(), reference.peek("right").as_bigint())
+}
+
 test "simulation compilation rejects clockless runtime commands at their span" {
   for command in ["printf!(\"checked\")", "assert!(input)"] {
     let source = "module Top(input: bool) -> () {\n  " + command + "\n}\n"
