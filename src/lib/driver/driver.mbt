@@ -1,138 +1,112 @@
+priv struct FrontendPipeline {
+  pkg: @parse.PackageDecl
+  simplified_decls: Array[@parse.CoreDecl]
+  source_text: String
+  mono_text: String
+  typed_text: String
+  simplified_text: String
+  top: String
+  port_usage: @parse.PortUsage
+}
+
+fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> FrontendPipeline raise {
+  if !path.has_suffix(".yodl") { raise Failure::Failure("Input file must have a .yodl extension") }
+  let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs=ext.fs)
+  let pkg = try resolver.resolve(path~, is_top_package=true) catch { err => raise Failure::Failure("\{err}") }
+  let source_emitter = @parse.AstEmitter::new()
+  for decl in pkg.body { source_emitter.emit_decl(decl); source_emitter.emit("\n") }
+  let source_text = source_emitter.to_string()
+  let monomorphizer = @simplify.Monomorphizer::new()
+  let mono_decls = try monomorphizer.monomorphize(decls=pkg.body, packages=[]) catch { err => raise Failure::Failure(err.to_string()) }
+  let mono_emitter = @parse.AstEmitter::new()
+  for decl in mono_decls { mono_emitter.emit_decl(decl); mono_emitter.emit("\n") }
+  let mono_text = mono_emitter.to_string()
+  let checker = @elaborate.TypeChecker::new()
+  let resolved_decls = Array::new(capacity=mono_decls.length())
+  for decl in mono_decls {
+    let resolved = try checker.check_decl(decl) catch { err => raise Failure::Failure(err.to_string()) }
+    resolved_decls.push(resolved)
+  }
+  try checker.finalize() catch { err => raise Failure::Failure(err.to_string()) }
+  let typed_emitter = @parse.AstEmitter::new(show_expr_types=true)
+  for decl in resolved_decls { typed_emitter.emit_decl(decl); typed_emitter.emit("\n") }
+  let typed_text = typed_emitter.to_string()
+  let simplified_decls = @simplify.simplify_decls(resolved_decls)
+  let simplified_emitter = @parse.AstEmitter::new()
+  for decl in simplified_decls { simplified_emitter.emit_core_decl(decl); simplified_emitter.emit("\n") }
+  let simplified_text = simplified_emitter.to_string()
+  let selected_top = match top {
+    Some(top) => top
+    None => {
+      let candidates = pkg.body.filter_map(decl => match decl {
+        @parse.Decl::Module({ path, params: [], .. }) => Some(path)
+        _ => None
+      }).filter(path => !monomorphizer.instanciated_modules.contains(path))
+      match candidates {
+        [] => raise Failure::Failure("No top-level module found")
+        [top] => top.elem
+        _ => if candidates.contains(@parse.Path::new([], "Top")) {
+          "Top"
+        } else {
+          let names = candidates.iter().map(path => path.to_string()).join(", ")
+          raise Failure::Failure("Multiple top-level modules found: [\{names}], remove extraneous uninstanciated modules or rename the top module to `Top`")
+        }
+      }
+    }
+  }
+  { pkg, simplified_decls, source_text, mono_text, typed_text, simplified_text, top: selected_top, port_usage: checker.port_usage() }
+}
+
 pub fn run(
   path~ : String,
   commands~ : Array[Command],
   ext~ : @utils.Externals,
 ) -> Unit raise {
-  if !path.has_suffix(".yodl") {
-    raise Failure::Failure("Input file must have a .yodl extension")
-  }
-
   let fs = ext.fs
-  let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs~)
-  let pkg = try resolver.resolve(path~, is_top_package=true) catch {
-    err => raise Failure::Failure("\{err}")
-  }
+  let frontend = prepare_frontend(path, ext, None)
 
   for cmd in commands {
     if cmd is WriteSource(path~) {
-      let emitter = @parse.AstEmitter::new()
-
-      for decl in pkg.body {
-        emitter.emit_decl(decl)
-        emitter.emit("\n")
-      }
-
-      let source = emitter.to_string()
-
       match path {
-        Some(path) => (fs.write_string_to_file)(path, source)
-        None => (ext.println)(source)
+        Some(path) => (fs.write_string_to_file)(path, frontend.source_text)
+        None => (ext.println)(frontend.source_text)
       }
     }
-  }
-
-  let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = try monomorphizer.monomorphize(decls=pkg.body, packages=[]) catch {
-    err => raise Failure::Failure(err.to_string())
   }
 
   for cmd in commands {
     if cmd is WriteMono(path~) {
-      let emitter = @parse.AstEmitter::new()
-
-      for decl in mono_decls {
-        emitter.emit_decl(decl)
-        emitter.emit("\n")
-      }
-
-      let mono = emitter.to_string()
-
       match path {
-        Some(path) => (fs.write_string_to_file)(path, mono)
-        None => (ext.println)(mono)
+        Some(path) => (fs.write_string_to_file)(path, frontend.mono_text)
+        None => (ext.println)(frontend.mono_text)
       }
     }
-  }
-
-  let checker = @elaborate.TypeChecker::new()
-  let resolved_decls = Array::new(capacity=mono_decls.length())
-
-  for decl in mono_decls {
-    let resolved = try checker.check_decl(decl) catch {
-      err => raise Failure::Failure(err.to_string())
-    }
-    resolved_decls.push(resolved)
-  }
-
-  try checker.finalize() catch {
-    err => raise Failure::Failure(err.to_string())
   }
 
   for cmd in commands {
     if cmd is WriteTyped(path~) {
-      let emitter = @parse.AstEmitter::new(show_expr_types=true)
-
-      for decl in resolved_decls {
-        emitter.emit_decl(decl)
-        emitter.emit("\n")
-      }
-
       match path {
-        Some(path) => (fs.write_string_to_file)(path, emitter.to_string())
-        None => (ext.println)(emitter.to_string())
+        Some(path) => (fs.write_string_to_file)(path, frontend.typed_text)
+        None => (ext.println)(frontend.typed_text)
       }
     }
   }
 
-  let simplified_decls = @simplify.simplify_decls(resolved_decls)
+  let simplified_decls = frontend.simplified_decls
 
   for cmd in commands {
     if cmd is WriteSimplified(path~) {
-      let emitter = @parse.AstEmitter::new()
-
-      for decl in simplified_decls {
-        emitter.emit_core_decl(decl)
-        emitter.emit("\n")
-      }
-
-      let simplified = emitter.to_string()
-
       match path {
-        Some(path) => (fs.write_string_to_file)(path, simplified)
-        None => (ext.println)(simplified)
+        Some(path) => (fs.write_string_to_file)(path, frontend.simplified_text)
+        None => (ext.println)(frontend.simplified_text)
       }
     }
   }
 
-  let top = {
-    let top_level_pkg_modules = pkg.body.filter_map(decl => {
-      match decl {
-        Module({ path, params: [], .. }) => Some(path)
-        _ => None
-      }
-    })
-
-    let top_candidates = top_level_pkg_modules.filter(path => {
-      !monomorphizer.instanciated_modules.contains(path)
-    })
-
-    match top_candidates {
-      [] => raise Failure::Failure("No top-level module found")
-      [top] => top.elem
-      _ =>
-        if top_candidates.contains(@parse.Path::new([], "Top")) {
-          "Top"
-        } else {
-          let top_str = top_candidates.iter().map(p => p.to_string()).join(", ")
-          raise Failure::Failure(
-            "Multiple top-level modules found: [\{top_str}], remove extraneous uninstanciated modules or rename the top module to `Top`",
-          )
-        }
-    }
-  }
+  let top = frontend.top
 
   let firrtl = {
-    let low = @elaborate.Elaborator::new(top, port_usage=checker.port_usage())
+    let low = @elaborate.Elaborator::new(top, port_usage=frontend.port_usage)
 
     try low.lower(simplified_decls.iter()) catch {
       err => raise Failure::Failure(err.to_string())
@@ -211,56 +185,18 @@ pub fn compile_simulation(
   displays~: Array[SimulationDisplay] = [],
   stream~: String? = None,
 ) -> @firrtl.TypedCircuit raise {
-  if !path.has_suffix(".yodl") {
-    raise Failure::Failure("Input file must have a .yodl extension")
-  }
+  let frontend = prepare_frontend(path, ext, top)
+  compile_simulation_frontend(frontend, displays~, stream~)
+}
 
-  let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs=ext.fs)
-  let pkg = try resolver.resolve(path~, is_top_package=true) catch {
-    err => raise Failure::Failure("\{err}")
-  }
-  let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = try monomorphizer.monomorphize(decls=pkg.body, packages=[]) catch {
-    err => raise Failure::Failure(err.to_string())
-  }
-  let checker = @elaborate.TypeChecker::new()
-  let resolved_decls = Array::new(capacity=mono_decls.length())
-  for decl in mono_decls {
-    let resolved = try checker.check_decl(decl) catch {
-      err => raise Failure::Failure(err.to_string())
-    }
-    resolved_decls.push(resolved)
-  }
-  try checker.finalize() catch {
-    err => raise Failure::Failure(err.to_string())
-  }
-  let simplified_decls = @simplify.simplify_decls(resolved_decls)
-  let inferred_top = if top is Some(_) {
-    ""
-  } else {
-    let candidates = pkg.body.filter_map(decl => {
-      match decl {
-        @parse.Decl::Module({ path, params: [], .. }) => Some(path)
-        _ => None
-      }
-    }).filter(path => !monomorphizer.instanciated_modules.contains(path))
-    match candidates {
-      [] => raise Failure::Failure("No top-level module found")
-      [top] => top.elem
-      _ =>
-        if candidates.contains(@parse.Path::new([], "Top")) {
-          "Top"
-        } else {
-          let names = candidates.iter().map(p => p.to_string()).join(", ")
-          raise Failure::Failure(
-            "Multiple top-level modules found: [\{names}], remove extraneous uninstanciated modules or rename the top module to `Top`",
-          )
-        }
-    }
-  }
-  let top = top.unwrap_or(inferred_top)
-  let elaborator = @elaborate.Elaborator::new(top, port_usage=checker.port_usage())
-  try elaborator.lower(simplified_decls.iter()) catch {
+fn compile_simulation_frontend(
+  frontend: FrontendPipeline,
+  displays~: Array[SimulationDisplay],
+  stream~: String?,
+) -> @firrtl.TypedCircuit raise {
+  let top = frontend.top
+  let elaborator = @elaborate.Elaborator::new(top, port_usage=frontend.port_usage)
+  try elaborator.lower(frontend.simplified_decls.iter()) catch {
     err => raise Failure::Failure(err.to_string())
   }
   let circuit = lower_firrtl(elaborator, passes=[])
@@ -337,15 +273,16 @@ pub(all) struct SimulationDesign {
 }
 
 pub fn compile_simulation_design(path~: String, ext~: @utils.Externals, top~: String? = None) -> SimulationDesign raise {
+  let frontend = prepare_frontend(path, ext, top)
   let displays = []
-  let metadata = simulation_metadata(path~, ext~, top~)
+  let metadata = simulation_metadata_from_package(frontend.pkg, top)
   let mut stream: String? = None
   for item in metadata {
     let (key, value) = item
     if key == "display.stream" { stream = Some(value) }
   }
-  let circuit = compile_simulation(path~, ext~, top~, displays~, stream~)
-  let mut selected_top = top.unwrap_or(circuit.id.inner())
+  let circuit = compile_simulation_frontend(frontend, displays~, stream~)
+  let mut selected_top = frontend.top
   let mut clock: String? = None
   let mut reset: String? = None
   let reset_cycles = 1
@@ -397,6 +334,13 @@ pub fn simulation_metadata(
   let pkg = try resolver.resolve(path~, is_top_package=true) catch {
     err => raise Failure::Failure(err.to_string())
   }
+  simulation_metadata_from_package(pkg, top)
+}
+
+fn simulation_metadata_from_package(
+  pkg: @parse.PackageDecl,
+  top: String?,
+) -> Array[(String, String)] raise {
   let result : Array[(String, String)] = []
   for decl in pkg.body {
     match decl {
