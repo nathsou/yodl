@@ -23,9 +23,6 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?, allow_tes
   let mono_emitter = @parse.AstEmitter::new()
   for decl in mono_decls { mono_emitter.emit_decl(decl); mono_emitter.emit("\n") }
   let mono_text = mono_emitter.to_string()
-  let tests = mono_decls.filter_map(fn(decl) {
-    match decl { @parse.Decl::Test(td) => Some(td); _ => None }
-  })
   let checker = @elaborate.TypeChecker::new()
   let resolved_decls = Array::new(capacity=mono_decls.length())
   for decl in mono_decls {
@@ -33,6 +30,12 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?, allow_tes
     resolved_decls.push(resolved)
   }
   try checker.finalize() catch { err => raise Failure::Failure(err.to_string()) }
+  // Keep the post-check declarations as the source for test execution. The
+  // dedicated test checker below validates the host-side actions after all
+  // module signatures and concrete generic instances are known.
+  let tests = resolved_decls.filter_map(fn(decl) {
+    match decl { @parse.Decl::Test(td) => Some(td); _ => None }
+  })
   let typed_emitter = @parse.AstEmitter::new(show_expr_types=true)
   for decl in resolved_decls { typed_emitter.emit_decl(decl); typed_emitter.emit("\n") }
   let typed_text = typed_emitter.to_string()
