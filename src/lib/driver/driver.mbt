@@ -227,21 +227,25 @@ fn test_target_expr(td: @parse.TestDecl) -> @parse.Expr? raise {
   match td.target {
     Some(target) => Some(target)
     None => {
-      let mut found: @parse.Expr? = None
-      for stmt in td.body {
-        match stmt {
-          @parse.Stmt::Let(expr=Some(expr), ..) if expr is @parse.Expr::Instance(..) => {
-            if found is Some(_) {
-              raise Failure::Failure("An unbound test must declare exactly one DUT instance")
-            }
-            found = Some(expr)
-          }
-          _ => ()
-        }
+      match test_instance_exprs(td.body) {
+        [] => None
+        [expr] => Some(expr)
+        _ => raise Failure::Failure("An unbound test must declare exactly one DUT instance")
       }
-      found
     }
   }
+}
+
+fn test_instance_exprs(body: Array[@parse.Stmt]) -> Array[@parse.Expr] {
+  let instances = []
+  for stmt in body {
+    match stmt {
+      @parse.Stmt::Let(expr=Some(expr), ..) if expr is @parse.Expr::Instance(..) => instances.push(expr)
+      @parse.Stmt::Scope(body~, ..) | @parse.Stmt::For(body~, ..) => instances.append(test_instance_exprs(body))
+      _ => ()
+    }
+  }
+  instances
 }
 
 fn test_target_name(expr: @parse.Expr) -> String? {
@@ -253,13 +257,19 @@ fn test_target_name(expr: @parse.Expr) -> String? {
 
 fn test_binding_name(td: @parse.TestDecl) -> String? {
   if td.target is Some(_) { return None }
-  for stmt in td.body {
+  test_instance_names(td.body).get(0)
+}
+
+fn test_instance_names(body: Array[@parse.Stmt]) -> Array[String] {
+  let names = []
+  for stmt in body {
     match stmt {
-      @parse.Stmt::Let(name~, expr=Some(@parse.Expr::Instance(..)), ..) => return Some(name)
+      @parse.Stmt::Let(name~, expr=Some(@parse.Expr::Instance(..)), ..) => names.push(name)
+      @parse.Stmt::Scope(body~, ..) | @parse.Stmt::For(body~, ..) => names.append(test_instance_names(body))
       _ => ()
     }
   }
-  None
+  names
 }
 
 fn test_signal_name(ctx: TestContext, expr: @parse.Expr) -> String raise {
