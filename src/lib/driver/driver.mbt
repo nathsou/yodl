@@ -537,6 +537,9 @@ fn ensure_test_simulation_active(tb: @simulator.Testbench) -> Unit raise {
   if status.failed {
     raise Failure::Failure("simulation assertion failed")
   }
+  if status.exit_code is Some(code) && code != 0 {
+    raise Failure::Failure("simulation stopped with exit code \{code}")
+  }
   if status.halted {
     raise Failure::Failure("simulation stopped before the test completed")
   }
