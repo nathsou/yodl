@@ -8,9 +8,10 @@ priv struct FrontendPipeline {
   top: String
   port_usage: @parse.PortUsage
   tests: Array[@parse.TestDecl]
+  test_modules: Map[String, Array[@parse.Port]]
 }
 
-fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> FrontendPipeline raise {
+fn prepare_frontend(path: String, ext: @utils.Externals, top: String?, allow_test_top~: Bool = false) -> FrontendPipeline raise {
   if !path.has_suffix(".yodl") { raise Failure::Failure("Input file must have a .yodl extension") }
   let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs=ext.fs)
   let pkg = try resolver.resolve(path~, is_top_package=true) catch { err => raise Failure::Failure("\{err}") }
@@ -56,7 +57,7 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> Fronte
       match candidates {
         [] => raise Failure::Failure("No top-level module found")
         [top] => top.elem
-        _ => if !tests.is_empty() {
+        _ => if allow_test_top {
           candidates[0].elem
         } else if candidates.contains(@parse.Path::new([], "Top")) {
           "Top"
@@ -67,7 +68,15 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> Fronte
       }
     }
   }
-  { pkg, simplified_decls, source_text, mono_text, typed_text, simplified_text, top: selected_top, port_usage: checker.port_usage(), tests }
+  let test_modules: Map[String, Array[@parse.Port]] = Map([])
+  for decl in mono_decls {
+    match decl {
+      @parse.Decl::Module(mod) => test_modules[mod.path.elem] = mod.ports
+      _ => ()
+    }
+  }
+  validate_tests(tests, mono_decls)
+  { pkg, simplified_decls, source_text, mono_text, typed_text, simplified_text, top: selected_top, port_usage: checker.port_usage(), tests, test_modules }
 }
 
 fn simulation_top_from_package(pkg: @parse.PackageDecl) -> String? {
@@ -85,16 +94,16 @@ pub fn run(
   ext~ : @utils.Externals,
 ) -> Unit raise {
   let fs = ext.fs
-  let frontend = prepare_frontend(path, ext, None)
+  let only_tests = commands.length() > 0 && commands.iter().all(fn(cmd) {
+    match cmd { RunTests(_) => true; _ => false }
+  })
+  let frontend = prepare_frontend(path, ext, None, allow_test_top=only_tests)
 
   for cmd in commands {
     if cmd is RunTests(filter~) {
       run_tests(frontend, filter, ext)
     }
   }
-  let only_tests = commands.length() > 0 && commands.iter().all(fn(cmd) {
-    match cmd { RunTests(_) => true; _ => false }
-  })
   if only_tests { return }
 
   for cmd in commands {
@@ -206,20 +215,31 @@ fn lower_firrtl(firrtl : @elaborate.Elaborator, passes~ : Array[&@firrtl.FIRRTLP
   circ
 }
 
-fn test_target_expr(td: @parse.TestDecl) -> @parse.Expr? {
+priv struct TestContext {
+  tb: @simulator.Testbench?
+  binding: String?
+  ports: Map[String, @parse.Port]
+  default_clock: String?
+  locals: Map[String, @simulator.SimValue]
+}
+
+fn test_target_expr(td: @parse.TestDecl) -> @parse.Expr? raise {
   match td.target {
     Some(target) => Some(target)
     None => {
+      let mut found: @parse.Expr? = None
       for stmt in td.body {
         match stmt {
-          @parse.Stmt::Let(expr=Some(expr), ..) => match expr {
-            @parse.Expr::Instance(..) => return Some(expr)
-            _ => ()
+          @parse.Stmt::Let(expr=Some(expr), ..) if expr is @parse.Expr::Instance(..) => {
+            if found is Some(_) {
+              raise Failure::Failure("An unbound test must declare exactly one DUT instance")
+            }
+            found = Some(expr)
           }
           _ => ()
         }
       }
-      None
+      found
     }
   }
 }
@@ -231,72 +251,342 @@ fn test_target_name(expr: @parse.Expr) -> String? {
   }
 }
 
-fn test_signal_name(expr: @parse.Expr) -> String raise {
+fn test_binding_name(td: @parse.TestDecl) -> String? {
+  if td.target is Some(_) { return None }
+  for stmt in td.body {
+    match stmt {
+      @parse.Stmt::Let(name~, expr=Some(@parse.Expr::Instance(..)), ..) => return Some(name)
+      _ => ()
+    }
+  }
+  None
+}
+
+fn test_signal_name(ctx: TestContext, expr: @parse.Expr) -> String raise {
   match expr {
-    @parse.Expr::Identifier(path~, ..) => path.elem
-    @parse.Expr::FieldAccess(field=field, ..) => field
+    @parse.Expr::Identifier(path~, ..) => {
+      if !path.packages.is_empty() {
+        raise Failure::Failure("Test signal references must name a DUT port directly")
+      }
+      if ctx.binding is None {
+        path.elem
+      } else {
+        raise Failure::Failure("Unbound tests must qualify DUT ports as `dut.port`")
+      }
+    }
+    @parse.Expr::FieldAccess(expr=base, field~, ..) => {
+      guard ctx.binding is Some(binding) else {
+        raise Failure::Failure("Bound tests use DUT ports directly; remove the DUT qualifier")
+      }
+      match base {
+        @parse.Expr::Identifier(path~, ..) if path.packages.is_empty() && path.elem == binding => field
+        _ => raise Failure::Failure("DUT port references must use the declared DUT binding")
+      }
+    }
     _ => raise Failure::Failure("test signal references must be ports or port fields")
   }
 }
 
-fn test_value(expr: @parse.Expr, width: Int) -> @simulator.SimValue raise {
-  let value = match expr.partial_eval() {
-    @parse.Expr::Natural(value~, ..) => value
-    _ => raise Failure::Failure("test values must be compile-time integer expressions")
-  }
-  @simulator.SimValue::new(width, value)
+fn test_port(ctx: TestContext, expr: @parse.Expr) -> @parse.Port raise {
+  let signal = test_signal_name(ctx, expr)
+  ctx.ports.get(signal).unwrap_or_error(
+    Failure::Failure("Unknown DUT port '\{signal}' at \{expr.span()}")
+  )
 }
 
-fn test_expect(tb: @simulator.Testbench, signal: String, expected: @simulator.SimValue) -> Unit raise {
-  let actual = tb.peek(signal)
-  if actual.raw != expected.raw || actual.known_mask != expected.known_mask {
-    raise Failure::Failure(
-      "expectation failed for '{signal}' at cycle {tb.cycle()}: expected {expected}, got {actual}",
-    )
+fn test_expr_width(ctx: TestContext, expr: @parse.Expr) -> Int? raise {
+  match expr {
+    @parse.Expr::Natural(value~, width~, ..) => Some(width.unwrap_or(@utils.significant_bits(value)))
+    @parse.Expr::Identifier(path~, ..) => ctx.locals.get(path.elem).map(v => v.width)
+    @parse.Expr::Unary(expr~, ..) => test_expr_width(ctx, expr)
+    @parse.Expr::Binary(lhs~, rhs~, ..) => {
+      match (test_expr_width(ctx, lhs), test_expr_width(ctx, rhs)) {
+        (Some(a), Some(b)) => Some(if a > b { a } else { b })
+        _ => None
+      }
+    }
+    @parse.Expr::FunCall(name="peek", args~, ..) if args.length() == 1 => {
+      let port = test_port(ctx, args[0])
+      Some(port.ty.width(args[0].span()))
+    }
+    _ => {
+      try {
+        match expr.partial_eval() {
+          @parse.Expr::Natural(value~, width~, ..) => Some(width.unwrap_or(@utils.significant_bits(value)))
+          _ => None
+        }
+      } catch { _ => None }
+    }
   }
 }
 
-fn run_test_stmt(
-  tb: @simulator.Testbench,
-  stmt: @parse.Stmt,
-  default_clock: String,
-) -> Unit raise {
+fn check_test_value(ctx: TestContext, expr: @parse.Expr, width: Int) -> Unit raise {
+  match test_expr_width(ctx, expr) {
+    Some(value_width) if value_width > width => {
+      raise Failure::Failure("Test value is \{value_width} bits wide but port is only \{width} bits at \{expr.span()}")
+    }
+    _ => ()
+  }
+}
+
+fn fit_test_value(value: @simulator.SimValue, width: Int) -> @simulator.SimValue {
+  if value.is_known() {
+    @simulator.SimValue::new(width, value.raw)
+  } else {
+    @simulator.SimValue::with_mask(width, value.raw, value.known_mask)
+  }
+}
+
+fn validate_test_stmt(ctx: TestContext, stmt: @parse.Stmt) -> Unit raise {
   match stmt {
-    @parse.Stmt::Scope(body~, ..) => for nested in body { run_test_stmt(tb, nested, default_clock) }
-    @parse.Stmt::For(body~, ..) => for nested in body { run_test_stmt(tb, nested, default_clock) }
-    @parse.Stmt::Let(..) => ()
-    @parse.Stmt::Const(..) => ()
+    @parse.Stmt::Scope(body~, ..) => for nested in body { validate_test_stmt(ctx, nested) }
+    @parse.Stmt::For(variable~, range~, body~, ..) => {
+      ignore(eval_test_expr(ctx, range.start))
+      ignore(eval_test_expr(ctx, range.end))
+      ctx.locals[variable] = @simulator.SimValue::zero(32)
+      for nested in body { validate_test_stmt(ctx, nested) }
+    }
+    @parse.Stmt::Let(name~, expr=Some(expr), ..) => {
+      match expr {
+        @parse.Expr::Instance(..) => ()
+        _ => {
+          match expr {
+            @parse.Expr::FunCall(name="peek", args~, ..) if args.length() == 1 => {
+              let port = test_port(ctx, args[0])
+              ctx.locals[name] = @simulator.SimValue::zero(port.ty.width(args[0].span()))
+            }
+            _ => ctx.locals[name] = eval_test_expr(ctx, expr)
+          }
+        }
+      }
+    }
+    @parse.Stmt::Let(..) => raise Failure::Failure("Test let bindings require an initializer")
+    @parse.Stmt::Const(decl~, ..) => ctx.locals[decl.path.elem] = eval_test_expr(ctx, decl.expr)
     @parse.Stmt::Assign(..) => raise Failure::Failure("assignments are not allowed in a test; use drive!()")
     @parse.Stmt::Expr(expr=@parse.Expr::FunCall(name~, args~, ..), ..) => match name {
       "drive" => {
         if args.length() != 2 { raise Failure::Failure("drive! expects a signal and a value") }
-        let signal = test_signal_name(args[0])
+        let port = test_port(ctx, args[0])
+        if port.dir is @parse.PortDir::Output {
+          raise Failure::Failure("Cannot drive output port '\{port.name}'")
+        }
+        if port.ty is @parse.Type::Clock {
+          raise Failure::Failure("Clock ports are driven by step!()")
+        }
+        check_test_value(ctx, args[1], port.ty.width(args[0].span()))
+      }
+      "expect" => {
+        if args.length() != 2 { raise Failure::Failure("expect! expects a signal and a value") }
+        let port = test_port(ctx, args[0])
+        check_test_value(ctx, args[1], port.ty.width(args[0].span()))
+      }
+      "step" => {
+        let (_, count_expr) = match args {
+          [count] => {
+            guard ctx.default_clock is Some(_) else {
+              raise Failure::Failure("step! shorthand requires exactly one clock port; specify step!(clock, cycles)")
+            }
+            (ctx.default_clock.unwrap(), count)
+          }
+          [clock, count] => {
+            let clock_port = test_port(ctx, clock)
+            if !(clock_port.ty is @parse.Type::Clock) {
+              raise Failure::Failure("step! clock argument must be a clock port")
+            }
+            (test_signal_name(ctx, clock), count)
+          }
+          _ => raise Failure::Failure("step! expects a cycle count or a clock and cycle count")
+        }
+        let count = eval_test_expr(ctx, count_expr)
+        if count.raw < 0 { raise Failure::Failure("step! cycle count must be non-negative") }
+      }
+      "settle" => if args.length() != 0 { raise Failure::Failure("settle! takes no arguments") }
+      "peek" => if args.length() != 1 { raise Failure::Failure("peek! expects one signal") } else { ignore(test_port(ctx, args[0])) }
+      _ => raise Failure::Failure("unknown test action '\{name}!' at \{stmt.span()}")
+    }
+    @parse.Stmt::Expr(..) => raise Failure::Failure("test expressions must be simulation actions")
+  }
+}
+
+fn validate_tests(tests: Array[@parse.TestDecl], decls: Array[@parse.Decl]) -> Unit raise {
+  let modules: Map[String, @parse.ModuleDecl] = Map([])
+  for decl in decls {
+    match decl {
+      @parse.Decl::Module(mod) => modules[mod.path.elem] = mod
+      _ => ()
+    }
+  }
+  for td in tests {
+    let target_expr = test_target_expr(td).unwrap_or_error(
+      Failure::Failure("Test '\{td.name}' has no DUT; add `for Module` or `let dut = Module()`"),
+    )
+    let target = test_target_name(target_expr).unwrap_or_error(
+      Failure::Failure("Test DUT must be a module or module instance"),
+    )
+    let mod = modules.get(target).unwrap_or_error(
+      Failure::Failure("Test '\{td.name}' targets unknown module '\{target}'"),
+    )
+    let ports: Map[String, @parse.Port] = Map([])
+    for port in mod.ports { ports[port.name] = port }
+    let clocks = mod.ports.filter(port => port.ty is @parse.Type::Clock)
+    let ctx = {
+      tb: None,
+      binding: test_binding_name(td),
+      ports,
+      default_clock: if clocks.length() == 1 { Some(clocks[0].name) } else { None },
+      locals: Map([]),
+    }
+    for stmt in td.body { validate_test_stmt(ctx, stmt) }
+  }
+}
+
+fn eval_test_expr(ctx: TestContext, expr: @parse.Expr) -> @simulator.SimValue raise {
+  match expr {
+    @parse.Expr::Natural(value~, width~, ..) => {
+      @simulator.SimValue::new(width.unwrap_or(@utils.significant_bits(value)), value)
+    }
+    @parse.Expr::Identifier(path~, ..) => ctx.locals.get(path.elem).unwrap_or_error(
+      Failure::Failure("Unknown test-local value '\{path.elem}'")
+    )
+    @parse.Expr::Unary(op~, expr~, ..) => {
+      let value = eval_test_expr(ctx, expr)
+      match op {
+        @parse.UnaryOp::Neg => @simulator.SimValue::new(value.width, -value.raw)
+        @parse.UnaryOp::Not => @simulator.SimValue::new(value.width, @utils.bitwise_not(value.raw, width=value.width))
+        @parse.UnaryOp::Andr => @simulator.SimValue::from_int(1, @utils.bits(value.raw).iter().all(@utils.identity).to_int())
+        @parse.UnaryOp::Orr => @simulator.SimValue::from_int(1, @utils.bits(value.raw).iter().any(@utils.identity).to_int())
+        @parse.UnaryOp::Xorr => @simulator.SimValue::from_int(1, @utils.bits(value.raw).fold(init=0, (acc, b) => acc ^ b.to_int()))
+      }
+    }
+    @parse.Expr::Binary(op~, lhs~, rhs~, ..) => {
+      let a = eval_test_expr(ctx, lhs)
+      let b = eval_test_expr(ctx, rhs)
+      let value = match op {
+        @parse.BinaryOp::Add => a.raw + b.raw
+        @parse.BinaryOp::Sub => a.raw - b.raw
+        @parse.BinaryOp::Mul => a.raw * b.raw
+        @parse.BinaryOp::Div => a.raw / b.raw
+        @parse.BinaryOp::Mod => a.raw % b.raw
+        @parse.BinaryOp::Shl => a.raw << b.raw.to_int()
+        @parse.BinaryOp::Shr => a.raw >> b.raw.to_int()
+        @parse.BinaryOp::And => a.raw & b.raw
+        @parse.BinaryOp::Or => a.raw | b.raw
+        @parse.BinaryOp::Xor => a.raw ^ b.raw
+        @parse.BinaryOp::Nand => @utils.bitwise_not(a.raw & b.raw, width=if a.width > b.width { a.width } else { b.width })
+        @parse.BinaryOp::Nor => @utils.bitwise_not(a.raw | b.raw, width=if a.width > b.width { a.width } else { b.width })
+        @parse.BinaryOp::Xnor => @utils.bitwise_not(a.raw ^ b.raw, width=if a.width > b.width { a.width } else { b.width })
+        @parse.BinaryOp::Equ => if a.raw == b.raw { 1 } else { 0 }
+        @parse.BinaryOp::Neq => if a.raw != b.raw { 1 } else { 0 }
+        @parse.BinaryOp::Lss => if a.raw < b.raw { 1 } else { 0 }
+        @parse.BinaryOp::Gtr => if a.raw > b.raw { 1 } else { 0 }
+        @parse.BinaryOp::Leq => if a.raw <= b.raw { 1 } else { 0 }
+        @parse.BinaryOp::Geq => if a.raw >= b.raw { 1 } else { 0 }
+        @parse.BinaryOp::Ternary => raise Failure::Failure("Invalid test expression")
+      }
+      let width = match op {
+        @parse.BinaryOp::Equ | @parse.BinaryOp::Neq | @parse.BinaryOp::Lss | @parse.BinaryOp::Gtr | @parse.BinaryOp::Leq | @parse.BinaryOp::Geq => 1
+        _ => if a.width > b.width { a.width } else { b.width }
+      }
+      @simulator.SimValue::new(width, value)
+    }
+    @parse.Expr::FunCall(name="peek", args~, ..) if args.length() == 1 => {
+      ctx.tb.unwrap().peek(test_signal_name(ctx, args[0]))
+    }
+    _ => {
+      let value = expr.partial_eval().as_bigint() catch {
+        _ => raise Failure::Failure("Test values must be integer expressions or peek!() values")
+      }
+      @simulator.SimValue::new(@utils.significant_bits(value), value)
+    }
+  }
+}
+
+fn test_expect(ctx: TestContext, signal: String, expected: @simulator.SimValue, span: @parse.Span) -> Unit raise {
+  let tb = ctx.tb.unwrap()
+  let actual = tb.peek(signal)
+  if actual.raw != expected.raw || actual.known_mask != expected.known_mask {
+    raise Failure::Failure(
+      "expectation failed for '\{signal}' at cycle \{tb.cycle()} (\{span}): expected \{expected}, got \{actual}",
+    )
+  }
+}
+
+fn ensure_test_simulation_active(tb: @simulator.Testbench) -> Unit raise {
+  let status = tb.simulator().status()
+  if status.failed {
+    raise Failure::Failure("simulation assertion failed")
+  }
+  if status.halted {
+    raise Failure::Failure("simulation stopped before the test completed")
+  }
+}
+
+fn run_test_stmt(ctx: TestContext, stmt: @parse.Stmt) -> Unit raise {
+  try run_test_stmt_inner(ctx, stmt) catch {
+    err => raise Failure::Failure("\{stmt.span()}: \{err}")
+  }
+}
+
+fn run_test_stmt_inner(ctx: TestContext, stmt: @parse.Stmt) -> Unit raise {
+  match stmt {
+    @parse.Stmt::Scope(body~, ..) => for nested in body { run_test_stmt(ctx, nested) }
+    @parse.Stmt::For(variable~, range~, body~, ..) => {
+      let start = eval_test_expr(ctx, range.start).as_bigint().to_int()
+      let end = eval_test_expr(ctx, range.end).as_bigint().to_int()
+      if range.inclusive {
+        for value in start..=end {
+          ctx.locals[variable] = @simulator.SimValue::from_int(32, value)
+          for nested in body { run_test_stmt(ctx, nested) }
+        }
+      } else {
+        for value in start..<end {
+          ctx.locals[variable] = @simulator.SimValue::from_int(32, value)
+          for nested in body { run_test_stmt(ctx, nested) }
+        }
+      }
+    }
+    @parse.Stmt::Let(name~, expr=Some(expr), ..) => {
+      match expr {
+        @parse.Expr::Instance(..) => ()
+        _ => ctx.locals[name] = eval_test_expr(ctx, expr)
+      }
+    }
+    @parse.Stmt::Let(..) => raise Failure::Failure("Test let bindings require an initializer")
+    @parse.Stmt::Const(decl~, ..) => ctx.locals[decl.path.elem] = eval_test_expr(ctx, decl.expr)
+    @parse.Stmt::Assign(..) => raise Failure::Failure("assignments are not allowed in a test; use drive!()")
+    @parse.Stmt::Expr(expr=@parse.Expr::FunCall(name~, args~, span~, ..), ..) => match name {
+      "drive" => {
+        if args.length() != 2 { raise Failure::Failure("drive! expects a signal and a value") }
+        let signal = test_signal_name(ctx, args[0])
+        let tb = ctx.tb.unwrap()
         let current = tb.peek(signal)
-        tb.poke(signal, test_value(args[1], current.width))
+        tb.poke(signal, fit_test_value(eval_test_expr(ctx, args[1]), current.width))
         tb.settle()
       }
       "expect" => {
         if args.length() != 2 { raise Failure::Failure("expect! expects a signal and a value") }
-        let signal = test_signal_name(args[0])
-        let current = tb.peek(signal)
-        test_expect(tb, signal, test_value(args[1], current.width))
+        let signal = test_signal_name(ctx, args[0])
+        let expected = fit_test_value(eval_test_expr(ctx, args[1]), ctx.tb.unwrap().peek(signal).width)
+        test_expect(ctx, signal, expected, span)
       }
       "step" => {
         let (clock, count_expr) = match args {
-          [count] => (default_clock, count)
-          [clock, count] => (test_signal_name(clock), count)
+          [count] => (ctx.default_clock.unwrap_or_error(Failure::Failure("step! shorthand requires exactly one clock port; specify step!(clock, cycles)")), count)
+          [clock, count] => (test_signal_name(ctx, clock), count)
           _ => raise Failure::Failure("step! expects a cycle count or a clock and cycle count")
         }
-        let count = test_value(count_expr, 32).as_bigint().to_int()
+        let count = eval_test_expr(ctx, count_expr).as_bigint().to_int()
+        let tb = ctx.tb.unwrap()
         tb.run(clock, count)
+        ensure_test_simulation_active(tb)
       }
       "settle" => {
         if args.length() != 0 { raise Failure::Failure("settle! takes no arguments") }
-        tb.settle()
+        ctx.tb.unwrap().settle()
       }
       "peek" => {
         if args.length() != 1 { raise Failure::Failure("peek! expects one signal") }
-        let _ = tb.peek(test_signal_name(args[0]))
+        let _ = ctx.tb.unwrap().peek(test_signal_name(ctx, args[0]))
       }
       _ => raise Failure::Failure("unknown test action '\{name}!'")
     }
@@ -321,9 +611,16 @@ fn run_tests(frontend: FrontendPipeline, filter: String?, ext: @utils.Externals)
     }
     let tb = sim.testbench()
     let clocks = @simulator.simulator_clocks(sim)
-    let default_clock = clocks.get(0).unwrap_or("clk")
+    let default_clock = if clocks.length() == 1 { Some(clocks[0]) } else { None }
+    let ports: Map[String, @parse.Port] = Map([])
+    for port in frontend.test_modules.get(target).unwrap_or([]) { ports[port.name] = port }
+    let ctx = { tb: Some(tb), binding: test_binding_name(td), ports, default_clock, locals: Map([]) }
+    // The test was structurally checked before lowering; runtime context only
+    // needs the port names, which are obtained from the simulator's top-level
+    // signals as actions execute.
     try {
-      for stmt in td.body { run_test_stmt(tb, stmt, default_clock) }
+      for stmt in td.body { run_test_stmt(ctx, stmt) }
+      ensure_test_simulation_active(tb)
     } catch {
       err => raise Failure::Failure("Test '\{td.name}' failed at \{td.span}: \{err}")
     }

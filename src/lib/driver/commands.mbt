@@ -148,23 +148,16 @@ pub fn parse_commands(source: String) -> Array[Command] raise CommandParserError
   let commands = Array::new(capacity=cmds.length())
 
   for cmd in cmds {
-    let path = match cmd.args {
-      [] => None
-      [path] => Some(path)
-      _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
-    }
-
     let command = match cmd.name {
-      "write_source" => WriteSource(path~)
-      "write_mono" => WriteMono(path~)
-      "write_typed" => WriteTyped(path~)
-      "write_simplified" => WriteSimplified(path~)
-      "write_firrtl" | "write_fir" => WriteFIRRTL(path~, passes=[])
-      "write_low_firrtl" | "write_lofir" => WriteFIRRTL(path~, passes=low_firrtl_passes())
-      "write_rtlil" => WriteRTLIL(path~)
+      "write_source" => WriteSource(path=command_path(cmd))
+      "write_mono" => WriteMono(path=command_path(cmd))
+      "write_typed" => WriteTyped(path=command_path(cmd))
+      "write_simplified" => WriteSimplified(path=command_path(cmd))
+      "write_firrtl" | "write_fir" => WriteFIRRTL(path=command_path(cmd), passes=[])
+      "write_low_firrtl" | "write_lofir" => WriteFIRRTL(path=command_path(cmd), passes=low_firrtl_passes())
+      "write_rtlil" => WriteRTLIL(path=command_path(cmd))
       "test" => {
-        if cmd.args.length() > 1 { raise InvalidCommandArgs(name=cmd.name, args=cmd.args) }
-        RunTests(filter=cmd.args.get(0))
+        RunTests(filter=if cmd.args.is_empty() { None } else { Some(cmd.args.join(" ")) })
       }
       _ => raise UnknownCommand(name=cmd.name)
     }
@@ -173,4 +166,12 @@ pub fn parse_commands(source: String) -> Array[Command] raise CommandParserError
   }
 
   commands
+}
+
+fn command_path(cmd: ParsedCommand) -> String? raise CommandParserError {
+  match cmd.args {
+    [] => None
+    [path] => Some(path)
+    _ => raise InvalidCommandArgs(name=cmd.name, args=cmd.args)
+  }
 }
