@@ -374,7 +374,15 @@ fn validate_test_stmt(ctx: TestContext, stmt: @parse.Stmt) -> Unit raise {
       }
     }
     @parse.Stmt::Let(..) => raise Failure::Failure("Test let bindings require an initializer")
-    @parse.Stmt::Const(decl~, ..) => ctx.locals[decl.path.elem] = eval_test_expr(ctx, decl.expr)
+    @parse.Stmt::Const(decl~, ..) => {
+      match decl.expr {
+        @parse.Expr::FunCall(name="peek", args~, ..) if args.length() == 1 => {
+          let port = test_port(ctx, args[0])
+          ctx.locals[decl.path.elem] = @simulator.SimValue::zero(port.ty.width(args[0].span()))
+        }
+        _ => ctx.locals[decl.path.elem] = eval_test_expr(ctx, decl.expr)
+      }
+    }
     @parse.Stmt::Assign(..) => raise Failure::Failure("assignments are not allowed in a test; use drive!()")
     @parse.Stmt::Expr(expr=@parse.Expr::FunCall(name~, args~, ..), ..) => match name {
       "drive" => {
