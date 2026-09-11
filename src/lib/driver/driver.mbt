@@ -7,6 +7,7 @@ priv struct FrontendPipeline {
   simplified_text: String
   top: String
   port_usage: @parse.PortUsage
+  tests: Array[@parse.TestDecl]
 }
 
 fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> FrontendPipeline raise {
@@ -21,6 +22,9 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> Fronte
   let mono_emitter = @parse.AstEmitter::new()
   for decl in mono_decls { mono_emitter.emit_decl(decl); mono_emitter.emit("\n") }
   let mono_text = mono_emitter.to_string()
+  let tests = mono_decls.filter_map(fn(decl) {
+    match decl { @parse.Decl::Test(td) => Some(td); _ => None }
+  })
   let checker = @elaborate.TypeChecker::new()
   let resolved_decls = Array::new(capacity=mono_decls.length())
   for decl in mono_decls {
@@ -43,10 +47,18 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> Fronte
         @parse.Decl::Module({ path, params: [], .. }) => Some(path)
         _ => None
       }).filter(path => !monomorphizer.instanciated_modules.contains(path))
+      let candidates = if candidates.is_empty() {
+        mono_decls.filter_map(decl => match decl {
+          @parse.Decl::Module({ path, params: [], .. }) => Some(path)
+          _ => None
+        })
+      } else { candidates }
       match candidates {
         [] => raise Failure::Failure("No top-level module found")
         [top] => top.elem
-        _ => if candidates.contains(@parse.Path::new([], "Top")) {
+        _ => if !tests.is_empty() {
+          candidates[0].elem
+        } else if candidates.contains(@parse.Path::new([], "Top")) {
           "Top"
         } else {
           let names = candidates.iter().map(path => path.to_string()).join(", ")
@@ -55,7 +67,7 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?) -> Fronte
       }
     }
   }
-  { pkg, simplified_decls, source_text, mono_text, typed_text, simplified_text, top: selected_top, port_usage: checker.port_usage() }
+  { pkg, simplified_decls, source_text, mono_text, typed_text, simplified_text, top: selected_top, port_usage: checker.port_usage(), tests }
 }
 
 fn simulation_top_from_package(pkg: @parse.PackageDecl) -> String? {
@@ -74,6 +86,16 @@ pub fn run(
 ) -> Unit raise {
   let fs = ext.fs
   let frontend = prepare_frontend(path, ext, None)
+
+  for cmd in commands {
+    if cmd is RunTests(filter~) {
+      run_tests(frontend, filter, ext)
+    }
+  }
+  let only_tests = commands.length() > 0 && commands.iter().all(fn(cmd) {
+    match cmd { RunTests(_) => true; _ => false }
+  })
+  if only_tests { return }
 
   for cmd in commands {
     if cmd is WriteSource(path~) {
@@ -184,6 +206,137 @@ fn lower_firrtl(firrtl : @elaborate.Elaborator, passes~ : Array[&@firrtl.FIRRTLP
   circ
 }
 
+fn test_target_expr(td: @parse.TestDecl) -> @parse.Expr? {
+  match td.target {
+    Some(target) => Some(target)
+    None => {
+      for stmt in td.body {
+        match stmt {
+          @parse.Stmt::Let(expr=Some(expr), ..) => match expr {
+            @parse.Expr::Instance(..) => return Some(expr)
+            _ => ()
+          }
+          _ => ()
+        }
+      }
+      None
+    }
+  }
+}
+
+fn test_target_name(expr: @parse.Expr) -> String? {
+  match expr {
+    @parse.Expr::Identifier(path~, ..) | @parse.Expr::Instance(path~, ..) => Some(path.elem)
+    _ => None
+  }
+}
+
+fn test_signal_name(expr: @parse.Expr) -> String raise {
+  match expr {
+    @parse.Expr::Identifier(path~, ..) => path.elem
+    @parse.Expr::FieldAccess(field=field, ..) => field
+    _ => raise Failure::Failure("test signal references must be ports or port fields")
+  }
+}
+
+fn test_value(expr: @parse.Expr, width: Int) -> @simulator.SimValue raise {
+  let value = match expr.partial_eval() {
+    @parse.Expr::Natural(value~, ..) => value
+    _ => raise Failure::Failure("test values must be compile-time integer expressions")
+  }
+  @simulator.SimValue::new(width, value)
+}
+
+fn test_expect(tb: @simulator.Testbench, signal: String, expected: @simulator.SimValue) -> Unit raise {
+  let actual = tb.peek(signal)
+  if actual.raw != expected.raw || actual.known_mask != expected.known_mask {
+    raise Failure::Failure(
+      "expectation failed for '{signal}' at cycle {tb.cycle()}: expected {expected}, got {actual}",
+    )
+  }
+}
+
+fn run_test_stmt(
+  tb: @simulator.Testbench,
+  stmt: @parse.Stmt,
+  default_clock: String,
+) -> Unit raise {
+  match stmt {
+    @parse.Stmt::Scope(body~, ..) => for nested in body { run_test_stmt(tb, nested, default_clock) }
+    @parse.Stmt::For(body~, ..) => for nested in body { run_test_stmt(tb, nested, default_clock) }
+    @parse.Stmt::Let(..) => ()
+    @parse.Stmt::Const(..) => ()
+    @parse.Stmt::Assign(..) => raise Failure::Failure("assignments are not allowed in a test; use drive!()")
+    @parse.Stmt::Expr(expr=@parse.Expr::FunCall(name~, args~, ..), ..) => match name {
+      "drive" => {
+        if args.length() != 2 { raise Failure::Failure("drive! expects a signal and a value") }
+        let signal = test_signal_name(args[0])
+        let current = tb.peek(signal)
+        tb.poke(signal, test_value(args[1], current.width))
+        tb.settle()
+      }
+      "expect" => {
+        if args.length() != 2 { raise Failure::Failure("expect! expects a signal and a value") }
+        let signal = test_signal_name(args[0])
+        let current = tb.peek(signal)
+        test_expect(tb, signal, test_value(args[1], current.width))
+      }
+      "step" => {
+        let (clock, count_expr) = match args {
+          [count] => (default_clock, count)
+          [clock, count] => (test_signal_name(clock), count)
+          _ => raise Failure::Failure("step! expects a cycle count or a clock and cycle count")
+        }
+        let count = test_value(count_expr, 32).as_bigint().to_int()
+        tb.run(clock, count)
+      }
+      "settle" => {
+        if args.length() != 0 { raise Failure::Failure("settle! takes no arguments") }
+        tb.settle()
+      }
+      "peek" => {
+        if args.length() != 1 { raise Failure::Failure("peek! expects one signal") }
+        let _ = tb.peek(test_signal_name(args[0]))
+      }
+      _ => raise Failure::Failure("unknown test action '\{name}!'")
+    }
+    @parse.Stmt::Expr(..) => raise Failure::Failure("test expressions must be simulation actions")
+  }
+}
+
+fn run_tests(frontend: FrontendPipeline, filter: String?, ext: @utils.Externals) -> Unit raise {
+  let mut count = 0
+  for td in frontend.tests {
+    if filter is Some(name) && name != td.name { continue }
+    count += 1
+    let target_expr = test_target_expr(td).unwrap_or_error(
+      Failure::Failure("Test '\{td.name}' has no DUT; add `for Module` or `let dut = Module()`"),
+    )
+    let target = test_target_name(target_expr).unwrap_or_error(
+      Failure::Failure("Test DUT must be a module or module instance"),
+    )
+    let circuit = compile_simulation_frontend_with_top(frontend, displays=[], stream=None, top_override=Some(target))
+    let sim = try @simulator.Simulator::from_circuit(circuit, target) catch {
+      err => raise Failure::Failure("Could not prepare test '\{td.name}': \{@debug.to_string(err)}")
+    }
+    let tb = sim.testbench()
+    let clocks = @simulator.simulator_clocks(sim)
+    let default_clock = clocks.get(0).unwrap_or("clk")
+    try {
+      for stmt in td.body { run_test_stmt(tb, stmt, default_clock) }
+    } catch {
+      err => raise Failure::Failure("Test '\{td.name}' failed at \{td.span}: \{err}")
+    }
+    (ext.println)("PASS \{td.name}")
+  }
+  if count == 0 {
+    raise Failure::Failure(match filter {
+      Some(name) => "No test named '\{name}' was found"
+      None => "No tests found"
+    })
+  }
+}
+
 /// Compile a Yodl source file to the normalized FIRRTL consumed by the
 /// simulator.  This intentionally returns the in-memory typed circuit instead
 /// of serializing and reparsing FIRRTL, so source tools and testbenches share
@@ -204,7 +357,16 @@ fn compile_simulation_frontend(
   displays~: Array[SimulationDisplay],
   stream~: String?,
 ) -> @firrtl.TypedCircuit raise {
-  let top = frontend.top
+  compile_simulation_frontend_with_top(frontend, displays~, stream~, top_override=None)
+}
+
+fn compile_simulation_frontend_with_top(
+  frontend: FrontendPipeline,
+  displays~: Array[SimulationDisplay],
+  stream~: String?,
+  top_override~: String?,
+) -> @firrtl.TypedCircuit raise {
+  let top = top_override.unwrap_or(frontend.top)
   let elaborator = @elaborate.Elaborator::new(top, port_usage=frontend.port_usage)
   try elaborator.lower(frontend.simplified_decls.iter()) catch {
     err => raise Failure::Failure(err.to_string())
@@ -550,6 +712,7 @@ pub fn cli(ext: @utils.Externals) -> Unit {
       (ext.println)("  write_firrtl [path]     - Write the FIRRTL output (alias: write_fir).")
       (ext.println)("  write_low_firrtl [path] - Write the low FIRRTL output (alias: write_lofir).")
       (ext.println)("  write_rtlil [path]      - Write the RTLIL output.")
+      (ext.println)("  test [name]             - Run procedural testbenches, optionally filtered by name.")
       (ext.println)("\nExample: yodl my_design.yodl \"write_firrtl my_design.fir; write_typed my_design.typed.txt\"")
     }
   }

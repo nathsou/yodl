@@ -1301,9 +1301,38 @@ fn Parser::parse_module_def_or_decl(self: Parser) -> Decl raise {
   }
 }
 
+fn Parser::parse_test_decl(self: Parser) -> TestDecl raise {
+  let start_idx = self.index
+  self.expect(Test, start_idx)
+  let name = match self.peek() {
+    StringLiteral(name) => { self.advance(); name }
+    token => raise UnexpectedToken(expected=StringLiteral("test name"), received=token, span=self.span(start_idx))
+  }
+  let target = if self.consumes(For) {
+    let target_start = self.index
+    let path = self.parse_path(self.parse_identifier())
+    if self.matches(Lbracket) {
+      let params = self.parse_module_parameters(() => self.parse_instance_parameter())
+      let params = params.map(param => (None, param))
+      Some(Expr::Instance(path~, params=InstanceParams::new(params), ports=Map([]), span=self.span(target_start), ty={ val: None }))
+    } else {
+      Some(Expr::Identifier(path~, span=self.span(target_start), ty={ val: None }))
+    }
+  } else { None }
+  self.expect(Lbrace, start_idx)
+  let body = []
+  while !self.matches(Rbrace) {
+    body.push(self.parse_stmt())
+  }
+  self.expect(Rbrace, start_idx)
+  self.ignore(Semicolon)
+  { name, target, body, span: self.span(start_idx) }
+}
+
 fn Parser::parse_decl(self: Parser) -> Decl raise {
   match self.peek() {
     At | Declare | Module => self.parse_module_def_or_decl()
+    Test => Decl::Test(self.parse_test_decl())
     Const => Decl::Const(self.parse_const_decl())
     Package => Decl::Package(self.parse_package_decl())
     Import => Decl::Import(self.parse_import_decl())

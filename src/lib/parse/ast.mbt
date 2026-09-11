@@ -31,10 +31,20 @@ pub(all) enum Stmt {
 pub(all) enum Decl {
   Module(ModuleDecl)
   ModuleDeclaration(ModuleSignature)
+  Test(TestDecl)
   Const(ConstDecl)
   Package(PackageDecl)
   Import(ImportDecl)
   TypeAlias(TypeAliasDecl)
+}
+
+/// A procedural simulation test. Tests are kept in the surface AST and are
+/// consumed by the test runner; they do not become hardware declarations.
+pub(all) struct TestDecl {
+  name: String
+  target: Expr?
+  body: Array[Stmt]
+  span: Span
 }
 
 pub const BITS_PER_CHAR = 8

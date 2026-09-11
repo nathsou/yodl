@@ -438,7 +438,10 @@ fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv
     })
   }})
 
-  res.partial_eval()
+  match res {
+    @parse.Expr::FunCall(name="drive" | "expect" | "step" | "settle" | "peek", ..) => res
+    _ => res.partial_eval()
+  }
 }
 
 fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv, packages~: Array[String]) -> @parse.Stmt raise {
@@ -594,6 +597,7 @@ fn Monomorphizer::monomorphize_module(
 
 pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packages~: Array[String]) -> Array[@parse.Decl] raise {
   let monomorphized = Array::new(capacity=decls.length())
+  let tests: Array[@parse.Decl] = []
 
   for decl in decls {
     match decl {
@@ -638,6 +642,15 @@ pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packa
         self.declared_modules[mod_path] = sig
         self.top_env.declare_(mod_path, Name(packages~))
       }
+      Test({ name, target, body, span }) => {
+        // Tests are executable host-side programs, but their instance
+        // expressions still need to participate in monomorphisation so that
+        // generic DUTs are present in the generated circuit.
+        let test_env = self.top_env.child()
+        let target = target.map(expr => self.monomorphize_expr(expr, env=test_env, packages~))
+        let body = body.map(stmt => self.monomorphize_stmt(stmt, env=test_env, packages~))
+        tests.push(@parse.Decl::Test({ name, target, body, span }))
+      }
       Const(decl) => {
         let mono_expr = self.monomorphize_expr(decl.expr, env=self.top_env, packages~)
         let mono_ty = match decl.ty {
@@ -679,6 +692,8 @@ pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packa
   for mod in self.modules.values() {
     monomorphized.push(@parse.Decl::Module(mod))
   }
+
+  monomorphized.push_iter(tests.iter())
 
   monomorphized
 }

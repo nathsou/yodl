@@ -250,6 +250,7 @@ pub impl Show for CoreType
 pub(all) enum Decl {
   Module(ModuleDecl)
   ModuleDeclaration(ModuleSignature)
+  Test(TestDecl)
   Const(ConstDecl)
   Package(PackageDecl)
   Import(ImportDecl)
@@ -511,6 +512,13 @@ pub(all) enum Stmt {
   Scope(body~ : Array[Stmt], span~ : Span)
 }
 pub impl Spanned for Stmt
+
+pub(all) struct TestDecl {
+  name : String
+  target : Expr?
+  body : Array[Stmt]
+  span : Span
+}
 
 type Token derive(@debug.Debug)
 

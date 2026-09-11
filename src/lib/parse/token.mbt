@@ -10,7 +10,7 @@ enum TokenType {
   Percent; QuestionMark; At; Underscore
   ColonColon; MinusColon; PlusColon
   // keywords
-  Module; Let; UInt; SInt; Bool; In; For; Declare; Const
+  Module; Let; UInt; SInt; Bool; In; For; Test; Declare; Const
   And; Or; Not; Xor; Nand; Nor; Xnor; Shl; Shr
   Match; Package; Import; If; Else; Type; Clock
   Andr; Orr; Xorr
@@ -64,6 +64,7 @@ pub impl Show for TokenType with output(self, logger) {
     Bool => logger.write_string("bool")
     In => logger.write_string("in")
     For => logger.write_string("for")
+    Test => logger.write_string("test")
     Declare => logger.write_string("declare")
     Const => logger.write_string("const")
     And => logger.write_string("and")

@@ -1,5 +1,46 @@
 # Simulation
 
+## Procedural testbenches
+
+Testbenches live beside hardware modules and run with the native simulator.
+The `test` command runs every test in a source file; pass a test name to run
+only that test. A test may bind a module with `for`, which brings its ports into
+scope, or instantiate a DUT locally when it needs an unbound test.
+
+```yodl
+module And(a: bool, b: bool) -> (out: bool) {
+    out = a and b
+}
+
+test "and gate" for And {
+    drive!(a, true)
+    drive!(b, false)
+    expect!(out, false)
+    drive!(b, true)
+    expect!(out, true)
+}
+
+test "and gate with an explicit instance" {
+    let dut = And()
+    drive!(dut.a, true)
+    drive!(dut.b, true)
+    expect!(dut.out, true)
+}
+```
+
+`drive!` sets an input and settles combinational logic, `expect!` checks a
+settled signal, `peek!` reads a signal for host-side inspection, `settle!`
+settles without advancing time, and `step!` advances a clock by complete
+cycles. A bound test can use `step!(cycles)` when it has one clock; an unbound
+test can name it as `step!(dut.clk, cycles)`. Generic DUTs are supported in a
+bound declaration such as `for Counter[8]`.
+
+Tests are host-side programs and do not add hardware to the emitted FIRRTL.
+The DUT instances are still monomorphized, so a parameterized DUT used only by
+a test is available to the simulator. Module-level `assert!`, `printf!`, and
+`stop!` retain their clocked FIRRTL semantics and can be used alongside a
+procedural test.
+
 Yodl's simulator executes the normalized, typed FIRRTL produced by the
 compiler. It is intended for deterministic testbenches and for interactive
 playground tools; it does not model gate delays or analogue timing.

@@ -1721,6 +1721,7 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
             self.modules[path] = mod.signature()
             Module(mod)
         }
+        @parse.Decl::Test(td) => @parse.Decl::Test(td)
         ModuleDeclaration(sig) => {
             let type_params = Set::from_iter(sig.params.iter().filter_map(param => if param.sort == TypeSort { Some(param.name) } else { None }))
             let nat_params = Set::from_iter(sig.params.iter().filter_map(param => if param.sort == NatSort { Some(param.name) } else { None }))

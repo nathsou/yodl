@@ -6,6 +6,7 @@ pub(all) enum Command {
   WriteSimplified(path~: String?)
   WriteFIRRTL(path~: String?, passes~: Array[&@firrtl.FIRRTLPass])
   WriteRTLIL(path~: String?)
+  RunTests(filter~: String?)
 }
 
 fn low_firrtl_passes() -> Array[&@firrtl.FIRRTLPass] {
@@ -161,6 +162,10 @@ pub fn parse_commands(source: String) -> Array[Command] raise CommandParserError
       "write_firrtl" | "write_fir" => WriteFIRRTL(path~, passes=[])
       "write_low_firrtl" | "write_lofir" => WriteFIRRTL(path~, passes=low_firrtl_passes())
       "write_rtlil" => WriteRTLIL(path~)
+      "test" => {
+        if cmd.args.length() > 1 { raise InvalidCommandArgs(name=cmd.name, args=cmd.args) }
+        RunTests(filter=cmd.args.get(0))
+      }
       _ => raise UnknownCommand(name=cmd.name)
     }
 

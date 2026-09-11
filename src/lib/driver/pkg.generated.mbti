@@ -66,6 +66,7 @@ pub(all) enum Command {
   WriteSimplified(path~ : String?)
   WriteFIRRTL(path~ : String?, passes~ : Array[&@firrtl.FIRRTLPass])
   WriteRTLIL(path~ : String?)
+  RunTests(filter~ : String?)
 }
 
 pub(all) struct SimulationConfiguration {
