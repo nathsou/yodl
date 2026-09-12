@@ -15,12 +15,18 @@ to run the same testbenches in the browser.
 Each row of the XOR table is a three-bit `a, b, out` value. The test indexes
 the constant table to drive the inputs and check its expected output.
 
-`drive!` sets an input and settles combinational logic, `expect!` checks a
-settled signal, `peek!` reads a signal into a test-local value, `settle!`
-settles without advancing time, and `step!` advances a clock by complete
-cycles. A bound test can use `step!(cycles)` when it has one clock; an unbound
-test can name it as `step!(dut.clk, cycles)`. Generic DUTs are supported in a
-bound declaration such as `for Counter[8]`.
+| Builtin | Form | Effect |
+| --- | --- | --- |
+| `drive!` | `drive!(input, value)` | Drives an input port and settles combinational logic. |
+| `expect!` | `expect!(signal, value)` | Checks a settled port value. The test fails when it differs. |
+| `peek!` | `peek!(signal)` | Reads a port value for use in a test expression or local binding. |
+| `settle!` | `settle!()` | Settles combinational logic without advancing time. |
+| `step!` | `step!(cycles)` | Advances the bound DUT's sole clock by complete cycles. |
+| `step!` | `step!(clock, cycles)` | Advances the named clock by complete cycles. Required when a DUT has multiple clocks, and used by unbound tests. |
+
+Bound tests refer to ports directly. Unbound tests qualify ports with their DUT
+binding, such as `dut.out`. Generic DUTs are supported in a bound declaration
+such as `for Counter[8]`.
 
 Local DUT declarations select the module to simulate; their connection list
 must be empty. Use `drive!` for test stimulus after `let dut = Module()`.
@@ -250,27 +256,3 @@ worklist; a deterministic full sweep is available as a reference oracle.
 Known-address memory writes are grouped by word, while unknown addresses use
 a separate conservative path instead of scanning memory for every ordinary
 write.
-
-## JavaScript and WebAssembly hosts
-
-The browser playground currently uses MoonBit's JavaScript target. This keeps
-the compiler and simulator directly importable as ES modules and makes the
-existing object/array API inexpensive to call from a worker. MoonBit also
-produces both classic WASM and `wasm-gc` artifacts, but a library package's
-`.wasm` file is not by itself a browser API: the host still needs an exported
-entry point, memory/string marshalling, and a stable ABI for compile, poke,
-step, and framebuffer reads.
-
-WASM is attractive for long, arithmetic-heavy runs because the hot loop avoids
-JavaScript's dynamic dispatch and garbage collector. In this simulator the
-compiler/elaboration pass and display rendering are also
-significant costs, so repeatedly crossing a JS/WASM boundary for individual
-signals can erase that gain. A practical WASM backend should therefore batch
-work (`compile` or load a serialized SimIR once, `step N`, then copy one packed
-framebuffer) and keep the worker session in WASM. That can improve sustained
-playback and leave short interactive steps roughly unchanged; startup,
-serialization, and browser support for `wasm-gc` still make JavaScript the
-better default today. The recommended path is to keep the current JS backend,
-add a batched WASM worker behind the same `SimulationRequest` protocol, and
-choose it only after measuring representative designs such as GameOfLife, Image,
-and Noise.
