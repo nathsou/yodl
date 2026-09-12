@@ -13,9 +13,12 @@ try {
     for (const chapter of loadChapters()) for (const example of chapter.examples) {
         if (example.expect === 'skip') continue;
         const label = `${chapter.slug}.md:${example.line} (${example.id})`;
-        // Expected errors are checked at the authored stage; valid examples
-        // must also work at every stage available in the editor.
-        const checkedStages = example.expect === 'error' ? [example.stage] : Object.keys(stages) as Stage[];
+        // Expected errors are checked at the authored stage. Valid examples
+        // cover every compiler representation; the test runner applies only
+        // to examples that actually declare testbenches.
+        const checkedStages = example.expect === 'error'
+            ? [example.stage]
+            : (Object.keys(stages) as Stage[]).filter(stage => stage !== 'test' || example.stage === 'test');
         let low = '';
         for (const stage of checkedStages) {
             const result = compile({ id: ++count, source: example.source, path: example.path, files: example.files, stage });

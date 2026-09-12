@@ -110,7 +110,7 @@ export function highlight(source: string) {
         let kind = '';
         if (token.startsWith('//')) kind = 'comment';
         else if (token.startsWith('"')) kind = 'string';
-        else if (/^(module|declare|let|const|type|package|import|for|in|if|else|match|true|false)$/.test(token)) kind = 'keyword';
+        else if (/^(module|declare|test|let|const|type|package|import|for|in|if|else|match|true|false)$/.test(token)) kind = 'keyword';
         else if (/^(u\d+|s\d+|uint|sint|bool|clock|Nat|Type)$/.test(token)) kind = 'type';
         else if (/^\w+!$/.test(token)) kind = 'function';
         else if (/^\d/.test(token)) kind = 'number';

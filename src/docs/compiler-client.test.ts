@@ -77,6 +77,13 @@ test('compilation uses fresh explicit files for each request, including nested e
     expect(compile({ id: 3, ...request }).error).toBeUndefined();
 });
 
+test('procedural testbenches run as a playground output stage', () => {
+    const path = 'examples/Testbench.yodl';
+    const result = compile({ id: 4, source: files[path], path, stage: 'test' });
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe('PASS complete XOR truth table\nPASS counter reset, increment, and hold');
+});
+
 test('timeout terminates stuck work and releases the next example', async () => {
     globalThis.Worker = FakeWorker as any;
     const client = new CompilerClient(10);

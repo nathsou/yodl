@@ -59,6 +59,7 @@ describe('documentation content contract', () => {
         expect(exampleHTML(example)).not.toContain('<img');
         expect(highlight(example.source)).toContain('&lt;/script&gt;');
         expect(highlight('a < b and c > d')).toContain('&lt;');
+        expect(highlight('test "xor" for Xor { drive!(a, true) }')).toContain('<span class="token-keyword">test</span>');
     });
     test('every chapter, example ID, lesson link, and legacy anchor remains valid', () => {
         const chapters = loadChapters();

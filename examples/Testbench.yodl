@@ -1,47 +1,50 @@
-module And(a: bool, b: bool) -> (out: bool) {
-    out = a and b
+module XorGate(a: bool, b: bool) -> (out: bool) {
+    out = a xor b
 }
 
-module Pass[N: Nat](a: uint[N]) -> (out: uint[N]) {
-    out = a
+module Counter[Width: Nat](
+    clk: clock,
+    rst: bool,
+    enable: bool,
+) -> (value: uint[Width]) {
+    let state = Reg[uint[Width]](clk, rst, en: enable)
+    state.d = state.q + 1
+    value = state.q
 }
 
-module ClockEcho(clk: clock, a: bool) -> (out: bool) {
-    out = a
-}
-
-module Top(clk: clock, a: bool, b: bool, value: uint[8]) -> (
-    and_out: bool,
-    pass_out: uint[8],
-    clock_out: bool,
+// Keep the example synthesizable through the normal compiler stages too.
+module Top(clk: clock, rst: bool, enable: bool, a: bool, b: bool) -> (
+    xor_out: bool,
+    count: uint[8],
 ) {
-    and_out = And(a: a, b: b).out
-    pass_out = Pass[8](a: value).out
-    clock_out = ClockEcho(clk: clk, a: a).out
+    xor_out = XorGate(a: a, b: b).out
+    count = Counter[8](clk: clk, rst: rst, enable: enable).value
 }
 
-test "and gate" for And {
-    drive!(a, true)
-    drive!(b, false)
-    expect!(out, false)
-    drive!(b, true)
-    expect!(out, true)
+test "complete XOR truth table" for XorGate {
+    for lhs in 0..<2 {
+        for rhs in 0..<2 {
+            drive!(a, lhs)
+            drive!(b, rhs)
+            expect!(out, lhs xor rhs)
+        }
+    }
 }
 
-test "and gate unbound" {
-    let dut = And()
-    drive!(dut.a, true)
-    drive!(dut.b, true)
-    expect!(dut.out, true)
-}
-
-test "parameterized pass" for Pass[8] {
-    drive!(a, 8'hab)
-    expect!(out, 8'hab)
-}
-
-test "clocked test" for ClockEcho {
-    drive!(a, true)
+test "counter reset, increment, and hold" for Counter[8] {
+    drive!(rst, true)
+    drive!(enable, false)
     step!(1)
-    expect!(out, true)
+    expect!(value, 0)
+
+    drive!(rst, false)
+    drive!(enable, true)
+    for expected in 1..<6 {
+        step!(1)
+        expect!(value, expected)
+    }
+
+    drive!(enable, false)
+    step!(2)
+    expect!(value, 5)
 }

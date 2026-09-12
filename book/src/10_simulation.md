@@ -6,26 +6,10 @@ Testbenches live beside hardware modules and run with the native simulator.
 The `test` command runs every test in a source file; pass a test name to run
 only that test. A test may bind a module with `for`, which brings its ports into
 scope, or instantiate a DUT locally when it needs an unbound test.
+In the playground, choose **Tests** from the Output menu and press **Compile**
+to run the same testbenches in the browser.
 
-```yodl id=ex-procedural-testbenches
-module And(a: bool, b: bool) -> (out: bool) {
-    out = a and b
-}
-
-test "and gate" for And {
-    drive!(a, true)
-    drive!(b, false)
-    expect!(out, false)
-    drive!(b, true)
-    expect!(out, true)
-}
-
-test "and gate with an explicit instance" {
-    let dut = And()
-    drive!(dut.a, true)
-    drive!(dut.b, true)
-    expect!(dut.out, true)
-}
+```yodl live id=ex-procedural-testbenches stage=test src=examples/Testbench.yodl
 ```
 
 `drive!` sets an input and settles combinational logic, `expect!` checks a

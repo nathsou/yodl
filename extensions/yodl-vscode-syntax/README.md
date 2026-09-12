@@ -4,7 +4,7 @@ This extension provides basic syntax highlighting for the custom Yodl HDL langua
 
 ## Features
 
-- Highlights keywords such as `module`, `let`, `match`.
+- Highlights keywords such as `module`, `test`, `let`, and `match`.
 - Recognizes basic numeric constants, operators, and line comments.
 
 ## Usage
