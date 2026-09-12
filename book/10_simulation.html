@@ -9,8 +9,92 @@
 </nav>
 <label class="site-theme"><span class="sr-only">Color theme</span><select id="theme-select" title="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
 </header>
-<div class="docs-layout"><aside class="sidebar"><details class="chapter-menu" open><summary>Chapters</summary><div class="sidebar-inner"><button id="search-open" class="search-trigger js-only">Search documentation <kbd>/</kbd></button><p class="eyebrow">THE LANGUAGE</p><nav aria-label="Chapters"><a href="./01_presentation.html" ><span>01</span>Presentation</a><a href="./02_getting_started.html" ><span>02</span>Getting Started</a><a href="./03_data_types.html" ><span>03</span>Data Types</a><a href="./04_constructs.html" ><span>04</span>Language Constructs</a><a href="./05_operators.html" ><span>05</span>Operators</a><a href="./06_control_flow.html" ><span>06</span>Control Flow</a><a href="./07_built_in_functions.html" ><span>07</span>Built-in Functions</a><a href="./08_primitive_modules.html" ><span>08</span>Primitive Modules</a><a href="./09_external_modules.html" ><span>09</span>External Modules</a><a href="./10_simulation.html" aria-current="page"><span>10</span>Simulation</a></nav><div class="sidebar-footer"><a href="https://github.com/nathsou/yodl">GitHub ↗</a><span>Yodl 0.3.1 · bfcc5bd</span></div></div></details></aside>
+<div class="docs-layout"><aside class="sidebar"><details class="chapter-menu" open><summary>Chapters</summary><div class="sidebar-inner"><button id="search-open" class="search-trigger js-only">Search documentation <kbd>/</kbd></button><p class="eyebrow">THE LANGUAGE</p><nav aria-label="Chapters"><a href="./01_presentation.html" ><span>01</span>Presentation</a><a href="./02_getting_started.html" ><span>02</span>Getting Started</a><a href="./03_data_types.html" ><span>03</span>Data Types</a><a href="./04_constructs.html" ><span>04</span>Language Constructs</a><a href="./05_operators.html" ><span>05</span>Operators</a><a href="./06_control_flow.html" ><span>06</span>Control Flow</a><a href="./07_built_in_functions.html" ><span>07</span>Built-in Functions</a><a href="./08_primitive_modules.html" ><span>08</span>Primitive Modules</a><a href="./09_external_modules.html" ><span>09</span>External Modules</a><a href="./10_simulation.html" aria-current="page"><span>10</span>Simulation</a></nav><div class="sidebar-footer"><a href="https://github.com/nathsou/yodl">GitHub ↗</a><span>Yodl 0.3.1 · bc16c6a</span></div></div></details></aside>
 <main id="content" tabindex="-1"><div class="chapter-meta"><span class="eyebrow">LANGUAGE GUIDE</span><span>10 / 10</span></div><article><h1 id="simulation"><a class="heading-anchor" href="#simulation">Simulation</a></h1>
+<h2 id="procedural-testbenches"><a class="heading-anchor" href="#procedural-testbenches">Procedural testbenches</a></h2>
+<p>Testbenches live beside hardware modules and run with the native simulator.
+The <code>test</code> command runs every test in a source file; pass a test name to run
+only that test. A test may bind a module with <code>for</code>, which brings its ports into
+scope, or instantiate a DUT locally when it needs an unbound test.
+In the playground, choose <strong>Tests</strong> from the Output menu and press <strong>Compile</strong>
+to run the same testbenches in the browser.</p>
+<section class="code-example" id="ex-procedural-testbenches" aria-label="Example: procedural testbenches">
+    <div class="example-header"><a class="example-title" href="#ex-procedural-testbenches"><span class="file-dot"></span>Yodl <span class="example-number">/ procedural testbenches</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
+    <pre class="example-static"><code><span class="token-keyword">module</span> XorGate(a: <span class="token-type">bool</span>, b: <span class="token-type">bool</span>) -&gt; (out: <span class="token-type">bool</span>) {
+    out = a xor b
+}
+
+<span class="token-keyword">const</span> XorTruthTable = [
+    <span class="token-number">3&#39;b000</span>, <span class="token-comment">// a, b, out</span>
+    <span class="token-number">3&#39;b011</span>,
+    <span class="token-number">3&#39;b101</span>,
+    <span class="token-number">3&#39;b110</span>,
+]
+
+<span class="token-keyword">module</span> Counter[Width: <span class="token-type">Nat</span>](
+    clk: <span class="token-type">clock</span>,
+    rst: <span class="token-type">bool</span>,
+    enable: <span class="token-type">bool</span>,
+) -&gt; (value: <span class="token-type">uint</span>[Width]) {
+    <span class="token-keyword">let</span> state = Reg[<span class="token-type">uint</span>[Width]](clk, rst, en: enable)
+    state.d = state.q + <span class="token-number">1</span>
+    value = state.q
+}
+
+<span class="token-keyword">test</span> <span class="token-string">&quot;complete XOR truth table&quot;</span> <span class="token-keyword">for</span> XorGate {
+    <span class="token-keyword">for</span> i <span class="token-keyword">in</span> <span class="token-number">0</span>..&lt;<span class="token-number">4</span> {
+        <span class="token-function">drive!</span>(a, XorTruthTable[i][<span class="token-number">2</span>])
+        <span class="token-function">drive!</span>(b, XorTruthTable[i][<span class="token-number">1</span>])
+        <span class="token-function">expect!</span>(out, XorTruthTable[i][<span class="token-number">0</span>])
+    }
+}
+
+<span class="token-keyword">test</span> <span class="token-string">&quot;counter reset, increment, and hold&quot;</span> <span class="token-keyword">for</span> Counter[<span class="token-number">8</span>] {
+    <span class="token-function">drive!</span>(rst, <span class="token-keyword">true</span>)
+    <span class="token-function">drive!</span>(enable, <span class="token-keyword">false</span>)
+    <span class="token-function">step!</span>(<span class="token-number">1</span>)
+    <span class="token-function">expect!</span>(value, <span class="token-number">0</span>)
+
+    <span class="token-function">drive!</span>(rst, <span class="token-keyword">false</span>)
+    <span class="token-function">drive!</span>(enable, <span class="token-keyword">true</span>)
+    <span class="token-keyword">for</span> expected <span class="token-keyword">in</span> <span class="token-number">1</span>..&lt;<span class="token-number">6</span> {
+        <span class="token-function">step!</span>(<span class="token-number">1</span>)
+        <span class="token-function">expect!</span>(value, expected)
+    }
+
+    <span class="token-function">drive!</span>(enable, <span class="token-keyword">false</span>)
+    <span class="token-function">step!</span>(<span class="token-number">2</span>)
+    <span class="token-function">expect!</span>(value, <span class="token-number">5</span>)
+}</code></pre>
+    
+    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+<p>Each row of the XOR table is a three-bit <code>a, b, out</code> value. The test indexes
+the constant table to drive the inputs and check its expected output.</p>
+<table>
+<thead>
+<tr><th>Builtin</th><th>Form</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>drive!</code></td><td><code>drive!(input, value)</code></td><td>Drives an input port and settles combinational logic.</td></tr>
+<tr><td><code>expect!</code></td><td><code>expect!(signal, value)</code></td><td>Checks a settled port value. The test fails when it differs.</td></tr>
+<tr><td><code>peek!</code></td><td><code>peek!(signal)</code></td><td>Reads a port value for use in a test expression or local binding.</td></tr>
+<tr><td><code>settle!</code></td><td><code>settle!()</code></td><td>Settles combinational logic without advancing time.</td></tr>
+<tr><td><code>step!</code></td><td><code>step!(cycles)</code></td><td>Advances the bound DUT's sole clock by complete cycles.</td></tr>
+<tr><td><code>step!</code></td><td><code>step!(clock, cycles)</code></td><td>Advances the named clock by complete cycles. Required when a DUT has multiple clocks, and used by unbound tests.</td></tr>
+</tbody>
+</table>
+<p>Bound tests refer to ports directly. Unbound tests qualify ports with their DUT
+binding, such as <code>dut.out</code>. Generic DUTs are supported in a bound declaration
+such as <code>for Counter[8]</code>.</p>
+<p>Local DUT declarations select the module to simulate; their connection list
+must be empty. Use <code>drive!</code> for test stimulus after <code>let dut = Module()</code>.
+Integer expressions and values returned by <code>peek!</code> may be stored in lexical
+<code>let</code> or <code>const</code> bindings and composed in later test expressions.</p>
+<p>Tests are host-side programs and do not add hardware to the emitted FIRRTL.
+The DUT instances are still monomorphized, so a parameterized DUT used only by
+a test is available to the simulator. Module-level <code>assert!</code>, <code>printf!</code>, and
+<code>stop!</code> retain their clocked FIRRTL semantics and can be used alongside a
+procedural test.</p>
 <p>Yodl's simulator executes the normalized, typed FIRRTL produced by the
 compiler. It is intended for deterministic testbenches and for interactive
 playground tools; it does not model gate delays or analogue timing.</p>
@@ -192,32 +276,11 @@ worklist; a deterministic full sweep is available as a reference oracle.
 Known-address memory writes are grouped by word, while unknown addresses use
 a separate conservative path instead of scanning memory for every ordinary
 write.</p>
-<h2 id="javascript-and-webassembly-hosts"><a class="heading-anchor" href="#javascript-and-webassembly-hosts">JavaScript and WebAssembly hosts</a></h2>
-<p>The browser playground currently uses MoonBit's JavaScript target. This keeps
-the compiler and simulator directly importable as ES modules and makes the
-existing object/array API inexpensive to call from a worker. MoonBit also
-produces both classic WASM and <code>wasm-gc</code> artifacts, but a library package's
-<code>.wasm</code> file is not by itself a browser API: the host still needs an exported
-entry point, memory/string marshalling, and a stable ABI for compile, poke,
-step, and framebuffer reads.</p>
-<p>WASM is attractive for long, arithmetic-heavy runs because the hot loop avoids
-JavaScript's dynamic dispatch and garbage collector. In this simulator the
-compiler/elaboration pass and display rendering are also
-significant costs, so repeatedly crossing a JS/WASM boundary for individual
-signals can erase that gain. A practical WASM backend should therefore batch
-work (<code>compile</code> or load a serialized SimIR once, <code>step N</code>, then copy one packed
-framebuffer) and keep the worker session in WASM. That can improve sustained
-playback and leave short interactive steps roughly unchanged; startup,
-serialization, and browser support for <code>wasm-gc</code> still make JavaScript the
-better default today. The recommended path is to keep the current JS backend,
-add a batched WASM worker behind the same <code>SimulationRequest</code> protocol, and
-choose it only after measuring representative designs such as GameOfLife, Image,
-and Noise.</p>
 </article>
 
 <nav class="page-navigation" aria-label="Previous and next chapters"><a href="./09_external_modules.html"><small>← Previous</small>External Modules</a><span></span></nav><footer class="article-footer"><a href="https://github.com/nathsou/yodl/edit/main/book/src/10_simulation.md">Edit this page ↗</a><span>Examples compile locally in your browser.</span></footer></main>
-<aside class="page-toc"><p class="eyebrow">ON THIS PAGE</p><nav aria-label="On this page"><a href="#javascript-and-webassembly-hosts" class="toc-level-2">JavaScript and WebAssembly hosts</a></nav><a class="back-top" href="#content">Back to top ↑</a></aside></div>
+<aside class="page-toc"><p class="eyebrow">ON THIS PAGE</p><nav aria-label="On this page"><a href="#procedural-testbenches" class="toc-level-2">Procedural testbenches</a></nav><a class="back-top" href="#content">Back to top ↑</a></aside></div>
 <dialog id="search-dialog"><div class="search-header"><label for="search-input" class="sr-only">Search documentation</label><input id="search-input" type="search" placeholder="Search concepts, syntax, and examples…" autocomplete="off"><button id="search-close" aria-label="Close search">Esc</button></div><p id="search-status" role="status">Type to search all chapters.</p><div id="search-results"></div></dialog>
 <dialog id="confirm-dialog"><h2 id="confirm-title">Reset this example?</h2><p id="confirm-message">Your local edits will be replaced by the original source.</p><form method="dialog"><button value="cancel">Keep edits</button><button value="reset" class="primary">Reset source</button></form></dialog>
 <dialog id="share-dialog"><h2>Share this example</h2><p>The link includes your edits and selected compiler stage. It uses the deployed compiler version.</p><input id="share-url" aria-label="Share URL" readonly><form method="dialog"><button>Close</button><button type="button" id="share-copy" class="primary">Copy link</button></form></dialog>
-<script id="chapter-data" type="application/json">{"slug":"10_simulation","version":"0.3.1","revision":"bfcc5bd","examples":[{"id":"ex-simulation-annotation","title":"simulation annotation","source":"@simulation({ display: { buffer: \"pixel\" }, reset: \"rst\" })\nmodule VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {\n    for row in 0..\u003c30 {\n        for col in 0..\u003c40 {\n            pixel[row][col] = rst\n        }\n    }\n}\n","display":"@simulation({ display: { buffer: \"pixel\" }, reset: \"rst\" })\nmodule VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {\n    for row in 0..\u003c30 {\n        for col in 0..\u003c40 {\n            pixel[row][col] = rst\n        }\n    }\n}","path":"book/src/10_simulation/ex-simulation-annotation.yodl","files":{},"stage":"write_firrtl","unsupported":[],"hash":"05a6cdfb9c954e82","live":true,"expect":"success","line":97}]}</script><script type="module" src="../bundle/docs-rhqcdzm9.js"></script></body></html>
+<script id="chapter-data" type="application/json">{"slug":"10_simulation","version":"0.3.1","revision":"bc16c6a","examples":[{"id":"ex-procedural-testbenches","title":"procedural testbenches","source":"module XorGate(a: bool, b: bool) -> (out: bool) {\n    out = a xor b\n}\n\nconst XorTruthTable = [\n    3'b000, // a, b, out\n    3'b011,\n    3'b101,\n    3'b110,\n]\n\nmodule Counter[Width: Nat](\n    clk: clock,\n    rst: bool,\n    enable: bool,\n) -> (value: uint[Width]) {\n    let state = Reg[uint[Width]](clk, rst, en: enable)\n    state.d = state.q + 1\n    value = state.q\n}\n\ntest \"complete XOR truth table\" for XorGate {\n    for i in 0..\u003c4 {\n        drive!(a, XorTruthTable[i][2])\n        drive!(b, XorTruthTable[i][1])\n        expect!(out, XorTruthTable[i][0])\n    }\n}\n\ntest \"counter reset, increment, and hold\" for Counter[8] {\n    drive!(rst, true)\n    drive!(enable, false)\n    step!(1)\n    expect!(value, 0)\n\n    drive!(rst, false)\n    drive!(enable, true)\n    for expected in 1..\u003c6 {\n        step!(1)\n        expect!(value, expected)\n    }\n\n    drive!(enable, false)\n    step!(2)\n    expect!(value, 5)\n}\n","display":"module XorGate(a: bool, b: bool) -> (out: bool) {\n    out = a xor b\n}\n\nconst XorTruthTable = [\n    3'b000, // a, b, out\n    3'b011,\n    3'b101,\n    3'b110,\n]\n\nmodule Counter[Width: Nat](\n    clk: clock,\n    rst: bool,\n    enable: bool,\n) -> (value: uint[Width]) {\n    let state = Reg[uint[Width]](clk, rst, en: enable)\n    state.d = state.q + 1\n    value = state.q\n}\n\ntest \"complete XOR truth table\" for XorGate {\n    for i in 0..\u003c4 {\n        drive!(a, XorTruthTable[i][2])\n        drive!(b, XorTruthTable[i][1])\n        expect!(out, XorTruthTable[i][0])\n    }\n}\n\ntest \"counter reset, increment, and hold\" for Counter[8] {\n    drive!(rst, true)\n    drive!(enable, false)\n    step!(1)\n    expect!(value, 0)\n\n    drive!(rst, false)\n    drive!(enable, true)\n    for expected in 1..\u003c6 {\n        step!(1)\n        expect!(value, expected)\n    }\n\n    drive!(enable, false)\n    step!(2)\n    expect!(value, 5)\n}","path":"examples/Testbench.yodl","files":{},"stage":"test","unsupported":[],"hash":"d717d7d7f0aff34c","live":true,"expect":"success","line":12},{"id":"ex-simulation-annotation","title":"simulation annotation","source":"@simulation({ display: { buffer: \"pixel\" }, reset: \"rst\" })\nmodule VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {\n    for row in 0..\u003c30 {\n        for col in 0..\u003c40 {\n            pixel[row][col] = rst\n        }\n    }\n}\n","display":"@simulation({ display: { buffer: \"pixel\" }, reset: \"rst\" })\nmodule VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {\n    for row in 0..\u003c30 {\n        for col in 0..\u003c40 {\n            pixel[row][col] = rst\n        }\n    }\n}","path":"book/src/10_simulation/ex-simulation-annotation.yodl","files":{},"stage":"write_firrtl","unsupported":[],"hash":"05a6cdfb9c954e82","live":true,"expect":"success","line":136}]}</script><script type="module" src="../bundle/docs-betj43bd.js"></script></body></html>
