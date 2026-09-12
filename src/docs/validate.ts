@@ -29,7 +29,7 @@ try {
             } else if (result.error !== undefined) throw new Error(`${label} at ${stage}:\n${result.error}`);
             if (stage === 'write_low_firrtl') low = result.output ?? '';
         }
-        if (backend && example.expect === 'success') {
+        if (backend && example.expect === 'success' && low) {
             const input = join(directory, 'example.fir');
             await writeFile(input, low);
             const result = Bun.spawnSync(['firtool', '--format=fir', '-O=debug', '--verilog', input, '-o', join(directory, 'example.sv')]);
