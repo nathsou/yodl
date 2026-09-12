@@ -10,6 +10,16 @@ module ClockEcho(clk: clock, a: bool) -> (out: bool) {
     out = a
 }
 
+module Top(clk: clock, a: bool, b: bool, value: uint[8]) -> (
+    and_out: bool,
+    pass_out: uint[8],
+    clock_out: bool,
+) {
+    and_out = And(a: a, b: b).out
+    pass_out = Pass[8](a: value).out
+    clock_out = ClockEcho(clk: clk, a: a).out
+}
+
 test "and gate" for And {
     drive!(a, true)
     drive!(b, false)
