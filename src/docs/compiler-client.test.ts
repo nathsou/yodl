@@ -84,6 +84,13 @@ test('procedural testbenches run as a playground output stage', () => {
     expect(result.output).toBe('PASS complete XOR truth table\nPASS counter reset, increment, and hold');
 });
 
+test('Euler1 example verifies its completed sum', () => {
+    const path = 'examples/Euler1.yodl';
+    const result = compile({ id: 5, source: files[path], path, files, stage: 'test' });
+    expect(result.error).toBeUndefined();
+    expect(result.output).toBe('PASS Euler 1 sums multiples below 1000');
+});
+
 test('timeout terminates stuck work and releases the next example', async () => {
     globalThis.Worker = FakeWorker as any;
     const client = new CompilerClient(10);

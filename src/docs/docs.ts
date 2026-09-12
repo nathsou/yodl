@@ -86,7 +86,7 @@ async function openExample(example: Example) {
         await editorModule.loadMonaco();
         container.innerHTML = `<div class="editing-note">You are editing the complete program, including any supporting lines hidden in the article. <button data-control="original">Show original</button></div>
 <div class="original-source" hidden><p>Current documentation source</p><pre></pre></div>
-<div class="example-toolbar"><button data-control="compile" class="primary">Compile <kbd>⌘ / Ctrl ↵</kbd></button><label>Output <select data-control="stage" aria-label="Compiler output stage"></select></label><label class="auto-control"><input type="checkbox" data-control="auto"> Auto</label><button data-control="layout" aria-pressed="false">Side by side</button></div>
+<div class="example-toolbar"><button data-control="compile" class="primary">Compile <kbd>⌘ / Ctrl ↵</kbd></button><button data-control="run-tests" hidden>Run tests</button><label>Output <select data-control="stage" aria-label="Compiler output stage"></select></label><button data-control="layout" aria-pressed="false">Side by side</button></div>
 <nav class="example-tabs" aria-label="Example view"><button data-control="source-tab" aria-pressed="true">Source</button><button data-control="output-tab" aria-pressed="false">Output</button></nav><div class="example-panes" data-view="source"><div class="source-editor" aria-label="Source editor"></div><div class="output-pane"><div class="output-label">Compiler output <span data-control="output-state">Not compiled yet</span></div><div class="output-editor"></div></div></div>
 <p class="stage-hint"></p><pre class="diagnostic" tabindex="0" hidden></pre><button data-control="jump" hidden>Go to error ↑</button>
 <div class="example-bottom"><button data-control="reset">Reset</button><button data-control="share">Share</button><button data-control="compare">Compare output with original</button><button data-control="copy-output" disabled>Copy output</button><button data-control="close">Close editor</button></div><div class="output-comparison" hidden><p>Original output</p><pre data-comparison="original"></pre><p>Your output</p><pre data-comparison="edited"></pre></div>`;
@@ -121,8 +121,6 @@ async function openExample(example: Example) {
         input = await editorModule.createEditor(sourcePanel, { value: source, ariaLabel: `Source: ${example.title}` });
         output = await editorModule.createEditor(q(container, '.output-editor'), { readOnly: true, ariaLabel: `Compiler output: ${example.title}` });
         let revision = 0, outputRevision = -1, closed = false, lastOutput = '';
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const auto = control<HTMLInputElement>('auto');
         const diagnostic = q(container, '.diagnostic');
         const comparison = q(container, '.output-comparison');
         const outputState = control('output-state');
@@ -133,19 +131,19 @@ async function openExample(example: Example) {
             catch { return false; }
         };
         const changed = () => {
-            revision++; compiler.cancel(example.id); compiler.cancel(`${example.id}:original`); clearTimeout(timer);
+            revision++; compiler.cancel(example.id); compiler.cancel(`${example.id}:original`);
             clearError(); comparison.hidden = true; control<HTMLButtonElement>('copy-output').disabled = true;
             outputState.textContent = lastOutput ? 'Out of date' : 'Not compiled yet';
             const saved = save();
             status(example, saved ? 'Draft saved locally. Compile to see the result.' : 'Draft could not be saved in this browser. Copy it to keep your edits.');
-            if (auto.checked) timer = setTimeout(run, 500);
+            control<HTMLButtonElement>('run-tests').hidden = !/\btest\s+(?:"|for\b)/.test(input.getValue());
         };
         const hint = () => {
             q(container, '.stage-hint').textContent = stages[selectedStage()].description + (example.unsupported.length ? ` ${example.unsupported.map(value => stages[value].label).join(', ')} is not supported for this original example yet.` : '');
             monaco.editor.setModelLanguage(output.getModel(), stages[selectedStage()].language);
         };
         const run = async () => {
-            clearTimeout(timer); clearError(); comparison.hidden = true; outputRevision = -1;
+            clearError(); comparison.hidden = true; outputRevision = -1;
             const atRevision = revision;
             const source = input.getValue();
             control<HTMLButtonElement>('copy-output').disabled = true;
@@ -175,8 +173,9 @@ async function openExample(example: Example) {
         input.onDidChangeModelContent(changed);
         input.addAction({ id: 'compile-example', label: 'Compile example', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run });
         control('compile').onclick = run;
+        control('run-tests').onclick = () => { picker.value = 'test'; hint(); void run(); };
         picker.onchange = () => { hint(); changed(); };
-        auto.onchange = () => { clearTimeout(timer); if (auto.checked) void run(); };
+        changed();
         control('layout').onclick = () => {
             const split = card.classList.toggle('split'); control('layout').setAttribute('aria-pressed', String(split)); input.layout(); output.layout();
         };
@@ -201,7 +200,7 @@ async function openExample(example: Example) {
             status(example, result.output === lastOutput ? 'Your edits produce the same output as the original at this stage.' : 'Original and edited output are shown below.');
         };
         const close = () => {
-            closed = true; clearTimeout(timer); compiler.cancel(example.id); compiler.cancel(`${example.id}:original`); save();
+            closed = true; compiler.cancel(example.id); compiler.cancel(`${example.id}:original`); save();
             input.getModel()?.dispose(); output.getModel()?.dispose(); input.dispose(); output.dispose();
             states.delete(example.id); container.replaceChildren(); container.hidden = true; q(card, '.example-static').hidden = false;
             edit.disabled = false; edit.hidden = false; edit.textContent = 'Resume editing';

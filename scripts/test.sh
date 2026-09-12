@@ -24,10 +24,17 @@ fi
 for example in $EXAMPLES
 do
     echo "Compiling $example..."
+    if [ "$(basename "$example")" = "Testbench.yodl" ]; then
+        moon run src/main/yodl.mbt "$example" test
+        continue
+    fi
     fir_path="$OUTPUT_PATH/$(basename $example .yodl).fir"
     sv_path="$OUTPUT_PATH/$(basename $example .yodl).sv"
     moon run src/main/yodl.mbt $example "write_low_firrtl $fir_path"
     firtool --format=fir -O=debug --verilog $fir_path -o $sv_path
+    if grep -q '^test ' "$example"; then
+        moon run src/main/yodl.mbt "$example" test
+    fi
 done
 
 echo "All examples and tour lessons compiled successfully."

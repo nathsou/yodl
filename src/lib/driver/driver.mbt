@@ -349,6 +349,15 @@ fn test_expr_width(ctx: TestCheckContext, expr: @parse.Expr) -> Int? raise {
       }
     }
     @parse.Expr::Identifier(path~, ..) => ctx.locals.get(path.elem)
+    @parse.Expr::Indexing(expr=@parse.Expr::Vector(elems~, ..), index~, ..) => {
+      match index {
+        @parse.Expr::Natural(value~, ..) if value >= 0 && value < BigInt::from_int(elems.length()) => {
+          test_expr_width(ctx, elems[value.to_int()])
+        }
+        _ => if elems.length() == 0 { None } else { test_expr_width(ctx, elems[0]) }
+      }
+    }
+    @parse.Expr::Indexing(..) => Some(1)
     @parse.Expr::Unary(expr~, ..) => test_expr_width(ctx, expr)
     @parse.Expr::Binary(op~, lhs~, rhs~, ..) => {
       match (test_expr_width(ctx, lhs), test_expr_width(ctx, rhs)) {
@@ -592,6 +601,25 @@ fn eval_test_expr(ctx: TestRuntime, expr: @parse.Expr) -> TestValue raise {
     @parse.Expr::Identifier(path~, ..) => ctx.locals.get(path.elem).unwrap_or_error(
       Failure::Failure("Unknown test-local value '\{path.elem}'")
     )
+    @parse.Expr::Indexing(expr=@parse.Expr::Vector(elems~, ..), index~, ..) => {
+      let position = eval_test_expr(ctx, index).raw.to_int()
+      if position < 0 || position >= elems.length() {
+        raise Failure::Failure("Test vector index \{position} is out of bounds at \{expr.span()}")
+      }
+      eval_test_expr(ctx, elems[position])
+    }
+    @parse.Expr::Indexing(expr~, index~, ..) => {
+      let value = eval_test_expr(ctx, expr)
+      let position = eval_test_expr(ctx, index).raw.to_int()
+      let width = test_value_width(value)
+      if position < 0 || position >= width {
+        raise Failure::Failure("Test bit index \{position} is out of bounds at \{expr.span()}")
+      }
+      if !value.is_known() {
+        raise Failure::Failure("Unknown simulator values cannot be indexed in test expressions")
+      }
+      TestValue::known((value.raw >> position) & 1, width=Some(1))
+    }
     @parse.Expr::Unary(op~, expr~, ..) => {
       let value = eval_test_expr(ctx, expr)
       if !value.is_known() {

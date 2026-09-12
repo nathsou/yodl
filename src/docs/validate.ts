@@ -16,9 +16,9 @@ try {
         // Expected errors are checked at the authored stage. Valid examples
         // cover every compiler representation; the test runner applies only
         // to examples that actually declare testbenches.
-        const checkedStages = example.expect === 'error'
+        const checkedStages = example.expect === 'error' || example.stage === 'test'
             ? [example.stage]
-            : (Object.keys(stages) as Stage[]).filter(stage => stage !== 'test' || example.stage === 'test');
+            : (Object.keys(stages) as Stage[]).filter(stage => stage !== 'test');
         let low = '';
         for (const stage of checkedStages) {
             const result = compile({ id: ++count, source: example.source, path: example.path, files: example.files, stage });

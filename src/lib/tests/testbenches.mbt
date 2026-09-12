@@ -127,6 +127,20 @@ test "test values preserve known bits, reject overflow, and honor signed locals"
   assert_true(compile_error(overflow, cmd_str="test").contains("requires 9 bits"))
 }
 
+test "test expressions can consume static vector tables" {
+  let source =
+    "module Xor(a: bool, b: bool) -> (out: bool) { out = a xor b; }\n" +
+    "const TruthTable = [3'b000, 3'b011, 3'b101, 3'b110]\n" +
+    "test \"truth table\" for Xor {\n" +
+    "  for i in 0..<4 {\n" +
+    "    drive!(a, TruthTable[i][2])\n" +
+    "    drive!(b, TruthTable[i][1])\n" +
+    "    expect!(out, TruthTable[i][0])\n" +
+    "  }\n" +
+    "}\n"
+  assert_eq(compile_stage(source, "test"), "PASS truth table")
+}
+
 test "test constants store peek values and signed peeks preserve their type" {
   let source =
     "module Values(a: sint[8], flag: bool) -> (signed: sint[8], ok: bool) { signed = a; ok = flag; }\n" +

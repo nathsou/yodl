@@ -81,7 +81,6 @@ blockquote p:last-child, .warning p:last-child { margin: 0; }
 .example-toolbar kbd { display: none; }
 .example-bottom button { border-color: transparent; background: transparent; color: var(--muted); font-size: 10px; }
 .example-bottom button:last-child { margin-left: auto; }
-.auto-control { display: flex; gap: 3px; align-items: center; }
 input[type="checkbox"] { accent-color: var(--accent); }
 .example-tabs { display: none; }
 .source-editor { min-width: 0; }

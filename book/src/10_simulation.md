@@ -12,6 +12,9 @@ to run the same testbenches in the browser.
 ```yodl live id=ex-procedural-testbenches stage=test src=examples/Testbench.yodl
 ```
 
+Each row of the XOR table is a three-bit `a, b, out` value. The test indexes
+the constant table to drive the inputs and check its expected output.
+
 `drive!` sets an input and settles combinational logic, `expect!` checks a
 settled signal, `peek!` reads a signal into a test-local value, `settle!`
 settles without advancing time, and `step!` advances a clock by complete
