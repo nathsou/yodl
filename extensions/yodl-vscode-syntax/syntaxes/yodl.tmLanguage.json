@@ -8,7 +8,7 @@
         },
         {
             "name": "keyword.control.yodl",
-            "match": "\\b(declare|module|let|match|if|else|for|in|const|package|import)\\b"
+            "match": "\\b(declare|module|test|let|match|if|else|for|in|const|package|import)\\b"
         },
         {
             "name": "entity.name.function.yodl",

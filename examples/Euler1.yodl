@@ -12,6 +12,17 @@ module Euler1(clk: clock, rst: bool) -> (q: u18, is_ready: bool) {
     is_ready = not is_active
 }
 
+test "Euler 1 sums multiples below 1000" for Euler1 {
+    drive!(rst, true)
+    step!(1)
+    expect!(q, 0)
+
+    drive!(rst, false)
+    step!(1000)
+    expect!(q, 233168)
+    expect!(is_ready, true)
+}
+
 @simulation({
     display: { buffer: "pixel", width: 400, height: 300, mode: "binary", packing: "bits32", on_color: 16096865, off_color: 1773349 },
     reset: "rst",

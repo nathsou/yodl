@@ -87,7 +87,7 @@ bash scripts/test.sh
 - [x] Type parameters
 - [x] External modules
 - [ ] Source Maps
-- [ ] Test Benches
+- [x] Test Benches
 - [X] FIRRTL to RTLIL backend to bypass SystemVerilog generation
 - [ ] Language Server Protocol (LSP) support
 - [ ] [KiCad schematics](https://dev-docs.kicad.org/en/file-formats/sexpr-schematic/index.html) export

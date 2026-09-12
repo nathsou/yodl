@@ -33,7 +33,7 @@ async function initialise() {
     // Define syntax highlighting rules for yodl
     monaco.languages.setMonarchTokensProvider('yodl', {
         keywords: [
-            'declare', 'module', 'let', 'match', 'if', 'else', 'for', 'in', 'const', 'package', 'import', 'true', 'false'
+            'declare', 'module', 'test', 'let', 'match', 'if', 'else', 'for', 'in', 'const', 'package', 'import', 'true', 'false'
         ],
         typeKeywords: [
             'uint', 'sint', 'bool', 'clock', 'type', 'Nat', 'Type'

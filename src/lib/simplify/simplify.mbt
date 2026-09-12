@@ -568,6 +568,7 @@ fn Simplifier::simplify_decl(
       Some(@parse.CoreDecl::Module({ path, attributes, ports: core_ports, body: simplified_body, span }))
     }
     ModuleDeclaration(sig) => Some(@parse.CoreDecl::ModuleDeclaration(sig))
+    Test(_) => None
     Const(decl) => {
       env.declare_(decl.path, Const(self.simplify_expr(decl.expr, env~)))
       None

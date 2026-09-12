@@ -806,6 +806,23 @@ pub fn AstEmitter::emit_decl(self: AstEmitter, decl: Decl) -> Unit {
     ModuleDeclaration(sig) => {
       self.emit_module_sig(sig)
     }
+    Test({ name, target, body, .. }) => {
+      self.write("test \"\{name}\"")
+      match target {
+        Some(Expr::Identifier(path~, ..)) => { self.write(" for "); self.write(Show::to_string(path)) }
+        Some(Expr::Instance(path~, params~, ..)) => {
+          self.write(" for "); self.write(Show::to_string(path)); self.write("[")
+          self.write(params.params.map(fn(p) { Show::to_string(p.1) }).join(", ")); self.write("]")
+        }
+        Some(_) => self.write(" for <expression>")
+        None => ()
+      }
+      self.write(" {\n")
+      self.indent += 1
+      for stmt in body { self.emit_stmt(stmt); self.write("\n") }
+      self.indent -= 1
+      self.emit("}")
+    }
     Const(decl) => {
       self.emit_const_decl(decl)
     }

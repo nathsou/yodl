@@ -6,5 +6,6 @@ export const stages = {
     write_firrtl: { label: 'FIRRTL', extension: 'fir', language: 'firrtl', description: 'Hardware represented as ports, operations, registers, and connections.' },
     write_low_firrtl: { label: 'Low FIRRTL', extension: 'fir', language: 'firrtl', description: 'FIRRTL after lowering passes, ready for downstream tools.' },
     write_rtlil: { label: 'RTLIL', extension: 'il', language: 'rtlil', description: 'Hardware in the intermediate language used by Yosys.' },
+    test: { label: 'Tests', extension: 'txt', language: 'plaintext', description: 'Run procedural testbenches and report each passing test.' },
 } as const;
 export type Stage = keyof typeof stages;

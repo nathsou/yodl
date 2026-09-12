@@ -420,7 +420,10 @@ export function compile(request: CompileRequest): CompileResult {
         }
         const fs = createInMemoryFileSystem({ ...request.files, [request.path]: request.source }, (path, source) => { sources[path] = source; });
         let output = '';
-        unwrap(yodl.run(request.path, unwrap(yodl.parse_commands(request.stage)), { ...ext, fs, println: (text: string) => { output += text; } }));
+        unwrap(yodl.run(request.path, unwrap(yodl.parse_commands(request.stage)), {
+            ...ext, fs,
+            println: (text: string) => { output += request.stage === 'test' && output ? `\n${text}` : text; },
+        }));
         return { id: request.id, output, sources, duration: performance.now() - started };
     } catch (error) {
         return { id: request.id, sources, error: simulationError(error), duration: performance.now() - started };

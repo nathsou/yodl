@@ -1,5 +1,44 @@
 # Simulation
 
+## Procedural testbenches
+
+Testbenches live beside hardware modules and run with the native simulator.
+The `test` command runs every test in a source file; pass a test name to run
+only that test. A test may bind a module with `for`, which brings its ports into
+scope, or instantiate a DUT locally when it needs an unbound test.
+In the playground, choose **Tests** from the Output menu and press **Compile**
+to run the same testbenches in the browser.
+
+```yodl live id=ex-procedural-testbenches stage=test src=examples/Testbench.yodl
+```
+
+Each row of the XOR table is a three-bit `a, b, out` value. The test indexes
+the constant table to drive the inputs and check its expected output.
+
+| Builtin | Form | Effect |
+| --- | --- | --- |
+| `drive!` | `drive!(input, value)` | Drives an input port and settles combinational logic. |
+| `expect!` | `expect!(signal, value)` | Checks a settled port value. The test fails when it differs. |
+| `peek!` | `peek!(signal)` | Reads a port value for use in a test expression or local binding. |
+| `settle!` | `settle!()` | Settles combinational logic without advancing time. |
+| `step!` | `step!(cycles)` | Advances the bound DUT's sole clock by complete cycles. |
+| `step!` | `step!(clock, cycles)` | Advances the named clock by complete cycles. Required when a DUT has multiple clocks, and used by unbound tests. |
+
+Bound tests refer to ports directly. Unbound tests qualify ports with their DUT
+binding, such as `dut.out`. Generic DUTs are supported in a bound declaration
+such as `for Counter[8]`.
+
+Local DUT declarations select the module to simulate; their connection list
+must be empty. Use `drive!` for test stimulus after `let dut = Module()`.
+Integer expressions and values returned by `peek!` may be stored in lexical
+`let` or `const` bindings and composed in later test expressions.
+
+Tests are host-side programs and do not add hardware to the emitted FIRRTL.
+The DUT instances are still monomorphized, so a parameterized DUT used only by
+a test is available to the simulator. Module-level `assert!`, `printf!`, and
+`stop!` retain their clocked FIRRTL semantics and can be used alongside a
+procedural test.
+
 Yodl's simulator executes the normalized, typed FIRRTL produced by the
 compiler. It is intended for deterministic testbenches and for interactive
 playground tools; it does not model gate delays or analogue timing.
@@ -217,27 +256,3 @@ worklist; a deterministic full sweep is available as a reference oracle.
 Known-address memory writes are grouped by word, while unknown addresses use
 a separate conservative path instead of scanning memory for every ordinary
 write.
-
-## JavaScript and WebAssembly hosts
-
-The browser playground currently uses MoonBit's JavaScript target. This keeps
-the compiler and simulator directly importable as ES modules and makes the
-existing object/array API inexpensive to call from a worker. MoonBit also
-produces both classic WASM and `wasm-gc` artifacts, but a library package's
-`.wasm` file is not by itself a browser API: the host still needs an exported
-entry point, memory/string marshalling, and a stable ABI for compile, poke,
-step, and framebuffer reads.
-
-WASM is attractive for long, arithmetic-heavy runs because the hot loop avoids
-JavaScript's dynamic dispatch and garbage collector. In this simulator the
-compiler/elaboration pass and display rendering are also
-significant costs, so repeatedly crossing a JS/WASM boundary for individual
-signals can erase that gain. A practical WASM backend should therefore batch
-work (`compile` or load a serialized SimIR once, `step N`, then copy one packed
-framebuffer) and keep the worker session in WASM. That can improve sustained
-playback and leave short interactive steps roughly unchanged; startup,
-serialization, and browser support for `wasm-gc` still make JavaScript the
-better default today. The recommended path is to keep the current JS backend,
-add a batched WASM worker behind the same `SimulationRequest` protocol, and
-choose it only after measuring representative designs such as GameOfLife, Image,
-and Noise.

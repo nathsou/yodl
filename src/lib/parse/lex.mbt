@@ -471,6 +471,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
               "sint" => SInt
               "in" => In
               "for" => For
+              "test" => Test
               "declare" => Declare
               "if" => If
               "else" => Else

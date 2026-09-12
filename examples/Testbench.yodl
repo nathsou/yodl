@@ -1,0 +1,46 @@
+module XorGate(a: bool, b: bool) -> (out: bool) {
+    out = a xor b
+}
+
+const XorTruthTable = [
+    3'b000, // a, b, out
+    3'b011,
+    3'b101,
+    3'b110,
+]
+
+module Counter[Width: Nat](
+    clk: clock,
+    rst: bool,
+    enable: bool,
+) -> (value: uint[Width]) {
+    let state = Reg[uint[Width]](clk, rst, en: enable)
+    state.d = state.q + 1
+    value = state.q
+}
+
+test "complete XOR truth table" for XorGate {
+    for i in 0..<4 {
+        drive!(a, XorTruthTable[i][2])
+        drive!(b, XorTruthTable[i][1])
+        expect!(out, XorTruthTable[i][0])
+    }
+}
+
+test "counter reset, increment, and hold" for Counter[8] {
+    drive!(rst, true)
+    drive!(enable, false)
+    step!(1)
+    expect!(value, 0)
+
+    drive!(rst, false)
+    drive!(enable, true)
+    for expected in 1..<6 {
+        step!(1)
+        expect!(value, expected)
+    }
+
+    drive!(enable, false)
+    step!(2)
+    expect!(value, 5)
+}

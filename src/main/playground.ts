@@ -131,7 +131,6 @@ function resetSourceWorkspace() {
 let revision = 0;
 let lastOutput = '';
 let outputRevision = -1;
-let timer: ReturnType<typeof setTimeout> | undefined;
 const compiler = new CompilerClient();
 const importResolver = new CompilerClient();
 let importRevision = 0;
@@ -147,13 +146,17 @@ function scheduleImports() {
     clearTimeout(importTimer);
     importTimer = setTimeout(loadImports, 150);
 }
+function sourceHasTests(source: String) {
+    return /\btest\s+(?:"|for\b)/.test(source);
+}
+function updateTestButton() {
+    button('run-tests').hidden = !sourceHasTests(entrySource());
+}
 const realtimeSimulation = new RealtimeSimulationClient();
 let simulationState: 'ready' | 'starting' | 'running' | 'paused' | 'stepping' | 'halted' | 'error' = 'ready';
 let requestId = 0;
 let latestRequest = 0;
 let errorRange: ReturnType<typeof diagnosticLocation> = null;
-const auto = element<HTMLInputElement>('auto-compile');
-auto.checked = readStorage('auto') !== 'false';
 const defaultBlank = '// Start a new circuit here.\nmodule Top(a: bool) -> (q: bool) {\n    q = a\n}\n';
 const originals = (path: string) => files[path] ?? defaultBlank;
 const originalSource = () => sharedEntryPath && sharedSource !== null ? sharedSource : originals(selection.path);
@@ -238,12 +241,11 @@ function markChanged() {
     revision++;
     scheduleImports();
     latestRequest = ++requestId;
-    clearTimeout(timer);
     clearDiagnostics();
     button('copy-output').disabled = true;
     button('download-output').disabled = true;
     setStatus(lastOutput ? 'Source changed · output is out of date' : 'Ready to compile');
-    if (auto.checked) timer = setTimeout(runCompile, 500);
+    updateTestButton();
 }
 function choose(next: Selection) {
     saveDraft();
@@ -314,7 +316,6 @@ function showError(message: string) {
     setStatus(lastOutput ? 'Compilation failed · showing previous output' : 'Compilation failed · check diagnostics', 'error');
 }
 async function runCompile() {
-    clearTimeout(timer);
     realtimeSimulation.stop();
     simulationState = 'ready';
     updateSimulationControls();
@@ -335,6 +336,15 @@ async function runCompile() {
     button('copy-output').disabled = !lastOutput;
     button('download-output').disabled = !lastOutput;
     setStatus(`✓ Compiled · ${Math.round(result.duration)} ms`, 'success');
+}
+async function runTests() {
+    if (selection.stage !== 'test') {
+        selection.stage = 'test';
+        select('pass-selector').value = 'test';
+        renderStage();
+        saveDraft();
+    }
+    await runCompile();
 }
 function parseSimulationInputs(source: string): Record<string, { width: number; value: number }> {
     const inputs: Record<string, { width: number; value: number }> = {};
@@ -535,7 +545,7 @@ async function start() {
     renderSelection();
     if (matchMedia('(max-width: 820px)').matches) element<HTMLDetailsElement>('guide-details').open = false;
     saveDraft();
-    for (const id of ['share-button', 'source-selector', 'compile-button', 'simulate-button', 'simulation-reset', 'simulation-step-cycle', 'simulation-step-frame', 'simulation-stop', 'simulation-run', 'simulation-top', 'simulation-clock', 'simulation-cycles-per-frame', 'simulation-clock-hz', 'simulation-refresh-fps', 'simulation-inputs', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
+    for (const id of ['share-button', 'source-selector', 'compile-button', 'run-tests', 'simulate-button', 'simulation-reset', 'simulation-step-cycle', 'simulation-step-frame', 'simulation-stop', 'simulation-run', 'simulation-top', 'simulation-clock', 'simulation-cycles-per-frame', 'simulation-clock-hz', 'simulation-refresh-fps', 'simulation-inputs', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
     const mac = /Mac|iPhone|iPad/.test(navigator.platform);
     element('compile-shortcut').textContent = mac ? '⌘ ↵' : 'Ctrl ↵';
     editors.input.addAction({ id: 'compile-yodl', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });
@@ -561,6 +571,7 @@ async function start() {
     button('suggested-stage').onclick = () => changeStage(tour[lessonIndex()].stage as Stage);
     select('pass-selector').onchange = () => changeStage(select('pass-selector').value as Stage);
     button('compile-button').onclick = runCompile;
+    button('run-tests').onclick = runTests;
     button('simulate-button').onclick = () => runSimulation('run');
     button('simulation-run').onclick = () => runSimulation('run');
     button('simulation-reset').onclick = () => runSimulation('reset');
@@ -573,11 +584,6 @@ async function start() {
         updateSimulationControls();
         element('simulation-state').textContent = 'Stopped';
         setStatus('Simulation stopped');
-    };
-    auto.onchange = () => {
-        writeStorage('auto', String(auto.checked));
-        clearTimeout(timer);
-        if (auto.checked) runCompile();
     };
     button('source-tab').onclick = () => setMobileView('source');
     button('output-tab').onclick = () => setMobileView('output');
@@ -608,7 +614,7 @@ async function start() {
     installResizer();
     setStatus('Ready to compile');
     void loadImports();
-    if (auto.checked) runCompile();
+    updateTestButton();
 }
 function navigateLesson(delta: number) {
     const index = lessonIndex() + delta;
