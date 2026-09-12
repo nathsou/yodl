@@ -7,7 +7,7 @@ The `test` command runs every test in a source file; pass a test name to run
 only that test. A test may bind a module with `for`, which brings its ports into
 scope, or instantiate a DUT locally when it needs an unbound test.
 
-```yodl
+```yodl id=ex-procedural-testbenches
 module And(a: bool, b: bool) -> (out: bool) {
     out = a and b
 }
