@@ -8,7 +8,7 @@ priv struct FrontendPipeline {
   top: String
   port_usage: @parse.PortUsage
   tests: Array[@parse.TestDecl]
-  test_modules: Map[String, Array[@parse.Port]]
+  test_modules: Map[@parse.Path, Array[@parse.Port]]
 }
 
 fn prepare_frontend(path: String, ext: @utils.Externals, top: String?, allow_test_top~: Bool = false) -> FrontendPipeline raise {
@@ -71,10 +71,10 @@ fn prepare_frontend(path: String, ext: @utils.Externals, top: String?, allow_tes
       }
     }
   }
-  let test_modules: Map[String, Array[@parse.Port]] = Map([])
+  let test_modules: Map[@parse.Path, Array[@parse.Port]] = Map([])
   for decl in mono_decls {
     match decl {
-      @parse.Decl::Module(mod) => test_modules[mod.path.elem] = mod.ports
+      @parse.Decl::Module(mod) => test_modules[mod.path] = mod.ports
       _ => ()
     }
   }
@@ -269,10 +269,17 @@ fn test_instance_exprs(body: Array[@parse.Stmt]) -> Array[@parse.Expr] {
   instances
 }
 
-fn test_target_name(expr: @parse.Expr) -> String? {
+fn test_target_path(expr: @parse.Expr) -> @parse.Path? {
   match expr {
-    @parse.Expr::Identifier(path~, ..) | @parse.Expr::Instance(path~, ..) => Some(path.elem)
+    @parse.Expr::Identifier(path~, ..) | @parse.Expr::Instance(path~, ..) => Some(path)
     _ => None
+  }
+}
+
+fn test_target_name(path: @parse.Path) -> String {
+  match path.packages {
+    [] => path.elem
+    _ => path.packages.join("_") + "_" + path.elem
   }
 }
 
@@ -358,7 +365,10 @@ fn test_expr_width(ctx: TestCheckContext, expr: @parse.Expr) -> Int? raise {
       }
     }
     @parse.Expr::Indexing(..) => Some(1)
-    @parse.Expr::Unary(expr~, ..) => test_expr_width(ctx, expr)
+    @parse.Expr::Unary(op~, expr~, ..) => match op {
+      @parse.UnaryOp::Andr | @parse.UnaryOp::Orr | @parse.UnaryOp::Xorr => Some(1)
+      _ => test_expr_width(ctx, expr)
+    }
     @parse.Expr::Binary(op~, lhs~, rhs~, ..) => {
       match (test_expr_width(ctx, lhs), test_expr_width(ctx, rhs)) {
         (Some(a), Some(b)) => Some(match op {
@@ -485,11 +495,14 @@ fn validate_test_stmt(ctx: TestCheckContext, stmt: @parse.Stmt) -> Unit raise {
       for nested in body { validate_test_stmt(child, nested) }
     }
     @parse.Stmt::For(variable~, range~, body~, ..) => {
-      if test_expr_width(ctx, range.start) is None || test_expr_width(ctx, range.end) is None {
-        raise Failure::Failure("Test loop bounds must be integer expressions")
-      }
+      let start_width = test_expr_width(ctx, range.start).unwrap_or_error(
+        Failure::Failure("Test loop bounds must be integer expressions"),
+      )
+      let end_width = test_expr_width(ctx, range.end).unwrap_or_error(
+        Failure::Failure("Test loop bounds must be integer expressions"),
+      )
       let child = child_test_check_context(ctx)
-      child.locals[variable] = 32
+      child.locals[variable] = if start_width > end_width { start_width } else { end_width }
       for nested in body { validate_test_stmt(child, nested) }
     }
     @parse.Stmt::Let(name~, ty~, expr=Some(expr), span~) => {
@@ -558,10 +571,10 @@ fn validate_test_stmt(ctx: TestCheckContext, stmt: @parse.Stmt) -> Unit raise {
 }
 
 fn validate_tests(tests: Array[@parse.TestDecl], decls: Array[@parse.Decl]) -> Unit raise {
-  let modules: Map[String, @parse.ModuleDecl] = Map([])
+  let modules: Map[@parse.Path, @parse.ModuleDecl] = Map([])
   for decl in decls {
     match decl {
-      @parse.Decl::Module(mod) => modules[mod.path.elem] = mod
+      @parse.Decl::Module(mod) => modules[mod.path] = mod
       _ => ()
     }
   }
@@ -570,11 +583,11 @@ fn validate_tests(tests: Array[@parse.TestDecl], decls: Array[@parse.Decl]) -> U
       Failure::Failure("Test '\{td.name}' has no DUT; add `for Module` or `let dut = Module()`"),
     )
     validate_test_instance(target_expr)
-    let target = test_target_name(target_expr).unwrap_or_error(
+    let target = test_target_path(target_expr).unwrap_or_error(
       Failure::Failure("Test DUT must be a module or module instance"),
     )
     let mod = modules.get(target).unwrap_or_error(
-      Failure::Failure("Test '\{td.name}' targets unknown module '\{target}'"),
+      Failure::Failure("Test '\{td.name}' targets unknown module '\{target.to_string()}'"),
     )
     let ports: Map[String, @parse.Port] = Map([])
     for port in mod.ports { ports[port.name] = port }
@@ -593,6 +606,17 @@ fn test_value_width(value: TestValue) -> Int {
   value.width.unwrap_or(@utils.significant_bits(value.raw))
 }
 
+fn test_value_to_int(value: TestValue, purpose: String) -> Int raise {
+  if !value.is_known() {
+    raise Failure::Failure("Unknown simulator values cannot be used as \{purpose}")
+  }
+  let result = value.raw.to_int()
+  if BigInt::from_int(result) != value.raw {
+    raise Failure::Failure("Test \{purpose} is outside the host integer range")
+  }
+  result
+}
+
 fn eval_test_expr(ctx: TestRuntime, expr: @parse.Expr) -> TestValue raise {
   match expr {
     @parse.Expr::Natural(value~, width~, ..) => {
@@ -602,7 +626,7 @@ fn eval_test_expr(ctx: TestRuntime, expr: @parse.Expr) -> TestValue raise {
       Failure::Failure("Unknown test-local value '\{path.elem}'")
     )
     @parse.Expr::Indexing(expr=@parse.Expr::Vector(elems~, ..), index~, ..) => {
-      let position = eval_test_expr(ctx, index).raw.to_int()
+      let position = test_value_to_int(eval_test_expr(ctx, index), "a vector index")
       if position < 0 || position >= elems.length() {
         raise Failure::Failure("Test vector index \{position} is out of bounds at \{expr.span()}")
       }
@@ -610,7 +634,7 @@ fn eval_test_expr(ctx: TestRuntime, expr: @parse.Expr) -> TestValue raise {
     }
     @parse.Expr::Indexing(expr~, index~, ..) => {
       let value = eval_test_expr(ctx, expr)
-      let position = eval_test_expr(ctx, index).raw.to_int()
+      let position = test_value_to_int(eval_test_expr(ctx, index), "a bit index")
       let width = test_value_width(value)
       if position < 0 || position >= width {
         raise Failure::Failure("Test bit index \{position} is out of bounds at \{expr.span()}")
@@ -629,9 +653,9 @@ fn eval_test_expr(ctx: TestRuntime, expr: @parse.Expr) -> TestValue raise {
       match op {
         @parse.UnaryOp::Neg => TestValue::known(-value.raw)
         @parse.UnaryOp::Not => TestValue::known(@utils.bitwise_not(value.raw, width~), width=Some(width))
-        @parse.UnaryOp::Andr => TestValue::known(BigInt::from_int(@utils.bits(value.raw).iter().all(@utils.identity).to_int()), width=Some(1))
-        @parse.UnaryOp::Orr => TestValue::known(BigInt::from_int(@utils.bits(value.raw).iter().any(@utils.identity).to_int()), width=Some(1))
-        @parse.UnaryOp::Xorr => TestValue::known(BigInt::from_int(@utils.bits(value.raw).fold(init=0, (acc, b) => acc ^ b.to_int())), width=Some(1))
+        @parse.UnaryOp::Andr => TestValue::known(BigInt::from_int(((value.raw & (@utils.pow2(width) - 1)) == @utils.pow2(width) - 1).to_int()), width=Some(1))
+        @parse.UnaryOp::Orr => TestValue::known(BigInt::from_int(((value.raw & (@utils.pow2(width) - 1)) != 0).to_int()), width=Some(1))
+        @parse.UnaryOp::Xorr => TestValue::known(BigInt::from_int(@utils.bits(value.raw & (@utils.pow2(width) - 1)).fold(init=0, (acc, b) => acc ^ b.to_int())), width=Some(1))
       }
     }
     @parse.Expr::Binary(op~, lhs~, rhs~, ..) => {
@@ -643,9 +667,11 @@ fn eval_test_expr(ctx: TestRuntime, expr: @parse.Expr) -> TestValue raise {
       if (op is @parse.BinaryOp::Div || op is @parse.BinaryOp::Mod) && b.raw == 0 {
         raise Failure::Failure("Division by zero in test expression at \{expr.span()}")
       }
-      if (op is @parse.BinaryOp::Shl || op is @parse.BinaryOp::Shr) && b.raw < 0 {
-        raise Failure::Failure("Negative shift count in test expression at \{expr.span()}")
-      }
+      let shift = if op is @parse.BinaryOp::Shl || op is @parse.BinaryOp::Shr {
+        let shift = test_value_to_int(b, "a shift count")
+        if shift < 0 { raise Failure::Failure("Negative shift count in test expression at \{expr.span()}") }
+        shift
+      } else { 0 }
       let width = if test_value_width(a) > test_value_width(b) {
         test_value_width(a)
       } else {
@@ -657,8 +683,8 @@ fn eval_test_expr(ctx: TestRuntime, expr: @parse.Expr) -> TestValue raise {
         @parse.BinaryOp::Mul => a.raw * b.raw
         @parse.BinaryOp::Div => a.raw / b.raw
         @parse.BinaryOp::Mod => a.raw % b.raw
-        @parse.BinaryOp::Shl => a.raw << b.raw.to_int()
-        @parse.BinaryOp::Shr => a.raw >> b.raw.to_int()
+        @parse.BinaryOp::Shl => a.raw << shift
+        @parse.BinaryOp::Shr => a.raw >> shift
         @parse.BinaryOp::And => a.raw & b.raw
         @parse.BinaryOp::Or => a.raw | b.raw
         @parse.BinaryOp::Xor => a.raw ^ b.raw
@@ -749,8 +775,8 @@ fn run_test_stmt_inner(ctx: TestRuntime, stmt: @parse.Stmt) -> Unit raise {
       for nested in body { run_test_stmt(child, nested) }
     }
     @parse.Stmt::For(variable~, range~, body~, ..) => {
-      let start = eval_test_expr(ctx, range.start).raw.to_int()
-      let end = eval_test_expr(ctx, range.end).raw.to_int()
+      let start = test_value_to_int(eval_test_expr(ctx, range.start), "a loop bound")
+      let end = test_value_to_int(eval_test_expr(ctx, range.end), "a loop bound")
       if range.inclusive {
         for value in start..=end {
           let child = child_test_runtime(ctx)
@@ -799,10 +825,10 @@ fn run_test_stmt_inner(ctx: TestRuntime, stmt: @parse.Stmt) -> Unit raise {
           _ => raise Failure::Failure("step! expects a cycle count or a clock and cycle count")
         }
         let count_value = eval_test_expr(ctx, count_expr)
-        if count_value.raw < 0 {
+        let count = test_value_to_int(count_value, "a cycle count")
+        if count < 0 {
           raise Failure::Failure("step! cycle count must be non-negative")
         }
-        let count = count_value.raw.to_int()
         ctx.tb.run(clock, count)
         ensure_test_simulation_active(ctx.tb)
       }
@@ -828,9 +854,10 @@ fn run_tests(frontend: FrontendPipeline, filter: String?, ext: @utils.Externals)
     let target_expr = test_target_expr(td).unwrap_or_error(
       Failure::Failure("Test '\{td.name}' has no DUT; add `for Module` or `let dut = Module()`"),
     )
-    let target = test_target_name(target_expr).unwrap_or_error(
+    let target_path = test_target_path(target_expr).unwrap_or_error(
       Failure::Failure("Test DUT must be a module or module instance"),
     )
+    let target = test_target_name(target_path)
     let circuit = compile_simulation_frontend_with_top(frontend, displays=[], stream=None, top_override=Some(target))
     let sim = try @simulator.Simulator::from_circuit(circuit, target) catch {
       err => raise Failure::Failure("Could not prepare test '\{td.name}': \{@debug.to_string(err)}")
@@ -839,7 +866,7 @@ fn run_tests(frontend: FrontendPipeline, filter: String?, ext: @utils.Externals)
     let clocks = @simulator.simulator_clocks(sim)
     let default_clock = if clocks.length() == 1 { Some(clocks[0]) } else { None }
     let ports: Map[String, @parse.Port] = Map([])
-    for port in frontend.test_modules.get(target).unwrap_or([]) { ports[port.name] = port }
+    for port in frontend.test_modules.get(target_path).unwrap_or([]) { ports[port.name] = port }
     let dut = {
       binding: test_binding_name(td),
       ports,

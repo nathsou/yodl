@@ -535,6 +535,21 @@ fn Monomorphizer::monomorphize_stmt(
       @parse.Stmt::Assign(lhs=mono_lhs, rhs=mono_rhs, span~)
     }
     For(variable~, range~, body~, span~) => {
+      if preserve_runtime_exprs {
+        let var_path = @parse.Path::new([], variable)
+        let scope_env = env.child()
+        scope_env.declare_shadowing(var_path, BoundParam)
+        let mono_range: @parse.ForRange = {
+          start: self.monomorphize_expr(range.start, env~, packages~, record_instance_usage~, preserve_runtime_exprs~),
+          end: self.monomorphize_expr(range.end, env~, packages~, record_instance_usage~, preserve_runtime_exprs~),
+          inclusive: range.inclusive,
+        }
+        let mono_body = []
+        for stmt in body {
+          mono_body.push(self.monomorphize_stmt(stmt, env=scope_env, packages~, record_instance_usage~, preserve_runtime_exprs~))
+        }
+        return @parse.Stmt::For(variable~, range=mono_range, body=mono_body, span~)
+      }
       let start = self.monomorphize_expr(range.start, env~, packages~).partial_eval().as_int()
       let mut end = self.monomorphize_expr(range.end, env~, packages~).partial_eval().as_int()
       let unrolled_stmts = []
