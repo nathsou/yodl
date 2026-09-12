@@ -29,11 +29,16 @@ test "and gate with an explicit instance" {
 ```
 
 `drive!` sets an input and settles combinational logic, `expect!` checks a
-settled signal, `peek!` reads a signal for host-side inspection, `settle!`
+settled signal, `peek!` reads a signal into a test-local value, `settle!`
 settles without advancing time, and `step!` advances a clock by complete
 cycles. A bound test can use `step!(cycles)` when it has one clock; an unbound
 test can name it as `step!(dut.clk, cycles)`. Generic DUTs are supported in a
 bound declaration such as `for Counter[8]`.
+
+Local DUT declarations select the module to simulate; their connection list
+must be empty. Use `drive!` for test stimulus after `let dut = Module()`.
+Integer expressions and values returned by `peek!` may be stored in lexical
+`let` or `const` bindings and composed in later test expressions.
 
 Tests are host-side programs and do not add hardware to the emitted FIRRTL.
 The DUT instances are still monomorphized, so a parameterized DUT used only by

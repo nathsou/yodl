@@ -59,6 +59,7 @@ pub struct Monomorphizer {
   monomorphized : Map[@parse.Path, Map[UInt, @parse.ModuleDecl]]
   declared_modules : Map[@parse.Path, @parse.ModuleSignature]
   instanciated_modules : @set.Set[@parse.Path]
+  test_only_modules : @set.Set[@parse.Path]
   constants : Map[@parse.Path, @parse.ConstDecl]
   type_aliases : Map[@parse.Path, @parse.TypeAliasDecl]
   top_env : @utils.Scope[@parse.Path, MonoEnvEntry]

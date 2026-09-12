@@ -8,6 +8,7 @@ pub struct Monomorphizer {
   monomorphized: Map[@parse.Path, Map[ParamsHash, @parse.ModuleDecl]]
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
   instanciated_modules: Set[@parse.Path]
+  test_only_modules: Set[@parse.Path]
   constants: Map[@parse.Path, @parse.ConstDecl]
   type_aliases: Map[@parse.Path, @parse.TypeAliasDecl]
   top_env: MonoEnv
@@ -20,6 +21,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
     monomorphized: {},
     declared_modules: {},
     instanciated_modules: Set([]),
+    test_only_modules: Set([]),
     constants: {},
     type_aliases: {},
     top_env: Scope::new(),
@@ -171,7 +173,7 @@ fn Monomorphizer::resolve_param(self: Self, param~: @parse.Param, sort~: @parse.
           }
           err => raise err
         }
-        let value = match @parse.ConstValue::from(mono_expr) {
+        let value = match @parse.ConstValue::from(mono_expr.partial_eval()) {
           Some(val) => val
           _ => raise InvalidParameter(sort~, span~)
         }
@@ -350,8 +352,23 @@ fn[T] resolve_member(env: Scope[@parse.Path, T], path~: @parse.Path, packages~: 
   }
 }
 
-fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv, packages~: Array[String]) -> @parse.Expr raise {
-  let rewr_stmt = fn(stmt) raise { Iter::singleton(self.monomorphize_stmt(stmt, env~, packages~)) }
+fn Monomorphizer::monomorphize_expr(
+  self: Self,
+  expr: @parse.Expr,
+  env~: MonoEnv,
+  packages~: Array[String],
+  record_instance_usage~: Bool = true,
+  preserve_runtime_exprs~: Bool = false,
+) -> @parse.Expr raise {
+  let rewr_stmt = fn(stmt) raise {
+    Iter::singleton(self.monomorphize_stmt(
+      stmt,
+      env~,
+      packages~,
+      record_instance_usage~,
+      preserve_runtime_exprs~,
+    ))
+  }
 
   let res = @parse.rewrite_expr(expr, { rewr_stmt, rewr_expr: expr => {
     (match expr {
@@ -384,7 +401,9 @@ fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv
           }
         }
 
-        self.instanciated_modules.add(resolved_path)
+        if record_instance_usage {
+          self.instanciated_modules.add(resolved_path)
+        }
 
         let (mono_path, mono_params) = if params.params.length() > 0 && !self.declared_modules.contains(path) {
           let mod = self.register_monomorphized_module(
@@ -426,6 +445,12 @@ fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv
           (resolved_path, { params: resolved_params, instantiated: params.instantiated })
         }
 
+        if record_instance_usage {
+          self.test_only_modules.remove(mono_path)
+        } else if !self.instanciated_modules.contains(resolved_path) {
+          self.test_only_modules.add(mono_path)
+        }
+
         Some(@parse.Expr::Instance(
           path=mono_path,
           params=mono_params,
@@ -439,20 +464,28 @@ fn Monomorphizer::monomorphize_expr(self: Self, expr: @parse.Expr, env~: MonoEnv
   }})
 
   match res {
+    _ if preserve_runtime_exprs => res
     @parse.Expr::FunCall(name="drive" | "expect" | "step" | "settle" | "peek", ..) => res
     _ => res.partial_eval()
   }
 }
 
-fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv, packages~: Array[String]) -> @parse.Stmt raise {
+fn Monomorphizer::monomorphize_stmt(
+  self: Self,
+  stmt: @parse.Stmt,
+  env~: MonoEnv,
+  packages~: Array[String],
+  record_instance_usage~: Bool = true,
+  preserve_runtime_exprs~: Bool = false,
+) -> @parse.Stmt raise {
   match stmt {
     Expr(expr~, span~) => {
-      let mono_expr = self.monomorphize_expr(expr, env~, packages~)
+      let mono_expr = self.monomorphize_expr(expr, env~, packages~, record_instance_usage~, preserve_runtime_exprs~)
       @parse.Stmt::Expr(expr=mono_expr, span~)
     }
     Let(name~, ty~, expr~, span~) => {
       let mono_expr = match expr {
-        Some(expr) => Some(self.monomorphize_expr(expr, env~, packages~))
+        Some(expr) => Some(self.monomorphize_expr(expr, env~, packages~, record_instance_usage~, preserve_runtime_exprs~))
         None => None
       }
 
@@ -497,13 +530,13 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
       @parse.Stmt::Let(name~, ty={ val: mono_ty }, expr=mono_expr, span~)
     }
     Assign(lhs~, rhs~, span~) => {
-      let mono_lhs = self.monomorphize_expr(lhs, env~, packages~)
-      let mono_rhs = self.monomorphize_expr(rhs, env~, packages~)
+      let mono_lhs = self.monomorphize_expr(lhs, env~, packages~, record_instance_usage~, preserve_runtime_exprs~)
+      let mono_rhs = self.monomorphize_expr(rhs, env~, packages~, record_instance_usage~, preserve_runtime_exprs~)
       @parse.Stmt::Assign(lhs=mono_lhs, rhs=mono_rhs, span~)
     }
     For(variable~, range~, body~, span~) => {
-      let start = self.monomorphize_expr(range.start, env~, packages~).as_int()
-      let mut end = self.monomorphize_expr(range.end, env~, packages~).as_int()
+      let start = self.monomorphize_expr(range.start, env~, packages~).partial_eval().as_int()
+      let mut end = self.monomorphize_expr(range.end, env~, packages~).partial_eval().as_int()
       let unrolled_stmts = []
 
       if range.inclusive {
@@ -518,7 +551,7 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
         let scope_env = env.child()
 
         for stmt in body {
-          scope.push(self.monomorphize_stmt(stmt, env=scope_env, packages~))
+          scope.push(self.monomorphize_stmt(stmt, env=scope_env, packages~, record_instance_usage~, preserve_runtime_exprs~))
         }
 
         unrolled_stmts.push(@parse.Stmt::Scope(body=scope, span~))
@@ -533,20 +566,24 @@ fn Monomorphizer::monomorphize_stmt(self: Self, stmt: @parse.Stmt, env~: MonoEnv
       let scope_env = env.child()
 
       for stmt in body {
-        mono_body.push(self.monomorphize_stmt(stmt, env=scope_env, packages~))
+        mono_body.push(self.monomorphize_stmt(stmt, env=scope_env, packages~, record_instance_usage~, preserve_runtime_exprs~))
       }
 
       @parse.Stmt::Scope(body=mono_body, span~)
     }
     Const(decl~, span~) => {
-      let mono_expr = self.monomorphize_expr(decl.expr, env~, packages~)
+      let mono_expr = self.monomorphize_expr(decl.expr, env~, packages~, record_instance_usage~, preserve_runtime_exprs~)
       let mono_ty = match decl.ty {
         Some(ty) => Some(self.monomorphize_type(ty, env~, packages~, span~).ty)
         None => None
       }
 
       let mono_decl: @parse.ConstDecl = { path: decl.path, expr: mono_expr, ty: mono_ty, span: decl.span }
-      env.declare_(decl.path, Const(mono_decl))
+      if preserve_runtime_exprs {
+        env.declare_(decl.path, BoundParam)
+      } else {
+        env.declare_(decl.path, Const(mono_decl))
+      }
       @parse.Stmt::Const(decl=mono_decl, span~)
     }
   }
@@ -647,8 +684,19 @@ pub fn Monomorphizer::monomorphize(self: Self, decls~: Array[@parse.Decl], packa
         // expressions still need to participate in monomorphisation so that
         // generic DUTs are present in the generated circuit.
         let test_env = self.top_env.child()
-        let target = target.map(expr => self.monomorphize_expr(expr, env=test_env, packages~))
-        let body = body.map(stmt => self.monomorphize_stmt(stmt, env=test_env, packages~))
+        let target = target.map(expr => self.monomorphize_expr(
+          expr,
+          env=test_env,
+          packages~,
+          record_instance_usage=false,
+        ))
+        let body = body.map(stmt => self.monomorphize_stmt(
+          stmt,
+          env=test_env,
+          packages~,
+          record_instance_usage=false,
+          preserve_runtime_exprs=true,
+        ))
         tests.push(@parse.Decl::Test({ name, target, body, span }))
       }
       Const(decl) => {
