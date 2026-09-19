@@ -74,6 +74,7 @@ pub suberror ParserError {
   InvalidPortOrTupleAccess(span~ : Span)
   DuplicateStructField(name~ : String, span~ : Span)
   NatTypeAliasParametersUnsupported(name~ : String, span~ : Span)
+  DimensionLiteralOutOfRange(value~ : @bigint.BigInt, span~ : Span)
 } derive(@debug.Debug)
 pub impl Show for ParserError
 

@@ -931,6 +931,63 @@ test "negative hardware dimensions are rejected during type resolution" {
 }
 
 ///|
+test "hardware dimension literals reject machine integer overflow" {
+  let diagnostic = compile_error(
+    "module Top(a: uint[4294967297]) -> (q: uint[4294967297]) { q = a }",
+  )
+  assert_true(diagnostic.contains("Hardware dimension 4294967297 exceeds the supported maximum"))
+  assert_true(diagnostic.contains("fixture.yodl:1"))
+}
+
+///|
+test "hardware dimension arithmetic rejects machine integer overflow" {
+  let diagnostic = compile_error(
+    "module Top(a: uint[2147483647 + 1]) -> () {}",
+  )
+  assert_true(diagnostic.contains("Hardware dimension arithmetic exceeds the supported integer range"))
+}
+
+///|
+test "generic dimensions reject overflow after parameter evaluation" {
+  let source =
+    #|module Child[N: Nat](a: uint[N]) -> () {}
+    #|module Top() -> () {
+    #|  let child = Child[N: 4294967297](a: 0)
+    #|}
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Hardware dimension 4294967297 exceeds the supported integer range"))
+}
+
+///|
+test "nested contradictory command guards remain unreachable" {
+  let source =
+    #|module Top(clk: clock, p: bool, safe: bool) -> () {
+    #|  if p {
+    #|    if not p {
+    #|      assert!(safe, "unreachable")
+    #|    }
+    #|  }
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("assert(clk, safe, UInt<1>(0)"))
+  assert_false(firrtl.contains("assert(clk, safe, UInt<1>(1)"))
+}
+
+///|
+test "condition rewriting does not assume distinct signals hold distinct values" {
+  let source =
+    #|module Top(clk: clock, x: u8, a: u8, b: u8, safe: bool) -> () {
+    #|  if not (x == a) {
+    #|    if x == b {
+    #|      assert!(safe, "guarded")
+    #|    }
+    #|  }
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("and(not(eq(x, a)), eq(x, b))"))
+}
+
+///|
 test "size expressions reject invalid function domains during type resolution" {
   let invalid = [
     (

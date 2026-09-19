@@ -289,12 +289,12 @@ fn ScopeStack::lookup(self: Self, reference: TypedRef) -> ScopeStackLookupResult
 
 priv struct ConditionStack {
   stack: Array[TypedExpr]
+  impossible: Bool
 }
 
 fn ConditionStack::new() -> Self {
-  { stack: [] }
+  { stack: [], impossible: false }
 }
-
 
 priv enum MutualExclusivityResult {
   KeepBoth
@@ -306,33 +306,42 @@ priv enum MutualExclusivityResult {
 fn check_mutual_exclusivity(a: TypedExpr, b: TypedExpr) -> MutualExclusivityResult {
   match (a, b) {
     (x1, PrimOp(op=Not, args=[x2], ..)) | (PrimOp(op=Not, args=[x1], ..), x2) if x1 == x2 => KeepNone
-    (PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x1, a], ..), ..], ..), PrimOp(op=Eq, args=[x2, b], ..)) if x1 == x2 && a != b => KeepRight
-    (PrimOp(op=Eq, args=[x2, b], ..), PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x1, a], ..), ..], ..)) if x1 == x2 && a != b => KeepLeft
+    (
+      PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x1, Literal(a, ..)], ..), ..], ..),
+      PrimOp(op=Eq, args=[x2, Literal(b, ..)], ..),
+    ) if x1 == x2 && a != b => KeepRight
+    (
+      PrimOp(op=Eq, args=[x2, Literal(b, ..)], ..),
+      PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x1, Literal(a, ..)], ..), ..], ..),
+    ) if x1 == x2 && a != b => KeepLeft
     _ => KeepBoth
   }
 }
 
 fn ConditionStack::anded_with(self: Self, new_cond: TypedExpr) -> Self {
-  // remove mutually exclusive conditions
+  if self.impossible { return self }
   let new_stack = Array::new(capacity=self.stack.length() + 1)
   let mut should_add = true
-
   for cond in self.stack {
     match check_mutual_exclusivity(cond, new_cond) {
-      KeepBoth | KeepLeft => new_stack.push(cond)
-      KeepNone => should_add = false
+      KeepBoth => new_stack.push(cond)
+      KeepLeft => {
+        new_stack.push(cond)
+        should_add = false
+      }
+      KeepNone => return { stack: [], impossible: true }
       KeepRight => ()
     }
   }
+  if should_add { new_stack.push(new_cond) }
 
-  if should_add {
-    new_stack.push(new_cond)
-  }
-
-  { stack: new_stack }
+  { stack: new_stack, impossible: false }
 }
 
 fn ConditionStack::as_expr(self: Self) -> TypedExpr {
+  if self.impossible {
+    return Literal(Literal::uint(0), ty=Type::bool())
+  }
   if self.stack.length() == 0 {
     return Literal(Literal::uint(1), ty=Type::bool())
   }

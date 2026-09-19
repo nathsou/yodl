@@ -7,4 +7,5 @@ import {
   "moonbitlang/core/debug",
   "moonbitlang/x/stack",
   "moonbitlang/core/list",
+  "moonbitlang/core/int",
 }
