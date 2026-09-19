@@ -13,6 +13,7 @@ pub suberror LexerError {
   UnexepectedChar(char~: Char, span~: Span)
   UnterminatedStringLiteral(span~: Span)
   UnterminatedCharacterLiteral(span~: Span)
+  IntegerWidthOutOfRange(value~: BigInt, span~: Span)
 }
 
 pub impl Show for LexerError with output(self, logger) -> Unit {
@@ -22,6 +23,8 @@ pub impl Show for LexerError with output(self, logger) -> Unit {
     }
     UnterminatedStringLiteral(..) => logger.write_string("Unterminated string literal")
     UnterminatedCharacterLiteral(..) => logger.write_string("Unterminated character literal")
+    IntegerWidthOutOfRange(value~, ..) =>
+      logger.write_string("Integer width \{value} exceeds the supported maximum \{@int.MAX_VALUE}")
   }
 
   logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
@@ -31,6 +34,7 @@ pub impl Spanned for LexerError with span(self: LexerError) -> Span {
   match self {
     UnexepectedChar(span~, ..) => span
     UnterminatedStringLiteral(span~) | UnterminatedCharacterLiteral(span~) => span
+    IntegerWidthOutOfRange(span~, ..) => span
   }
 }
 
@@ -60,7 +64,14 @@ fn should_insert_semicolon(last_token: Token) -> Bool {
 // Recognise sized integer type identifiers `u<digits>` and `s<digits>`
 // such as `u8`, `s7`, `u32`. Returns None for plain identifiers like
 // `u`, `s`, `u8_buffer`, `u_8`, `uart`.
-fn sized_int_type(identifier: String) -> TokenType? {
+fn checked_integer_width(value: BigInt, span: Span) -> Int raise LexerError {
+  if value > BigInt::from_int(@int.MAX_VALUE) {
+    raise IntegerWidthOutOfRange(value~, span~)
+  }
+  value.to_int()
+}
+
+fn sized_int_type(identifier: String, span: Span) -> TokenType? raise LexerError {
   if identifier.length() < 2 {
     return None
   }
@@ -71,22 +82,23 @@ fn sized_int_type(identifier: String) -> TokenType? {
     return None
   }
 
-  let mut value = 0
+  let mut value: BigInt = 0
 
   for i in 1..<identifier.length() {
     let c = @utils.char_at(identifier, i)
 
     if @utils.is_digit(c, base=10) {
-      value = value * 10 + (c.to_int() - '0'.to_int())
+      value = value * 10 + BigInt::from_int(c.to_int() - '0'.to_int())
     } else {
       return None
     }
   }
 
+  let width = checked_integer_width(value, span)
   if first == 'u' {
-    Some(UIntType(value))
+    Some(UIntType(width))
   } else {
-    Some(SIntType(value))
+    Some(SIntType(width))
   }
 }
 
@@ -157,7 +169,7 @@ fn Lexer::span(self: Lexer, start: SourceLoc) -> Span {
   { start, end: SourceLoc::{ index: self.index, line: self.line, column: self.column }, file: self.file, file_content: self.file_content[:] }
 } 
 
-fn Lexer::parse_integer(self: Lexer) -> ParsedInteger {
+fn Lexer::parse_integer(self: Lexer, start: SourceLoc) -> ParsedInteger raise LexerError {
   let builder = StringBuilder()
   let mut base = 10
   let mut width = None
@@ -179,7 +191,10 @@ fn Lexer::parse_integer(self: Lexer) -> ParsedInteger {
         _ => ()
       }
 
-      width = Some(parse_uint(builder.to_string(), base=10).to_int())
+      width = Some(checked_integer_width(
+        parse_uint(builder.to_string(), base=10),
+        self.span(start),
+      ))
       builder.reset()
     } else if char == '_' {
       // ignore, used as a separator for readability
@@ -452,7 +467,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
     }
     _ => {
       if @utils.is_digit(char, base=10) {
-        let { value, width, base } = self.parse_integer()
+        let { value, width, base } = self.parse_integer(start)
         Ok(Natural(value~, width~, base~))
       } else if @utils.is_alpha(char) || char == '_' {
         let identifier = self.parse_identifier()
@@ -461,7 +476,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
           Ok(BuiltinFunction(identifier))
         } else {
           // Sized integer types: u<digits> or s<digits> (e.g. u8, s7)
-          match sized_int_type(identifier) {
+          match sized_int_type(identifier, self.span(start)) {
             Some(token) => Ok(token)
             None => Ok(match identifier {
               "module" => Module

@@ -1,4 +1,10 @@
+// Multicycle RV32I core derived from:
 // https://github.com/BrunoLevy/learn-fpga/blob/master/FemtoRV/TUTORIALS/FROM_BLINKER_TO_RISCV/README.md
+//
+// Supported instructions are the RV32I integer ALU, load/store, branch, LUI,
+// AUIPC, JAL, JALR, and EBREAK families used by the example firmware. FENCE,
+// ECALL, CSR instructions, invalid encodings, and misaligned memory accesses
+// enter the visible trap state without issuing an architectural side effect.
 
 package Inst {
     const ALU_REG = 7'b0110011 // rd <- rs1 OP rs2
@@ -19,11 +25,13 @@ package Stage {
     const DECODE = 3'd2
     const EXECUTE = 3'd3
     const WAIT_DATA = 3'd4
-    const WAIT_WRITE = 3'd5
+    const HALT = 3'd5
+    const TRAP = 3'd6
 }
 
 module RegisterFile(
     clk: clock,
+    enable: bool,
     rs1_addr: u5,
     rs2_addr: u5,
     rd_addr: u5,
@@ -46,28 +54,31 @@ module RegisterFile(
             (clk: clk, en: true, addr: rs2_addr),
         ],
         write: [
-            (clk: clk, en: write_enable, addr: rd_addr, data: rd_data, mask: true),
+            (clk: clk, en: enable and write_enable and rd_addr != 0, addr: rd_addr, data: rd_data, mask: true),
         ],
     )
 
-    rs1 = regs.q[0]
-    rs2 = regs.q[1]
+    rs1 = rs1_addr == 0 ? 0 : regs.q[0]
+    rs2 = rs2_addr == 0 ? 0 : regs.q[1]
 }
 
 module CPU(
     clk: clock,
+    enable: bool,
     rst: bool,
     mem_read_data: u32,
-    mem_read_busy: bool,
-    mem_write_busy: bool,
+    mem_read_data_valid: bool,
+    mem_request_ready: bool,
 ) -> (
     mem_addr: u32,
     mem_read_enable: bool,
     mem_write_data: [4]u8,
     mem_write_mask: [4]bool,
+    halted: bool,
+    trap: bool,
     status: u24,
 ) {
-    let inst = Reg[u32](clk, rst)
+    let inst = Reg[u32](clk, rst, en: enable)
     let opcode = inst.q[6:0]
     let is_alu_reg = opcode == Inst::ALU_REG
     let is_alu_imm = opcode == Inst::ALU_IMM
@@ -86,18 +97,55 @@ module CPU(
     let imm_b = uint!(pad!(sint!(cat!(inst.q[31], inst.q[7], inst.q[30:25], inst.q[11:8], 1'b0)), 32))
     let imm_j = uint!(pad!(sint!(cat!(inst.q[31], inst.q[19:12], inst.q[20], inst.q[30:21], 1'b0)), 32))
 
-    let stage = Reg[u3](clk, rst)
+    let stage = Reg[u3](clk, rst, en: enable)
     let rs1_addr = inst.q[19:15]
     let rs2_addr = inst.q[24:20]
     let rd_addr = inst.q[11:7]
 
     let funct3 = inst.q[14:12]
     let funct7 = inst.q[31:25]
+    let valid_alu_reg = is_alu_reg and match funct3 {
+        3'b000 => funct7 == 7'b0000000 or funct7 == 7'b0100000
+        3'b101 => funct7 == 7'b0000000 or funct7 == 7'b0100000
+        _ => funct7 == 7'b0000000
+    }
+    let valid_alu_imm = is_alu_imm and match funct3 {
+        3'b001 => funct7 == 7'b0000000
+        3'b101 => funct7 == 7'b0000000 or funct7 == 7'b0100000
+        _ => true
+    }
+    let valid_branch = is_branch and match funct3 {
+        3'b000 => true
+        3'b001 => true
+        3'b100 => true
+        3'b101 => true
+        3'b110 => true
+        3'b111 => true
+        _ => false
+    }
+    let valid_load = is_load and match funct3 {
+        3'b000 => true
+        3'b001 => true
+        3'b010 => true
+        3'b100 => true
+        3'b101 => true
+        _ => false
+    }
+    let valid_store = is_store and match funct3 {
+        3'b000 => true
+        3'b001 => true
+        3'b010 => true
+        _ => false
+    }
+    let is_ebreak = is_system and inst.q == 32'h00100073
+    let valid_instruction = valid_alu_reg or valid_alu_imm or valid_branch or
+                            valid_load or valid_store or is_lui or is_auipc or
+                            is_jal or (is_jalr and funct3 == 0) or is_ebreak
 
-    let pc = Reg[u32](clk, rst)
-    let rs1 = Reg[u32](clk, rst)
-    let rs2 = Reg[u32](clk, rst)
-    let regs = RegisterFile(clk, rs1_addr, rs2_addr, rd_addr)
+    let pc = Reg[u32](clk, rst, en: enable)
+    let rs1 = Reg[u32](clk, rst, en: enable)
+    let rs2 = Reg[u32](clk, rst, en: enable)
+    let regs = RegisterFile(clk, enable, rs1_addr, rs2_addr, rd_addr)
 
     let alu_in1 = rs1.q
     let alu_in2 = is_alu_reg or is_branch ? rs2.q : imm_i
@@ -138,19 +186,28 @@ module CPU(
     let next_pc = (is_branch and take_branch) or is_jal ? pc_plus_imm :
                   is_jalr ? cat!(alu_plus[31:1], 1'b0) :
                   next_addr
+    let control_transfer = is_jal or is_jalr or (is_branch and take_branch)
+    let control_target_aligned = (not control_transfer) or next_pc[1:0] == 0
 
     let load_store_addr: u32 = rs1.q + (is_store ? imm_s : imm_i)
     let load_half_word = load_store_addr[1] ? mem_read_data[31:16] : mem_read_data[15:0]
     let load_byte = load_store_addr[0] ? load_half_word[15:8] : load_half_word[7:0]
     let byte_access = funct3[1:0] == 2'd0
     let half_word_access = funct3[1:0] == 2'd1
+    let memory_access_aligned = byte_access or
+                                (half_word_access and not load_store_addr[0]) or
+                                ((not byte_access) and (not half_word_access) and load_store_addr[1:0] == 0)
+    let valid_execute_instruction = valid_instruction and
+                                    ((not is_load and not is_store) or memory_access_aligned) and
+                                    control_target_aligned
     let load_sign = (not funct3[2]) and (byte_access ? load_byte[7] : load_half_word[15])
     let load_data = byte_access ? cat!(fill!(24, load_sign), load_byte) :
         half_word_access ? cat!(fill!(16, load_sign), load_half_word) :
         mem_read_data
 
-    let write_back_enable = (stage.q == Stage::EXECUTE and (not is_branch) and (not is_store) and (not is_load)) or
-                            (stage.q == Stage::WAIT_DATA and (not mem_read_busy))
+    let write_back_enable = enable and (not rst) and valid_execute_instruction and (not is_ebreak) and
+                            ((stage.q == Stage::EXECUTE and (not is_branch) and (not is_store) and (not is_load)) or
+                             (stage.q == Stage::WAIT_DATA and mem_read_data_valid))
 
     let write_back_data =
         is_jump_inst ? next_addr :
@@ -172,8 +229,8 @@ module CPU(
         (load_store_addr[0] ? 4'b0010 : 4'b0001)) :
         (half_word_access ? (load_store_addr[1] ? 4'b1100 : 4'b0011) : 4'b1111)
 
-    // Fix #4 (part 1): Hold mem_write_mask HIGH throughout the duration of the write process
-    let is_writing = (stage.q == Stage::EXECUTE and is_store) or stage.q == Stage::WAIT_WRITE
+    // A request remains stable in EXECUTE until the receiver accepts it.
+    let is_writing = (not rst) and stage.q == Stage::EXECUTE and valid_store and memory_access_aligned
     mem_write_mask = is_writing ? [..mask] : fill!(4, false)
 
     regs.rd_data = write_back_data
@@ -185,10 +242,12 @@ module CPU(
     } else {
         match stage.q {
             Stage::FETCH_INST => {
-                stage.d = Stage::WAIT_INST
+                if mem_request_ready {
+                    stage.d = Stage::WAIT_INST
+                }
             }
             Stage::WAIT_INST => {
-                if not mem_read_busy {
+                if mem_read_data_valid {
                     inst.d = mem_read_data
                     stage.d = Stage::DECODE
                 }
@@ -201,35 +260,42 @@ module CPU(
                 stage.d = Stage::EXECUTE
             }
             Stage::EXECUTE => {
-                if not is_system {
-                    pc.d = next_pc
+                if is_ebreak {
+                    stage.d = Stage::HALT
+                } else if not valid_execute_instruction {
+                    stage.d = Stage::TRAP
+                } else {
                     if is_load {
-                        stage.d = Stage::WAIT_DATA
+                        if mem_request_ready {
+                            pc.d = next_pc
+                            stage.d = Stage::WAIT_DATA
+                        }
                     } else if is_store {
-                        stage.d = mem_write_busy ? Stage::WAIT_WRITE : Stage::FETCH_INST
+                        if mem_request_ready {
+                            pc.d = next_pc
+                            stage.d = Stage::FETCH_INST
+                        }
                     } else {
+                        pc.d = next_pc
                         stage.d = Stage::FETCH_INST
                     }
-                } else {
-                    stop!()
                 }
             }
             Stage::WAIT_DATA => {
-                if not mem_read_busy {
+                if mem_read_data_valid {
                     stage.d = Stage::FETCH_INST
                 }
             }
-            Stage::WAIT_WRITE => {
-                if not mem_write_busy {
-                    stage.d = Stage::FETCH_INST
-                }
-            }
+            Stage::HALT => {}
+            Stage::TRAP => {}
         }
     }
 
     mem_addr = stage.q == Stage::FETCH_INST or stage.q == Stage::WAIT_INST ? pc.q : load_store_addr
-    let is_fetching = stage.q == Stage::FETCH_INST or stage.q == Stage::WAIT_INST
-    let is_loading = (stage.q == Stage::EXECUTE and is_load) or stage.q == Stage::WAIT_DATA
-    mem_read_enable = is_fetching or is_loading
+    let is_fetching = stage.q == Stage::FETCH_INST
+    let is_loading = stage.q == Stage::EXECUTE and valid_load and memory_access_aligned
+    mem_read_enable = (not rst) and (is_fetching or is_loading)
+    halted = stage.q == Stage::HALT
+    trap = stage.q == Stage::TRAP
     status = cat!(uint!(clk), opcode, 5'd0, stage.q, pc.q[7:0])
 }

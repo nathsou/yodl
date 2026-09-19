@@ -135,45 +135,65 @@ fn affine_constant(value: Int) -> Size {
     Affine(constant=value, terms={})
 }
 
+fn checked_size_int(value: BigInt, span: Span) -> Int raise TypeCheckerError {
+    if value < BigInt::from_int(@int.MIN_VALUE) || value > BigInt::from_int(@int.MAX_VALUE) {
+        raise type_error("Hardware dimension arithmetic exceeds the supported integer range: \{value}", span)
+    }
+    value.to_int()
+}
+
+fn size_add(a: Int, b: Int, span: Span) -> Int raise TypeCheckerError {
+    checked_size_int(BigInt::from_int(a) + BigInt::from_int(b), span)
+}
+
+fn size_mul(a: Int, b: Int, span: Span) -> Int raise TypeCheckerError {
+    checked_size_int(BigInt::from_int(a) * BigInt::from_int(b), span)
+}
+
 fn merge_affine(
     lhs_constant: Int,
     lhs_terms: Map[String, Int],
     rhs_constant: Int,
     rhs_terms: Map[String, Int],
     rhs_factor: Int,
-) -> Size {
+    span: Span,
+) -> Size raise TypeCheckerError {
     let terms = Map::from_iter(lhs_terms.iter())
     for name, coefficient in rhs_terms {
-        let coefficient = terms.get(name).unwrap_or(0) + rhs_factor * coefficient
+        let coefficient = size_add(
+            terms.get(name).unwrap_or(0),
+            size_mul(rhs_factor, coefficient, span),
+            span,
+        )
         if coefficient == 0 {
             terms.remove(name)
         } else {
             terms[name] = coefficient
         }
     }
-    Affine(constant=lhs_constant + rhs_factor * rhs_constant, terms~)
+    Affine(constant=size_add(lhs_constant, size_mul(rhs_factor, rhs_constant, span), span), terms~)
 }
 
-fn scale_size(size: Size, factor: Int) -> Size {
+fn scale_size(size: Size, factor: Int, span: Span) -> Size raise TypeCheckerError {
     match size {
         Affine(constant~, terms~) => {
             let scaled_terms = Map([], capacity=terms.length())
             for name, coefficient in terms {
-                let coefficient = factor * coefficient
+                let coefficient = size_mul(factor, coefficient, span)
                 if coefficient != 0 {
                     scaled_terms[name] = coefficient
                 }
             }
-            Affine(constant=factor * constant, terms=scaled_terms)
+            Affine(constant=size_mul(factor, constant, span), terms=scaled_terms)
         }
         Mul(Affine(constant=inner_factor, terms~), inner) if terms.is_empty() =>
-            scale_size(inner, factor * inner_factor)
+            scale_size(inner, size_mul(factor, inner_factor, span), span)
         _ if factor == 1 => size
         _ => Mul(affine_constant(factor), size)
     }
 }
 
-fn normalize_size(index: @parse.IndexExpr) -> Size {
+fn normalize_size(index: @parse.IndexExpr, span: Span) -> Size raise TypeCheckerError {
     match index {
         Lit(value) => affine_constant(value)
         Var(name) => {
@@ -181,23 +201,24 @@ fn normalize_size(index: @parse.IndexExpr) -> Size {
             terms[name] = 1
             Affine(constant=0, terms~)
         }
-        Add(lhs, rhs) => match (normalize_size(lhs), normalize_size(rhs)) {
+        Add(lhs, rhs) => match (normalize_size(lhs, span), normalize_size(rhs, span)) {
             (Affine(constant=lc, terms=lt), Affine(constant=rc, terms=rt)) =>
-                merge_affine(lc, lt, rc, rt, 1)
+                merge_affine(lc, lt, rc, rt, 1, span)
             (lhs, rhs) => Add(lhs, rhs)
         }
-        Sub(lhs, rhs) => match (normalize_size(lhs), normalize_size(rhs)) {
+        Sub(lhs, rhs) => match (normalize_size(lhs, span), normalize_size(rhs, span)) {
             (Affine(constant=lc, terms=lt), Affine(constant=rc, terms=rt)) =>
-                merge_affine(lc, lt, rc, rt, -1)
+                merge_affine(lc, lt, rc, rt, -1, span)
             (lhs, rhs) => Sub(lhs, rhs)
         }
-        Mul(lhs, rhs) => match (normalize_size(lhs), normalize_size(rhs)) {
-            (Affine(constant~, terms~), rhs) if terms.is_empty() => scale_size(rhs, constant)
-            (lhs, Affine(constant~, terms~)) if terms.is_empty() => scale_size(lhs, constant)
+        Mul(lhs, rhs) => match (normalize_size(lhs, span), normalize_size(rhs, span)) {
+            (Affine(constant~, terms~), rhs) if terms.is_empty() => scale_size(rhs, constant, span)
+            (lhs, Affine(constant~, terms~)) if terms.is_empty() => scale_size(lhs, constant, span)
             (lhs, rhs) => Mul(lhs, rhs)
         }
-        Clog2(arg, span) => Clog2(normalize_size(arg), span)
-        CDiv(dividend, divisor, span) => CDiv(normalize_size(dividend), normalize_size(divisor), span)
+        Clog2(arg, function_span) => Clog2(normalize_size(arg, span), function_span)
+        CDiv(dividend, divisor, function_span) =>
+            CDiv(normalize_size(dividend, span), normalize_size(divisor, span), function_span)
     }
 }
 
@@ -240,9 +261,9 @@ fn affine_to_index_expr(constant: Int, terms: Map[String, Int]) -> @parse.IndexE
     result.unwrap()
 }
 
-fn Size::eval(self: Size) -> Int? {
+fn Size::eval(self: Size) -> BigInt? {
     match self {
-        Affine(constant~, terms~) if terms.is_empty() => Some(constant)
+        Affine(constant~, terms~) if terms.is_empty() => Some(BigInt::from_int(constant))
         Affine(_) => None
         Add(lhs, rhs) | Sub(lhs, rhs) => match (lhs.eval(), rhs.eval()) {
             (Some(a), Some(b)) => match self {
@@ -258,7 +279,7 @@ fn Size::eval(self: Size) -> Int? {
             _ => None
         }
         Clog2(arg, _) => match arg.eval() {
-            Some(value) if value >= 0 => Some(@utils.clog2_int(value))
+            Some(value) if value >= 0 => Some(@utils.clog2(value))
             _ => None
         }
         CDiv(dividend, divisor, _) => match (dividend.eval(), divisor.eval()) {
@@ -272,15 +293,18 @@ fn Size::eval(self: Size) -> Int? {
 fn Size::substitute(self: Size, params: Map[String, Int]) -> Size {
     match self {
         Affine(constant~, terms~) => {
-            let mut constant = constant
             let remaining: Map[String, Int] = Map([])
+            let mut result = Affine(constant~, terms=remaining)
             for name, coefficient in terms {
                 match params.get(name) {
-                    Some(value) => constant += coefficient * value
+                    Some(value) => result = Add(
+                        result,
+                        Mul(affine_constant(coefficient), affine_constant(value)),
+                    )
                     None => remaining[name] = coefficient
                 }
             }
-            Affine(constant~, terms=remaining)
+            result
         }
         Add(lhs, rhs) => Add(lhs.substitute(params), rhs.substitute(params))
         Sub(lhs, rhs) => Sub(lhs.substitute(params), rhs.substitute(params))
@@ -312,20 +336,20 @@ fn Size::depends_only_on(self: Size, names: Set[String]) -> Bool {
     }
 }
 
-fn Size::to_index_expr(self: Size) -> @parse.IndexExpr {
+fn Size::to_index_expr(self: Size, span: Span) -> @parse.IndexExpr raise TypeCheckerError {
     if self.eval() is Some(value) {
-        return Lit(value)
+        return Lit(checked_size_int(value, span))
     }
     match self {
         Affine(constant~, terms~) => affine_to_index_expr(constant, terms)
-        Add(lhs, rhs) => Add(lhs.to_index_expr(), rhs.to_index_expr())
-        Sub(lhs, rhs) => Sub(lhs.to_index_expr(), rhs.to_index_expr())
-        Mul(lhs, rhs) => Mul(lhs.to_index_expr(), rhs.to_index_expr())
-        Clog2(arg, span) => @parse.IndexExpr::Clog2(arg.to_index_expr(), span)
-        CDiv(dividend, divisor, span) => @parse.IndexExpr::CDiv(
-            dividend.to_index_expr(),
-            divisor.to_index_expr(),
-            span,
+        Add(lhs, rhs) => Add(lhs.to_index_expr(span), rhs.to_index_expr(span))
+        Sub(lhs, rhs) => Sub(lhs.to_index_expr(span), rhs.to_index_expr(span))
+        Mul(lhs, rhs) => Mul(lhs.to_index_expr(span), rhs.to_index_expr(span))
+        Clog2(arg, function_span) => @parse.IndexExpr::Clog2(arg.to_index_expr(span), function_span)
+        CDiv(dividend, divisor, function_span) => @parse.IndexExpr::CDiv(
+            dividend.to_index_expr(span),
+            divisor.to_index_expr(span),
+            function_span,
         )
     }
 }
@@ -346,13 +370,18 @@ fn TypeChecker::require_size(
             _ => ()
         }
         None => {
-            let normalized = size.to_index_expr()
-            if !self.size_constraints.iter().any(constraint =>
-                constraint.kind == kind &&
-                constraint.description == description &&
-                constraint.span == span &&
-                constraint.size.to_index_expr() == normalized
-            ) {
+            let normalized = size.to_index_expr(span)
+            let mut exists = false
+            for constraint in self.size_constraints.iter() {
+                if constraint.kind == kind &&
+                    constraint.description == description &&
+                    constraint.span == span &&
+                    constraint.size.to_index_expr(constraint.span) == normalized {
+                    exists = true
+                    break
+                }
+            }
+            if !exists {
                 self.size_constraints.push({ size, kind, description, span })
             }
         }
@@ -396,10 +425,10 @@ fn TypeChecker::resolve_size(
     description: String,
     span: Span,
 ) -> @parse.IndexExpr raise TypeCheckerError {
-    let size = normalize_size(index)
+    let size = normalize_size(index, span)
     self.validate_size(size, span)
     self.require_size(size, NonNegative, description, span)
-    size.to_index_expr()
+    size.to_index_expr(span)
 }
 
 priv enum TypeEqualityParam {

@@ -1,8 +1,14 @@
 
-module PowerOnReset[ClockCycles: Nat](clk: clock) -> (rst: bool) {
-    let counter = Reg[uint[clog2!(ClockCycles)]](clk)
+// Hold synchronous reset for ClockCycles after an external active-low reset.
+// The external reset is required because ordinary registers have no portable
+// power-on value.
+module PowerOnReset[ClockCycles: Nat](clk: clock, rst_n: bool) -> (rst: bool) {
+    let external_reset = not rst_n
+    let counter = Reg[uint[clog2!(ClockCycles + 1)]](clk, rst: external_reset)
 
-    if counter.q < ClockCycles - 1 {
+    if external_reset {
+        rst = true
+    } else if counter.q < ClockCycles {
         counter.d = counter.q + 1'b1
         rst = true
     } else {

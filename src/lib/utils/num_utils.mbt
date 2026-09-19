@@ -35,16 +35,12 @@ pub fn clog2(n: BigInt) -> BigInt {
   let mut p = 1N
   let mut i = 0N
 
-  while i < 1024N {
-    if p >= n {
-      return i
-    }
-
+  while p < n {
     p = p << 1
     i += 1N
   }
 
-  1024N
+  i
 }
 
 test "clog2_int" {
@@ -64,6 +60,11 @@ test "clog2_int" {
   inspect(clog2_int(@int.MIN_VALUE), content="0")
   inspect(clog2_int(-1), content="0")
   inspect(clog2_int(0), content="0")
+}
+
+test "clog2 is exact beyond 1024 bits" {
+  inspect(clog2(1N << 1024), content="1024")
+  inspect(clog2((1N << 1024) + 1), content="1025")
 }
 
 pub fn cdiv(dividend: BigInt, divisor: BigInt) -> BigInt {
