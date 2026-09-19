@@ -948,6 +948,31 @@ test "hardware dimension arithmetic rejects machine integer overflow" {
 }
 
 ///|
+test "hardware dimension arithmetic around size functions rejects overflow" {
+  let source =
+    #|module Top(
+    #|  a: uint[cdiv!(2147483646 + 1, 1) * 2 + 3],
+    #|) -> (
+    #|  q: uint[cdiv!(2147483646 + 1, 1) * 2 + 3],
+    #|) { q = a; }
+  let diagnostic = compile_error(source)
+  assert_true(diagnostic.contains("Hardware dimension arithmetic exceeds the supported integer range"))
+}
+
+///|
+test "shorthand and sized literal widths reject machine integer overflow" {
+  let shorthand = compile_error(
+    "module Top(a: u4294967297) -> (q: u4294967297) { q = a }",
+  )
+  assert_true(shorthand.contains("Integer width 4294967297 exceeds the supported maximum"))
+
+  let sized_literal = compile_error(
+    "module Top() -> (q: u1) { q = 4294967297'b0 }",
+  )
+  assert_true(sized_literal.contains("Integer width 4294967297 exceeds the supported maximum"))
+}
+
+///|
 test "generic dimensions reject overflow after parameter evaluation" {
   let source =
     #|module Child[N: Nat](a: uint[N]) -> () {}
@@ -985,6 +1010,20 @@ test "condition rewriting does not assume distinct signals hold distinct values"
     #|}
   let firrtl = compile_stage(source, "write_low_firrtl")
   assert_true(firrtl.contains("and(not(eq(x, a)), eq(x, b))"))
+}
+
+///|
+test "condition rewriting compares literal values independent of radix" {
+  let source =
+    #|module Top(clk: clock, x: u8, safe: bool) -> () {
+    #|  if not (x == 0) {
+    #|    if x == 8'h0 {
+    #|      assert!(safe, "unreachable")
+    #|    }
+    #|  }
+    #|}
+  let firrtl = compile_stage(source, "write_low_firrtl")
+  assert_true(firrtl.contains("and(not(eq(x, UInt<1>(0))), eq(x, UInt<8>(0h0)))"))
 }
 
 ///|

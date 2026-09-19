@@ -261,9 +261,9 @@ fn affine_to_index_expr(constant: Int, terms: Map[String, Int]) -> @parse.IndexE
     result.unwrap()
 }
 
-fn Size::eval(self: Size) -> Int? {
+fn Size::eval(self: Size) -> BigInt? {
     match self {
-        Affine(constant~, terms~) if terms.is_empty() => Some(constant)
+        Affine(constant~, terms~) if terms.is_empty() => Some(BigInt::from_int(constant))
         Affine(_) => None
         Add(lhs, rhs) | Sub(lhs, rhs) => match (lhs.eval(), rhs.eval()) {
             (Some(a), Some(b)) => match self {
@@ -279,7 +279,7 @@ fn Size::eval(self: Size) -> Int? {
             _ => None
         }
         Clog2(arg, _) => match arg.eval() {
-            Some(value) if value >= 0 => Some(@utils.clog2_int(value))
+            Some(value) if value >= 0 => Some(@utils.clog2(value))
             _ => None
         }
         CDiv(dividend, divisor, _) => match (dividend.eval(), divisor.eval()) {
@@ -293,15 +293,18 @@ fn Size::eval(self: Size) -> Int? {
 fn Size::substitute(self: Size, params: Map[String, Int]) -> Size {
     match self {
         Affine(constant~, terms~) => {
-            let mut constant = constant
             let remaining: Map[String, Int] = Map([])
+            let mut result = Affine(constant~, terms=remaining)
             for name, coefficient in terms {
                 match params.get(name) {
-                    Some(value) => constant += coefficient * value
+                    Some(value) => result = Add(
+                        result,
+                        Mul(affine_constant(coefficient), affine_constant(value)),
+                    )
                     None => remaining[name] = coefficient
                 }
             }
-            Affine(constant~, terms=remaining)
+            result
         }
         Add(lhs, rhs) => Add(lhs.substitute(params), rhs.substitute(params))
         Sub(lhs, rhs) => Sub(lhs.substitute(params), rhs.substitute(params))
@@ -333,20 +336,20 @@ fn Size::depends_only_on(self: Size, names: Set[String]) -> Bool {
     }
 }
 
-fn Size::to_index_expr(self: Size) -> @parse.IndexExpr {
+fn Size::to_index_expr(self: Size, span: Span) -> @parse.IndexExpr raise TypeCheckerError {
     if self.eval() is Some(value) {
-        return Lit(value)
+        return Lit(checked_size_int(value, span))
     }
     match self {
         Affine(constant~, terms~) => affine_to_index_expr(constant, terms)
-        Add(lhs, rhs) => Add(lhs.to_index_expr(), rhs.to_index_expr())
-        Sub(lhs, rhs) => Sub(lhs.to_index_expr(), rhs.to_index_expr())
-        Mul(lhs, rhs) => Mul(lhs.to_index_expr(), rhs.to_index_expr())
-        Clog2(arg, span) => @parse.IndexExpr::Clog2(arg.to_index_expr(), span)
-        CDiv(dividend, divisor, span) => @parse.IndexExpr::CDiv(
-            dividend.to_index_expr(),
-            divisor.to_index_expr(),
-            span,
+        Add(lhs, rhs) => Add(lhs.to_index_expr(span), rhs.to_index_expr(span))
+        Sub(lhs, rhs) => Sub(lhs.to_index_expr(span), rhs.to_index_expr(span))
+        Mul(lhs, rhs) => Mul(lhs.to_index_expr(span), rhs.to_index_expr(span))
+        Clog2(arg, function_span) => @parse.IndexExpr::Clog2(arg.to_index_expr(span), function_span)
+        CDiv(dividend, divisor, function_span) => @parse.IndexExpr::CDiv(
+            dividend.to_index_expr(span),
+            divisor.to_index_expr(span),
+            function_span,
         )
     }
 }
@@ -367,13 +370,18 @@ fn TypeChecker::require_size(
             _ => ()
         }
         None => {
-            let normalized = size.to_index_expr()
-            if !self.size_constraints.iter().any(constraint =>
-                constraint.kind == kind &&
-                constraint.description == description &&
-                constraint.span == span &&
-                constraint.size.to_index_expr() == normalized
-            ) {
+            let normalized = size.to_index_expr(span)
+            let mut exists = false
+            for constraint in self.size_constraints.iter() {
+                if constraint.kind == kind &&
+                    constraint.description == description &&
+                    constraint.span == span &&
+                    constraint.size.to_index_expr(constraint.span) == normalized {
+                    exists = true
+                    break
+                }
+            }
+            if !exists {
                 self.size_constraints.push({ size, kind, description, span })
             }
         }
@@ -420,7 +428,7 @@ fn TypeChecker::resolve_size(
     let size = normalize_size(index, span)
     self.validate_size(size, span)
     self.require_size(size, NonNegative, description, span)
-    size.to_index_expr()
+    size.to_index_expr(span)
 }
 
 priv enum TypeEqualityParam {

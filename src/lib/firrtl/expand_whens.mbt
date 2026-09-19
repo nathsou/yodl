@@ -303,17 +303,26 @@ priv enum MutualExclusivityResult {
   KeepRight
 }
 
+fn literal_values_differ(a: Literal, b: Literal) -> Bool {
+  match (a, b) {
+    (UInt(width=aw, value=av, ..), UInt(width=bw, value=bv, ..)) |
+    (SInt(width=aw, value=av, ..), SInt(width=bw, value=bv, ..)) =>
+      aw == bw && av != bv
+    _ => false
+  }
+}
+
 fn check_mutual_exclusivity(a: TypedExpr, b: TypedExpr) -> MutualExclusivityResult {
   match (a, b) {
     (x1, PrimOp(op=Not, args=[x2], ..)) | (PrimOp(op=Not, args=[x1], ..), x2) if x1 == x2 => KeepNone
     (
       PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x1, Literal(a, ..)], ..), ..], ..),
       PrimOp(op=Eq, args=[x2, Literal(b, ..)], ..),
-    ) if x1 == x2 && a != b => KeepRight
+    ) if x1 == x2 && literal_values_differ(a, b) => KeepRight
     (
       PrimOp(op=Eq, args=[x2, Literal(b, ..)], ..),
       PrimOp(op=Not, args=[PrimOp(op=Eq, args=[x1, Literal(a, ..)], ..), ..], ..),
-    ) if x1 == x2 && a != b => KeepLeft
+    ) if x1 == x2 && literal_values_differ(a, b) => KeepLeft
     _ => KeepBoth
   }
 }

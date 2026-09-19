@@ -49,6 +49,7 @@ pub suberror LexerError {
   UnexepectedChar(char~ : Char, span~ : Span)
   UnterminatedStringLiteral(span~ : Span)
   UnterminatedCharacterLiteral(span~ : Span)
+  IntegerWidthOutOfRange(value~ : @bigint.BigInt, span~ : Span)
 }
 pub impl Show for LexerError
 pub impl Spanned for LexerError
