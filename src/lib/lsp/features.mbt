@@ -9,7 +9,11 @@ fn builtin_functions() -> Array[(String, String, Array[String])] {
     ("cat", "cat!(values...) -> uint", ["values..."]),
     ("uint", "uint!(value: sint) -> uint", ["value: sint"]),
     ("sint", "sint!(value: uint) -> sint", ["value: uint"]),
-    ("flip", "flip!(value) -> value", ["value"]),
+    ("flip", "flip!(value: uint) -> uint", ["value: uint"]),
+    ("clock", "clock!(value: bool) -> clock", ["value: bool"]),
+    ("pad", "pad!(value: uint, width: Nat) -> uint", ["value: uint", "width: Nat"]),
+    ("fill", "fill!(count: Nat, value) -> vector", ["count: Nat", "value"]),
+    ("stop", "stop!(code: Nat)", ["code: Nat"]),
     ("rev", "rev!(vector) -> vector", ["vector"]),
     ("printf", "printf!(format: str, values...)", ["format: str", "values..."]),
     ("assert", "assert!(condition: bool)", ["condition: bool"]),
@@ -68,7 +72,11 @@ fn Workspace::completion(self: Self, uri: String, index: Int) -> Json {
     if token.span.end.index <= start && token.kind != @parse.TokenType::Semicolon { before = Some(i) }
   }
   let mut members = false
-  let candidates = if before is Some(before) && before > 0 && (file.tokens[before].kind == @parse.TokenType::Dot || file.tokens[before].kind == @parse.TokenType::ColonColon) {
+  let argument = before.bind(i => if file.tokens[i].kind == @parse.TokenType::Lparen || file.tokens[i].kind == @parse.TokenType::Lbracket || file.tokens[i].kind == @parse.TokenType::Comma { self.argument_target(uri, i + 1) } else { None })
+  let candidates = if argument is Some((id, generic)) && self.symbols[id].signature is Some(_) {
+    members = true
+    self.symbols[id].child_scope.map(scope => self.scopes[scope].symbols.filter(id => if generic { self.symbols[id].kind == 26 } else { self.symbols[id].member })).unwrap_or([])
+  } else if before is Some(before) && before > 0 && (file.tokens[before].kind == @parse.TokenType::Dot || file.tokens[before].kind == @parse.TokenType::ColonColon) {
     members = true
     self.resolve_token(uri, before - 1).bind(id => self.member_scope(id)).map(scope => self.scopes[scope].symbols.filter(id => self.symbols[id].member || file.tokens[before].kind == @parse.TokenType::ColonColon)).unwrap_or([])
   } else {
@@ -174,19 +182,20 @@ fn Workspace::semantic_tokens(self: Self, uri: String) -> Json {
     }
     guard token_type is Some(token_type) else { continue }
     let mut start = token.span.start.index
+    let mut line = token.span.start.line - 1
+    let mut column = token.span.start.column - 1
     while start < token.span.end.index {
-      let loc = @parse.SourceLoc::at(file.source[:], start)
       let mut end = start
       while end < token.span.end.index && file.source.code_unit_at(end) != '\n' && file.source.code_unit_at(end) != '\r' { end += 1 }
       if end > start {
-        let line = loc.line - 1
-        let column = loc.column - 1
         data.push(line - previous_line)
         data.push(if line == previous_line { column - previous_column } else { column })
         data.push(end - start); data.push(token_type); data.push(modifiers)
         previous_line = line; previous_column = column
       }
+      if end < token.span.end.index && file.source.code_unit_at(end) == '\r' && end + 1 < token.span.end.index && file.source.code_unit_at(end + 1) == '\n' { end += 1 }
       start = end + 1
+      line += 1; column = 0
     }
   }
   Json::object({ "data": data.to_json() })
@@ -305,7 +314,7 @@ fn Server::query(self: Self, method: String, params: Json) -> Json raise {
       if !symbol.renameable { raise ProtocolError(code=-32602, message="This symbol cannot be renamed") }
       let name = required_string(params, "newName")
       let tokens = try @parse.Lexer::new(name, file="rename", file_content=name).lex() catch { _ => raise ProtocolError(code=-32602, message="The new name must be a Yodl identifier") }
-      if tokens.length() != 2 || !(tokens[0].kind is @parse.TokenType::Identifier(_)) { raise ProtocolError(code=-32602, message="The new name must be a Yodl identifier, not a keyword or a type") }
+      if tokens.length() != 2 || !(tokens[0].kind is @parse.TokenType::Identifier(_)) || tokens[0].span.text().to_owned() != name { raise ProtocolError(code=-32602, message="The new name must be a Yodl identifier, not a keyword or a type") }
       for id in workspace.scopes[symbol.scope].symbols {
         if id != reference.symbol && workspace.symbols[id].name == name { raise ProtocolError(code=-32602, message="'\{name}' is already declared in this scope") }
       }

@@ -22,6 +22,7 @@ pub struct Server {
   files : Map[String, String]
   documents : Map[String, Document]
   analyses : Map[String, @driver.Analysis]
+  reads : Map[String, Map[String, String]]
   published : @set.Set[String]
   mut workspace : Workspace?
   mut initialized : Bool

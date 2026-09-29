@@ -1,11 +1,11 @@
 {
     "name": "yodl-syntax-highlighting",
-    "displayName": "Yodl Syntax Highlighting",
-    "description": "Provides syntax highlighting for the Yodl Hardware Description Language.",
-    "version": "0.0.1",
+    "displayName": "Yodl",
+    "description": "Language support for Yodl: diagnostics, completion, navigation, rename and syntax highlighting.",
+    "version": "0.1.0",
     "publisher": "nathsou",
     "engines": {
-        "vscode": "^1.60.0"
+        "vscode": "^1.82.0"
     },
     "categories": [
         "Programming Languages"
@@ -35,5 +35,26 @@
     "repository": {
         "type": "git",
         "url": "https://github.com/nathsou/yodl"
+    },
+    "main": "./dist/extension.cjs",
+    "activationEvents": [
+        "onLanguage:yodl"
+    ],
+    "extensionKind": [
+        "workspace"
+    ],
+    "license": "Apache-2.0",
+    "scripts": {
+        "build": "bun ../../scripts/build-extension.ts",
+        "vscode:prepublish": "bun run build",
+        "package": "bun run build && vsce package --no-dependencies"
+    },
+    "dependencies": {
+        "vscode-languageclient": "9.0.1"
+    },
+    "devDependencies": {
+        "@vscode/vsce": "3.7.1",
+        "@types/vscode": "1.82.0",
+        "typescript": "5.9.3"
     }
 }

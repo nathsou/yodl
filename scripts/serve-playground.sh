@@ -12,6 +12,8 @@ if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/
 fi
 
 bun install --frozen-lockfile
+moon build src/lib/lsp --target=js --release
+bun scripts/build-lsp.ts
 moon build src/lib/driver --target=js --release
 moon build src/lib/simulator --target=js --release
 bun src/docs/build.ts

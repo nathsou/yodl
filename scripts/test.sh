@@ -40,6 +40,8 @@ done
 echo "All examples and tour lessons compiled successfully."
 
 # The site and CI consume exactly the same source and example metadata.
+moon build src/lib/lsp --target=js --release
+bun scripts/build-lsp.ts
 moon build src/lib/driver --target=js --release
 moon build src/lib/simulator --target=js --release
 bun src/docs/validate.ts --backend

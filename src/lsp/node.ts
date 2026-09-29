@@ -38,6 +38,7 @@ async function refresh() {
 async function receive(json: string) {
     let message: any;
     try { message = JSON.parse(json); } catch { output(handle_message(server, json)); return; }
+    if (!message || typeof message !== 'object' || Array.isArray(message)) { output(handle_message(server, json)); return; }
     if (message.method === 'initialize') {
         const params = message.params ?? {};
         for (const folder of params.workspaceFolders ?? []) { const p = path(folder.uri); if (p) roots.add(p); }

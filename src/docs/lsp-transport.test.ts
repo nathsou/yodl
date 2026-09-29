@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
 import { spawn } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { frame, MessageReader } from '../lsp/transport.ts';
 
 test('stdio framing uses UTF8 bytes across split and coalesced messages', () => {
@@ -12,7 +15,10 @@ test('stdio framing uses UTF8 bytes across split and coalesced messages', () => 
 });
 
 test('packaged stdio server answers real requests and publishes diagnostics', async () => {
-    const child = spawn(process.execPath, ['dist/lsp/yodl-lsp.cjs'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const directory = await mkdtemp(join(tmpdir(), 'yodl-stdio-'));
+    const bundle = await Bun.build({ entrypoints: [resolve(import.meta.dir, '../lsp/node.ts')], outdir: directory, target: 'node', format: 'cjs', naming: 'server.cjs' });
+    if (!bundle.success) throw new AggregateError(bundle.logs);
+    const child = spawn(process.execPath, [join(directory, 'server.cjs')], { stdio: ['pipe', 'pipe', 'pipe'] });
     let stderr = ''; child.stderr.on('data', d => stderr += d);
     const messages: any[] = [];
     const reader = new MessageReader(json => messages.push(JSON.parse(json)));
@@ -34,5 +40,5 @@ test('packaged stdio server answers real requests and publishes diagnostics', as
         const exited = new Promise<number | null>(resolve => child.on('exit', resolve));
         send({ method: 'exit' }); expect(await exited).toBe(0);
         expect(stderr).toBe('');
-    } finally { child.kill(); }
+    } finally { child.kill(); await rm(directory, { recursive: true, force: true }); }
 }, 10000);

@@ -127,7 +127,7 @@ fn Server::index(self: Self) -> Workspace {
   let uris = sources.keys().to_array()
   uris.sort()
   for uri in uris {
-    if !uri.has_suffix(".yodl") { continue }
+    if !uri.has_suffix(".yodl") && !self.documents.contains(uri) { continue }
     let source = sources[uri]
     let diagnostics = []
     let tokens = @parse.Lexer::new(source, file=uri, file_content=source).lex_recovering(diagnostics)
@@ -269,7 +269,7 @@ fn Workspace::index_stmt(self: Self, stmt: Stmt, scope: Int, container: Int?) ->
       let resolved = prefer(self.binding_types.get(span_key(span)), prefer(ty.val, expr.bind(e => self.guess_type(e))))
       let instance = expr.bind(e => match e { Instance(path~, ..) => Some(path); _ => None })
       let detail = "let \{name}: \{resolved.map(t => t.to_string()).unwrap_or(instance.map(p => p.to_string()).unwrap_or("unknown"))}"
-      let _ = self.add_symbol(name, span, scope, container, [], 13, 4, detail, ty=resolved, instance~)
+      let _ = self.add_symbol(name, span, scope, container, [], 13, 4, detail, ty=prefer(ty.val, resolved), instance~)
       if expr is Some(expr) { self.index_expr(expr, scope, container) }
     }
     Const(decl~, ..) => self.index_decl(Decl::Const(decl), scope, container, [])

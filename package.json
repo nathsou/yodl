@@ -10,18 +10,23 @@
         "_build/js/release/build/main/main.d.ts",
         "_build/js/release/build/main/main.mi",
         "_build/js/release/build/main/main.core",
-        "_build/js/release/build/main/moonbit.d.ts"
+        "_build/js/release/build/main/moonbit.d.ts",
+        "dist/lsp/yodl-lsp.cjs"
     ],
     "bin": {
-        "yodl": "_build/js/release/build/main/main.min.js"
+        "yodl": "_build/js/release/build/main/main.min.js",
+        "yodl-lsp": "dist/lsp/yodl-lsp.cjs"
     },
     "scripts": {
-        "prepublishOnly": "moon build src/main --target=js --release && moon build src/lib/simulator --target=js --release && bunx esbuild@0.27.2 _build/js/release/build/main/main.js --minify --outfile=_build/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' _build/js/release/build/main/main.min.js",
+        "prepublishOnly": "moon build src/main --target=js --release && moon build src/lib/simulator --target=js --release && bunx esbuild@0.27.2 _build/js/release/build/main/main.js --minify --outfile=_build/js/release/build/main/main.min.js && perl -pi -e 'print \"#!/usr/bin/env node\\n\" if $.==1' _build/js/release/build/main/main.min.js && bun run build:lsp",
         "build-wasi": "moon build src/main-wasi/ --target=wasm --release && cp _build/wasm/release/build/main-wasi/main-wasi.wasm ./res/yodl-wasi.wasm",
-        "build:site": "bun install --frozen-lockfile && moon build src/lib/driver --target=js --release && moon build src/lib/simulator --target=js --release && bun src/docs/build.ts",
+        "build:site": "bun install --frozen-lockfile && moon build src/lib/driver --target=js --release && moon build src/lib/lsp --target=js --release && moon build src/lib/simulator --target=js --release && bun src/docs/build.ts",
         "dev:site": "bash scripts/serve-playground.sh",
-        "test:docs": "bun install --frozen-lockfile && moon build src/lib/driver --target=js --release && moon build src/lib/simulator --target=js --release && bun test src/docs && bun src/docs/validate.ts",
-        "benchmark:sim": "moon build src/lib/driver --target=js --release && bun benchmarks/simulator.ts"
+        "test:docs": "bun install --frozen-lockfile && moon build src/lib/driver --target=js --release && moon build src/lib/lsp --target=js --release && moon build src/lib/simulator --target=js --release && bun scripts/build-lsp.ts && bun test src/docs && bun src/docs/validate.ts",
+        "benchmark:sim": "moon build src/lib/driver --target=js --release && bun benchmarks/simulator.ts",
+        "build:lsp": "moon build src/lib/lsp --target=js --release && bun scripts/build-lsp.ts",
+        "build:extension": "bun scripts/build-extension.ts",
+        "test:lsp": "bun run build:lsp && bun test src/docs/lsp*.test.ts"
     },
     "repository": {
         "type": "git",

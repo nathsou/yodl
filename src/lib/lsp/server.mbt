@@ -2,6 +2,7 @@ pub struct Server {
   files: Map[String, String]
   documents: Map[String, Document]
   analyses: Map[String, @driver.Analysis]
+  reads: Map[String, Map[String, String]]
   published: Set[String]
   mut workspace: Workspace?
   mut initialized: Bool
@@ -15,11 +16,12 @@ struct Document {
 }
 
 pub fn new_server() -> Server {
-  { files: {}, documents: {}, analyses: {}, published: Set([]), workspace: None, initialized: false, shutdown: false, exited: false }
+  { files: {}, documents: {}, analyses: {}, reads: {}, published: Set([]), workspace: None, initialized: false, shutdown: false, exited: false }
 }
 
 fn Server::invalidate(self: Self) -> Unit {
   self.analyses.clear()
+  self.reads.clear()
   self.workspace = None
 }
 
@@ -45,9 +47,13 @@ fn Server::set_files(self: Self, value: Json) -> Unit raise ProtocolError {
   self.invalidate()
 }
 
-fn virtual_fs(files: Map[String, String]) -> @utils.FileSystem {
+fn virtual_fs(files: Map[String, String], reads: Map[String, String]) -> @utils.FileSystem {
   {
-    read_file_to_string: fn(uri) raise { files.get(uri).unwrap_or_error(Failure::Failure("File not found: '\{uri}'")) },
+    read_file_to_string: fn(uri) raise {
+      let source = files.get(uri).unwrap_or_error(Failure::Failure("File not found: '\{uri}'"))
+      reads[uri] = source
+      source
+    },
     read_dir: fn(dir) raise {
       let entries = Set([])
       let prefix = dir + "/"
@@ -71,9 +77,11 @@ fn Server::analyze(self: Self, uri: String) -> @driver.Analysis {
   match self.analyses.get(uri) {
     Some(analysis) => analysis
     None => {
-      let ext: @utils.Externals = { fs: virtual_fs(self.sources()), println: _ => (), get_args: () => [], exit: _ => () }
+      let reads = Map([])
+      let ext: @utils.Externals = { fs: virtual_fs(self.sources(), reads), println: _ => (), get_args: () => [], exit: _ => () }
       let analysis = @driver.analyze(uri, ext)
       self.analyses[uri] = analysis
+      self.reads[uri] = reads
       analysis
     }
   }
@@ -121,6 +129,11 @@ fn Server::dispatch(self: Self, method: String, params: Json, replies: Array[Jso
     "initialized" | "$/cancelRequest" | "$/setTrace" | "workspace/didChangeConfiguration" => Json::null()
     "shutdown" => { self.shutdown = true; Json::null() }
     "yodl/setFiles" => { self.set_files(field(params, "files")); Json::null() }
+    "yodl/dependencies" => {
+      let uri = required_string(params, "uri")
+      let _ = self.analyze(uri)
+      self.reads.get(uri).unwrap_or({}).to_json()
+    }
     "yodl/source" => {
       let uri = required_string(params, "uri")
       if uri == builtin_uri { @simplify.builtin_source().to_json() } else { self.source(uri).map(s => s.to_json()).unwrap_or(Json::null()) }

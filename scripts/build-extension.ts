@@ -1,0 +1,12 @@
+import { resolve, dirname } from 'node:path';
+import { copyFile, mkdir } from 'node:fs/promises';
+const root = resolve(dirname(import.meta.path), '..');
+const extension = `${root}/extensions/yodl-vscode-syntax`;
+const compiler = Bun.spawn(['moon', 'build', 'src/lib/lsp', '--target=js', '--release'], { cwd: root, stdout: 'inherit', stderr: 'inherit' });
+if (await compiler.exited) throw new Error('MoonBit language server build failed');
+const host = await Bun.build({ entrypoints: [`${root}/src/lsp/node.ts`], outdir: `${extension}/dist`, target: 'node', format: 'cjs', naming: 'yodl-lsp.cjs', minify: true });
+if (!host.success) throw new AggregateError(host.logs, 'Server bundle failed');
+const result = await Bun.build({ entrypoints: [`${extension}/src/extension.ts`], outdir: `${extension}/dist`, target: 'node', format: 'cjs', naming: 'extension.cjs', external: ['vscode'], minify: true });
+if (!result.success) throw new AggregateError(result.logs, 'Extension bundle failed');
+await mkdir(`${extension}/dist`, { recursive: true });
+await copyFile(`${root}/LICENSE`, `${extension}/LICENSE`);
