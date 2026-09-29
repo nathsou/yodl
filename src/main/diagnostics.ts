@@ -1,8 +1,7 @@
-// The driver currently returns rendered diagnostics. Only use its explicit span
-// header for markers; do not infer locations from the displayed source excerpt.
-export function diagnosticLocation(message: string, path: string) {
-    const escaped = path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const match = message.match(new RegExp(`${escaped}:(\\d+)\\.(\\d+)-(\\d+)\\.(\\d+)`));
-    if (!match) return null;
-    return { startLineNumber: +match[1], startColumn: +match[2], endLineNumber: +match[3], endColumn: +match[4] };
+import type { CompilerDiagnostic } from './yodl.ts';
+
+export function diagnosticLocation(diagnostic: Pick<CompilerDiagnostic, 'uri' | 'range'>, path: string) {
+    if (diagnostic.uri !== path || !diagnostic.range) return null;
+    const { start, end } = diagnostic.range;
+    return { startLineNumber: start.line + 1, startColumn: start.character + 1, endLineNumber: end.line + 1, endColumn: end.character + 1 };
 }

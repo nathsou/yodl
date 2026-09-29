@@ -5,4 +5,5 @@ import {
   "moonbitlang/core/int",
   "moonbitlang/core/strconv",
   "moonbitlang/core/ref",
+  "moonbitlang/core/json",
 }

@@ -1,4 +1,5 @@
-import { unwrap, yodl, ext, createInMemoryFileSystem } from './yodl.ts';
+import { unwrap, yodl, ext, createInMemoryFileSystem, CompilerError } from './yodl.ts';
+import type { CompilerDiagnostic } from './yodl.ts';
 import type { Stage } from './compiler-stages.ts';
 
 const {
@@ -49,7 +50,7 @@ export type SimulationEvent = { kind: 'printf' | 'assert_failure' | 'assert_unkn
 export type SimulationStatus = { halted: boolean; exit_code?: number; failed: boolean; first_failure?: SimulationEvent };
 export type SimulationAdvance = { cycles: number; boundaryComplete: boolean; halted: boolean };
 export type SimulationResult = { outputs: SimulationSignal[]; inputs: SimulationSignal[]; messages: string[]; events: SimulationEvent[]; status: SimulationStatus; cycles: number; halted?: boolean; clock?: string; metadata?: SimulationMetadata; framebuffers?: SimulationFramebuffer[] };
-export type CompileResult = { id: number; output?: string; error?: string; duration: number; sources?: Record<string, string>; simulation?: SimulationResult };
+export type CompileResult = { id: number; output?: string; error?: string; diagnostics?: CompilerDiagnostic[]; duration: number; sources?: Record<string, string>; simulation?: SimulationResult };
 export type SimulationStreamEvent = {
     id: number;
     type: 'started' | 'frame' | 'snapshot' | 'paused' | 'resumed' | 'stopped' | 'halted' | 'stepping' | 'error';
@@ -426,7 +427,7 @@ export function compile(request: CompileRequest): CompileResult {
         }));
         return { id: request.id, output, sources, duration: performance.now() - started };
     } catch (error) {
-        return { id: request.id, sources, error: simulationError(error), duration: performance.now() - started };
+        return { id: request.id, sources, error: simulationError(error), ...(error instanceof CompilerError ? { diagnostics: [error.diagnostic] } : {}), duration: performance.now() - started };
     }
 }
 

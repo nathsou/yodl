@@ -9,6 +9,8 @@ import {
 }
 
 // Values
+pub fn diagnostic(Error) -> @parse.Diagnostic?
+
 pub fn simplify_decls(Array[@parse.Decl]) -> Array[@parse.CoreDecl] raise
 
 // Errors
@@ -24,16 +26,19 @@ pub suberror MonomorphizerError {
   UnresolvedNamedType(path~ : @parse.Path, span~ : @parse.Span)
 }
 pub impl Show for MonomorphizerError
+pub impl @parse.Diagnosed for MonomorphizerError
 pub impl @parse.Spanned for MonomorphizerError
 
 pub suberror ResolutionError {
-  PackageNotFound(name~ : String)
+  PackageNotFound(name~ : String, span~ : @parse.Span)
   IOError(Error)
   LexerError(Error)
   ParseError(Error)
   CouldNotExtractPackageName(String)
   PackageNameConflict(name~ : String, path1~ : String, path2~ : String)
-  MultiLevelImportNotSupportedYet(packages~ : Array[String])
+  MultiLevelImportNotSupportedYet(packages~ : Array[String], span~ : @parse.Span)
+  ImportError(error~ : Error, span~ : @parse.Span)
+  ImportCycle(path~ : String)
 } derive(@debug.Debug)
 pub impl Show for ResolutionError
 
@@ -41,6 +46,7 @@ pub suberror SimplifierError {
   AssertionAlwaysFails(span~ : @parse.Span)
 }
 pub impl Show for SimplifierError
+pub impl @parse.Diagnosed for SimplifierError
 pub impl @parse.Spanned for SimplifierError
 
 // Types and methods
@@ -72,8 +78,11 @@ pub struct Resolver {
   available_packages : Map[String, String]
   imports : @set.Set[String]
   fs : @utils.FileSystem
+  recovering : Bool
+  diagnostics : Array[@parse.Diagnostic]
+  resolving : @set.Set[String]
 }
-pub fn Resolver::new(String, fs~ : @utils.FileSystem) -> Self raise ResolutionError
+pub fn Resolver::new(String, fs~ : @utils.FileSystem, recovering? : Bool, diagnostics? : Array[@parse.Diagnostic]) -> Self raise ResolutionError
 pub fn Resolver::resolve(Self, path~ : String, is_top_package~ : Bool) -> @parse.PackageDecl raise ResolutionError
 pub fn Resolver::resolve_decl(Self, @parse.Decl) -> @parse.Decl? raise ResolutionError
 

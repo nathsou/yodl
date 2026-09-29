@@ -4,39 +4,49 @@ pub struct Resolver {
   available_packages: Map[String, String]
   imports: Set[String]
   fs: @utils.FileSystem
+  recovering: Bool
+  diagnostics: Array[@parse.Diagnostic]
+  resolving: Set[String]
 }
 
 pub suberror ResolutionError {
-  PackageNotFound(name~: String)
+  PackageNotFound(name~: String, span~: @parse.Span)
   IOError(Error)
   LexerError(Error)
   ParseError(Error)
   CouldNotExtractPackageName(String)
   PackageNameConflict(name~: String, path1~: String, path2~: String)
-  MultiLevelImportNotSupportedYet(packages~: Array[String])
+  MultiLevelImportNotSupportedYet(packages~: Array[String], span~: @parse.Span)
+  ImportError(error~: Error, span~: @parse.Span)
+  ImportCycle(path~: String)
 } derive(Debug)
 
 pub impl Show for ResolutionError with output(self, logger) {
   match self {
-    PackageNotFound(name~) => logger.write_string("Package '\{name}' not found")
+    PackageNotFound(name~, ..) => logger.write_string("Package '\{name}' not found")
     IOError(err) => logger.write_string("IO error: \{err}")
     LexerError(err) => logger.write_string("Lexer error: \{err}")
     ParseError(err) => logger.write_string("Parse error: \{err}")
     CouldNotExtractPackageName(path) => logger.write_string("Could not extract package name from '\{path}'")
     PackageNameConflict(name~, path1~, path2~) => logger.write_string("Package name conflict for '\{name}': '\{path1}' and '\{path2}'")
-    MultiLevelImportNotSupportedYet(packages~) => {
+    MultiLevelImportNotSupportedYet(packages~, ..) => {
       let pkgs = packages.join(", ")
       logger.write_string("Multi-level imports are not yet supported: [\{pkgs}]")
     }
+    ImportError(error~, ..) => logger.write_string(diagnostic(error).map(d => d.render()).unwrap_or(error.to_string()))
+    ImportCycle(path~) => logger.write_string("Import cycle involving '\{path}'")
   }
 }
 
-pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem) -> Resolver raise ResolutionError {
+pub fn Resolver::new(packages_dir: String, fs~: @utils.FileSystem, recovering~: Bool = false, diagnostics~: Array[@parse.Diagnostic] = []) -> Resolver raise ResolutionError {
   {
     resolved_packages: {},
     available_packages: collect_packages(packages_dir, fs~),
     imports: Set([]),
     fs,
+    recovering,
+    diagnostics,
+    resolving: Set([]),
   }
 }
 
@@ -144,34 +154,40 @@ pub fn Resolver::resolve(self: Self, path~: String, is_top_package~: Bool) -> @p
     None => ()
   }
 
+  if self.resolving.contains(path) { raise ImportCycle(path~) }
+  self.resolving.add(path)
+
   let source = try (self.fs.read_file_to_string)(path) catch {
     error => raise IOError(error)
   } noraise {
     source => source
   }
 
-  let tokens = try @parse.Lexer::new(source, file=path, file_content=source).lex() catch {
+  let lexer = @parse.Lexer::new(source, file=path, file_content=source)
+  let tokens = if self.recovering {
+    lexer.lex_recovering(self.diagnostics)
+  } else { try lexer.lex() catch {
     error => raise LexerError(error)
   } noraise {
     tokens => tokens
-  }
+  } }
 
   let parser = @parse.Parser::new(tokens, file=path, file_content=source)
 
-  let decls = try parser.parse() catch {
+  let parsed = if self.recovering { parser.parse_recovering(self.diagnostics) } else { try parser.parse() catch {
     error => raise ParseError(error)
   } noraise {
-    decls => {
-      let resolved_decl = Array::new(capacity=decls.length())
-
-      for decl in decls {
-        match self.resolve_decl(decl) {
-          Some(decl) => resolved_decl.push(decl)
-          None => ()
-        }
-      }
-
-      resolved_decl 
+    decls => decls
+  } }
+  let decls = Array::new(capacity=parsed.length())
+  for decl in parsed {
+    try self.resolve_decl(decl) catch {
+      error => if self.recovering {
+        self.diagnostics.push(diagnostic(error).unwrap_or(@parse.Diagnostic::new("Y0700", error.to_string())))
+      } else { raise error }
+    } noraise {
+      Some(decl) => decls.push(decl)
+      None => ()
     }
   }
 
@@ -198,24 +214,27 @@ pub fn Resolver::resolve(self: Self, path~: String, is_top_package~: Bool) -> @p
   if !is_top_package {
     self.resolved_packages[path] = pkg
   }
+  self.resolving.remove(path)
 
   pkg
 }
 
 pub fn Resolver::resolve_decl(self: Self, decl: @parse.Decl) -> @parse.Decl? raise ResolutionError {
   match decl {
-    Import({ packages, span: _ }) => {
+    Import({ packages, span }) => {
       let pkg = match packages {
         [pkg] => pkg
-        _ => raise MultiLevelImportNotSupportedYet(packages~)
+        _ => raise MultiLevelImportNotSupportedYet(packages~, span~)
       }
 
       let path = match self.available_packages.get(pkg) {
         Some(path) => path
-        None => raise PackageNotFound(name=pkg)
+        None => raise PackageNotFound(name=pkg, span~)
       }
 
-      let _ = self.resolve(path~, is_top_package=false)
+      try { let _ = self.resolve(path~, is_top_package=false) } catch {
+        error => { self.resolving.remove(path); raise ImportError(error~, span~) }
+      }
       self.imports.add(path)
       
       None

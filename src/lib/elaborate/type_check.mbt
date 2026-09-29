@@ -1,6 +1,6 @@
 using @utils { type Scope, min, max, pow2, zip2, is_ascii, significant_bits }
 using @parse {
-    type Type, type ModuleSignature, trait Spanned,
+    type Type, type ModuleSignature,
     type Expr, type Decl, type Stmt, type Attribute, type AttributeValue,
     type ConstDecl, type StaticArg, type PortUsage, type InstanceId,
 }
@@ -47,7 +47,7 @@ priv suberror TypeCheckerError {
     InvalidAttributeArgs(name~: String, args~: Array[AttributeValue], expected~: Array[AttributeValueType], span~: Span)
 }
 
-impl Spanned for TypeCheckerError with span(self) -> Span {
+impl @parse.Spanned for TypeCheckerError with span(self) -> Span {
     match self {
         TypeCheckerError(span~, ..) => span
         IncompatibleTypes(span~, ..) => span
@@ -61,7 +61,8 @@ impl Spanned for TypeCheckerError with span(self) -> Span {
     }
 }
 
-impl Show for TypeCheckerError with output(self, logger) {
+fn TypeCheckerError::message(self: Self) -> String {
+  let logger = StringBuilder()
     match self {
         TypeCheckerError(message~, ..) => {
             logger.write_string(message)
@@ -99,7 +100,28 @@ impl Show for TypeCheckerError with output(self, logger) {
         }
     }
 
-    logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
+
+  logger.to_string()
+}
+
+impl @parse.Diagnosed for TypeCheckerError with diagnostic(self) -> @parse.Diagnostic {
+  let code = match self {
+    TypeCheckerError(..) => "Y0501"
+    IncompatibleTypes(..) => "Y0502"
+    InvalidAssignmentTarget(..) => "Y0503"
+    IndexedExpressionMustBeVector(..) => "Y0504"
+    UnknownModule(..) => "Y0505"
+    UnknownModulePort(..) => "Y0506"
+    InvalidSlicingRange(..) => "Y0507"
+    ExpectedConstantExpr(..) => "Y0508"
+    InvalidAttributeArgs(..) => "Y0509"
+  }
+  let result = @parse.Diagnostic::new(code, self.message(), span=Some(@parse.Spanned::span(self)))
+  result
+}
+
+impl Show for TypeCheckerError with output(self, logger) {
+  logger.write_string(@parse.Diagnosed::diagnostic(self).render())
 }
 
 fn type_error(message: String, span: Span) -> TypeCheckerError {

@@ -14,22 +14,22 @@ priv struct FrontendPipeline {
 fn prepare_frontend(path: String, ext: @utils.Externals, top: String?, allow_test_top~: Bool = false) -> FrontendPipeline raise {
   if !path.has_suffix(".yodl") { raise Failure::Failure("Input file must have a .yodl extension") }
   let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs=ext.fs)
-  let pkg = try resolver.resolve(path~, is_top_package=true) catch { err => raise Failure::Failure("\{err}") }
+  let pkg = resolver.resolve(path~, is_top_package=true)
   let source_emitter = @parse.AstEmitter::new()
   for decl in pkg.body { source_emitter.emit_decl(decl); source_emitter.emit("\n") }
   let source_text = source_emitter.to_string()
   let monomorphizer = @simplify.Monomorphizer::new()
-  let mono_decls = try monomorphizer.monomorphize(decls=pkg.body, packages=[]) catch { err => raise Failure::Failure(err.to_string()) }
+  let mono_decls = monomorphizer.monomorphize(decls=pkg.body, packages=[])
   let mono_emitter = @parse.AstEmitter::new()
   for decl in mono_decls { mono_emitter.emit_decl(decl); mono_emitter.emit("\n") }
   let mono_text = mono_emitter.to_string()
   let checker = @elaborate.TypeChecker::new()
   let resolved_decls = Array::new(capacity=mono_decls.length())
   for decl in mono_decls {
-    let resolved = try checker.check_decl(decl) catch { err => raise Failure::Failure(err.to_string()) }
+    let resolved = checker.check_decl(decl)
     resolved_decls.push(resolved)
   }
-  try checker.finalize() catch { err => raise Failure::Failure(err.to_string()) }
+  checker.finalize()
   // Keep the post-check declarations as the source for test execution. The
   // dedicated test checker below validates the host-side actions after all
   // module signatures and concrete generic instances are known.
@@ -152,9 +152,7 @@ pub fn run(
   let firrtl = {
     let low = @elaborate.Elaborator::new(top, port_usage=frontend.port_usage)
 
-    try low.lower(simplified_decls.iter()) catch {
-      err => raise Failure::Failure(err.to_string())
-    }
+    low.lower(simplified_decls.iter())
 
     low
   }
@@ -920,9 +918,7 @@ fn compile_simulation_frontend_with_top(
 ) -> @firrtl.TypedCircuit raise {
   let top = top_override.unwrap_or(frontend.top)
   let elaborator = @elaborate.Elaborator::new(top, port_usage=frontend.port_usage)
-  try elaborator.lower(frontend.simplified_decls.iter()) catch {
-    err => raise Failure::Failure(err.to_string())
-  }
+  elaborator.lower(frontend.simplified_decls.iter())
   let circuit = lower_firrtl(elaborator, passes=[])
   let pass = @firrtl.LowerAggregateTypesPass::new(split_memories=false, packed_bool_rows=true)
   let lowered = pass.prepare_simulation(circuit)
@@ -1149,9 +1145,7 @@ pub fn simulation_metadata(
   top~: String? = None,
 ) -> Array[(String, String)] raise {
   let resolver = @simplify.Resolver::new(@utils.dir_name(path), fs=ext.fs)
-  let pkg = try resolver.resolve(path~, is_top_package=true) catch {
-    err => raise Failure::Failure(err.to_string())
-  }
+  let pkg = resolver.resolve(path~, is_top_package=true)
   simulation_metadata_from_package(pkg, top)
 }
 
@@ -1225,12 +1219,8 @@ pub fn cli(ext: @utils.Externals) -> Unit {
   match (ext.get_args)() {
     [_, path] => {
       try run(path~, commands=[WriteFIRRTL(path=Some(path.replace(old=".yodl", new=".fir")), passes=[])], ext~) catch {
-        Failure::Failure(error) => {
-          (ext.println)("\{error}")
-          (ext.exit)(1)
-        }
         error => {
-          (ext.println)("\{error}")
+          (ext.println)(diagnostic(error).render())
           (ext.exit)(1)
         }
       }
@@ -1245,7 +1235,7 @@ pub fn cli(ext: @utils.Externals) -> Unit {
         commands => {
           try run(path~, commands~, ext~) catch {
             error => {
-              (ext.println)("\{error}")
+              (ext.println)(diagnostic(error).render())
               (ext.exit)(1)
             }
           }

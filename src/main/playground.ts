@@ -9,6 +9,7 @@ import { createSimulationView } from './simulation-view.ts';
 import { createDocs, docsUrl } from './docs-view.ts';
 import type { ChapterData } from './docs-view.ts';
 import { createSearch } from './search.ts';
+import type { CompilerDiagnostic } from './yodl.ts';
 
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const button = (id: string) => element<HTMLButtonElement>(id);
@@ -533,18 +534,21 @@ function setMobileView(view: string) {
     button('output-tab').setAttribute('aria-pressed', String(view === 'output'));
     editors?.input.layout(); editors?.output.layout();
 }
-function showError(message: string) {
+function showError(message: string, diagnostics: CompilerDiagnostic[] = []) {
     setOutputView('output');
     element('problems').hidden = false;
     element('error-message').textContent = message;
-    errorPath = [entryPath(), ...importedModels.keys()].find(path => diagnosticLocation(message, path)) ?? entryPath();
-    errorRange = diagnosticLocation(message, errorPath);
+    const first = diagnostics.find(diagnostic => diagnostic.range && (diagnostic.uri === entryPath() || importedModels.has(diagnostic.uri!)));
+    errorPath = first?.uri ?? entryPath();
+    errorRange = first ? diagnosticLocation(first, errorPath) : null;
     button('jump-error').hidden = errorRange === null;
-    if (errorRange) {
-        const model = errorPath === entryPath() ? entryModel : importedModels.get(errorPath);
-        const range = model.validateRange(errorRange);
-        errorRange = range;
-        monaco.editor.setModelMarkers(model, 'yodl', [{ ...range, message, severity: monaco.MarkerSeverity.Error }]);
+    for (const path of [entryPath(), ...importedModels.keys()]) {
+        const model = path === entryPath() ? entryModel : importedModels.get(path);
+        const markers = diagnostics.flatMap(diagnostic => {
+            const range = diagnosticLocation(diagnostic, path);
+            return range ? [{ ...model.validateRange(range), message: diagnostic.message, code: diagnostic.code, severity: diagnostic.severity === 2 ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Error }] : [];
+        });
+        monaco.editor.setModelMarkers(model, 'yodl', markers);
     }
     setStatus(lastOutput ? 'Compilation failed · showing previous output' : 'Compilation failed · check diagnostics', 'error');
 }
@@ -559,7 +563,8 @@ async function runCompile() {
     setStatus('Compiling…', 'loading');
     const result = await compiler.compile('playground', { source: entrySource(), path: entryPath(), stage: selection.stage, files: allFiles() });
     if (!result || id !== latestRequest) return;
-    if (result.error !== undefined) { showError(result.error); return; }
+    if (result.sources) updateImportedSources(result.sources);
+    if (result.error !== undefined) { showError(result.error, result.diagnostics); return; }
     lastOutput = result.output ?? '';
     outputRevision = compiledRevision;
     editors.output.setValue(lastOutput);

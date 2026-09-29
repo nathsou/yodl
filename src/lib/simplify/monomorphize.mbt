@@ -40,7 +40,8 @@ pub suberror MonomorphizerError {
   UnresolvedNamedType(path~: @parse.Path, span~: @parse.Span)
 }
 
-pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
+fn MonomorphizerError::message(self: Self) -> String {
+  let logger = StringBuilder()
   match self {
     ModuleNotFound(path~, ..) => {
       logger.write_string("Module '\{path}' not found")
@@ -51,27 +52,51 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     ReceivedTypeParameterInsteadOfExpr(..) => {
       logger.write_string("Type parameter used where a value (Nat) is expected: consider changing the sort from 'Type' to 'Nat'")
     }
-    InvalidParameter(sort~, span~) => {
-      logger.write_string("Invalid parameter of sort '\{sort}' at \{span}")
+    InvalidParameter(sort~, span=_) => {
+      logger.write_string("Invalid parameter of sort '\{sort}'")
     }
     InvalidSizeFunctionDomain(message~, ..) => {
       logger.write_string(message)
     }
-    InvalidParameterInstantiation(path~, param~, param_span~, ..) => {
-      logger.write_string("Invalid instantiation of parameter '\{param}' in module '\{path}', declared at \{param_span}")
+    InvalidParameterInstantiation(path~, param~, param_span=_, ..) => {
+      logger.write_string("Invalid instantiation of parameter '\{param}' in module '\{path}'")
     }
-    InvalidTypeAliasParameters(path~, exptected~, actual~, span~) => {
-      logger.write_string("Invalid number of parameters for type alias '\{path}', expected \{exptected}, received \{actual} at \{span}")
+    InvalidTypeAliasParameters(path~, exptected~, actual~, span=_) => {
+      logger.write_string("Invalid number of parameters for type alias '\{path}', expected \{exptected}, received \{actual}")
     }
-    UnresolvedNamedType(path~, span~) => {
-      logger.write_string("Unresolved module name, constant or type alias '\{path}' at \{span}")
+    UnresolvedNamedType(path~, span=_) => {
+      logger.write_string("Unresolved module name, constant or type alias '\{path}'")
     }
     ReceivedTypeAliasInsteadOfExpr(..) => {
       logger.write_string("Received type alias instead of expression")
     }
   }
 
-  logger.write_string(@parse.Spanned::show_context(self, use_ansi_colors=false))
+
+  logger.to_string()
+}
+
+pub impl @parse.Diagnosed for MonomorphizerError with diagnostic(self) -> @parse.Diagnostic {
+  let code = match self {
+    ModuleNotFound(..) => "Y0301"
+    InvalidModuleParameterCount(..) => "Y0302"
+    ReceivedTypeParameterInsteadOfExpr(..) => "Y0303"
+    InvalidParameter(..) => "Y0304"
+    InvalidSizeFunctionDomain(..) => "Y0305"
+    ReceivedTypeAliasInsteadOfExpr(..) => "Y0306"
+    InvalidParameterInstantiation(..) => "Y0307"
+    InvalidTypeAliasParameters(..) => "Y0308"
+    UnresolvedNamedType(..) => "Y0309"
+  }
+  let result = @parse.Diagnostic::new(code, self.message(), span=Some(@parse.Spanned::span(self)))
+  if self is InvalidParameterInstantiation(param_span~, ..) {
+    result.related.push({ span: param_span, message: "Parameter declared here" })
+  }
+  result
+}
+
+pub impl Show for MonomorphizerError with output(self, logger) {
+  logger.write_string(@parse.Diagnosed::diagnostic(self).render())
 }
 
 pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {

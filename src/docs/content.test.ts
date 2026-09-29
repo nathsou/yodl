@@ -90,7 +90,7 @@ describe('sharing and diagnostics', () => {
         expect(validFiles([])).toBe(false);
     });
     test('diagnostic locations match only the explicit source path', () => {
-        expect(diagnosticLocation('book/src/ex.yodl:3.4-3.8\nError', 'book/src/ex.yodl')).toEqual({ startLineNumber: 3, startColumn: 4, endLineNumber: 3, endColumn: 8 });
-        expect(diagnosticLocation('other.yodl:3.4-3.8', 'book/src/ex.yodl')).toBeNull();
+        expect(diagnosticLocation({ uri: 'book/src/ex.yodl', range: { start: { line: 2, character: 3 }, end: { line: 2, character: 7 } } }, 'book/src/ex.yodl')).toEqual({ startLineNumber: 3, startColumn: 4, endLineNumber: 3, endColumn: 8 });
+        expect(diagnosticLocation({ uri: 'other.yodl', range: { start: { line: 2, character: 3 }, end: { line: 2, character: 7 } } }, 'book/src/ex.yodl')).toBeNull();
     });
 });

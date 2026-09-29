@@ -157,14 +157,28 @@ pub suberror SimplifierError {
   AssertionAlwaysFails(span~: @parse.Span)
 }
 
-pub impl Show for SimplifierError with output(self, logger) {
+fn SimplifierError::message(self: Self) -> String {
+  let logger = StringBuilder()
   match self {
     AssertionAlwaysFails(span=_) => {
       logger.write_string("Assertion always fails")
     }
   }
 
-  logger.write_string(@parse.Spanned::show_context(self, use_ansi_colors=false))
+
+  logger.to_string()
+}
+
+pub impl @parse.Diagnosed for SimplifierError with diagnostic(self) -> @parse.Diagnostic {
+  let code = match self {
+    AssertionAlwaysFails(..) => "Y0401"
+  }
+  let result = @parse.Diagnostic::new(code, self.message(), span=Some(@parse.Spanned::span(self)))
+  result
+}
+
+pub impl Show for SimplifierError with output(self, logger) {
+  logger.write_string(@parse.Diagnosed::diagnostic(self).render())
 }
 
 pub impl @parse.Spanned for SimplifierError with span(self) -> @parse.Span {

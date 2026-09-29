@@ -1,3 +1,4 @@
+using @parse { trait Spanned }
 using @firrtl { type Id, type Annotation, type AnnotationTarget }
 using @parse { type Span, type Path, type CoreModuleDecl, type AstEmitter, type CoreExpr, type CoreStmt, type CoreDecl, type CoreType, type CoreStaticArg }
 
@@ -100,25 +101,41 @@ impl Spanned for ElaborationError with span(self) {
   }
 }
 
-impl Show for ElaborationError with output(self, logger) {
-  logger.write_string("ElaborationError: ")
+fn ElaborationError::message(self: Self) -> String {
+  let logger = StringBuilder()
 
   match self {
-    ElaborationError(message~, span~) => {
-      logger.write_string("\{message} at \{span}")
+    ElaborationError(message~, span=_) => {
+      logger.write_string("\{message}")
     }
-    UnresolvedIdentifier(path~, span~) => {
-      logger.write_string("Unresolved identifier '\{path.to_string()}' at \{span}")
+    UnresolvedIdentifier(path~, span=_) => {
+      logger.write_string("Unresolved identifier '\{path.to_string()}'")
     }
-    Unreachable(message~, span~) => {
-      logger.write_string("ElaborationError: Unreachable: \{message} at \{span}")
+    Unreachable(message~, span=_) => {
+      logger.write_string("Internal compiler error: \{message}")
     }
-    Unsupported(message~, span~) => {
-      logger.write_string("ElaborationError: Unsupported: \{message} at \{span}")
+    Unsupported(message~, span=_) => {
+      logger.write_string("Unsupported: \{message}")
     }
   }
 
-  logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
+
+  logger.to_string()
+}
+
+pub impl @parse.Diagnosed for ElaborationError with diagnostic(self) -> @parse.Diagnostic {
+  let code = match self {
+    ElaborationError(..) => "Y0601"
+    UnresolvedIdentifier(..) => "Y0602"
+    Unreachable(..) => "Y0603"
+    Unsupported(..) => "Y0604"
+  }
+  let result = @parse.Diagnostic::new(code, self.message(), span=Some(@parse.Spanned::span(self)))
+  result
+}
+
+pub impl Show for ElaborationError with output(self, logger) {
+  logger.write_string(@parse.Diagnosed::diagnostic(self).render())
 }
 
 priv trait ScopeLike {

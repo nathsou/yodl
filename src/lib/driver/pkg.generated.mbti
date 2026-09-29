@@ -4,16 +4,23 @@ package "nathsou/yodl/lib/driver"
 import {
   "moonbitlang/core/debug",
   "nathsou/yodl/lib/firrtl",
+  "nathsou/yodl/lib/parse",
   "nathsou/yodl/lib/simulator",
   "nathsou/yodl/lib/utils",
 }
 
 // Values
+pub fn analyze(String, @utils.Externals) -> Analysis
+
 pub fn cli(@utils.Externals) -> Unit
 
 pub fn compile_simulation(path~ : String, ext~ : @utils.Externals, top? : String?, displays? : Array[SimulationDisplay], stream? : String?) -> @firrtl.Circuit[@firrtl.Type] raise
 
 pub fn compile_simulation_design(path~ : String, ext~ : @utils.Externals, top? : String?) -> SimulationDesign raise
+
+pub fn diagnostic(Error) -> @parse.Diagnostic
+
+pub fn diagnostic_json(Error) -> String
 
 pub fn host_simulator_clocks(@simulator.Simulator) -> Array[String]
 
@@ -59,6 +66,12 @@ pub fn simulation_metadata(path~ : String, ext~ : @utils.Externals, top? : Strin
 type CommandParserError derive(@debug.Debug)
 
 // Types and methods
+pub(all) struct Analysis {
+  source_decls : Array[@parse.Decl]
+  typed_decls : Array[@parse.Decl]
+  diagnostics : Array[@parse.Diagnostic]
+}
+
 pub(all) enum Command {
   WriteSource(path~ : String?)
   WriteMono(path~ : String?)

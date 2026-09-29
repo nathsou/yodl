@@ -7,6 +7,7 @@ import {
 }
 
 // Values
+pub fn diagnostic(Error) -> @parse.Diagnostic?
 
 // Errors
 pub suberror ElaborationError {
@@ -15,6 +16,8 @@ pub suberror ElaborationError {
   Unreachable(message~ : String, span~ : @parse.Span)
   Unsupported(message~ : String, span~ : @parse.Span)
 }
+pub impl Show for ElaborationError
+pub impl @parse.Diagnosed for ElaborationError
 
 // Types and methods
 pub struct Elaborator {

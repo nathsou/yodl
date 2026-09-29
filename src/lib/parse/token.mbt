@@ -1,5 +1,6 @@
 
 enum TokenType {
+  Eof
   // symbols
   Lparen; Rparen; Lbrace; Rbrace; Comma; Semicolon; Colon
   Lchevron; Rchevron; Lbracket; Rbracket; Dot; Bang
@@ -24,6 +25,7 @@ enum TokenType {
 
 pub impl Show for TokenType with output(self, logger) {
   match self {
+    Eof => logger.write_string("end of file")
     Lparen => logger.write_string("(")
     Rparen => logger.write_string(")")
     Lbrace => logger.write_string("{")

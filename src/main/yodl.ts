@@ -1,5 +1,23 @@
 import type * as MoonBit from "../../_build/js/release/build/lib/driver/moonbit.d.ts";
-export * as yodl from "../../_build/js/release/build/lib/driver/driver.js";
+import * as yodl from "../../_build/js/release/build/lib/driver/driver.js";
+export { yodl };
+
+export type CompilerDiagnostic = {
+    code: string; message: string; severity: number; rendered: string; uri?: string;
+    range?: { start: { line: number; character: number }; end: { line: number; character: number } };
+    relatedInformation: { location: { uri: string; range: NonNullable<CompilerDiagnostic['range']> }; message: string }[];
+    notes: string[];
+    fixes: { title: string; uri: string; range: NonNullable<CompilerDiagnostic['range']>; newText: string }[];
+};
+
+export class CompilerError extends Error {
+    readonly diagnostic: CompilerDiagnostic;
+    constructor(error: unknown) {
+        const diagnostic: CompilerDiagnostic = JSON.parse(yodl.diagnostic_json(error as any));
+        super(diagnostic.rendered);
+        this.diagnostic = diagnostic;
+    }
+}
 
 type Result<T> = MoonBit.Result<T, string>;
 
@@ -206,7 +224,7 @@ function createTree(files: Record<string, string>): DirectoryNode {
 
 export function unwrap<T>(result: MoonBit.Result<T, any>): T {
     if (result.$tag === 0) {
-        throw new Error(JSON.stringify(result._0));
+        throw new CompilerError(result._0);
     }
 
     return result._0;

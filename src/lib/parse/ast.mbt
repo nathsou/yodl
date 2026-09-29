@@ -311,7 +311,8 @@ pub suberror AstError {
   InvalidSizeFunctionDomain(message~: String, span~: Span)
 }
 
-pub impl Show for AstError with output(self, logger) {
+fn AstError::message(self: Self) -> String {
+  let logger = StringBuilder()
   match self {
     ExpectedIntegerExpression(expr~, ..) => logger.write_string("Expected an integer expression, got: \{expr.ctor()}")
     IndexExprNotLiteral(_) => logger.write_string("Index expression must be a compile-time literal")
@@ -338,7 +339,36 @@ pub impl Show for AstError with output(self, logger) {
     InvalidSizeFunctionDomain(message~, ..) => logger.write_string(message)
   }
 
-  logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
+
+  logger.to_string()
+}
+
+pub impl Diagnosed for AstError with diagnostic(self) -> Diagnostic {
+  let code = match self {
+    ExpectedIntegerExpression(..) => "Y0201"
+    IndexExprNotLiteral(..) => "Y0202"
+    CannotGetWidthOfUnresolvedNamedType(..) => "Y0203"
+    InvalidFunCallArity(..) => "Y0204"
+    ExpectedStringExpression(..) => "Y0205"
+    ConflictingInstanceParameterValue(..) => "Y0206"
+    UnknownModuleParameter(..) => "Y0207"
+    TypeParamInsteadOfExpr(..) => "Y0208"
+    UnknownFunction(..) => "Y0209"
+    UnresolvedParameter(..) => "Y0210"
+    CannotMixNamedAndOrderedModuleParameters(..) => "Y0211"
+    ExpectedTypeParameter(..) => "Y0212"
+    ExpectedIntParameter(..) => "Y0213"
+    NonStorableType(..) => "Y0214"
+    InvalidCoreType(..) => "Y0215"
+    InvalidCoreDimension(..) => "Y0216"
+    InvalidSizeFunctionDomain(..) => "Y0217"
+  }
+  let result = Diagnostic::new(code, self.message(), span=Some(self.span()))
+  result
+}
+
+pub impl Show for AstError with output(self, logger) {
+  logger.write_string(self.diagnostic().render())
 }
 
 pub impl Spanned for AstError with span(self) -> Span {
