@@ -145,3 +145,17 @@ export function loadChapters(root = process.cwd()): Chapter[] {
         return { slug, title, markdown, html, examples: extracted.examples, headings };
     });
 }
+
+export type SearchEntry = { title: string; chapter: string; slug: string; id: string; text: string };
+
+/** One entry per heading section: prose and example code, without the example chrome or its line-number gutter. */
+export function buildSearchIndex(chapters: Chapter[]): SearchEntry[] {
+    return chapters.flatMap(chapter => {
+        const searchable = chapter.html.replace(/<div class="example-header">[\s\S]*?<\/span><\/div>/g, '').replace(/<span class="ln">\d+<\/span>/g, '').replace(/<span class="token-[a-z]+">([^<]*)<\/span>/g, '$1');
+        const sections = searchable.split(/(?=<h[1-6] id=")/);
+        return sections.filter(section => /<h[1-6]/.test(section)).map(section => {
+            const heading = /<h[1-6] id="([^"]+)">([\s\S]*?)<\/h[1-6]>/.exec(section)!;
+            return { title: plainText(heading[2]), chapter: chapter.title, slug: chapter.slug, id: heading[1], text: plainText(section).replace(/\s+/g, ' ') };
+        });
+    });
+}

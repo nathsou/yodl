@@ -2,7 +2,7 @@ import { buildBrowserAssets } from './bundle.ts';
 import { siteHeader } from '../main/site-navigation.ts';
 import { mkdir, cp, readFile, writeFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { loadChapters, escapeHTML as e, plainText } from './content.ts';
+import { loadChapters, buildSearchIndex, escapeHTML as e } from './content.ts';
 import type { Chapter } from './content.ts';
 
 const root = resolve(import.meta.dir, '../..');
@@ -31,15 +31,7 @@ await writeFile(`${destination}/book/index.html`, legacyPage(chapters[0]));
 await writeFile(`${destination}/index.html`, '<!doctype html><html lang="en"><meta charset="utf-8"><meta http-equiv="refresh" content="0;url=./playground.html"><title>Yodl</title><a href="./playground.html">Yodl</a></html>');
 await writeFile(`${destination}/book/chapters.json`, JSON.stringify({ version, revision, chapters: chapters.map(({ slug, title, html, headings, examples }) => ({ slug, title, html, headings, examples })) }));
 
-const search = chapters.flatMap(chapter => {
-    // Index prose and code, not the example chrome or its line-number gutter.
-    const searchable = chapter.html.replace(/<div class="example-header">[\s\S]*?<\/span><\/div>/g, '').replace(/<span class="ln">\d+<\/span>/g, '');
-    const sections = searchable.split(/(?=<h[1-6] id=")/);
-    return sections.filter(section => /<h[1-6]/.test(section)).map(section => {
-        const heading = /<h[1-6] id="([^"]+)">([\s\S]*?)<\/h[1-6]>/.exec(section)!;
-        return { title: plainText(heading[2]), chapter: chapter.title, slug: chapter.slug, id: heading[1], text: plainText(section).replace(/\s+/g, ' ') };
-    });
-});
+const search = buildSearchIndex(chapters);
 await writeFile(`${destination}/book/search.json`, JSON.stringify(search));
 await writeFile(`${destination}/book/examples.json`, JSON.stringify(chapters.flatMap(c => c.examples.map(ex => ({ chapter: c.slug, ...ex })))));
 for (const name of ['playground.css', 'theme.css', 'site-navigation.css']) await cp(`${root}/src/main/${name}`, `${destination}/${name}`);

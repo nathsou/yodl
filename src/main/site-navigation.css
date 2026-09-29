@@ -1,5 +1,5 @@
 /* The shared header. Its geometry must not depend on which mode is showing. */
-.site-header { box-sizing: border-box; flex: 0 0 var(--header-height); height: var(--header-height); position: relative; z-index: 10; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 16px; padding: 0 20px; border-bottom: 1px solid var(--line); background: var(--bg); font: 14px/1.5 var(--font-sans); }
+.site-header { box-sizing: border-box; flex: 0 0 var(--header-height); height: var(--header-height); position: relative; z-index: 10; display: grid; grid-template-columns: minmax(min-content, 1fr) auto minmax(max-content, 1fr); align-items: center; gap: 16px; padding: 0 20px; border-bottom: 1px solid var(--line); background: var(--bg); font: 14px/1.5 var(--font-sans); }
 .site-brand { display: flex; align-items: baseline; gap: 10px; justify-self: start; min-width: 0; color: var(--ink); text-decoration: none; white-space: nowrap; }
 .site-wordmark { font-size: 21px; line-height: 1; font-weight: 700; letter-spacing: -.04em; }
 .site-tagline { overflow: hidden; text-overflow: ellipsis; font: 11px var(--font-mono); color: var(--mute); }
