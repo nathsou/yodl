@@ -12,11 +12,19 @@ test('browser bundles pin their compiler and compile nested documentation paths'
     try {
         const assets = await buildBrowserAssets(resolve(import.meta.dir, '../..'), directory);
         expect(assets.worker).toMatch(/^playground-worker-[^.]+\.js$/);
-        expect(assets.docs).toMatch(/^docs-[^.]+\.js$/);
         expect(assets.playground).toMatch(/^playground-[^.]+\.js$/);
+        // The editor ships with the site: bundle, stylesheet, icon font and worker.
+        expect(assets.editor).toMatch(/^monaco-[^.]+\.js$/);
+        expect(assets.editorCss).toMatch(/^monaco-[^.]+\.css$/);
+        expect(assets.editorWorker).toMatch(/^monaco-worker-[^.]+\.js$/);
+        const emitted = await readdir(directory);
+        for (const name of [assets.editor, assets.editorCss, assets.editorWorker]) expect(emitted).toContain(name);
+        expect(emitted.some(name => name.endsWith('.ttf'))).toBe(true);
         const bundles = await Promise.all((await readdir(directory)).map(name => readFile(join(directory, name), 'utf8')));
         expect(bundles.join('\n')).toContain(`./${assets.worker}`);
         expect(bundles.join('\n')).not.toContain('./playground-worker.js');
+        expect(bundles.join('\n')).toContain(`./${assets.editorWorker}`);
+        expect(bundles.join('\n')).not.toMatch(/cdnjs\.cloudflare\.com/);
         worker = new Worker(pathToFileURL(join(directory, assets.worker)), { type: 'module' });
         const result = await new Promise<CompileResult>((resolve, reject) => {
             worker!.onmessage = event => resolve(event.data);

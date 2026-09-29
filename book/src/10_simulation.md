@@ -6,8 +6,8 @@ Testbenches live beside hardware modules and run with the native simulator.
 The `test` command runs every test in a source file; pass a test name to run
 only that test. A test may bind a module with `for`, which brings its ports into
 scope, or instantiate a DUT locally when it needs an unbound test.
-In the playground, choose **Tests** from the Output menu and press **Compile**
-to run the same testbenches in the browser.
+In the playground, open the **Tests** tab of the output pane (it appears when the
+source contains tests) to run the same testbenches in the browser.
 
 ```yodl live id=ex-procedural-testbenches stage=test src=examples/Testbench.yodl
 ```
@@ -194,18 +194,21 @@ magenta. The compiler resolves `x`, `y`, `valid`, and color channels through
 the typed lowering table, so a source output such as `video_x` cannot collide
 with the actual stream field binding.
 
-The panel uses one persistent worker session for Run, Pause, Resume, input
-edits, and manual steps. Changing an input settles the circuit and refreshes
-the canvas. Reset creates a fresh machine from the already compiled design.
-Stop releases the session; the next Run compiles a new one. Source edits also
-stop the session. Scalar signals and messages appear below the display.
+The **Simulate** view of the output pane uses one persistent worker session for
+Run, Pause, Resume, input edits, and manual steps. Changing an input settles
+the circuit and refreshes the canvas. Reset creates a fresh machine from the
+already compiled design. **Restart simulation** in Settings releases the session;
+the next Run compiles a new one. Source edits also stop the session. Inputs and
+outputs are listed above a waveform trace of the most recent samples, and
+messages appear below it.
 
 Source tabs load imported files and their dependencies automatically when you
 open or edit a design, independently of automatic compilation. Imports open read-only, with their full path in
 the editor header. The Main file remains the target for compilation, simulation,
-drafts, and sharing while you browse. Save downloads the file you are viewing.
+drafts, and sharing while you browse. **Download source** in the `···` menu
+downloads the file you are viewing.
 
-Step cycle advances one clock. For arrays, Step frame advances
+Step advances one clock. For arrays, Step frame advances
 `cycles_per_frame` (default one). Declare it only when a complete frame needs
 multiple cycles; it must be a positive integer. For streams, Step frame runs
 until the next frame boundary and reports the actual cycles advanced. Batch
@@ -219,9 +222,9 @@ scalar designs default to 30 cycles per second; pixel streams run as fast as
 possible. The UI's **Refresh FPS** setting independently limits canvas updates
 (default 30). It never sets the clock speed or the number of cycles advanced
 by Step frame. The UI reports achieved cycles per second and simulated time
-when a target frequency is configured. Resolved defaults appear in Advanced
-settings. Timing changes apply on Resume or the next manual step; top/clock
-changes require Stop.
+when a target frequency is configured. Resolved defaults appear in Settings.
+Timing changes apply on Resume or the next manual step; top/clock changes
+require a restart.
 
 Capture length and canvas refresh are run options, not circuit annotations.
 The batch API accepts `captureFrames` (default one) and optional

@@ -1,15 +1,17 @@
 import { chapterLessons } from '../docs/links.ts';
 import { examples, files, tour, stages, blankPath, initialSelection, validSelection, encodeShare, decodeShare, diagnosticLocation } from './playground-model.ts';
-import type { Selection, Stage, Mode } from './playground-model.ts';
-import { CompilerClient, RealtimeSimulationClient } from './compiler-client.ts';
-import type { SimulationStreamEvent } from './playground-compiler.ts';
-import { setupTheme } from './theme.ts';
-import { loadEditors, monaco } from './playground-editor.ts';
-import type { SimulationFramebuffer, SimulationRequest, SimulationSignal } from './playground-compiler.ts';
+import type { Selection, Stage, Mode, SharedProgram } from './playground-model.ts';
+import { CompilerClient } from './compiler-client.ts';
+import { decodeProgram } from './share-codec.ts';
+import { setupTheme, setupAccent } from './theme.ts';
+import { loadEditors, monaco, applyEditorTheme } from './playground-editor.ts';
+import { createSimulationView } from './simulation-view.ts';
+import { createDocs, docsUrl } from './docs-view.ts';
+import type { ChapterData } from './docs-view.ts';
+import { createSearch } from './search.ts';
 
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const button = (id: string) => element<HTMLButtonElement>(id);
-const select = (id: string) => element<HTMLSelectElement>(id);
 const prefix = 'yodl-playground-v2:';
 let storageAvailable = true;
 function readStorage(key: string) {
@@ -31,72 +33,75 @@ function setStatus(message: string, state = 'idle') {
     element('compile-status').textContent = message;
     element('compile-status').dataset.state = state;
 }
-const updateTheme = setupTheme(select('theme-select'), dark => {
-    if (monaco) monaco.editor.setTheme(dark ? 'yodl-dark' : 'yodl-light');
-});
+const mac = /Mac|iPhone|iPad/.test(navigator.platform);
+setupTheme(element('theme-switch'), () => applyEditorTheme());
+setupAccent(document.querySelector<HTMLElement>('.accent-picker')!, () => applyEditorTheme());
 
+// ---------------------------------------------------------------------------
+// Sections. Tour, Playground and Docs are modes of this one page. The editor
+// modes share a workspace; the URL records which lesson, chapter or shared
+// circuit is open, so links and the back button behave like separate pages.
+// ---------------------------------------------------------------------------
+type Section = 'tour' | 'playground' | 'docs';
+type SharedState = { code: string; mode: Mode; path: string; stage: Stage; source: string; files: Record<string, string>; entryPath?: string; origin?: string };
+type Target =
+    | { section: 'tour'; lesson?: string }
+    | { section: 'playground'; path?: string }
+    | { section: 'docs'; chapter?: string; anchor?: string }
+    | { section: 'shared'; shared: SharedState };
+const sectionOf = (mode: Mode): Section => mode === 'tour' ? 'tour' : 'playground';
+const lessonPath = (lesson: { file: string }) => `tour/${lesson.file}`;
+const baseName = (path: string) => path.split('/').at(-1)!;
+
+let section: Section = 'tour';
+let docsSlug: string | undefined;
+let docsAnchor: string | undefined;
 let selection: Selection = { ...initialSelection };
 try {
     const saved = JSON.parse(readStorage('selection') ?? 'null');
     if (validSelection(saved)) selection = saved;
 } catch { /* Ignore incompatible saved preferences. */ }
-const params = new URLSearchParams(location.search);
-const requestedLesson = tour.find(lesson => lesson.id === params.get('lesson'));
-if (requestedLesson) selection = { mode: 'tour', path: `tour/${requestedLesson.file}`, stage: requestedLesson.stage as Stage };
-else if (params.get('mode') === 'examples') selection = { mode: 'examples', path: blankPath, stage: 'write_firrtl' };
-let sharedFiles: Record<string, string> = {};
-let sharedEntryPath: string | undefined;
-let sharedOrigin: string | undefined;
-let sharedSource: string | null = null;
-let sharedDraftKey = '';
-try {
-    const shared = decodeShare(location.hash);
-    if (shared) {
-        selection = { mode: shared.mode, path: shared.path, stage: shared.stage };
-        sharedSource = shared.source;
-        sharedFiles = shared.files ?? {};
-        sharedEntryPath = shared.entryPath;
-        sharedOrigin = shared.origin;
-        // Sharing never overwrites the recipient's ordinary lesson/example draft.
-        sharedDraftKey = `shared:${location.hash.slice(6)}`;
-        notice('Shared circuit opened. Your existing lesson and example drafts are kept separately.');
-    }
-} catch (error) { notice((error as Error).message); }
-let editors: Awaited<ReturnType<typeof loadEditors>>;
+// Sharing never overwrites the recipient's ordinary lesson/example draft.
+let shared: SharedState | undefined;
+const sharedKey = () => shared ? `shared:${shared.code}` : '';
+const entryPath = () => shared?.entryPath ?? selection.path;
+
+let editors: Awaited<ReturnType<typeof loadEditors>> | undefined;
+let editorReady: Promise<void> | undefined;
 let loadingSource = false;
 let entryModel: any;
 let activeSourcePath = '';
 let errorPath = '';
 const importedModels = new Map<string, any>();
 const sourceViews = new Map<string, any>();
-const entryPath = () => sharedEntryPath ?? selection.path;
 const entrySource = () => entryModel.getValue() as string;
+
 function openSource(path: string) {
     const model = path === entryPath() ? entryModel : importedModels.get(path);
     if (!model) return;
-    if (activeSourcePath) sourceViews.set(activeSourcePath, editors.input.saveViewState());
+    if (activeSourcePath) sourceViews.set(activeSourcePath, editors!.input.saveViewState());
     activeSourcePath = path;
-    editors.input.setModel(model);
-    editors.input.updateOptions({ readOnly: path !== entryPath(), ariaLabel: `${path}${path === entryPath() ? ', main source' : ', imported, read only'}` });
+    editors!.input.setModel(model);
+    editors!.input.updateOptions({ readOnly: path !== entryPath(), ariaLabel: `${path}${path === entryPath() ? ', main source' : ', imported, read only'}` });
     const view = sourceViews.get(path);
-    if (view) editors.input.restoreViewState(view);
+    if (view) editors!.input.restoreViewState(view);
     renderSourceTabs();
-    editors.input.layout();
+    editors!.input.layout();
 }
 function renderSourceTabs() {
     const imported = activeSourcePath !== entryPath();
     const hasImports = importedModels.size > 0;
     element('source-files').hidden = !hasImports;
     element('editors').dataset.imports = String(hasImports);
-    element('input-filename').textContent = activeSourcePath;
+    element('input-filename').textContent = baseName(activeSourcePath || entryPath());
     element('input-filename').title = activeSourcePath;
     element('source-kind').textContent = imported ? 'Imported · read only' : '';
     element('source-kind').hidden = !imported;
-    element('draft-badge').hidden = imported || entrySource() === originalSource();
+    element('draft-badge').hidden = imported || !entryModel || entrySource() === originalSource();
     button('reset-button').disabled = imported;
     element('source-files').replaceChildren(...[entryPath(), ...importedModels.keys()].map(path => {
         const tab = document.createElement('button');
-        tab.textContent = path.split('/').at(-1)!;
+        tab.textContent = baseName(path);
         tab.title = path === entryPath() ? `${path} · compile and simulation target` : `${path} · imported, read only`;
         tab.setAttribute('aria-pressed', String(path === activeSourcePath));
         tab.onclick = () => openSource(path);
@@ -122,7 +127,7 @@ function updateImportedSources(sources: Record<string, string>) {
 function resetSourceWorkspace() {
     activeSourcePath = '';
     sourceViews.clear();
-    editors.input.setModel(entryModel);
+    editors!.input.setModel(entryModel);
     for (const model of importedModels.values()) model.dispose();
     importedModels.clear();
     openSource(entryPath());
@@ -135,9 +140,10 @@ const compiler = new CompilerClient();
 const importResolver = new CompilerClient();
 let importRevision = 0;
 let importTimer: ReturnType<typeof setTimeout> | undefined;
+const allFiles = () => ({ ...files, ...shared?.files });
 async function loadImports() {
     const current = ++importRevision;
-    const result = await importResolver.compile('imports', { source: entrySource(), path: entryPath(), stage: 'write_source', files: { ...files, ...sharedFiles } });
+    const result = await importResolver.compile('imports', { source: entrySource(), path: entryPath(), stage: 'write_source', files: allFiles() });
     if (current === importRevision && result?.sources) updateImportedSources(result.sources);
 }
 function scheduleImports() {
@@ -146,20 +152,18 @@ function scheduleImports() {
     clearTimeout(importTimer);
     importTimer = setTimeout(loadImports, 150);
 }
-function sourceHasTests(source: String) {
-    return /\btest\s+(?:"|for\b)/.test(source);
-}
-function updateTestButton() {
-    button('run-tests').hidden = !sourceHasTests(entrySource());
-}
-const realtimeSimulation = new RealtimeSimulationClient();
-let simulationState: 'ready' | 'starting' | 'running' | 'paused' | 'stepping' | 'halted' | 'error' = 'ready';
+const sourceHasTests = (source: string) => /\btest\s+(?:"|for\b)/.test(source);
+
+const simulation = createSimulationView({
+    request: () => ({ source: entrySource(), path: entryPath(), files: allFiles() }),
+    setStatus,
+});
 let requestId = 0;
 let latestRequest = 0;
 let errorRange: ReturnType<typeof diagnosticLocation> = null;
 const defaultBlank = '// Start a new circuit here.\nmodule Top(a: bool) -> (q: bool) {\n    q = a\n}\n';
 const originals = (path: string) => files[path] ?? defaultBlank;
-const originalSource = () => sharedEntryPath && sharedSource !== null ? sharedSource : originals(selection.path);
+const originalSource = () => shared ? shared.source : originals(selection.path);
 function sourceRevision(source: string): string {
     // A compact, deterministic revision keeps built-in example drafts from
     // masking updated simulator adapters after a site deployment. User edits
@@ -171,137 +175,300 @@ function sourceRevision(source: string): string {
     }
     return (hash >>> 0).toString(36);
 }
-const draftKey = () => sharedDraftKey || `draft:${selection.path}:${sourceRevision(originals(selection.path))}`;
+const draftKeyFor = (path: string) => `draft:${path}:${sourceRevision(originals(path))}`;
+const draftKey = () => sharedKey() || draftKeyFor(selection.path);
 
-function lessonIndex() { return tour.findIndex(lesson => `tour/${lesson.file}` === selection.path); }
+// ---------------------------------------------------------------------------
+// Drafts. The index lets the Playground list what the reader has edited, with
+// a relative time. The source itself stays under its existing storage key.
+// ---------------------------------------------------------------------------
+type DraftEntry = { key: string; path: string; label: string; updated: number; shared?: boolean };
+const maxDrafts = 12;
+function readDrafts(): DraftEntry[] {
+    try {
+        const list = JSON.parse(readStorage('drafts') ?? '[]');
+        return Array.isArray(list) ? list.filter((entry): entry is DraftEntry => typeof entry?.key === 'string' && typeof entry.label === 'string' && typeof entry.updated === 'number') : [];
+    } catch { return []; }
+}
+function noteDraft() {
+    if (selection.mode !== 'examples' && !shared) return;
+    const key = draftKey();
+    const list = readDrafts();
+    const existing = list.findIndex(entry => entry.key === key);
+    const edited = entrySource() !== originalSource();
+    if (!edited) {
+        if (existing < 0) return;
+        list.splice(existing, 1);
+    } else {
+        // Typing calls this constantly; refresh the timestamp at most every 30 s.
+        if (existing === 0 && Date.now() - list[0].updated < 30_000) return;
+        if (existing >= 0) list.splice(existing, 1);
+        const label = shared ? `Shared · ${baseName(shared.entryPath ?? shared.path)}` : selection.path === blankPath ? 'scratch.yodl' : baseName(selection.path);
+        list.unshift({ key, path: selection.path, label, updated: Date.now(), ...(shared ? { shared: true } : {}) });
+    }
+    writeStorage('drafts', JSON.stringify(list.slice(0, maxDrafts)));
+    renderDrafts();
+}
+function relativeTime(time: number) {
+    const minutes = Math.floor((Date.now() - time) / 60_000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours} h ago`;
+    const days = Math.floor(hours / 24);
+    return days === 1 ? 'Yesterday' : days < 14 ? `${days} days ago` : new Date(time).toLocaleDateString();
+}
+
 function saveDraft() {
+    if (!entryModel) return;
     writeStorage(draftKey(), entrySource());
-    if (!sharedDraftKey) writeStorage('selection', JSON.stringify(selection));
+    if (!shared) writeStorage('selection', JSON.stringify(selection));
     element('save-status').textContent = storageAvailable ? 'Draft saved locally' : 'Draft not saved · storage unavailable';
     element('draft-badge').hidden = activeSourcePath !== entryPath() || entrySource() === originalSource();
+    noteDraft();
 }
-function renderSelection() {
-    element('output-pane').dataset.view = 'output';
-    const isTour = selection.mode === 'tour';
-    element('site-section').textContent = isTour ? 'tour' : 'playground';
-    button('tour-mode').setAttribute('aria-pressed', String(isTour));
-    button('examples-mode').setAttribute('aria-pressed', String(!isTour));
-    element('guide').hidden = !isTour;
-    element('source-label').textContent = isTour ? 'Lesson' : 'Example';
-    const picker = select('source-selector');
-    picker.replaceChildren();
-    const choices = isTour ? tour.map((lesson, index) => ({ value: `tour/${lesson.file}`, label: `${String(index + 1).padStart(2, '0')} · ${lesson.title}` })) : [
-        { value: blankPath, label: 'New circuit' }, ...examples.map(path => ({ value: path, label: path.split('/').at(-1)! })),
-    ];
-    for (const choice of choices) picker.add(new Option(choice.label, choice.value));
-    picker.value = selection.path;
-    renderSourceTabs();
-    const docLink = element<HTMLAnchorElement>('related-docs');
-    const doc = Object.entries(chapterLessons).find(([, lessons]) => lessons.some(l => l.id === tour[lessonIndex()]?.id));
-    docLink.hidden = !doc && !sharedOrigin;
-    docLink.href = `./book/${sharedOrigin ?? (doc ? doc[0] + '.html' : '')}`;
-    if (isTour) {
-        const index = lessonIndex();
-        const lesson = tour[index];
-        element('lesson-position').textContent = `${String(index + 1).padStart(2, '0')} / ${tour.length}`;
-        element('lesson-topic').textContent = lesson.topic;
-        element('lesson-title').textContent = lesson.title;
-        element('lesson-intro').textContent = lesson.intro;
-        element('lesson-observe').textContent = lesson.observe;
-        element('lesson-challenge').textContent = lesson.challenge;
-        element('lesson-concepts').replaceChildren(...lesson.concepts.map(text => {
-            const li = document.createElement('li'); li.textContent = text; return li;
-        }));
-        button('suggested-stage').textContent = `Show ${stages[lesson.stage as Stage].label} →`;
-        button('previous-lesson').disabled = index === 0;
-        button('next-lesson').disabled = false;
-        button('next-lesson').textContent = index === tour.length - 1 ? 'Explore examples →' : 'Next lesson →';
+
+// ---------------------------------------------------------------------------
+// Sidebar: the lesson guide (Tour) and the example library (Playground)
+// ---------------------------------------------------------------------------
+const lessonIndex = () => tour.findIndex(lesson => lessonPath(lesson) === selection.path);
+const chapterFor = (lessonId: string) => Object.entries(chapterLessons).find(([, lessons]) => lessons.some(lesson => lesson.id === lessonId))?.[0];
+const chapterTitles = new Map<string, string>();
+const fallbackTitle = (slug: string) => { const words = slug.replace(/^\d+_/, '').replaceAll('_', ' '); return words[0].toUpperCase() + words.slice(1); };
+const pad = (value: number) => String(value).padStart(2, '0');
+
+function renderGuide() {
+    const index = lessonIndex();
+    const lesson = tour[index];
+    if (!lesson) return;
+    element('lesson-position').textContent = `Tour · Lesson ${pad(index + 1)} of ${tour.length}`;
+    element('lesson-topic').textContent = lesson.topic;
+    element('lesson-title').textContent = lesson.title;
+    element('lesson-intro').textContent = lesson.intro;
+    element('lesson-observe').textContent = lesson.observe;
+    element('lesson-challenge').textContent = lesson.challenge;
+    element('lesson-concepts').replaceChildren(...lesson.concepts.map((text, i) => {
+        const item = document.createElement('li');
+        const number = document.createElement('span'); number.className = 'n'; number.textContent = pad(i + 1);
+        const body = document.createElement('span'); body.textContent = text;
+        item.append(number, body);
+        return item;
+    }));
+    button('suggested-stage').textContent = `Open ${stages[lesson.stage as Stage].label} →`;
+    const slug = chapterFor(lesson.id);
+    element('lesson-reference').hidden = !slug;
+    if (slug) {
+        const anchor = element<HTMLAnchorElement>('related-docs');
+        anchor.textContent = chapterTitles.get(slug) ?? fallbackTitle(slug);
+        anchor.href = docsUrl(slug);
+        anchor.onclick = event => { event.preventDefault(); void go({ section: 'docs', chapter: slug }); };
     }
-    select('pass-selector').value = selection.stage;
-    renderStage();
+    const previous = tour[index - 1], next = tour[index + 1];
+    button('previous-lesson').disabled = !previous;
+    element('previous-title').textContent = previous?.title ?? '';
+    button('next-lesson').disabled = false;
+    element('next-title').textContent = next?.title ?? 'Explore the Playground';
+    for (const [i, item] of Array.from(element('lesson-progress').children).entries()) {
+        if (i === index) item.setAttribute('aria-current', 'step'); else item.removeAttribute('aria-current');
+    }
+    for (const [i, item] of Array.from(element('lesson-list').children).entries()) {
+        if (i === index) item.setAttribute('aria-current', 'step'); else item.removeAttribute('aria-current');
+    }
+}
+function buildLessonNavigation() {
+    element('lesson-progress').style.setProperty('--lessons', String(tour.length));
+    element('lesson-progress').replaceChildren(...tour.map((lesson, i) => {
+        const segment = document.createElement('button');
+        segment.type = 'button';
+        segment.title = `${pad(i + 1)} · ${lesson.title}`;
+        segment.setAttribute('aria-label', `Lesson ${i + 1}: ${lesson.title}`);
+        segment.onclick = () => void go({ section: 'tour', lesson: lesson.id });
+        return segment;
+    }));
+    element('lesson-list').replaceChildren(...tour.map((lesson, i) => {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.innerHTML = '<span class="n"></span><span><strong></strong><small></small></span>';
+        row.querySelector('.n')!.textContent = pad(i + 1);
+        row.querySelector('strong')!.textContent = lesson.title;
+        row.querySelector('small')!.textContent = lesson.topic;
+        row.onclick = () => { setLessonList(false); void go({ section: 'tour', lesson: lesson.id }); };
+        return row;
+    }));
+}
+function setLessonList(open: boolean) {
+    element('lesson-list-scrim').hidden = !open;
+    button('lesson-list-button').setAttribute('aria-expanded', String(open));
+    if (open) element('lesson-list').querySelector<HTMLElement>('[aria-current]')?.scrollIntoView({ block: 'nearest' });
+}
+
+function exampleNote(path: string) {
+    const source = files[path] ?? '';
+    const lines = source.split('\n').length;
+    return `${lines} lines${source.includes('@simulation') ? ' · simulation' : ''}`;
+}
+function renderLibrary() {
+    element('example-list').replaceChildren(...examples.map(path => {
+        const entry = document.createElement('button');
+        entry.type = 'button';
+        entry.className = 'entry';
+        const current = !shared && selection.path === path;
+        if (current) entry.setAttribute('aria-current', 'true');
+        const name = document.createElement('span'); name.className = 'entry-name'; name.textContent = baseName(path).replace(/\.yodl$/, '');
+        const note = document.createElement('span'); note.className = 'entry-note'; note.textContent = current ? baseName(path) : exampleNote(path);
+        entry.append(name, note);
+        entry.onclick = () => { writeStorage('last:examples', path); void go({ section: 'playground', path }); };
+        return entry;
+    }));
+    renderDrafts();
+}
+function renderDrafts() {
+    // Drafts of an example whose source changed since are no longer applicable.
+    const drafts = readDrafts().filter(entry => entry.shared || (entry.path === blankPath || examples.includes(entry.path)) && entry.key === draftKeyFor(entry.path));
+    element('drafts-empty').hidden = drafts.length > 0;
+    element('draft-list').replaceChildren(...drafts.map(draft => {
+        const entry = document.createElement('button');
+        entry.type = 'button';
+        entry.className = 'entry draft';
+        if (draft.key === draftKey() && (selection.mode === 'examples' || shared)) entry.setAttribute('aria-current', 'true');
+        const name = document.createElement('span'); name.className = 'entry-name'; name.textContent = draft.label;
+        const time = document.createElement('span'); time.className = 'entry-note'; time.textContent = relativeTime(draft.updated);
+        entry.append(name, time);
+        entry.onclick = () => {
+            if (draft.shared) {
+                const code = draft.key.slice('shared:'.length);
+                try { void go({ section: 'shared', shared: toSharedState(decodeShare(`#code=${code}`)!, code) }); } catch (error) { notice((error as Error).message); }
+            } else void go({ section: 'playground', path: draft.path });
+        };
+        return entry;
+    }));
+}
+
+// ---------------------------------------------------------------------------
+// Output stages
+// ---------------------------------------------------------------------------
+const suggestedStage = () => selection.mode === 'tour' ? tour[lessonIndex()]?.stage as Stage | undefined : undefined;
+function renderStageTabs() {
+    const showTests = selection.stage === 'test' || (entryModel !== undefined && sourceHasTests(entrySource()));
+    const suggested = suggestedStage();
+    element('stage-tabs').replaceChildren(...(Object.keys(stages) as Stage[]).filter(stage => stage !== 'test' || showTests).map(stage => {
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'stage-tab';
+        tab.dataset.stage = stage;
+        tab.title = stages[stage].description;
+        tab.setAttribute('aria-pressed', String(stage === selection.stage));
+        tab.append(stages[stage].short);
+        if (stage === suggested && stage !== selection.stage) {
+            const dot = document.createElement('span'); dot.className = 'suggested'; dot.title = 'Suggested for this lesson';
+            tab.append(dot);
+        }
+        tab.onclick = () => changeStage(stage);
+        return tab;
+    }));
+}
+function setOutputView(view: 'output' | 'simulation') {
+    element('output-pane').dataset.view = view;
+    button('view-output').setAttribute('aria-pressed', String(view === 'output'));
+    button('view-simulate').setAttribute('aria-pressed', String(view === 'simulation'));
+    editors?.output.layout();
 }
 function renderStage() {
     const stage = stages[selection.stage];
     element('stage-description').textContent = stage.description;
     element('stage-description').title = stage.description;
-    select('pass-selector').title = stage.description;
-    element('stage-command').textContent = selection.stage;
-    monaco.editor.setModelLanguage(editors.output.getModel(), stage.language);
+    if (editors) monaco.editor.setModelLanguage(editors.output.getModel(), stage.language);
+    renderStageTabs();
 }
+
+function renderSelection() {
+    setOutputView('output');
+    renderSourceTabs();
+    renderGuide();
+    renderLibrary();
+    element('related-docs-menu').hidden = !shared?.origin;
+    renderStage();
+}
+function syncChrome() {
+    for (const item of Array.from(document.querySelectorAll<HTMLButtonElement>('.mode-switch button'))) item.setAttribute('aria-pressed', String(item.dataset.mode === section));
+    const editor = section !== 'docs';
+    element('editor-view').hidden = !editor;
+    element('docs-view').hidden = editor;
+    element('editor-view').dataset.section = section;
+    element('guide').hidden = section !== 'tour';
+    element('library').hidden = section !== 'playground';
+    if (editor) {
+        document.title = section === 'tour' ? 'Tour · Yodl' : 'Playground · Yodl';
+        editors?.input.layout(); editors?.output.layout();
+    } else simulation.stop();
+}
+
 function clearDiagnostics() {
     element('problems').hidden = true;
     errorRange = null;
+    if (!entryModel) return;
     for (const model of [entryModel, ...importedModels.values()]) monaco.editor.setModelMarkers(model, 'yodl', []);
 }
 function markChanged() {
     compiler.cancel('playground');
-    realtimeSimulation.stop();
-    simulationState = 'ready';
-    updateSimulationControls();
+    simulation.stop();
     revision++;
     scheduleImports();
     latestRequest = ++requestId;
     clearDiagnostics();
     button('copy-output').disabled = true;
+    button('output-download').disabled = true;
     button('download-output').disabled = true;
     setStatus(lastOutput ? 'Source changed · output is out of date' : 'Ready to compile');
-    updateTestButton();
+    const hadTests = element('stage-tabs').querySelector('[data-stage="test"]') !== null;
+    if (hadTests !== (selection.stage === 'test' || sourceHasTests(entrySource()))) renderStageTabs();
 }
-function choose(next: Selection) {
-    saveDraft();
-    renderSimulationFrames([]);
-    sharedDraftKey = '';
-    sharedSource = null;
-    sharedFiles = {}; sharedEntryPath = undefined; sharedOrigin = undefined;
-    if (location.hash.startsWith('#code=')) history.replaceState(null, '', location.pathname + location.search);
+
+/** Loads a selection into the editor. With no editor yet, it only records what
+ * the editor should open with once Monaco has loaded. */
+function choose(next: Selection, nextShared?: SharedState) {
+    if (editors) saveDraft();
+    shared = nextShared;
     selection = next;
+    renderGuide();
+    renderLibrary();
+    if (!editors) return;
     resetSourceWorkspace();
     // Simulation fields describe the selected design. Do not carry a top or
-    // clock from a previous example into the next one (that made Image/Noise
-    // appear broken after running GameOfLifeSim).
-    for (const id of ['simulation-top', 'simulation-clock', 'simulation-inputs']) {
-        element<HTMLInputElement>(id).value = '';
-    }
+    // clock from a previous example into the next one.
+    simulation.clear();
     loadingSource = true;
-    editors.input.setValue(readStorage(draftKey()) ?? originals(selection.path));
+    editors.input.setValue(readStorage(draftKey()) ?? shared?.source ?? originals(selection.path));
     loadingSource = false;
     editors.input.setScrollTop(0);
     editors.output.setValue('');
     lastOutput = '';
     outputRevision = -1;
     renderSelection();
-    const url = new URL(location.href);
-    url.searchParams.delete('lesson'); url.searchParams.delete('mode');
-    history.replaceState(null, '', url);
     saveDraft();
     markChanged();
-}
-function changeMode(mode: Mode) {
-    if (mode === selection.mode && !sharedDraftKey) return;
-    let path = mode === 'tour' ? initialSelection.path : blankPath;
-    const previous = readStorage(`last:${mode}`);
-    if (validSelection({ mode, path: previous, stage: 'write_firrtl' })) path = previous!;
-    choose({ mode, path, stage: mode === 'tour' ? tour.find(l => `tour/${l.file}` === path)!.stage as Stage : 'write_firrtl' });
+    void runCompile();
 }
 function changeStage(stage: Stage) {
-    renderSimulationFrames([]);
     selection.stage = stage;
-    select('pass-selector').value = stage;
+    if (!editors) { renderStage(); return; }
+    simulation.clearFrame();
     editors.output.setValue('');
     lastOutput = '';
     renderStage();
-    element('output-pane').dataset.view = 'output';
+    setOutputView('output');
     saveDraft();
     markChanged();
+    void runCompile();
 }
 function setMobileView(view: string) {
     element('editors').dataset.view = view;
     button('source-tab').setAttribute('aria-pressed', String(view === 'source'));
     button('output-tab').setAttribute('aria-pressed', String(view === 'output'));
-    editors.input.layout(); editors.output.layout();
+    editors?.input.layout(); editors?.output.layout();
 }
 function showError(message: string) {
-    element('output-pane').dataset.view = 'output';
+    setOutputView('output');
     element('problems').hidden = false;
     element('error-message').textContent = message;
     errorPath = [entryPath(), ...importedModels.keys()].find(path => diagnosticLocation(message, path)) ?? entryPath();
@@ -316,204 +483,26 @@ function showError(message: string) {
     setStatus(lastOutput ? 'Compilation failed · showing previous output' : 'Compilation failed · check diagnostics', 'error');
 }
 async function runCompile() {
-    realtimeSimulation.stop();
-    simulationState = 'ready';
-    updateSimulationControls();
-    renderSimulationFrames([]);
+    if (!editors) return;
+    simulation.stop();
+    simulation.clearFrame();
     const id = ++requestId;
     latestRequest = id;
     const compiledRevision = revision;
     clearDiagnostics();
     setStatus('Compiling…', 'loading');
-    const result = await compiler.compile('playground', { source: entrySource(), path: sharedEntryPath ?? selection.path, stage: selection.stage, files: { ...files, ...sharedFiles } });
+    const result = await compiler.compile('playground', { source: entrySource(), path: entryPath(), stage: selection.stage, files: allFiles() });
     if (!result || id !== latestRequest) return;
     if (result.error !== undefined) { showError(result.error); return; }
     lastOutput = result.output ?? '';
     outputRevision = compiledRevision;
     editors.output.setValue(lastOutput);
     renderStage();
-    element('output-pane').dataset.view = 'output';
+    setOutputView('output');
     button('copy-output').disabled = !lastOutput;
+    button('output-download').disabled = !lastOutput;
     button('download-output').disabled = !lastOutput;
-    setStatus(`✓ Compiled · ${Math.round(result.duration)} ms`, 'success');
-}
-async function runTests() {
-    if (selection.stage !== 'test') {
-        selection.stage = 'test';
-        select('pass-selector').value = 'test';
-        renderStage();
-        saveDraft();
-    }
-    await runCompile();
-}
-function parseSimulationInputs(source: string): Record<string, { width: number; value: number }> {
-    const inputs: Record<string, { width: number; value: number }> = {};
-    for (const token of source.split(',')) {
-        const match = /^\s*([A-Za-z_$][\w$]*)(?::(\d+))?\s*=\s*(-?\d+)\s*$/.exec(token);
-        if (!token.trim()) continue;
-        if (!match) throw new Error(`Invalid input assignment: ${token}`);
-        if (!Number.isSafeInteger(Number(match[3]))) throw new Error("Input exceeds the safe integer range.");
-        inputs[match[1]] = { width: Number(match[2] ?? 32), value: Number(match[3]) };
-    }
-    return inputs;
-}
-function updateSimulationControls() {
-    const run = button('simulation-run');
-    const stop = button('simulation-stop');
-    run.textContent = simulationState === 'running' || simulationState === 'stepping' ? 'Pause' : simulationState === 'paused' ? 'Resume' : 'Run';
-    run.disabled = simulationState === 'starting' || simulationState === 'halted';
-    stop.disabled = simulationState === 'ready';
-}
-
-let canvasImage: ImageData | undefined;
-let lastFrame: SimulationFramebuffer | undefined;
-function renderSimulationFrames(frames: SimulationFramebuffer[]) {
-    const canvas = element<HTMLCanvasElement>('simulation-framebuffer');
-    const frame = frames.at(-1);
-    lastFrame = frame;
-    element('simulation-zoom-control').hidden = !frame;
-    if (!frame) { canvas.hidden = true; return; }
-    canvas.hidden = false;
-    if (canvas.width !== frame.width || canvas.height !== frame.height) {
-        canvas.width = frame.width;
-        canvas.height = frame.height;
-        canvasImage = undefined;
-    }
-    const availableWidth = canvas.parentElement?.clientWidth || 640;
-    const zoom = select('simulation-zoom').value;
-    const scale = zoom === 'fit' ? Math.min(availableWidth / frame.width, 480 / frame.height) : Number(zoom);
-    canvas.style.width = `${frame.width * scale}px`;
-    canvas.style.height = `${frame.height * scale}px`;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    const image = canvasImage ??= context.createImageData(frame.width, frame.height);
-    const stride = Math.ceil(frame.width / 32);
-    for (let i = 0; i < frame.width * frame.height; i++) {
-        const row = Math.floor(i / frame.width), col = i % frame.width;
-        const word = row * stride + Math.floor(col / 32);
-        const known = !frame.valid || (frame.packed ? (frame.valid[word] & (1 << (col % 32))) !== 0 : frame.valid[i] !== 0);
-        const color = !known ? 0xff00ff : frame.packed
-            ? (frame.packed[word] & (1 << (col % 32))) !== 0 ? frame.onColor ?? 0xffffff : frame.offColor ?? 0
-            : frame.rgb?.[i] ?? frame.pixels?.[i] ?? 0;
-        image.data[i * 4] = color >>> 16 & 255;
-        image.data[i * 4 + 1] = color >>> 8 & 255;
-        image.data[i * 4 + 2] = color & 255;
-        image.data[i * 4 + 3] = 255;
-    }
-    context.putImageData(image, 0, 0);
-}
-
-function renderSimulationOutput(outputs: SimulationSignal[], messages: string[], cycles: number, framebufferSignal?: string) {
-    const lines = [`cycles: ${cycles}`];
-    const outputEntries = outputs;
-    for (const signal of outputEntries.slice(0, 100)) lines.push(`${signal.name}: u${signal.width} = ${signal.known ? signal.value : 'X'}`);
-    if (outputEntries.length > 100) lines.push(`… ${outputEntries.length - 100} more outputs`);
-    if (messages.length) lines.push('', ...messages);
-    element('simulation-output').textContent = lines.join('\n');
-}
-
-function renderSimulationInputs(inputs: SimulationSignal[]) {
-    const container = element('simulation-inputs-controls');
-    const signature = inputs.map(signal => `${signal.name}:${signal.width}:${signal.value}:${signal.known}`).join('|');
-    if (container.dataset.signature === signature) return;
-    container.dataset.signature = signature;
-    container.replaceChildren();
-    for (const signal of inputs) {
-        const label = document.createElement('label');
-        label.textContent = signal.name;
-        const input = document.createElement('input');
-        input.dataset.signal = signal.name;
-        input.dataset.width = String(signal.width);
-        if (signal.width === 1) {
-            input.type = 'checkbox';
-            input.checked = signal.value !== '0';
-        } else {
-            input.type = 'text';
-            input.value = signal.value;
-            input.inputMode = 'numeric';
-            input.title = `u${signal.width}`;
-        }
-        input.addEventListener('change', () => {
-            const assignments = [...container.querySelectorAll<HTMLInputElement>('input')].map(control => {
-                const value = control.type === 'checkbox' ? Number(control.checked) : control.value;
-                return `${control.dataset.signal}:${control.dataset.width}=${value}`;
-            });
-            element<HTMLInputElement>('simulation-inputs').value = assignments.join(', ');
-            try {
-                const inputs = parseSimulationInputs(assignments.join(', '));
-                input.setCustomValidity('');
-                if (simulationState !== 'ready') realtimeSimulation.setInputs(inputs);
-            } catch (error) { input.setCustomValidity(String(error)); input.reportValidity(); }
-        });
-        label.append(input);
-        container.append(label);
-    }
-    container.hidden = inputs.length === 0;
-}
-
-function handleRealtimeEvent(event: SimulationStreamEvent) {
-    if (event.type === 'error') {
-        simulationState = 'error';
-        element('simulation-output').textContent = event.error ?? 'Simulation failed.';
-        element('simulation-state').textContent = 'Error';
-        updateSimulationControls();
-        setStatus('Simulation failed', 'error');
-        return;
-    }
-    simulationState = event.type === 'halted' ? 'halted'
-        : event.type === 'stopped' ? 'ready'
-        : event.type === 'stepping' ? 'stepping'
-        : event.type === 'frame' || event.type === 'resumed' ? 'running' : 'paused';
-    if (event.frame) renderSimulationFrames([event.frame]);
-    else if (event.metadata && !event.metadata.display) renderSimulationFrames([]);
-    if (event.outputs) renderSimulationOutput(event.outputs, event.messages ?? [], event.totalCycles ?? 0, event.frame?.signal);
-    if (event.inputs) renderSimulationInputs(event.inputs);
-    button('simulation-step-cycle').disabled = !event.clock || simulationState === 'halted';
-    button('simulation-step-frame').hidden = !(event.frame && event.clock);
-    if (event.metadata) {
-        const values = { 'simulation-top': event.metadata.top, 'simulation-clock': event.clock, 'simulation-cycles-per-frame': event.playback?.cyclesPerFrame, 'simulation-clock-hz': event.playback?.clockHz ?? 'maximum', 'simulation-refresh-fps': event.playback?.refreshFps };
-        for (const [id, value] of Object.entries(values)) element<HTMLInputElement>(id).placeholder = String(value ?? 'automatic');
-        element<HTMLInputElement>('simulation-cycles-per-frame').disabled = !event.clock || Boolean(event.metadata.display?.stream);
-        element<HTMLInputElement>('simulation-clock-hz').disabled = !event.clock;
-        element<HTMLInputElement>('simulation-refresh-fps').disabled = !event.clock;
-    }
-    const time = event.simulatedSeconds === undefined ? '' : ` · ${event.simulatedSeconds.toFixed(3)} simulated s`;
-    const throughput = event.cyclesPerSecond === undefined ? '' : ` · ${Math.round(event.cyclesPerSecond).toLocaleString()} cycles/s achieved`;
-    const failed = event.status?.failed ?? false;
-    const label = failed ? 'Failed' : simulationState[0].toUpperCase() + simulationState.slice(1);
-    const exit = event.status?.exit_code === undefined ? '' : ` · exit ${event.status.exit_code}`;
-    element('simulation-state').textContent = `${label}${exit} · ${(event.totalCycles ?? 0).toLocaleString()} cycles${time}${throughput}`;
-    updateSimulationControls();
-    setStatus(failed ? `Simulation failed${event.status?.first_failure ? `: ${event.status.first_failure.message}` : ''}` : simulationState === 'running' || simulationState === 'stepping' ? 'Simulating…' : `Simulation ${simulationState}`, failed ? 'error' : undefined);
-}
-
-async function runSimulation(action: SimulationRequest['action'] = 'run') {
-    setMobileView('output');
-    const readPositive = (id: string) => {
-        const value = Number(element<HTMLInputElement>(id).value);
-        return Number.isFinite(value) && value > 0 ? value : undefined;
-    };
-    const options = { clockHz: readPositive('simulation-clock-hz'), refreshFps: readPositive('simulation-refresh-fps'), cyclesPerFrame: readPositive('simulation-cycles-per-frame') };
-    if (simulationState !== 'ready' && simulationState !== 'error') {
-        if (action === 'run') {
-            if (simulationState === 'running' || simulationState === 'stepping') realtimeSimulation.pause();
-            else realtimeSimulation.resume(options);
-        } else realtimeSimulation.command(action as 'reset' | 'step_cycle' | 'step_frame', options);
-        return;
-    }
-    const top = element<HTMLInputElement>('simulation-top').value.trim();
-    const clock = element<HTMLInputElement>('simulation-clock').value.trim();
-    element('output-pane').dataset.view = 'simulation';
-    element('simulation-state').textContent = 'Compiling simulation…';
-    simulationState = 'starting';
-    updateSimulationControls();
-    try {
-        realtimeSimulation.start({
-            source: entrySource(), path: sharedEntryPath ?? selection.path,
-            stage: 'write_low_firrtl', files: { ...files, ...sharedFiles },
-            simulate: { action, ...(top ? { top } : {}), ...(clock ? { clock } : {}), ...Object.fromEntries(Object.entries(options).filter(([, value]) => value !== undefined)), inputs: parseSimulationInputs(element<HTMLInputElement>('simulation-inputs').value) },
-        }, handleRealtimeEvent);
-    } catch (error) { handleRealtimeEvent({ id: 0, type: 'error', error: String(error) }); }
+    setStatus(`Compiled · ${Math.round(result.duration)} ms`, 'success');
 }
 
 function download(name: string, content: string) {
@@ -530,100 +519,187 @@ async function copy(text: string, control: HTMLButtonElement) {
     } catch {
         notice('Clipboard access is unavailable. Select the text and use your browser’s Copy command.');
         if (control.id === 'copy-share') element<HTMLInputElement>('share-url').select();
-        else { editors.output.focus(); editors.output.setSelection(editors.output.getModel().getFullModelRange()); }
+        else { editors!.output.focus(); editors!.output.setSelection(editors!.output.getModel().getFullModelRange()); }
     }
 }
-async function start() {
+function downloadOutput() {
+    if (outputRevision === revision) download(`${baseName(selection.path).replace(/\.yodl$/, '')}.${stages[selection.stage].extension}`, lastOutput);
+}
+function setMenu(open: boolean) {
+    element('file-menu').hidden = !open;
+    button('menu-button').setAttribute('aria-expanded', String(open));
+}
+function openShare() {
+    if (!editors) return;
+    const url = new URL(location.href);
+    url.search = '';
+    url.hash = `code=${encodeShare({ ...selection, source: entrySource(), files: shared?.files, entryPath: shared?.entryPath, origin: shared?.origin })}`;
+    if (url.href.length > 32_000) { notice('This circuit is too large for a reliable share link. Use Download source instead.'); return; }
+    element<HTMLInputElement>('share-url').value = url.href;
+    element<HTMLDialogElement>('share-dialog').showModal();
+    element<HTMLInputElement>('share-url').select();
+}
+function requestReset() {
+    if (editors && activeSourcePath === entryPath()) element<HTMLDialogElement>('reset-dialog').showModal();
+}
+
+// ---------------------------------------------------------------------------
+// Navigation
+// ---------------------------------------------------------------------------
+function toSharedState(program: SharedProgram, code: string): SharedState {
+    return { code, mode: program.mode, path: program.path, stage: program.stage, source: program.source, files: program.files ?? {}, entryPath: program.entryPath, origin: program.origin };
+}
+function resumePath(mode: Mode) {
+    if (selection.mode === mode && !shared) return selection.path;
+    const previous = readStorage(`last:${mode}`);
+    if (validSelection({ mode, path: previous, stage: 'write_firrtl' })) return previous!;
+    return mode === 'tour' ? initialSelection.path : blankPath;
+}
+function currentUrl() {
+    const url = new URL(location.href);
+    url.search = ''; url.hash = '';
+    if (section === 'docs') {
+        url.searchParams.set('mode', 'docs');
+        if (docsSlug) url.searchParams.set('chapter', docsSlug);
+        if (docsAnchor) url.hash = docsAnchor;
+    } else if (shared) url.hash = `code=${shared.code}`;
+    else if (section === 'tour') url.searchParams.set('lesson', tour[lessonIndex()]?.id ?? tour[0].id);
+    else {
+        url.searchParams.set('mode', 'examples');
+        if (selection.path !== blankPath) url.searchParams.set('example', baseName(selection.path).replace(/\.yodl$/, ''));
+    }
+    return url.href;
+}
+function updateUrl(how: 'push' | 'replace' | 'none') {
+    const next = currentUrl();
+    if (how === 'none' || next === location.href) return;
+    if (how === 'push') history.pushState(null, '', next); else history.replaceState(null, '', next);
+}
+
+let navigation = 0;
+async function go(target: Target, how: 'push' | 'replace' | 'none' = 'push') {
+    const token = ++navigation;
+    setLessonList(false);
+    if (target.section === 'docs') {
+        section = 'docs';
+        syncChrome();
+        docsSlug = target.chapter; docsAnchor = target.anchor;
+        const chapter = await docs.show(target.chapter, target.anchor);
+        if (token !== navigation) return;
+        docsSlug = chapter?.slug ?? target.chapter;
+        if (chapter) document.title = `${chapter.title} · Yodl`;
+        updateUrl(how);
+        return;
+    }
+    if (target.section === 'shared') {
+        section = sectionOf(target.shared.mode);
+        syncChrome();
+        choose({ mode: target.shared.mode, path: target.shared.path, stage: target.shared.stage }, target.shared);
+        notice('Shared circuit opened. Your existing lesson and example drafts are kept separately.');
+    } else {
+        section = target.section;
+        syncChrome();
+        const mode: Mode = section === 'tour' ? 'tour' : 'examples';
+        const lesson = target.section === 'tour' ? tour.find(item => item.id === target.lesson) : undefined;
+        const path = target.section === 'playground' && target.path && validSelection({ mode, path: target.path, stage: 'write_firrtl' }) ? target.path : lesson ? lessonPath(lesson) : resumePath(mode);
+        const same = !shared && selection.mode === mode && selection.path === path;
+        if (!same) {
+            writeStorage(`last:${mode}`, path);
+            const stage = mode === 'tour' ? tour.find(item => lessonPath(item) === path)!.stage as Stage : 'write_firrtl';
+            choose({ mode, path, stage });
+        } else if (!editors) { renderGuide(); renderLibrary(); }
+        if (target.section === 'tour') element('guide-body').scrollTop = 0;
+    }
+    void ensureEditor();
+    updateUrl(how);
+}
+function fromLocation(): Target {
+    const params = new URLSearchParams(location.search);
+    if (location.hash.startsWith('#code=')) {
+        try {
+            const code = location.hash.slice(6);
+            return { section: 'shared', shared: toSharedState(decodeShare(location.hash)!, code) };
+        } catch (error) { notice((error as Error).message); }
+    }
+    if (params.get('mode') === 'docs') return { section: 'docs', chapter: params.get('chapter') ?? undefined, anchor: location.hash.slice(1) || undefined };
+    const lesson = tour.find(item => item.id === params.get('lesson'));
+    if (lesson) return { section: 'tour', lesson: lesson.id };
+    if (params.get('mode') === 'examples') {
+        const example = examples.find(path => baseName(path) === `${params.get('example')}.yodl`);
+        return { section: 'playground', path: example ?? blankPath };
+    }
+    return { section: sectionOf(selection.mode) };
+}
+
+const docs = createDocs({
+    navigate: (slug, anchor) => void go({ section: 'docs', chapter: slug, anchor }),
+    openLesson: id => void go({ section: 'tour', lesson: id }),
+    openExample(chapter: ChapterData, example, source, stage) {
+        const program = { mode: 'examples' as Mode, path: blankPath, stage, source, files: example.files, entryPath: example.path, origin: `${chapter.slug}.html#${example.id}` };
+        const code = encodeShare(program);
+        if (code.length > 30_000) { notice('This example is too large for a reliable handoff. Copy the source instead.'); return; }
+        void go({ section: 'shared', shared: { ...program, code } });
+    },
+});
+const search = createSearch({
+    lessons: tour,
+    openLesson: id => void go({ section: 'tour', lesson: id }),
+    openDoc: (slug, anchor) => void go({ section: 'docs', chapter: slug, anchor }),
+});
+
+// ---------------------------------------------------------------------------
+// Editor start-up (Monaco is a large bundle, so it loads on first need and the
+// guide stays usable if it cannot load).
+// ---------------------------------------------------------------------------
+function ensureEditor() {
+    return editorReady ??= startEditor().catch(error => {
+        editorReady = undefined;
+        setStatus('Could not load the editor', 'error');
+        element('input-panel').textContent = 'The editor could not load. Check your connection and reload the page.';
+        notice(`Playground startup failed: ${(error as Error).message ?? String(error)}`);
+    });
+}
+async function startEditor() {
     editors = await loadEditors();
     entryModel = editors.input.getModel();
     activeSourcePath = entryPath();
-    updateTheme();
-    for (const [value, stage] of Object.entries(stages)) select('pass-selector').add(new Option(stage.label, value));
     loadingSource = true;
-    editors.input.setValue(readStorage(draftKey()) ?? sharedSource ?? originals(selection.path));
+    editors.input.setValue(readStorage(draftKey()) ?? shared?.source ?? originals(selection.path));
     loadingSource = false;
     renderSelection();
-    if (matchMedia('(max-width: 820px)').matches) element<HTMLDetailsElement>('guide-details').open = false;
     saveDraft();
-    for (const id of ['share-button', 'source-selector', 'compile-button', 'run-tests', 'simulate-button', 'simulation-reset', 'simulation-step-cycle', 'simulation-step-frame', 'simulation-stop', 'simulation-run', 'simulation-top', 'simulation-clock', 'simulation-cycles-per-frame', 'simulation-clock-hz', 'simulation-refresh-fps', 'simulation-inputs', 'pass-selector', 'reset-button', 'download-source']) (element(id) as HTMLButtonElement).disabled = false;
-    const mac = /Mac|iPhone|iPad/.test(navigator.platform);
-    element('compile-shortcut').textContent = mac ? '⌘ ↵' : 'Ctrl ↵';
+    for (const control of [button('compile-button'), button('menu-button'), button('view-simulate')]) control.disabled = false;
+    simulation.enable();
+    button('compile-shortcut').textContent = mac ? '⌘↵' : 'Ctrl ↵';
+    element('share-shortcut').textContent = mac ? '⌘S' : 'Ctrl S';
+    element('new-shortcut').textContent = mac ? '⌘N' : 'Ctrl N';
     editors.input.addAction({ id: 'compile-yodl', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });
     editors.output.addAction({ id: 'compile-yodl-output', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });
-    document.addEventListener('keydown', event => {
-        if (!event.defaultPrevented && (event.metaKey || event.ctrlKey) && event.key === 'Enter') { event.preventDefault(); runCompile(); }
-    });
+    // Monaco reserves Ctrl/⌘+K as a chord prefix; the site-wide search shortcut wins.
+    for (const editor of [editors.input, editors.output]) editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => search.open());
     editors.input.onDidChangeModelContent(() => {
-        if (loadingSource || editors.input.getModel() !== entryModel) return;
+        if (loadingSource || editors!.input.getModel() !== entryModel) return;
         saveDraft();
         markChanged();
     });
     editors.input.onDidChangeCursorPosition((event: any) => { element('cursor-position').textContent = `Ln ${event.position.lineNumber}, Col ${event.position.column}`; });
-    button('tour-mode').onclick = () => changeMode('tour');
-    button('examples-mode').onclick = () => changeMode('examples');
-    select('source-selector').onchange = () => {
-        const path = select('source-selector').value;
-        writeStorage(`last:${selection.mode}`, path);
-        choose({ mode: selection.mode, path, stage: selection.mode === 'tour' ? tour.find(l => `tour/${l.file}` === path)!.stage as Stage : selection.stage });
-    };
-    button('previous-lesson').onclick = () => navigateLesson(-1);
-    button('next-lesson').onclick = () => navigateLesson(1);
-    button('suggested-stage').onclick = () => changeStage(tour[lessonIndex()].stage as Stage);
-    select('pass-selector').onchange = () => changeStage(select('pass-selector').value as Stage);
-    button('compile-button').onclick = runCompile;
-    button('run-tests').onclick = runTests;
-    button('simulate-button').onclick = () => runSimulation('run');
-    button('simulation-run').onclick = () => runSimulation('run');
-    button('simulation-reset').onclick = () => runSimulation('reset');
-    button('simulation-step-cycle').onclick = () => runSimulation('step_cycle');
-    button('simulation-step-frame').onclick = () => runSimulation('step_frame');
-    select('simulation-zoom').onchange = () => { if (lastFrame) renderSimulationFrames([lastFrame]); };
-    button('simulation-stop').onclick = () => {
-        realtimeSimulation.stop();
-        simulationState = 'ready';
-        updateSimulationControls();
-        element('simulation-state').textContent = 'Stopped';
-        setStatus('Simulation stopped');
-    };
-    button('source-tab').onclick = () => setMobileView('source');
-    button('output-tab').onclick = () => setMobileView('output');
-    button('jump-error').onclick = () => {
-        if (!errorRange) return;
-        setMobileView('source');
-        openSource(errorPath);
-        editors.input.setSelection(errorRange); editors.input.revealRangeInCenter(errorRange); editors.input.focus();
-    };
-    button('reset-button').onclick = () => element<HTMLDialogElement>('reset-dialog').showModal();
-    element<HTMLDialogElement>('reset-dialog').addEventListener('close', () => {
-        if (element<HTMLDialogElement>('reset-dialog').returnValue === 'reset') entryModel.setValue(originalSource());
-    });
-    button('download-source').onclick = () => download(activeSourcePath.split('/').at(-1)!, editors.input.getValue());
-    button('download-output').onclick = () => {
-        if (outputRevision === revision) download(`${selection.path.split('/').at(-1)!.replace(/\.yodl$/, '')}.${stages[selection.stage].extension}`, lastOutput);
-    };
-    button('copy-output').onclick = () => { if (outputRevision === revision) void copy(lastOutput, button('copy-output')); };
-    button('share-button').onclick = () => {
-        const url = new URL(location.href);
-        url.hash = `code=${encodeShare({ ...selection, source: entrySource(), files: sharedFiles, entryPath: sharedEntryPath, origin: sharedOrigin })}`;
-        if (url.href.length > 32_000) { notice('This circuit is too large for a reliable share link. Use Save to download the source instead.'); return; }
-        element<HTMLInputElement>('share-url').value = url.href;
-        element<HTMLDialogElement>('share-dialog').showModal();
-        element<HTMLInputElement>('share-url').select();
-    };
-    button('copy-share').onclick = () => void copy(element<HTMLInputElement>('share-url').value, button('copy-share'));
     installResizer();
     setStatus('Ready to compile');
     void loadImports();
-    updateTestButton();
+    void runCompile();
 }
-function navigateLesson(delta: number) {
-    const index = lessonIndex() + delta;
-    if (index >= tour.length) { changeMode('examples'); return; }
-    const lesson = tour[index];
-    if (lesson) {
-        writeStorage('last:tour', `tour/${lesson.file}`);
-        choose({ mode: 'tour', path: `tour/${lesson.file}`, stage: lesson.stage as Stage });
-        element('guide').scrollTop = 0;
+
+function newFile() {
+    if (section !== 'playground') { void go({ section: 'playground', path: blankPath }); return; }
+    if (editors && selection.path === blankPath && !shared && entrySource() !== originalSource()) requestReset();
+    else void go({ section: 'playground', path: blankPath });
+}
+function setSidebarCollapsed(collapsed: boolean) {
+    const sidebar = element('sidebar');
+    if (collapsed) sidebar.dataset.collapsed = ''; else delete sidebar.dataset.collapsed;
+    for (const control of [button('guide-collapse'), button('library-collapse')]) {
+        control.textContent = collapsed ? 'Show ▾' : 'Hide ▴';
+        control.setAttribute('aria-expanded', String(!collapsed));
     }
 }
 function installResizer() {
@@ -633,7 +709,7 @@ function installResizer() {
         ratio = Math.max(25, Math.min(75, Number.isFinite(value) ? value : 50));
         element('editors').style.setProperty('--source-width', `${ratio}%`);
         handle.setAttribute('aria-valuenow', String(Math.round(ratio)));
-        editors.input.layout(); editors.output.layout();
+        editors!.input.layout(); editors!.output.layout();
     }
     apply(ratio);
     handle.onpointerdown = event => {
@@ -656,8 +732,87 @@ function installResizer() {
         finish();
     };
 }
-start().catch(error => {
-    setStatus('Could not load the editor', 'error');
-    element('input-panel').textContent = 'The editor could not load. Check your connection and reload the page.';
-    notice(`Playground startup failed: ${(error as Error).message ?? String(error)}`);
+
+// ---------------------------------------------------------------------------
+// Wiring that does not depend on the editor
+// ---------------------------------------------------------------------------
+for (const item of Array.from(document.querySelectorAll<HTMLButtonElement>('.mode-switch button'))) {
+    item.onclick = () => void go(item.dataset.mode === 'docs' ? { section: 'docs', chapter: docsSlug } : item.dataset.mode === 'tour' ? { section: 'tour' } : { section: 'playground' });
+}
+document.querySelector<HTMLAnchorElement>('.site-brand')!.onclick = event => { event.preventDefault(); void go({ section: 'tour', lesson: tour[0].id }); };
+button('lesson-list-button').onclick = () => setLessonList(element('lesson-list-scrim').hidden === true);
+element('lesson-list-scrim').onclick = event => { if (event.target === event.currentTarget) setLessonList(false); };
+button('previous-lesson').onclick = () => { const previous = tour[lessonIndex() - 1]; if (previous) void go({ section: 'tour', lesson: previous.id }); };
+button('next-lesson').onclick = () => { const next = tour[lessonIndex() + 1]; void go(next ? { section: 'tour', lesson: next.id } : { section: 'playground' }); };
+button('suggested-stage').onclick = () => { if (editors) changeStage(tour[lessonIndex()].stage as Stage); };
+button('new-file').onclick = newFile;
+button('guide-collapse').onclick = button('library-collapse').onclick = () => setSidebarCollapsed(element('sidebar').dataset.collapsed === undefined);
+button('compile-button').onclick = () => void runCompile();
+button('view-output').onclick = () => setOutputView('output');
+button('view-simulate').onclick = () => setOutputView('simulation');
+button('source-tab').onclick = () => setMobileView('source');
+button('output-tab').onclick = () => setMobileView('output');
+button('menu-button').onclick = () => setMenu(element('file-menu').hidden === true);
+element('file-menu').onclick = () => setMenu(false);
+document.addEventListener('pointerdown', event => {
+    if (!element('file-menu').hidden && !element('file-menu').parentElement!.contains(event.target as Node)) setMenu(false);
 });
+button('share-button').onclick = openShare;
+button('download-source').onclick = () => { if (editors) download(baseName(activeSourcePath), editors.input.getValue()); };
+button('download-output').onclick = downloadOutput;
+button('output-download').onclick = downloadOutput;
+button('copy-output').onclick = () => { if (outputRevision === revision) void copy(lastOutput, button('copy-output')); };
+button('reset-button').onclick = requestReset;
+button('related-docs-menu').onclick = () => {
+    const [slug, anchor] = shared?.origin?.replace(/\.html$/, '').split('#') ?? [];
+    if (slug) void go({ section: 'docs', chapter: slug, anchor: anchor });
+};
+button('jump-error').onclick = () => {
+    if (!errorRange || !editors) return;
+    setMobileView('source');
+    openSource(errorPath);
+    editors.input.setSelection(errorRange); editors.input.revealRangeInCenter(errorRange); editors.input.focus();
+};
+element<HTMLDialogElement>('reset-dialog').addEventListener('close', () => {
+    if (element<HTMLDialogElement>('reset-dialog').returnValue === 'reset') entryModel.setValue(originalSource());
+});
+button('copy-share').onclick = () => void copy(element<HTMLInputElement>('share-url').value, button('copy-share'));
+document.addEventListener('keydown', event => {
+    const command = event.metaKey || event.ctrlKey;
+    if (event.key === 'Escape') { setLessonList(false); setMenu(false); }
+    if (section === 'docs' || !command) return;
+    if (event.key === 'Enter' && !event.defaultPrevented) { event.preventDefault(); void runCompile(); }
+    else if (event.key.toLowerCase() === 's' && !event.altKey) { event.preventDefault(); openShare(); }
+    else if (event.key.toLowerCase() === 'n' && !event.altKey && section === 'playground') { event.preventDefault(); newFile(); }
+});
+window.addEventListener('popstate', () => void go(fromLocation(), 'none'));
+window.addEventListener('pagehide', () => docs.dispose());
+if (matchMedia('(max-width: 820px)').matches) setSidebarCollapsed(true);
+buildLessonNavigation();
+setStatus('Starting editor…', 'loading');
+
+// Old share links for documentation examples: book/<chapter>.html#example=<code>
+// now arrive here. Open the example in the Playground with the shared source.
+async function openLegacyExample() {
+    if (!location.hash.startsWith('#example=')) return false;
+    const chapter = await docs.show(new URLSearchParams(location.search).get('chapter') ?? undefined);
+    try {
+        const payload = decodeProgram(location.hash.slice(9)) as { version: number; id: string; source: string; stage: Stage };
+        const example = chapter?.examples.find(item => item.id === payload.id);
+        if (payload.version !== 1 || !example || typeof payload.source !== 'string' || !Object.hasOwn(stages, payload.stage)) throw new Error();
+        const program = { mode: 'examples' as Mode, path: blankPath, stage: payload.stage, source: payload.source, files: example.files, entryPath: example.path, origin: `${chapter!.slug}.html#${example.id}` };
+        await go({ section: 'shared', shared: { ...program, code: encodeShare(program) } }, 'replace');
+    } catch {
+        notice('This shared example could not be opened. The original examples are shown in the guide.');
+        return false;
+    }
+    return true;
+}
+const initial = fromLocation();
+if (initial.section === 'docs' && location.hash.startsWith('#example=')) void openLegacyExample().then(opened => { if (!opened) void go({ ...initial, anchor: undefined }, 'replace'); });
+else void go(initial, 'replace');
+// Chapter titles feed the tour's "Reference" link; fetch them once the page is idle.
+setTimeout(() => void docs.load().then(data => {
+    for (const chapter of data.chapters) chapterTitles.set(chapter.slug, chapter.title);
+    if (section === 'tour') renderGuide();
+}).catch(() => { /* The link keeps its readable fallback title. */ }), 1500);

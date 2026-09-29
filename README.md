@@ -42,26 +42,35 @@ $ curl -fsSL https://cli.moonbitlang.com/install/unix.sh | bash -s '0.10.11+8f8e
 
 ### Documentation, playground, and tour
 
-The playground includes a [12-lesson tour](tour/README.md), separate from the
-larger designs under `examples/`. Start with a logic gate, then explore types,
-combinational logic, reusable modules, registers, and memory. Each lesson offers
-an explanation, a suggested compiler output to inspect, and a small experiment.
-Drafts are saved locally, and circuits can be shared by link or downloaded.
+The language guide, the guided tour, and the playground are three modes of one
+page, `playground.html`, switched from the shared header. The [12-lesson
+tour](tour/README.md) is separate from the larger designs under `examples/`:
+start with a logic gate, then explore types, combinational logic, reusable
+modules, registers, and memory. Each lesson offers an explanation, a suggested
+compiler output to inspect, and a small experiment. Compile is the one primary
+action; sharing, downloads, and reset live in the `···` menu. Output stages are
+tabs, and an Output | Simulate switch opens the simulator with its inputs,
+outputs, and waveform trace. Drafts are saved locally, and circuits can be
+shared by link or downloaded. Theme (System, Light, Dark) and accent colour are
+remembered.
 
-With MoonBit, Bun **1.4.0**, and Python 3 installed, start the documentation and playground:
+With MoonBit, Bun **1.4.0**, and Python 3 installed, start the site:
 
 ```bash
 bash scripts/serve-playground.sh
 ```
 
-Open `http://localhost:8080/book/` for documentation or
-`http://localhost:8080/playground.html` for the playground. After editing Markdown,
-browser code, or tour content, restart the script to rebuild, then reload the page.
-The editor loads Monaco from a CDN, so its initial load requires internet access.
+Open `http://localhost:8080/playground.html` (Tour), `?mode=examples`
+(Playground), or `?mode=docs` (Docs). Existing `book/<chapter>.html` links forward
+to the matching chapter. After editing Markdown, browser code, or tour content,
+restart the script to rebuild, then reload the page. The site is self-contained: the editor (Monaco, added as a
+development dependency and installed by the script with `bun install`), its
+worker, and the fonts are bundled into `dist/`, so nothing is loaded from a CDN
+and the deployed site works offline once served.
 
-The book is built from Markdown using Bun's built-in parser and shares the
-playground's themes, Monaco editor, and browser compiler. Examples support local
-drafts, compiler stages, expected errors, output comparison, and share links.
+The book is built from Markdown using Bun's built-in parser and rendered inside
+the page, sharing its themes, Monaco editor, and browser compiler. Examples can be
+compiled in place and opened in the Playground for editing.
 See [documentation authoring](book/README.md) for example metadata and validation.
 
 Build the complete static site into `dist/` with `bun run build:site`.

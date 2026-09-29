@@ -26,9 +26,8 @@ test('the main source model survives switching to an import and back', async () 
             },
         },
     };
-    const loader = Object.assign((_modules: string[], ready: () => void) => ready(), { config() {} });
-    try {
-        globalThis.window = { require: loader, monaco } as any;
+        try {
+        globalThis.window = { monaco } as any;
         globalThis.document = { documentElement: { dataset: {} }, getElementById: () => ({ replaceChildren() {} }) } as any;
         const { loadEditors } = await import('../main/playground-editor.ts');
         const { input } = await loadEditors();
