@@ -28,6 +28,7 @@ pub fn diagnostic(error: Error) -> @parse.Diagnostic? {
     MonomorphizerError::InvalidParameterInstantiation(path~, param~, span~, param_span~) => Some(@parse.Diagnosed::diagnostic(MonomorphizerError::InvalidParameterInstantiation(path~, param~, span~, param_span~)))
     MonomorphizerError::InvalidTypeAliasParameters(path~, exptected~, actual~, span~) => Some(@parse.Diagnosed::diagnostic(MonomorphizerError::InvalidTypeAliasParameters(path~, exptected~, actual~, span~)))
     MonomorphizerError::UnresolvedNamedType(path~, span~) => Some(@parse.Diagnosed::diagnostic(MonomorphizerError::UnresolvedNamedType(path~, span~)))
+    MonomorphizerError::RecursiveModuleInstantiation(path~, span~) => Some(@parse.Diagnosed::diagnostic(MonomorphizerError::RecursiveModuleInstantiation(path~, span~)))
     SimplifierError::AssertionAlwaysFails(span~) => Some(@parse.Diagnosed::diagnostic(SimplifierError::AssertionAlwaysFails(span~)))
     _ => @parse.diagnostic(error)
   }

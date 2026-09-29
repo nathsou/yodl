@@ -26,6 +26,7 @@ pub suberror MonomorphizerError {
   InvalidParameterInstantiation(path~ : @parse.Path, param~ : String, span~ : @parse.Span, param_span~ : @parse.Span)
   InvalidTypeAliasParameters(path~ : @parse.Path, exptected~ : Int, actual~ : Int, span~ : @parse.Span)
   UnresolvedNamedType(path~ : @parse.Path, span~ : @parse.Span)
+  RecursiveModuleInstantiation(path~ : @parse.Path, span~ : @parse.Span)
 }
 pub impl Show for MonomorphizerError
 pub impl @parse.Diagnosed for MonomorphizerError
@@ -65,6 +66,7 @@ pub struct Monomorphizer {
   modules : Map[@parse.Path, @parse.ModuleDecl]
   parameterized : Map[@parse.Path, @parse.ModuleDecl]
   monomorphized : Map[@parse.Path, Map[UInt, @parse.ModuleDecl]]
+  instantiating : @set.Set[@parse.Path]
   declared_modules : Map[@parse.Path, @parse.ModuleSignature]
   instanciated_modules : @set.Set[@parse.Path]
   test_only_modules : @set.Set[@parse.Path]

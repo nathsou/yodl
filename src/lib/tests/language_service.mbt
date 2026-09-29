@@ -93,3 +93,13 @@ test "deferred parameters retain complete source and their own EOF boundary" {
   let invalid_type = analyze_source("module Top() -> () {\n let inst = Reg[T: 8]()\n}")
   assert_true(invalid_type.diagnostics[0].render().contains("let inst = Reg[T: 8]()"))
 }
+
+test "recursive generic modules are diagnosed without overflowing the stack" {
+  let source = "module Box[N: Nat]() -> () { let child = Box[N: N](); }\nmodule Top() -> () { let box = Box[N: 1](); }"
+  let result = analyze_source(source)
+  assert_eq(result.diagnostics[0].code, "Y0310")
+  assert_true(result.diagnostics[0].span.unwrap().text().to_owned().contains("Box[N: N]"))
+  assert_true(compile_error(source, cmd_str="write_mono").contains("Recursive instantiation"))
+  let valid = analyze_source("module Box[N: Nat]() -> () {}\nmodule Top() -> () {\n let a = Box[N: 1]()\n let b = Box[N: 2]()\n}")
+  assert_eq(valid.diagnostics.length(), 0)
+}

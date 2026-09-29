@@ -6,6 +6,7 @@ pub struct Monomorphizer {
   modules: Map[@parse.Path, @parse.ModuleDecl]
   parameterized: Map[@parse.Path, @parse.ModuleDecl]
   monomorphized: Map[@parse.Path, Map[ParamsHash, @parse.ModuleDecl]]
+  instantiating: Set[@parse.Path]
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
   instanciated_modules: Set[@parse.Path]
   test_only_modules: Set[@parse.Path]
@@ -19,6 +20,7 @@ pub fn Monomorphizer::new() -> Monomorphizer {
     modules: {},
     parameterized: {},
     monomorphized: {},
+    instantiating: Set([]),
     declared_modules: {},
     instanciated_modules: Set([]),
     test_only_modules: Set([]),
@@ -38,6 +40,7 @@ pub suberror MonomorphizerError {
   InvalidParameterInstantiation(path~: @parse.Path, param~: String, span~: @parse.Span, param_span~: @parse.Span)
   InvalidTypeAliasParameters(path~: @parse.Path, exptected~: Int, actual~: Int, span~: @parse.Span)
   UnresolvedNamedType(path~: @parse.Path, span~: @parse.Span)
+  RecursiveModuleInstantiation(path~: @parse.Path, span~: @parse.Span)
 }
 
 fn MonomorphizerError::message(self: Self) -> String {
@@ -46,6 +49,7 @@ fn MonomorphizerError::message(self: Self) -> String {
     ModuleNotFound(path~, ..) => {
       logger.write_string("Module '\{path}' not found")
     }
+    RecursiveModuleInstantiation(path~, ..) => logger.write_string("Recursive instantiation of module '\{path}'")
     InvalidModuleParameterCount(path~, expected~, actual~, ..) => {
       logger.write_string("Module '\{path}' expected \{expected} parameter(s), but got \{actual}")
     }
@@ -87,6 +91,7 @@ pub impl @parse.Diagnosed for MonomorphizerError with diagnostic(self) -> @parse
     InvalidParameterInstantiation(..) => "Y0307"
     InvalidTypeAliasParameters(..) => "Y0308"
     UnresolvedNamedType(..) => "Y0309"
+    RecursiveModuleInstantiation(..) => "Y0310"
   }
   let result = @parse.Diagnostic::new(code, self.message(), span=Some(@parse.Spanned::span(self)))
   if self is InvalidParameterInstantiation(param_span~, ..) {
@@ -110,6 +115,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
     InvalidTypeAliasParameters(span~, ..) => span
     UnresolvedNamedType(span~, ..) => span
     ReceivedTypeAliasInsteadOfExpr(span~) => span
+    RecursiveModuleInstantiation(span~, ..) => span
   }
 }
 
@@ -343,6 +349,9 @@ fn Monomorphizer::register_monomorphized_module(
     return mono_mod
   }
 
+  if self.instantiating.contains(path) { raise RecursiveModuleInstantiation(path~, span~) }
+  self.instantiating.add(path)
+  defer self.instantiating.remove(path)
   let mono_path = @parse.Path::new(path.packages, "\{path.elem}$\{monomorphized.length()}")
   let mono_mod = self.monomorphize_module(mod=mod_decl, params=params_map, path=mono_path, packages~)
   monomorphized[hash] = mono_mod

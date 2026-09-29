@@ -36,6 +36,11 @@ test('packaged stdio server answers real requests and publishes diagnostics', as
         expect((await wait(m => m.method === 'textDocument/publishDiagnostics')).params.diagnostics[0].code).toBe('Y0501');
         send({ id: 2, method: 'textDocument/hover', params: { textDocument: { uri }, position: { line: 1, character: 6 } } });
         expect((await wait(m => m.id === 2)).result.contents.value).toContain('value');
+        const recursive = 'module Box[N: Nat]() -> () { let child = Box[N: N](); }\nmodule Top() -> () { let box = Box[N: 1](); }';
+        send({ method: 'textDocument/didChange', params: { textDocument: { uri, version: 2 }, contentChanges: [{ text: recursive }] } });
+        expect((await wait(m => m.method === 'textDocument/publishDiagnostics' && m.params.version === 2)).params.diagnostics[0].code).toBe('Y0310');
+        send({ method: 'textDocument/didChange', params: { textDocument: { uri, version: 3 }, contentChanges: [{ text: 'module Top() -> () {}' }] } });
+        expect((await wait(m => m.method === 'textDocument/publishDiagnostics' && m.params.version === 3)).params.diagnostics).toEqual([]);
         send({ id: 3, method: 'shutdown' }); await wait(m => m.id === 3);
         const exited = new Promise<number | null>(resolve => child.on('exit', resolve));
         send({ method: 'exit' }); expect(await exited).toBe(0);

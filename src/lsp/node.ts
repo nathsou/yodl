@@ -13,7 +13,16 @@ let shutdown = false;
 const ignored = new Set(['.git', 'node_modules', '_build', 'target', 'dist', '.mooncakes']);
 const output = (messages: string) => { for (const message of JSON.parse(messages)) process.stdout.write(frame(message)); };
 const dispatch = (message: any) => output(handle_message(server, JSON.stringify(message)));
-const publish = () => { clearTimeout(timer); timer = setTimeout(() => output(flush_diagnostics(server)), 120); };
+const publish = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+        try { output(flush_diagnostics(server)); }
+        catch (error) {
+            console.error('Yodl LSP analysis:', error);
+            process.stdout.write(frame({ jsonrpc: '2.0', method: 'window/logMessage', params: { type: 1, message: `Yodl analysis failed: ${String(error)}` } }));
+        }
+    }, 120);
+};
 function path(uri: string): string | undefined {
     try { if (new URL(uri).protocol === 'file:') return fileURLToPath(uri); } catch { /* Non-file documents use their open text. */ }
 }
