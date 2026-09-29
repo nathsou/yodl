@@ -108,6 +108,13 @@ describe('MoonBit LSP', () => {
         expect(diagnostic.range.start).toEqual(c.at('8'));
         expect(diagnostic.rendered).toContain('let inst = Reg[T: 8]()');
     });
+    test('opening the builtin preview does not recompile duplicate declarations', () => {
+        const c = service('module Top() -> () {}');
+        const builtin = 'yodl-builtin:///builtin.yodl';
+        c.raw('textDocument/didOpen', { textDocument: { uri: builtin, version: 1, text: c.request('yodl/source', { uri: builtin }) } }, false);
+        expect(c.diagnostics()).toEqual([]);
+        expect(c.request('textDocument/documentSymbol', { textDocument: { uri: builtin } }).some((s: any) => s.name === 'Reg')).toBe(true);
+    });
     test('record completion, alias navigation and conservative field rename', () => {
         const c = service('type Point = (x: u8, y: u8)\nmodule Top(p: Point) -> (out: u8) {\n let data = (x: 1, y: 2)\n out = p.x\n let copy = data.x\n}');
         expect(c.query('completion', c.at('x', 3)).items.map((i: any) => i.label)).toEqual(['x', 'y']);

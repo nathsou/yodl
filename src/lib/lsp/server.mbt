@@ -74,6 +74,9 @@ fn virtual_fs(files: Map[String, String], reads: Map[String, String]) -> @utils.
 }
 
 fn Server::analyze(self: Self, uri: String) -> @driver.Analysis {
+  // Builtins are already injected by the resolver. Their virtual preview is
+  // indexed for navigation, but must not be compiled as a second user library.
+  if uri == builtin_uri { return { source_decls: [], typed_decls: [], diagnostics: [] } }
   match self.analyses.get(uri) {
     Some(analysis) => analysis
     None => {
