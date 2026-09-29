@@ -231,6 +231,7 @@ export function createDocs(host: DocsHost) {
                 renderNavigation(data, chapter);
                 renderArticle(data, chapter);
                 document.title = `${chapter.title} · Yodl`;
+                element('docs-current').textContent = `${pad(data.chapters.indexOf(chapter) + 1)} · ${chapter.title}`;
                 if (matchMedia('(max-width: 820px)').matches) element<HTMLDetailsElement>('chapter-menu').open = false;
             }
             if (changed || anchor) scrollToAnchor(anchor);

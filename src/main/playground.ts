@@ -34,7 +34,7 @@ function setStatus(message: string, state = 'idle') {
     element('compile-status').dataset.state = state;
 }
 const mac = /Mac|iPhone|iPad/.test(navigator.platform);
-setupTheme(element('theme-switch'), () => applyEditorTheme());
+setupTheme(document.querySelector<HTMLElement>('.site-header')!, () => applyEditorTheme());
 setupAccent(document.querySelector<HTMLElement>('.accent-picker')!, () => applyEditorTheme());
 
 // ---------------------------------------------------------------------------
@@ -241,7 +241,11 @@ function renderGuide() {
     const index = lessonIndex();
     const lesson = tour[index];
     if (!lesson) return;
-    element('lesson-position').textContent = `Tour · Lesson ${pad(index + 1)} of ${tour.length}`;
+    const prefix = document.createElement('span');
+    prefix.className = 'lesson-prefix';
+    prefix.textContent = 'Tour · ';
+    element('lesson-position').replaceChildren(prefix, `Lesson ${pad(index + 1)} of ${tour.length}`);
+    renderContext();
     element('lesson-topic').textContent = lesson.topic;
     element('lesson-title').textContent = lesson.title;
     element('lesson-intro').textContent = lesson.intro;
@@ -308,6 +312,7 @@ function exampleNote(path: string) {
     return `${lines} lines${source.includes('@simulation') ? ' · simulation' : ''}`;
 }
 function renderLibrary() {
+    renderContext();
     element('example-list').replaceChildren(...examples.map(path => {
         const entry = document.createElement('button');
         entry.type = 'button';
@@ -317,7 +322,7 @@ function renderLibrary() {
         const name = document.createElement('span'); name.className = 'entry-name'; name.textContent = baseName(path).replace(/\.yodl$/, '');
         const note = document.createElement('span'); note.className = 'entry-note'; note.textContent = current ? baseName(path) : exampleNote(path);
         entry.append(name, note);
-        entry.onclick = () => { writeStorage('last:examples', path); void go({ section: 'playground', path }); };
+        entry.onclick = () => { writeStorage('last:examples', path); setSheet(false); void go({ section: 'playground', path }); };
         return entry;
     }));
     renderDrafts();
@@ -335,6 +340,7 @@ function renderDrafts() {
         const time = document.createElement('span'); time.className = 'entry-note'; time.textContent = relativeTime(draft.updated);
         entry.append(name, time);
         entry.onclick = () => {
+            setSheet(false);
             if (draft.shared) {
                 const code = draft.key.slice('shared:'.length);
                 try { void go({ section: 'shared', shared: toSharedState(decodeShare(`#code=${code}`)!, code) }); } catch (error) { notice((error as Error).message); }
@@ -348,6 +354,48 @@ function renderDrafts() {
 // Output stages
 // ---------------------------------------------------------------------------
 const suggestedStage = () => selection.mode === 'tour' ? tour[lessonIndex()]?.stage as Stage | undefined : undefined;
+// ---------------------------------------------------------------------------
+// Sidebar visibility. Wide screens can hide the column; narrow screens show it
+// as a sheet over the editors, opened from the context bar.
+// ---------------------------------------------------------------------------
+const narrow = matchMedia('(max-width: 819px)');
+const phone = matchMedia('(max-width: 639px)');
+let sidebarHidden = readStorage('sidebar') === 'hidden';
+function renderSidebar() {
+    const layout = element('editor-view');
+    layout.dataset.sidebar = sidebarHidden ? 'hidden' : 'shown';
+    const toggle = button('sidebar-toggle');
+    toggle.setAttribute('aria-expanded', String(!sidebarHidden));
+    const what = section === 'tour' ? 'lesson' : 'examples';
+    toggle.title = sidebarHidden ? `Show ${what}` : `Hide ${what}`;
+    toggle.setAttribute('aria-label', toggle.title);
+}
+function setSidebarHidden(hidden: boolean) {
+    sidebarHidden = hidden;
+    writeStorage('sidebar', hidden ? 'hidden' : 'shown');
+    renderSidebar();
+}
+function setSheet(open: boolean) {
+    const layout = element('editor-view');
+    if ((layout.dataset.sheet === 'open') === open) return;
+    layout.dataset.sheet = open ? 'open' : 'closed';
+    button('context-toggle').setAttribute('aria-expanded', String(open));
+    element('sidebar').inert = narrow.matches && !open;
+    if (open && narrow.matches) element(section === 'tour' ? 'guide-body' : 'library').scrollTop = 0;
+}
+function renderContext() {
+    const label = element('context-label');
+    if (section === 'tour') {
+        const index = lessonIndex();
+        const position = document.createElement('small');
+        position.textContent = `${pad(index + 1)}/${tour.length}  `;
+        label.replaceChildren(position, tour[index]?.title ?? '');
+    } else label.textContent = shared ? 'Examples & drafts · shared circuit' : 'Examples & drafts';
+    button('context-toggle').title = section === 'tour' ? 'Show or hide the lesson' : 'Show or hide examples and drafts';
+}
+new ResizeObserver(() => fitStageTabs()).observe(element('output-view-switch').parentElement!);
+narrow.addEventListener('change', () => { element('sidebar').inert = narrow.matches && element('editor-view').dataset.sheet !== 'open'; });
+
 function renderStageTabs() {
     const showTests = selection.stage === 'test' || (entryModel !== undefined && sourceHasTests(entrySource()));
     const suggested = suggestedStage();
@@ -366,6 +414,22 @@ function renderStageTabs() {
         tab.onclick = () => changeStage(stage);
         return tab;
     }));
+    // The same choices as a picker, shown when the output pane is too narrow for tabs.
+    const picker = element<HTMLSelectElement>('stage-select');
+    picker.replaceChildren(...Array.from(element('stage-tabs').children).map(tab => {
+        const stage = (tab as HTMLElement).dataset.stage as Stage;
+        return new Option(`${stages[stage].label}${stage === suggested ? ' · suggested' : ''}`, stage);
+    }));
+    picker.value = selection.stage;
+    picker.title = stages[selection.stage].description;
+    fitStageTabs();
+}
+// Show tabs when they fit beside the Output | Simulate switch, else the picker.
+function fitStageTabs() {
+    const header = element('output-view-switch').parentElement!;
+    const needed = element('stage-tabs').scrollWidth + element('output-view-switch').offsetWidth + 24;
+    const compact = header.clientWidth > 0 && needed > header.clientWidth;
+    if (compact) header.dataset.compact = ''; else delete header.dataset.compact;
 }
 function setOutputView(view: 'output' | 'simulation') {
     element('output-pane').dataset.view = view;
@@ -397,6 +461,8 @@ function syncChrome() {
     element('editor-view').dataset.section = section;
     element('guide').hidden = section !== 'tour';
     element('library').hidden = section !== 'playground';
+    renderSidebar();
+    renderContext();
     if (editor) {
         document.title = section === 'tour' ? 'Tour · Yodl' : 'Playground · Yodl';
         editors?.input.layout(); editors?.output.layout();
@@ -694,22 +760,18 @@ function newFile() {
     if (editors && selection.path === blankPath && !shared && entrySource() !== originalSource()) requestReset();
     else void go({ section: 'playground', path: blankPath });
 }
-function setSidebarCollapsed(collapsed: boolean) {
-    const sidebar = element('sidebar');
-    if (collapsed) sidebar.dataset.collapsed = ''; else delete sidebar.dataset.collapsed;
-    for (const control of [button('guide-collapse'), button('library-collapse')]) {
-        control.textContent = collapsed ? 'Show ▾' : 'Hide ▴';
-        control.setAttribute('aria-expanded', String(!collapsed));
-    }
-}
 function installResizer() {
+    // Splits left/right, or top/bottom when the panes are stacked (CSS sets --split-axis).
     const handle = element('resize-handle');
+    const container = element('editors');
+    const vertical = () => getComputedStyle(container).getPropertyValue('--split-axis').trim() === 'y';
     let ratio = Number(readStorage('split') ?? 50);
     function apply(value: number) {
-        ratio = Math.max(25, Math.min(75, Number.isFinite(value) ? value : 50));
-        element('editors').style.setProperty('--source-width', `${ratio}%`);
+        ratio = Math.max(20, Math.min(80, Number.isFinite(value) ? value : 50));
+        container.style.setProperty('--split-a', `${ratio}fr`);
+        container.style.setProperty('--split-b', `${100 - ratio}fr`);
         handle.setAttribute('aria-valuenow', String(Math.round(ratio)));
-        editors!.input.layout(); editors!.output.layout();
+        handle.setAttribute('aria-orientation', vertical() ? 'horizontal' : 'vertical');
     }
     apply(ratio);
     handle.onpointerdown = event => {
@@ -719,18 +781,20 @@ function installResizer() {
     };
     handle.onpointermove = event => {
         if (!handle.hasPointerCapture(event.pointerId)) return;
-        const bounds = element('editors').getBoundingClientRect();
-        apply((event.clientX - bounds.left) / bounds.width * 100);
+        const bounds = container.getBoundingClientRect();
+        apply(vertical() ? (event.clientY - bounds.top) / bounds.height * 100 : (event.clientX - bounds.left) / bounds.width * 100);
     };
     const finish = () => { handle.classList.remove('dragging'); writeStorage('split', String(ratio)); };
     handle.onlostpointercapture = finish;
     handle.onpointerup = event => { if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId); };
     handle.onkeydown = event => {
-        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        const back = vertical() ? 'ArrowUp' : 'ArrowLeft', forward = vertical() ? 'ArrowDown' : 'ArrowRight';
+        if (![back, forward, 'Home', 'End'].includes(event.key)) return;
         event.preventDefault();
-        apply(event.key === 'Home' ? 25 : event.key === 'End' ? 75 : ratio + (event.key === 'ArrowLeft' ? -5 : 5));
+        apply(event.key === 'Home' ? 20 : event.key === 'End' ? 80 : ratio + (event.key === back ? -5 : 5));
         finish();
     };
+    matchMedia('(max-width: 1199px)').addEventListener('change', () => apply(ratio));
 }
 
 // ---------------------------------------------------------------------------
@@ -744,10 +808,21 @@ button('lesson-list-button').onclick = () => setLessonList(element('lesson-list-
 element('lesson-list-scrim').onclick = event => { if (event.target === event.currentTarget) setLessonList(false); };
 button('previous-lesson').onclick = () => { const previous = tour[lessonIndex() - 1]; if (previous) void go({ section: 'tour', lesson: previous.id }); };
 button('next-lesson').onclick = () => { const next = tour[lessonIndex() + 1]; void go(next ? { section: 'tour', lesson: next.id } : { section: 'playground' }); };
-button('suggested-stage').onclick = () => { if (editors) changeStage(tour[lessonIndex()].stage as Stage); };
-button('new-file').onclick = newFile;
-button('guide-collapse').onclick = button('library-collapse').onclick = () => setSidebarCollapsed(element('sidebar').dataset.collapsed === undefined);
-button('compile-button').onclick = () => void runCompile();
+button('suggested-stage').onclick = () => {
+    if (!editors) return;
+    changeStage(tour[lessonIndex()].stage as Stage);
+    // On narrow screens, reveal the output this card points at.
+    if (narrow.matches) { setSheet(false); setMobileView('output'); }
+};
+button('new-file').onclick = () => { setSheet(false); newFile(); };
+button('sidebar-toggle').onclick = () => setSidebarHidden(!sidebarHidden);
+button('context-toggle').onclick = () => setSheet(element('editor-view').dataset.sheet !== 'open');
+element<HTMLSelectElement>('stage-select').onchange = () => changeStage(element<HTMLSelectElement>('stage-select').value as Stage);
+button('compile-button').onclick = () => {
+    void runCompile();
+    // A deliberate compile on a phone shows its result.
+    if (phone.matches) setMobileView('output');
+};
 button('view-output').onclick = () => setOutputView('output');
 button('view-simulate').onclick = () => setOutputView('simulation');
 button('source-tab').onclick = () => setMobileView('source');
@@ -779,7 +854,11 @@ element<HTMLDialogElement>('reset-dialog').addEventListener('close', () => {
 button('copy-share').onclick = () => void copy(element<HTMLInputElement>('share-url').value, button('copy-share'));
 document.addEventListener('keydown', event => {
     const command = event.metaKey || event.ctrlKey;
-    if (event.key === 'Escape') { setLessonList(false); setMenu(false); }
+    if (event.key === 'Escape') {
+        if (!element('lesson-list-scrim').hidden) setLessonList(false);
+        else if (narrow.matches && element('editor-view').dataset.sheet === 'open') setSheet(false);
+        setMenu(false);
+    }
     if (section === 'docs' || !command) return;
     if (event.key === 'Enter' && !event.defaultPrevented) { event.preventDefault(); void runCompile(); }
     else if (event.key.toLowerCase() === 's' && !event.altKey) { event.preventDefault(); openShare(); }
@@ -787,8 +866,9 @@ document.addEventListener('keydown', event => {
 });
 window.addEventListener('popstate', () => void go(fromLocation(), 'none'));
 window.addEventListener('pagehide', () => docs.dispose());
-if (matchMedia('(max-width: 820px)').matches) setSidebarCollapsed(true);
 buildLessonNavigation();
+renderSidebar();
+setSheet(false);
 setStatus('Starting editor…', 'loading');
 
 // Old share links for documentation examples: book/<chapter>.html#example=<code>
@@ -809,6 +889,8 @@ async function openLegacyExample() {
     return true;
 }
 const initial = fromLocation();
+// A lesson opened on a narrow screen starts with its explanation showing.
+if (narrow.matches && initial.section === 'tour') setSheet(true);
 if (initial.section === 'docs' && location.hash.startsWith('#example=')) void openLegacyExample().then(opened => { if (!opened) void go({ ...initial, anchor: undefined }, 'replace'); });
 else void go(initial, 'replace');
 // Chapter titles feed the tour's "Reference" link; fetch them once the page is idle.
