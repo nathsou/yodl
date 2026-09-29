@@ -281,7 +281,9 @@ dialog button:not(.primary):not(.search-close) { padding: 5px 12px; border: 1px 
 .example-note { margin: 0; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13px !important; color: var(--mute); }
 .example-output { border-top: 1px solid var(--line); background: var(--bg); }
 .example-output-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 16px; font: 12px var(--font-mono); color: var(--mute); }
-.example-output-header select { padding: 1px 4px; font: inherit; border-color: transparent; background: transparent; color: var(--ink); }
+.stage-select { position: relative; display: inline-block; }
+.stage-select::after { content: '▾'; position: absolute; right: 5px; top: 50%; transform: translateY(-50%); pointer-events: none; }
+.example-output-header select { appearance: none; padding: 1px 18px 1px 4px; font: inherit; border-color: transparent; background: transparent; color: var(--ink); cursor: pointer; }
 .example-output-header select:hover { border-color: var(--line); }
 .example-status { color: var(--acc); }
 .example-status[data-state="error"] { color: var(--error); }

@@ -145,6 +145,10 @@ export function applyEditorTheme() {
         rules: [
             { token: '', foreground: bare(token('ink')) },
             { token: 'keyword', foreground: bare(token('k-kw')) },
+            { token: 'keyword.operator', foreground: bare(token('k-kw')) },
+            { token: 'identifier', foreground: bare(token('ink')) },
+            { token: 'operator', foreground: bare(token('mute')) },
+            { token: 'type.identifier', foreground: bare(token('k-ty')) },
             { token: 'type', foreground: bare(token('k-ty')) },
             { token: 'function', foreground: bare(token('k-fn')) },
             { token: 'number', foreground: bare(token('k-nm')) },
@@ -183,6 +187,7 @@ export async function createEditor(container: HTMLElement, options: Record<strin
         padding: { top: 18, bottom: 18 }, renderLineHighlight: 'none',
         glyphMargin: false, folding: false, lineNumbersMinChars: 3, lineDecorationsWidth: 18, overviewRulerLanes: 0,
         hideCursorInOverviewRuler: true, overviewRulerBorder: false,
+        bracketPairColorization: { enabled: false }, guides: { indentation: false, bracketPairs: false }, matchBrackets: 'never',
         scrollbar: { useShadows: false, verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
         tabSize: 4, insertSpaces: true, fixedOverflowWidgets: true,
     };

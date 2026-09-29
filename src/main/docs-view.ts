@@ -190,7 +190,9 @@ export function createDocs(host: DocsHost) {
         picker.value = stage;
         picker.title = stages[stage].description;
         picker.onchange = () => { picker.title = stages[picker.value as Stage].description; void run(picker.value as Stage); };
-        status.append(picker);
+        const pickerBox = el('span', 'stage-select');
+        pickerBox.append(picker);
+        status.append(pickerBox);
         const hide = el('button', undefined, 'Hide');
         hide.type = 'button';
         hide.onclick = () => { drawer!.hidden = true; };
