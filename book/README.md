@@ -17,8 +17,10 @@ deployed separately. The build writes every chapter to `book/chapters.json`, and
 the page renders it on demand. The old `book/<slug>.html` URLs remain as small
 pages that forward (keeping the `#anchor`) and hold the chapter text for readers
 without JavaScript. Bun is needed only at build time. Reading and copying text
-requires no compiler; Monaco loads from its pinned CDN only when the Tour or
-Playground editor is first shown.
+requires no compiler; the editor (Monaco, bundled from the pinned npm
+development dependency) loads from the site itself only when the Tour or
+Playground editor is first shown. Run `bun install` once before building; the
+site requests nothing from a CDN.
 
 ## Examples
 

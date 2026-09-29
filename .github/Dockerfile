@@ -7,6 +7,7 @@ ENV YODL_REVISION=${YODL_REVISION}
 COPY book/ ./book
 COPY src/ ./src
 COPY moon.mod.json ./
+COPY package.json package-lock.json ./
 COPY examples/ ./examples
 COPY tour/ ./tour
 COPY scripts/ ./scripts
@@ -30,6 +31,9 @@ RUN rm -rf firrtl-bin-linux-x64.tar.gz firtool-1.149.0
 # Bun powers the site build and the shared documentation test extractor.
 RUN curl -fsSL https://bun.sh/install | bash -s "bun-v1.4.0"
 ENV PATH="/root/.bun/bin:${PATH}"
+
+# The editor (Monaco) is bundled into the site at build time.
+RUN bun install --frozen-lockfile
 
 # Run checks and tests
 RUN moon check

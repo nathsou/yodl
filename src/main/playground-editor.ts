@@ -10,25 +10,33 @@ export function loadMonaco(): Promise<void> {
     if (monaco) return Promise.resolve();
     return loading ??= initialise().catch(error => { loading = undefined; throw error; });
 }
-async function initialise() {
-    if (!(window as any).require) {
-        await new Promise<void>((resolve, reject) => {
-            const script = document.createElement('script');
-            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.56.0/min/vs/loader.min.js';
-            script.integrity = 'sha384-5Ubp2dzZW9MAJXGpSFXLlurRaPg3+ktYfisBzghShdarxz8R37mhDy2svDenxogJ';
-            script.crossOrigin = 'anonymous';
-            const timeout = setTimeout(() => { script.remove(); reject(new Error('The editor took too long to load. Try Edit again.')); }, 15_000);
-            script.onload = () => { clearTimeout(timeout); resolve(); };
-            script.onerror = () => { clearTimeout(timeout); script.remove(); reject(new Error('Could not load the editor. Check your connection and try Edit again.')); };
-            document.head.append(script);
-        });
-    }
-    await new Promise<void>((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('The code editor took too long to load. Try again.')), 15_000);
-        const loader = (window as any).require;
-        loader.config({ paths: { vs: 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.56.0/min/vs' } });
-        loader(['vs/editor/editor.main'], () => { clearTimeout(timeout); resolve(); }, (error: unknown) => { clearTimeout(timeout); reject(error); });
+// Replaced by the site build with the content-hashed editor bundle and stylesheet.
+declare const __MONACO_BUNDLE__: string;
+declare const __MONACO_CSS__: string;
+const editorBundle = typeof __MONACO_BUNDLE__ === 'undefined' ? './monaco.js' : __MONACO_BUNDLE__;
+const editorStylesheet = typeof __MONACO_CSS__ === 'undefined' ? './monaco.css' : __MONACO_CSS__;
+
+function loadStylesheet(href: string) {
+    return new Promise<void>((resolve, reject) => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        link.onload = () => resolve();
+        link.onerror = () => { link.remove(); reject(new Error('Could not load the editor styles. Reload the page to try again.')); };
+        document.head.append(link);
     });
+}
+async function initialise() {
+    // The editor ships with the site (see bundle.ts); nothing is fetched from a CDN.
+    if (!(window as any).monaco) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('The code editor took too long to load. Try again.')), 30_000); });
+        try {
+            const loaded = Promise.all([loadStylesheet(new URL(editorStylesheet, import.meta.url).href), import(/* @vite-ignore */ new URL(editorBundle, import.meta.url).href)]);
+            const [, module] = await Promise.race([loaded, timeout]);
+            (window as any).monaco = module.monaco;
+        } finally { clearTimeout(timer); }
+    }
     monaco = (window as any).monaco;
     monaco.languages.register({ id: 'yodl' });
 
@@ -163,6 +171,8 @@ export function applyEditorTheme() {
             'editor.selectionBackground': token('acc-soft'), 'editor.inactiveSelectionBackground': token('sunk'),
             'editor.lineHighlightBackground': token('sunk') + '00', 'editor.lineHighlightBorder': token('sunk') + '00',
             'editorCursor.foreground': token('acc'), 'editorIndentGuide.background1': token('line'),
+            // Brackets are punctuation, not a rainbow: keep them on the muted token colour.
+            ...Object.fromEntries([1, 2, 3, 4, 5, 6].map(level => [`editorBracketHighlight.foreground${level}`, token('mute')])), 'editorBracketHighlight.unexpectedBracket.foreground': token('mute'),
             'editorWidget.background': token('panel'), 'editorWidget.border': token('line'),
             'scrollbarSlider.background': token('line') + 'aa', 'scrollbarSlider.hoverBackground': token('mute') + '66',
         },

@@ -95,3 +95,20 @@ describe('documentation blocks and search', () => {
         }
     });
 });
+
+describe('self-contained site', () => {
+    test('nothing is loaded from a CDN or font service', () => {
+        const cdn = /cdnjs|cloudflare|googleapis|gstatic|unpkg|jsdelivr|cdn\./;
+        for (const path of ['src/main/playground.html', 'src/main/playground.css', 'src/main/theme.css', 'src/main/site-navigation.css', ...['playground', 'playground-editor', 'monaco', 'docs-view', 'search', 'simulation-view', 'theme'].map(name => `src/main/${name}.ts`)]) {
+            expect({ path, cdn: cdn.test(read(path)) }).toEqual({ path, cdn: false });
+        }
+    });
+    test('the vendored fonts named by the stylesheet exist with their licences', () => {
+        const css = read('src/main/playground.css');
+        const files = [...css.matchAll(/url\('\.\/fonts\/([^']+)'\)/g)].map(match => match[1]);
+        expect(files).toHaveLength(3);
+        for (const file of files) expect(readFileSync(resolve(root, 'src/main/fonts', file)).byteLength).toBeGreaterThan(1000);
+        expect(read('src/main/fonts/LICENSE-HankenGrotesk.txt')).toContain('SIL Open Font License');
+        expect(read('src/main/fonts/LICENSE-IBMPlexMono.txt')).toContain('SIL Open Font License');
+    });
+});

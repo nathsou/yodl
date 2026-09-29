@@ -1,5 +1,9 @@
 @import "./theme.css";
 @import "./site-navigation.css";
+/* Fonts are served with the site (src/main/fonts, SIL Open Font License). */
+@font-face { font-family: 'Hanken Grotesk'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('./fonts/hanken-grotesk-latin-wght-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap; src: url('./fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap; src: url('./fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2'); }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html { height: 100%; }

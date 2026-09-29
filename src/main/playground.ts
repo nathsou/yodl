@@ -564,7 +564,10 @@ function currentUrl() {
         if (docsAnchor) url.hash = docsAnchor;
     } else if (shared) url.hash = `code=${shared.code}`;
     else if (section === 'tour') url.searchParams.set('lesson', tour[lessonIndex()]?.id ?? tour[0].id);
-    else url.searchParams.set('mode', 'examples');
+    else {
+        url.searchParams.set('mode', 'examples');
+        if (selection.path !== blankPath) url.searchParams.set('example', baseName(selection.path).replace(/\.yodl$/, ''));
+    }
     return url.href;
 }
 function updateUrl(how: 'push' | 'replace' | 'none') {
@@ -584,6 +587,7 @@ async function go(target: Target, how: 'push' | 'replace' | 'none' = 'push') {
         const chapter = await docs.show(target.chapter, target.anchor);
         if (token !== navigation) return;
         docsSlug = chapter?.slug ?? target.chapter;
+        if (chapter) document.title = `${chapter.title} · Yodl`;
         updateUrl(how);
         return;
     }
@@ -620,7 +624,10 @@ function fromLocation(): Target {
     if (params.get('mode') === 'docs') return { section: 'docs', chapter: params.get('chapter') ?? undefined, anchor: location.hash.slice(1) || undefined };
     const lesson = tour.find(item => item.id === params.get('lesson'));
     if (lesson) return { section: 'tour', lesson: lesson.id };
-    if (params.get('mode') === 'examples') return { section: 'playground', path: blankPath };
+    if (params.get('mode') === 'examples') {
+        const example = examples.find(path => baseName(path) === `${params.get('example')}.yodl`);
+        return { section: 'playground', path: example ?? blankPath };
+    }
     return { section: sectionOf(selection.mode) };
 }
 
@@ -634,14 +641,14 @@ const docs = createDocs({
         void go({ section: 'shared', shared: { ...program, code } });
     },
 });
-createSearch({
+const search = createSearch({
     lessons: tour,
     openLesson: id => void go({ section: 'tour', lesson: id }),
     openDoc: (slug, anchor) => void go({ section: 'docs', chapter: slug, anchor }),
 });
 
 // ---------------------------------------------------------------------------
-// Editor start-up (Monaco loads from a CDN, so it starts on first need and the
+// Editor start-up (Monaco is a large bundle, so it loads on first need and the
 // guide stays usable if it cannot load).
 // ---------------------------------------------------------------------------
 function ensureEditor() {
@@ -668,6 +675,8 @@ async function startEditor() {
     element('new-shortcut').textContent = mac ? '⌘N' : 'Ctrl N';
     editors.input.addAction({ id: 'compile-yodl', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });
     editors.output.addAction({ id: 'compile-yodl-output', label: 'Compile Yodl', keybindings: [monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter], run: runCompile });
+    // Monaco reserves Ctrl/⌘+K as a chord prefix; the site-wide search shortcut wins.
+    for (const editor of [editors.input, editors.output]) editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyK, () => search.open());
     editors.input.onDidChangeModelContent(() => {
         if (loadingSource || editors!.input.getModel() !== entryModel) return;
         saveDraft();
@@ -770,7 +779,7 @@ element<HTMLDialogElement>('reset-dialog').addEventListener('close', () => {
 button('copy-share').onclick = () => void copy(element<HTMLInputElement>('share-url').value, button('copy-share'));
 document.addEventListener('keydown', event => {
     const command = event.metaKey || event.ctrlKey;
-    if (event.key === 'Escape') { setLessonList(false); }
+    if (event.key === 'Escape') { setLessonList(false); setMenu(false); }
     if (section === 'docs' || !command) return;
     if (event.key === 'Enter' && !event.defaultPrevented) { event.preventDefault(); void runCompile(); }
     else if (event.key.toLowerCase() === 's' && !event.altKey) { event.preventDefault(); openShare(); }

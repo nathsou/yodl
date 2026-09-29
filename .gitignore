@@ -12,3 +12,5 @@ src/main/bundle/
 _build/
 bundle/
 dist/
+node_modules/
+/bun.lock

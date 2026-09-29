@@ -35,6 +35,7 @@ const search = buildSearchIndex(chapters);
 await writeFile(`${destination}/book/search.json`, JSON.stringify(search));
 await writeFile(`${destination}/book/examples.json`, JSON.stringify(chapters.flatMap(c => c.examples.map(ex => ({ chapter: c.slug, ...ex })))));
 for (const name of ['playground.css', 'theme.css', 'site-navigation.css']) await cp(`${root}/src/main/${name}`, `${destination}/${name}`);
+await cp(`${root}/src/main/fonts`, `${destination}/fonts`, { recursive: true });
 const playground = await readFile(`${root}/src/main/playground.html`, 'utf8');
 await writeFile(`${destination}/playground.html`, playground.replace('<!-- site-header -->', siteHeader()).replace('./bundle/playground.js', `./bundle/${assets.playground}`));
 console.log(`Built ${chapters.length} chapters and ${chapters.reduce((n, c) => n + c.examples.length, 0)} examples in dist/`);

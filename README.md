@@ -63,9 +63,10 @@ bash scripts/serve-playground.sh
 Open `http://localhost:8080/playground.html` (Tour), `?mode=examples`
 (Playground), or `?mode=docs` (Docs). Existing `book/<chapter>.html` links forward
 to the matching chapter. After editing Markdown, browser code, or tour content,
-restart the script to rebuild, then reload the page. The editor loads Monaco from
-a CDN, so its initial load requires internet access; the guide is readable
-without it.
+restart the script to rebuild, then reload the page. The site is self-contained: the editor (Monaco, added as a
+development dependency and installed by the script with `bun install`), its
+worker, and the fonts are bundled into `dist/`, so nothing is loaded from a CDN
+and the deployed site works offline once served.
 
 The book is built from Markdown using Bun's built-in parser and rendered inside
 the page, sharing its themes, Monaco editor, and browser compiler. Examples can be
