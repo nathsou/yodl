@@ -6,7 +6,7 @@ PORT="${PORT:-8080}"
 
 if command -v lsof >/dev/null 2>&1 && lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
   echo "Port $PORT is already in use."
-  echo "If it is an existing Yodl playground server, open http://localhost:${PORT}/playground.html."
+  echo "If it is an existing Yodl site server, open http://localhost:${PORT}/playground.html."
   echo "Otherwise, choose another port, for example: PORT=8081 bash scripts/serve-playground.sh"
   exit 1
 fi
@@ -14,7 +14,8 @@ fi
 moon build src/lib/driver --target=js --release
 moon build src/lib/simulator --target=js --release
 bun src/docs/build.ts
-echo "Documentation: http://localhost:${PORT}/book/"
-echo "Playground: http://localhost:${PORT}/playground.html"
+echo "Tour: http://localhost:${PORT}/playground.html"
+echo "Playground: http://localhost:${PORT}/playground.html?mode=examples"
+echo "Docs: http://localhost:${PORT}/playground.html?mode=docs"
 echo "Restart after edits to rebuild. Press Ctrl+C to stop."
 python3 -m http.server "$PORT" --directory dist

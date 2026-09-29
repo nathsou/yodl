@@ -9,12 +9,16 @@ bun run build:site
 bun run dev:site
 ```
 
-The preview serves `/book/` and `/playground.html`. Restart after source changes.
+The preview serves `/playground.html`. Restart after source changes.
 The result in `dist/` is one static site and one GitHub Pages artifact.
-Documentation and the playground are pages within that site, with shared
-Docs / Tour / Playground navigation; they are not deployed separately.
-Bun is needed only at build time. Reading and copying text requires no compiler;
-Monaco loads from its pinned CDN only when an editor is activated.
+The guide, the tour, and the playground are modes of the single `playground.html`
+page (`?mode=docs&chapter=<slug>`, `?lesson=<id>`, `?mode=examples`); they are not
+deployed separately. The build writes every chapter to `book/chapters.json`, and
+the page renders it on demand. The old `book/<slug>.html` URLs remain as small
+pages that forward (keeping the `#anchor`) and hold the chapter text for readers
+without JavaScript. Bun is needed only at build time. Reading and copying text
+requires no compiler; Monaco loads from its pinned CDN only when the Tour or
+Playground editor is first shown.
 
 ## Examples
 
@@ -73,17 +77,22 @@ MoonBit, example, and tour validation. It requires firtool and may download an
 external Verilog fixture. Neither command updates snapshots.
 
 `src/docs/content.ts` is the shared extractor used by the generator and validator.
-`src/docs/build.ts` builds chapter pages, a search index, and the example manifest.
-`src/docs/docs.ts` enhances static code blocks with lazy editors. Browser compiler
-requests use a shared queue with cancellation and a 15-second worker timeout.
+`src/docs/build.ts` writes the site: the page, `book/chapters.json`, a search index,
+the example manifest, and the forwarding chapter pages. `src/main/docs-view.ts`
+renders a chapter and its example blocks: **Compile ▸** compiles the complete
+program (including hidden lines) and shows the result in a drawer beneath the
+code, and **Open in Playground ↗** hands the program over for editing. Browser
+compiler requests use a shared queue with cancellation and a 15-second worker
+timeout.
 
-Drafts are device-local. Each stores its original source/dependency hash; if the
-book changes, the editor offers the current original alongside the saved draft.
-Reset adopts the current original. Shared documentation examples get separate
-drafts. Share URLs carry source and stage, and always use the deployed compiler;
-they do not pin an executable compiler version. Handoffs to the playground also
-carry the example's entry path, dependencies, and chapter link. Existing v1
-playground share links continue to work.
+Playground drafts are device-local and keyed by a hash of the original source, so
+an updated example does not hide behind an old draft. Reset adopts the current
+original. Share URLs carry source and stage, and always use the deployed compiler;
+they do not pin an executable compiler version. Handoffs from the guide to the
+playground also carry the example's entry path, dependencies, and chapter link
+(offered as **Related chapter** in the `···` menu). Existing v1 playground share
+links and `book/<chapter>.html#example=…` links continue to work; the latter open
+in the playground.
 
 The compiler currently cannot lower some assertions, aggregate register resets,
 external modules, and missing memory initialization files to RTLIL. These cases
