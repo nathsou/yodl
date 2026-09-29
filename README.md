@@ -57,6 +57,8 @@ and `src/lib/driver`. TypeScript supplies filesystem/stdio access and client
 adapters. Both hosts use UTF-16 positions and overlay unsaved documents on
 workspace files. Changes invalidate analysis; hosts debounce diagnostics.
 The compiler's existing generic checks run when parameters become concrete.
+Structural record fields have completion and navigation; field rename is
+disabled because structural types do not give them a unique declaration.
 
 Run `bun run test:lsp` for protocol, transport, worker and Monaco adapter checks
 (the browser worker is also tested by `bun run test:docs`).

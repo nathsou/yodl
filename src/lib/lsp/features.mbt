@@ -6,6 +6,8 @@ fn builtin_functions() -> Array[(String, String, Array[String])] {
   [
     ("clog2", "clog2!(value: Nat) -> Nat", ["value: Nat"]),
     ("cdiv", "cdiv!(dividend: Nat, divisor: Nat) -> Nat", ["dividend: Nat", "divisor: Nat"]),
+    ("pow", "pow!(base: Nat, exponent: Nat) -> Nat", ["base: Nat", "exponent: Nat"]),
+    ("csqrt", "csqrt!(value: Nat) -> Nat", ["value: Nat"]),
     ("cat", "cat!(values...) -> uint", ["values..."]),
     ("uint", "uint!(value: sint) -> uint", ["value: sint"]),
     ("sint", "sint!(value: uint) -> sint", ["value: uint"]),
@@ -23,6 +25,7 @@ fn builtin_functions() -> Array[(String, String, Array[String])] {
     ("expect", "expect!(port, value)", ["port", "value"]),
     ("step", "step!(clock: clock, cycles: Nat)", ["clock: clock", "cycles: Nat"]),
     ("settle", "settle!()", []),
+    ("peek", "peek!(port) -> uint", ["port"]),
   ]
 }
 

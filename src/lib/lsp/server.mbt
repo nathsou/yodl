@@ -127,6 +127,7 @@ fn Server::dispatch(self: Self, method: String, params: Json, replies: Array[Jso
   if self.shutdown { raise ProtocolError(code=-32600, message="Server is shutting down") }
   match method {
     "initialized" | "$/cancelRequest" | "$/setTrace" | "workspace/didChangeConfiguration" => Json::null()
+    "workspace/didChangeWorkspaceFolders" => { self.invalidate(); Json::null() }
     "shutdown" => { self.shutdown = true; Json::null() }
     "yodl/setFiles" => { self.set_files(field(params, "files")); Json::null() }
     "yodl/dependencies" => {
@@ -183,6 +184,7 @@ fn Server::dispatch(self: Self, method: String, params: Json, replies: Array[Jso
 fn capabilities() -> Json {
   Json::object({
     "positionEncoding": "utf-16".to_json(),
+    "workspace": Json::object({ "workspaceFolders": Json::object({ "supported": true.to_json(), "changeNotifications": true.to_json() }) }),
     "textDocumentSync": Json::object({ "openClose": true.to_json(), "change": (2).to_json(), "save": true.to_json() }),
     "hoverProvider": true.to_json(), "definitionProvider": true.to_json(), "declarationProvider": true.to_json(),
     "typeDefinitionProvider": true.to_json(), "referencesProvider": true.to_json(), "documentHighlightProvider": true.to_json(),

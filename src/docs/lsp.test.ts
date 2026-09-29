@@ -83,6 +83,43 @@ describe('MoonBit LSP', () => {
         expect(incomplete.request('textDocument/documentSymbol', { textDocument: { uri } })[0].name).toBe('Top');
         expect(incomplete.request('textDocument/codeAction', { textDocument: { uri }, range: errors[0].range, context: { diagnostics: errors } })[0].edit.changes[uri][0].newText).toBe('}');
     });
+    test('closing documents clears imported diagnostics and restores disk content', () => {
+        const lib = 'file:///workspace/Lib.yodl';
+        const c = service('import Lib\nmodule Top() -> () {}', { [lib]: 'module Identity() -> () {}' });
+        c.raw('textDocument/didOpen', { textDocument: { uri: lib, version: 1, text: 'module Identity() -> () {\n let value: u8 = 256\n}' } }, false);
+        expect(c.diagnostics().some((d: any) => d.uri === lib)).toBe(true);
+        c.raw('textDocument/didClose', { textDocument: { uri: lib } }, false);
+        expect(c.diagnostics()).toEqual([]);
+        expect(c.request('yodl/source', { uri: lib })).toBe('module Identity() -> () {}');
+        c.raw('textDocument/didClose', { textDocument: { uri } }, false);
+        expect(c.diagnostics()).toEqual([]);
+    });
+    test('recovery handles malformed input and queries without losing protocol responses', () => {
+        for (const source of ['module', 'module Top(', 'module Top() -> () { let a = )', 'type Point = (x:', '// 😀\rmodule Top() -> () {}', '😀']) {
+            const c = service(source);
+            expect(Array.isArray(c.diagnostics())).toBe(true);
+            expect(Array.isArray(c.request('textDocument/documentSymbol', { textDocument: { uri } }))).toBe(true);
+        }
+    });
+    test('builtin parameter errors link to a valid virtual document', () => {
+        const c = service('module Top() -> () {\n let inst = Reg[T: 8]()\n}');
+        expect(c.diagnostics()[0].relatedInformation[0].location.uri).toBe('yodl-builtin:///builtin.yodl');
+    });
+    test('record completion, alias navigation and conservative field rename', () => {
+        const c = service('type Point = (x: u8, y: u8)\nmodule Top(p: Point) -> (out: u8) {\n let data = (x: 1, y: 2)\n out = p.x\n let copy = data.x\n}');
+        expect(c.query('completion', c.at('x', 3)).items.map((i: any) => i.label)).toEqual(['x', 'y']);
+        expect(c.query('definition', c.at('x', 2))[0].range.start).toEqual(c.at('x'));
+        expect(c.query('typeDefinition', c.at('p.x'))[0].range.start).toEqual(c.at('Point'));
+        expect(c.raw('textDocument/rename', { textDocument: { uri }, position: c.at('x', 2), newName: 'newField' })[0].error.code).toBe(-32602);
+    });
+    test('multiple type errors, named argument completions and dependency reads', () => {
+        const c = service('module Child[N: Nat](input: u8) -> (output: u8) {\n output = input\n}\nmodule Top() -> () {\n let first: u8 = 256\n let second: u8 = 512\n let inst = Child[N: 8](input: 1)\n}');
+        expect(c.diagnostics()).toHaveLength(2);
+        expect(c.query('completion', c.at('input: 1')).items.map((i: any) => i.label)).toContain('input');
+        expect(c.query('completion', c.at('N: 8')).items.map((i: any) => i.label)).toEqual(['N']);
+        expect(Object.keys(c.request('yodl/dependencies', { uri }))).toEqual([uri]);
+        expect(c.raw('textDocument/rename', { textDocument: { uri }, position: c.at('first'), newName: 'name ' })[0].error.code).toBe(-32602);
+    });
     test('semantic tokens, symbols, folds, selections and builtin navigation', () => {
         const c = service('module Top() -> () {\n let r = Reg[Width: 8]()\n}');
         expect(c.query('definition', c.at('Reg'))[0].uri).toBe('yodl-builtin:///builtin.yodl');

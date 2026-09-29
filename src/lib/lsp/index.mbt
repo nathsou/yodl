@@ -140,6 +140,8 @@ fn Server::index(self: Self) -> Workspace {
       for decl in file.decls { workspace.index_decl(decl, file.scope, None, []) }
     }
   }
+  let symbol_count = workspace.symbols.length()
+  for id in 0..<symbol_count { workspace.struct_members(id) }
   for uri in uris {
     if workspace.files.get(uri) is Some(file) {
       for i, token in file.tokens {
@@ -182,7 +184,7 @@ fn Workspace::add_symbol(self: Self, name: String, span: Span, scope: Int, conta
   let id = self.symbols.length()
   self.symbols.push({ name, qualified: (namespace + [name]).iter().join("::"), kind, token_type, selection, span, scope, container, child_scope: None, detail, ty, instance, signature, member, read_only, renameable: renameable && span.file != builtin_uri })
   self.scopes[scope].symbols.push(id)
-  self.definitions[position_key(selection.file, selection.start.index)] = id
+  if selection.end.index > selection.start.index { self.definitions[position_key(selection.file, selection.start.index)] = id }
   id
 }
 
@@ -222,7 +224,7 @@ fn Workspace::index_decl(self: Self, decl: Decl, scope: Int, container: Int?, na
         let _ = self.add_symbol(param.name, param.span, child, Some(id), [], 26, 3, "\{param.name}: \{param.sort}", read_only=true)
       }
       if alias.ty is @parse.Type::Struct(fields) {
-        for name, ty in fields { let _ = self.add_symbol(name, alias.span, child, Some(id), [], 8, 5, "\{name}: \{ty}", ty=Some(ty), member=true) }
+        for name, ty in fields { let _ = self.add_symbol(name, alias.span, child, Some(id), [], 8, 5, "\{name}: \{ty}", ty=Some(ty), member=true, renameable=false) }
       }
     }
     Test(td) => {
@@ -232,6 +234,21 @@ fn Workspace::index_decl(self: Self, decl: Decl, scope: Int, container: Int?, na
       if td.target is Some(target) { self.index_expr(target, child, Some(id)) }
       for stmt in td.body { self.index_stmt(stmt, child, Some(id)) }
     }
+  }
+}
+
+/// Structural record fields have no single nominal declaration to rename.
+/// Index their types for completion/navigation, while keeping rename conservative.
+fn Workspace::struct_members(self: Self, id: Int) -> Unit {
+  let symbol = self.symbols[id]
+  if symbol.child_scope is Some(_) { return }
+  guard symbol.ty is Some(@parse.Type::Struct(fields)) else { return }
+  // Member scopes must not shadow lexical names inside record initialisers.
+  let scope = self.add_scope(@parse.Span::at("", "", 0, 0), None)
+  self.symbols[id].child_scope = Some(scope)
+  for name, ty in fields {
+    let child = self.add_symbol(name, symbol.span, scope, Some(id), [], 8, 5, "\{name}: \{ty}", ty=Some(ty), member=true, renameable=false)
+    self.struct_members(child)
   }
 }
 

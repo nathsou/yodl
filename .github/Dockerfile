@@ -6,7 +6,7 @@ ENV YODL_REVISION=${YODL_REVISION}
 # Copy files
 COPY book/ ./book
 COPY src/ ./src
-COPY moon.mod.json ./
+COPY moon.mod.json LICENSE ./
 COPY package.json package-lock.json ./
 COPY examples/ ./examples
 COPY tour/ ./tour
@@ -43,7 +43,7 @@ RUN bash scripts/test.sh
 
 # Build the static documentation and playground.
 RUN bun test src/docs
+RUN bun src/docs/build.ts
 RUN cd extensions/yodl-vscode-syntax && bun install --frozen-lockfile && bun run package
 RUN cp extensions/yodl-vscode-syntax/*.vsix dist/
-RUN bun src/docs/build.ts
 RUN mv dist artifacts

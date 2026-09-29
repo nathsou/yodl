@@ -13,10 +13,19 @@ fn distance(a: String, b: String) -> Int {
   previous[b.length()]
 }
 
+fn diagnostic_span(span: Span) -> Span {
+  if span.file == "builtin.yodl" { { ..span, file: builtin_uri } } else { span }
+}
+
 fn Server::enriched_diagnostics(self: Self, uri: String) -> Array[@parse.Diagnostic] {
   let workspace = self.index()
   self.analyze(uri).diagnostics.map(fn(diagnostic) {
-    let diagnostic = { ..diagnostic, related: diagnostic.related.copy(), notes: diagnostic.notes.copy(), fixes: diagnostic.fixes.copy() }
+    let diagnostic = {
+      ..diagnostic, span: diagnostic.span.map(diagnostic_span),
+      related: diagnostic.related.map(label => { ..label, span: diagnostic_span(label.span) }),
+      notes: diagnostic.notes.copy(),
+      fixes: diagnostic.fixes.map(fix => { ..fix, span: diagnostic_span(fix.span) }),
+    }
     if diagnostic.code != "Y0510" && diagnostic.code != "Y0506" && diagnostic.code != "Y0301" { return diagnostic }
     guard diagnostic.span is Some(span) else { return diagnostic }
     guard workspace.files.get(span.file) is Some(file) else { return diagnostic }

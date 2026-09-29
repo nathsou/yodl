@@ -563,7 +563,19 @@ function showError(message: string, diagnostics: CompilerDiagnostic[] = []) {
 function showLiveDiagnostics(diagnostics: CompilerDiagnostic[]) {
     const first = diagnostics.find(d => d.range && (d.uri === entryPath() || importedModels.has(d.uri!)));
     element('problems').hidden = diagnostics.length === 0;
-    element('error-message').textContent = diagnostics.map(d => `${d.uri ? `${baseName(d.uri)}:${(d.range?.start.line ?? 0) + 1}: ` : ''}${d.message}`).join('\n');
+    element('error-message').replaceChildren(...diagnostics.map(d => {
+        const row = document.createElement('button');
+        row.type = 'button'; row.className = 'diagnostic';
+        row.textContent = `${d.uri ? `${baseName(d.uri)}:${(d.range?.start.line ?? 0) + 1}:${(d.range?.start.character ?? 0) + 1}: ` : ''}${d.message}${d.code ? ` [${d.code}]` : ''}${d.notes?.length ? `\n${d.notes.join('\n')}` : ''}`;
+        const range = diagnosticLocation(d, d.uri ?? entryPath());
+        row.disabled = !range || (d.uri !== entryPath() && !importedModels.has(d.uri!));
+        row.onclick = () => {
+            if (!range) return;
+            setMobileView('source'); openSource(d.uri ?? entryPath());
+            editors!.input.setSelection(range); editors!.input.revealRangeInCenter(range); editors!.input.focus();
+        };
+        return row;
+    }));
     errorPath = first?.uri ?? entryPath();
     errorRange = first ? diagnosticLocation(first, errorPath) : null;
     button('jump-error').hidden = errorRange === null;

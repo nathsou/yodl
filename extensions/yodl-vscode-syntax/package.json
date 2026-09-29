@@ -46,8 +46,7 @@
     "license": "Apache-2.0",
     "scripts": {
         "build": "bun ../../scripts/build-extension.ts",
-        "vscode:prepublish": "bun run build",
-        "package": "bun run build && vsce package --no-dependencies"
+        "package": "bun run build && bun node_modules/@vscode/vsce/vsce package --no-dependencies"
     },
     "dependencies": {
         "vscode-languageclient": "9.0.1"

@@ -1726,7 +1726,9 @@ fn TypeChecker::resolve_port(self: Self, port: @parse.Port, type_params~: Set[St
     }
 }
 
-pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
+/// Editor recovery collects independent statement errors. Callers must reject
+/// diagnostics before passing the returned, potentially partial tree to lowering.
+pub fn TypeChecker::check_decl(self: Self, decl: Decl, diagnostics~: Array[@parse.Diagnostic]? = None) -> Decl raise {
     match decl {
         Module({ path, params, attributes, ports, body, span }) => {
             let type_params = Set::from_iter(params.iter().filter_map(param => if param.sort == TypeSort { Some(param.name) } else { None }))
@@ -1741,7 +1743,13 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
             }
 
             for stmt in body {
-                self.check_stmt(stmt, env)
+                if diagnostics is Some(diagnostics) {
+                    try self.check_stmt(stmt, env) catch {
+                        error => diagnostics.push(diagnostic(error).unwrap_or(@parse.Diagnostic::new("Y0000", error.to_string())))
+                    }
+                } else {
+                    self.check_stmt(stmt, env)
+                }
             }
 
             self.modules[path] = mod.signature()

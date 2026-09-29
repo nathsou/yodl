@@ -46,7 +46,7 @@ pub fn analyze(path: String, ext: @utils.Externals) -> Analysis {
   let checker = @elaborate.TypeChecker::new()
   let typed_decls = []
   for decl in mono_decls {
-    try checker.check_decl(decl) catch {
+    try checker.check_decl(decl, diagnostics=Some(diagnostics)) catch {
       error => diagnostics.push(diagnostic(error))
     } noraise {
       decl => typed_decls.push(decl)

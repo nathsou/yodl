@@ -26,7 +26,7 @@
         "benchmark:sim": "moon build src/lib/driver --target=js --release && bun benchmarks/simulator.ts",
         "build:lsp": "moon build src/lib/lsp --target=js --release && bun scripts/build-lsp.ts",
         "build:extension": "bun scripts/build-extension.ts",
-        "test:lsp": "bun run build:lsp && bun test src/docs/lsp*.test.ts"
+        "test:lsp": "bun run build:lsp && bun test src/docs/lsp*.test.ts src/docs/bundle.test.ts"
     },
     "repository": {
         "type": "git",

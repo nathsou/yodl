@@ -74,3 +74,11 @@ test "source positions use UTF16 with CRLF and empty EOF spans" {
   assert_eq(eof.start.column, 8)
   assert_true(@parse.Diagnostic::new("TEST", "expected a name", span=Some(eof)).render().contains("^"))
 }
+
+test "editor analysis reports independent statement errors and retains valid types" {
+  let result = analyze_source("module Top() -> () {\n let first: u8 = 256\n let second: u8 = 512\n let valid: u8 = 1\n}")
+  assert_eq(result.diagnostics.length(), 2)
+  assert_eq(result.diagnostics[0].span.unwrap().text().to_owned(), "256")
+  assert_eq(result.diagnostics[1].span.unwrap().text().to_owned(), "512")
+  assert_true(!result.typed_decls.is_empty())
+}
