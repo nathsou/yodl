@@ -4,6 +4,7 @@ pub struct Parser {
   matching_brackets: Map[Int, Int]
   file: String
   file_content: StringView
+  source_end: SourceLoc
   mut recovering: Bool
   mut diagnostics: Array[Diagnostic]
 }
@@ -101,8 +102,8 @@ pub impl Spanned for ParserError with span(self) -> Span {
   }
 }
 
-pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: StringView) -> Parser {
-  { tokens, index: 0, matching_brackets: Map([]), file, file_content, recovering: false, diagnostics: [] }
+pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: StringView, end~: Int? = None) -> Parser {
+  { tokens, index: 0, matching_brackets: Map([]), file, file_content, source_end: SourceLoc::at(file_content, end.unwrap_or(file_content.length())), recovering: false, diagnostics: [] }
 }
 
 fn Parser::peek(self: Parser) -> TokenType {
@@ -116,7 +117,7 @@ fn Parser::peek(self: Parser) -> TokenType {
 fn Parser::current_span(self: Self) -> Span {
   match self.tokens.get(self.index) {
     Some(token) => token.span
-    None => Span::at(self.file, self.file_content, self.file_content.length(), self.file_content.length())
+    None => Span::{ file: self.file, file_content: self.file_content, start: self.source_end, end: self.source_end }
   }
 }
 
@@ -222,7 +223,7 @@ fn Parser::parse_identifier(self: Parser) -> String raise {
 }
 
 pub fn Parser::span(self: Parser, start_idx: Int) -> Span {
-  let fallback = SourceLoc::at(self.file_content, self.file_content.length())
+  let fallback = self.source_end
 
   let start = match self.tokens.get(start_idx) {
     Some(token) => token.span.start
@@ -363,7 +364,7 @@ fn Parser::parse_indexing_expr(self: Parser) -> Expr raise {
         // instantiated with parameters; anything else is a parse error.
         match lhs {
           Identifier(path~, ..) => {
-            lhs = self.parse_instance_expr(path~)
+            lhs = self.parse_instance_expr(path~, start_idx~)
           }
           _ => raise ExpectedExpr(received=self.peek(), span=self.span(start_idx))
         }
@@ -482,7 +483,7 @@ fn Parser::parse_primary_expr(self: Parser) -> Expr raise {
       // which can disambiguate between indexing `arr[i]` and parameter
       // application `Reg[T](...)` by peeking the token after the matching `]`.
       if self.matches(Lparen) {
-        self.parse_instance_expr(path~)
+        self.parse_instance_expr(path~, start_idx~)
       } else {
         Identifier(path~, span=self.span(start_idx), ty={ val: None })
       }
@@ -534,7 +535,7 @@ fn Parser::parse_spread_expr(self: Parser) -> Expr raise {
 }
 
 fn Parser::parse_function_call_expr(self: Parser, name: String) -> Expr raise {
-  let start_idx = self.index
+  let start_idx = self.index - 1
   let args: Array[Expr] = []
   self.expect(Lparen, start_idx)
 
@@ -725,8 +726,7 @@ fn Parser::parse_instance_parameter(self: Parser) -> Param {
   })
 }
 
-fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
-  let start_idx = self.index
+fn Parser::parse_instance_expr(self: Parser, path~: Path, start_idx~: Int) -> Expr raise {
   let params: Array[(String?, Param)] = self.parse_module_parameters(() => {
     match (self.lookahead(0), self.lookahead(1)) {
       (Some(Identifier(name)), Some(Colon)) => {

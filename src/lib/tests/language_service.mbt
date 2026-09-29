@@ -82,3 +82,14 @@ test "editor analysis reports independent statement errors and retains valid typ
   assert_eq(result.diagnostics[1].span.unwrap().text().to_owned(), "512")
   assert_true(!result.typed_decls.is_empty())
 }
+
+test "deferred parameters retain complete source and their own EOF boundary" {
+  let source = "module Child[N: Nat]() -> () {}\nmodule Top() -> () {\n let inst = Child[N: 1 +]()\n}"
+  let result = analyze_source(source)
+  let span = result.diagnostics[0].span.unwrap()
+  assert_eq(span.file_content.length(), source.length())
+  assert_eq(span.start.index, source.rev_find("]").unwrap())
+  assert_true(result.diagnostics[0].render().contains("let inst = Child[N: 1 +]()"))
+  let invalid_type = analyze_source("module Top() -> () {\n let inst = Reg[T: 8]()\n}")
+  assert_true(invalid_type.diagnostics[0].render().contains("let inst = Reg[T: 8]()"))
+}

@@ -58,7 +58,7 @@ pub fn Span::at(file: String, source: StringView, start: Int, end: Int) -> Span 
 fn render_label(out: StringBuilder, span: Span, message: String) -> Unit {
   out.write_string("  --> \{span.file}:\{span.start.line}:\{span.start.column}-\{span.end.line}:\{span.end.column}\n")
   let source = span.file_content
-  let mut start = span.start.index
+  let mut start = @utils.clamp(span.start.index, min=0, max=source.length())
   while start > 0 && source.unsafe_get(start - 1) != '\n' && source.unsafe_get(start - 1) != '\r' { start -= 1 }
   let mut end = start
   while end < source.length() && source.unsafe_get(end) != '\n' && source.unsafe_get(end) != '\r' { end += 1 }

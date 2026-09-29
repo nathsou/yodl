@@ -101,9 +101,12 @@ describe('MoonBit LSP', () => {
             expect(Array.isArray(c.request('textDocument/documentSymbol', { textDocument: { uri } }))).toBe(true);
         }
     });
-    test('builtin parameter errors link to a valid virtual document', () => {
+    test('invalid builtin parameters retain full source when rendered', () => {
         const c = service('module Top() -> () {\n let inst = Reg[T: 8]()\n}');
-        expect(c.diagnostics()[0].relatedInformation[0].location.uri).toBe('yodl-builtin:///builtin.yodl');
+        const diagnostic = c.diagnostics()[0];
+        expect(diagnostic.uri).toBe(uri);
+        expect(diagnostic.range.start).toEqual(c.at('8'));
+        expect(diagnostic.rendered).toContain('let inst = Reg[T: 8]()');
     });
     test('record completion, alias navigation and conservative field rename', () => {
         const c = service('type Point = (x: u8, y: u8)\nmodule Top(p: Point) -> (out: u8) {\n let data = (x: 1, y: 2)\n out = p.x\n let copy = data.x\n}');

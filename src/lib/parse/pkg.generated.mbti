@@ -437,10 +437,11 @@ pub struct Parser {
   matching_brackets : Map[Int, Int]
   file : String
   file_content : StringView
+  source_end : SourceLoc
   mut recovering : Bool
   mut diagnostics : Array[Diagnostic]
 }
-pub fn Parser::new(Array[Token], file~ : String, file_content~ : StringView) -> Self
+pub fn Parser::new(Array[Token], file~ : String, file_content~ : StringView, end? : Int?) -> Self
 pub fn Parser::parse(Self) -> Array[Decl] raise
 pub fn Parser::parse_recovering(Self, Array[Diagnostic]) -> Array[Decl]
 pub fn Parser::span(Self, Int) -> Span

@@ -1172,7 +1172,7 @@ test "invalid size-function diagnostics preserve the inner call span" {
     #|  let child = Child[N: 1 + cdiv!(8, 0)]()
     #|}
   let diagnostic = compile_error(source, cmd_str="write_mono")
-  assert_true(diagnostic.contains("fixture.yodl:3:33-3:39"))
+  assert_true(diagnostic.contains("fixture.yodl:3:28-3:39"))
   assert_false(diagnostic.contains("fixture.yodl:3:24-3:39"))
 }
 
