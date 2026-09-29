@@ -15,12 +15,15 @@
     <div id="notice" class="notice" role="status" hidden></div>
     <div class="stage">
         <div id="editor-view" class="main-layout" data-section="tour">
+            <div class="context-bar">
+                <button type="button" id="context-toggle" class="context-toggle" aria-expanded="false" aria-controls="sidebar"><span id="context-label" class="context-label">Lesson 01 of 12</span><span class="context-chevron" aria-hidden="true">▾</span></button>
+                <nav class="mobile-tabs segmented" aria-label="Editor view"><button type="button" id="source-tab" aria-pressed="true">Source</button><button type="button" id="output-tab" aria-pressed="false">Output</button></nav>
+            </div>
             <aside id="sidebar" class="sidebar">
                 <section id="guide" class="guide" aria-label="Lesson guide">
                     <div class="guide-top">
                         <div class="sidebar-top-row">
                             <button type="button" id="lesson-list-button" class="lesson-list-button" aria-haspopup="dialog" aria-expanded="false"><span id="lesson-position">Tour · Lesson 01 of 12</span><span>All lessons ▾</span></button>
-                            <button type="button" id="guide-collapse" class="collapse-button" aria-expanded="true" aria-controls="guide-body">Hide ▴</button>
                         </div>
                         <div id="lesson-progress" class="progress" role="group" aria-label="Lessons"></div>
                     </div>
@@ -41,7 +44,7 @@
                     </div>
                 </section>
                 <section id="library" class="library" aria-label="Examples and drafts" hidden>
-                    <div class="library-top sidebar-top-row"><button type="button" id="new-file" class="new-file"><span>New file</span><kbd id="new-shortcut">⌘N</kbd></button><button type="button" id="library-collapse" class="collapse-button" aria-expanded="true" aria-controls="library-body">Hide ▴</button></div>
+                    <div class="library-top sidebar-top-row"><button type="button" id="new-file" class="new-file"><span>New file</span><kbd id="new-shortcut">⌘N</kbd></button></div>
                     <div id="library-body" class="library-body">
                         <div><p class="section-label">Examples</p><div id="example-list" class="entry-list"></div></div>
                         <div><p class="section-label">Your drafts</p><div id="draft-list" class="entry-list"></div><p id="drafts-empty" class="drafts-empty">Edits to examples and shared circuits appear here.</p></div>
@@ -49,11 +52,10 @@
                 </section>
             </aside>
             <div class="editor-workspace">
-                <nav class="mobile-tabs" aria-label="Editor view"><button id="source-tab" aria-pressed="true">Source</button><button id="output-tab" aria-pressed="false">Output</button></nav>
                 <div id="editors" class="editors" data-view="source" data-imports="false">
                     <section id="source-pane" class="editor-pane source-pane" aria-label="Source">
                         <div class="panel-header">
-                            <div class="file-title"><span id="input-filename" class="filename">01-gates.yodl</span><span id="draft-badge" class="edited-dot" title="Edited" role="img" aria-label="Edited" hidden></span><span id="source-kind" class="subtle-label" hidden></span></div>
+                            <button type="button" id="sidebar-toggle" class="icon-button sidebar-toggle" aria-controls="sidebar" aria-expanded="true" title="Hide sidebar"><span class="panel-icon" aria-hidden="true"></span></button><div class="file-title"><span id="input-filename" class="filename">01-gates.yodl</span><span id="draft-badge" class="edited-dot" title="Edited" role="img" aria-label="Edited" hidden></span><span id="source-kind" class="subtle-label" hidden></span></div>
                             <div class="panel-actions">
                                 <div class="menu-anchor">
                                     <button type="button" id="menu-button" class="icon-button" aria-haspopup="menu" aria-expanded="false" aria-label="More actions" disabled>···</button>
@@ -75,7 +77,7 @@
                     <div id="resize-handle" role="separator" tabindex="0" aria-label="Resize source and output panels" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50"></div>
                     <section id="output-pane" class="editor-pane output-pane" data-view="output" aria-label="Compiler output">
                         <div class="panel-header output-header">
-                            <div id="stage-tabs" class="stage-tabs" role="group" aria-label="Compiler output stage"></div>
+                            <div id="stage-tabs" class="stage-tabs" role="group" aria-label="Compiler output stage"></div><span class="stage-picker"><select id="stage-select" aria-label="Compiler output stage"></select></span>
                             <div class="segmented" id="output-view-switch" role="group" aria-label="Output view"><button type="button" id="view-output" aria-pressed="true">Output</button><button type="button" id="view-simulate" aria-pressed="false" disabled>Simulate</button></div>
                         </div>
                         <div class="output-view">
@@ -124,7 +126,7 @@
         <div id="docs-view" class="docs-view" hidden>
             <aside class="docs-nav">
                 <details id="chapter-menu" class="chapter-menu" open>
-                    <summary>Chapters</summary>
+                    <summary><span class="section-label">Chapter</span> <span id="docs-current"></span></summary>
                     <div class="docs-nav-inner">
                         <p class="section-label">The language</p>
                         <nav id="docs-chapters" aria-label="Chapters"></nav>
