@@ -43,14 +43,29 @@ select { padding: 3px 6px; }
 .notice button { margin-left: 12px; padding: 1px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); }
 .stage { position: relative; flex: 1; min-height: 0; display: flex; }
 
-/* Editor layout: sidebar | source | output */
-.main-layout { flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: 340px minmax(0, 1fr); }
-.sidebar { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--line); background: var(--bg); }
+/* Editor layout: sidebar | source | output. The sidebar can be hidden; on
+   narrow screens it becomes a sheet opened from the context bar. */
+.main-layout { position: relative; flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: var(--sidebar-width, 340px) minmax(0, 1fr); grid-template-areas: "side work"; }
+.main-layout[data-sidebar="hidden"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "work"; }
+.main-layout[data-sidebar="hidden"] .sidebar { display: none; }
+.sidebar { grid-area: side; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--line); background: var(--bg); }
+.editor-workspace { grid-area: work; }
 .sidebar-top-row { display: flex; align-items: center; gap: 12px; }
-.collapse-button { display: none; flex-shrink: 0; color: var(--mute); font: 12px var(--font-mono); }
+.context-bar { display: none; grid-area: bar; align-items: center; gap: 10px; height: 44px; padding: 0 12px 0 8px; border-bottom: 1px solid var(--line); background: var(--bg); }
+.context-toggle { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 34px; padding: 0 8px; border-radius: 7px; font-size: 13px; }
+.context-toggle:hover { background: var(--sunk); }
+.context-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.context-label small { font: 11px var(--font-mono); color: var(--mute); }
+.context-chevron { flex-shrink: 0; color: var(--mute); font-size: 11px; transition: transform .15s; }
+.context-toggle[aria-expanded="true"] .context-chevron { transform: rotate(180deg); }
+.mobile-tabs { display: none; margin: 0; }
+.sidebar-toggle { display: flex; align-items: center; margin-left: -8px; padding: 6px 7px; }
+.panel-icon { position: relative; width: 14px; height: 12px; border: 1.5px solid currentColor; border-radius: 3px; }
+.panel-icon::before { content: ''; position: absolute; top: 0; bottom: 0; left: 3.5px; border-left: 1.5px solid currentColor; }
+.sidebar-toggle[aria-expanded="true"] .panel-icon::after { content: ''; position: absolute; top: 0; bottom: 0; left: 0; width: 3.5px; background: currentColor; opacity: .35; }
 .guide, .library { display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .guide-top { padding: 18px 24px 0; }
-.lesson-list-button { display: flex; flex: 1; justify-content: space-between; align-items: center; color: var(--mute); font: 12px var(--font-mono); }
+.lesson-list-button { display: flex; flex: 1; justify-content: space-between; align-items: center; gap: 12px; color: var(--mute); font: 12px var(--font-mono); white-space: nowrap; }
 .lesson-list-button:hover { color: var(--ink); }
 .progress { display: grid; grid-template-columns: repeat(var(--lessons, 12), 1fr); gap: 3px; margin-top: 2px; }
 .progress button { height: 20px; padding: 8px 0; background: var(--line); background-clip: content-box; border-radius: 2px; }
@@ -110,14 +125,19 @@ select { padding: 3px 6px; }
 /* Source and output panes. The grid lets the status strip sit under the source
    column while the output column spans the full height. */
 .editor-workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.editors { flex: 1; min-height: 0; display: grid; grid-template-columns: var(--source-width, 50%) 5px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; background: var(--panel); }
+/* --split-axis tells the resizer which way the panes are split. */
+.editors { --split-axis: x; flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, var(--split-a, 1fr)) 5px minmax(0, var(--split-b, 1fr)); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "source handle output" "status handle output"; background: var(--panel); }
 .editor-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); }
-.source-pane { grid-column: 1; grid-row: 1; }
-#resize-handle { grid-column: 2; grid-row: 1 / 3; position: relative; cursor: col-resize; touch-action: none; }
+.source-pane { grid-area: source; }
+.output-pane { grid-area: output; }
+/* Size containers for the rows around the editors (never around Monaco itself,
+   whose absolutely positioned layers would then widen the page). */
+.panel-header, .stage-description { container-type: inline-size; }
+.simulation-panel { container: simulation / inline-size; }
+#resize-handle { grid-area: handle; position: relative; cursor: col-resize; touch-action: none; }
 #resize-handle::after { content: ''; position: absolute; left: 2px; top: 0; bottom: 0; width: 1px; background: var(--line); }
 #resize-handle:hover::after, #resize-handle:focus-visible::after, #resize-handle.dragging::after { left: 1px; width: 3px; background: var(--acc); }
-.output-pane { grid-column: 3; grid-row: 1 / 3; }
-.status-bar { grid-column: 1; grid-row: 2; display: flex; align-items: center; gap: 16px; height: 30px; padding: 0 16px; border-top: 1px solid var(--line); background: var(--panel); color: var(--mute); font: 11px var(--font-mono); }
+.status-bar { grid-area: status; display: flex; align-items: center; gap: 16px; height: 30px; padding: 0 16px; border-top: 1px solid var(--line); background: var(--panel); color: var(--mute); font: 11px var(--font-mono); }
 #compile-status { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #compile-status[data-state="success"], #compile-status[data-state="loading"] { color: var(--acc); }
 #compile-status[data-state="error"] { color: var(--error); }
@@ -146,8 +166,13 @@ select { padding: 3px 6px; }
 .stage-tab:hover { color: var(--ink); }
 .stage-tab[aria-pressed="true"] { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--acc); }
 .stage-tab .suggested { width: 5px; height: 5px; border-radius: 50%; background: var(--acc); }
+.stage-picker { display: none; position: relative; align-items: center; min-width: 0; }
+.stage-picker::after { content: '▾'; position: absolute; right: 8px; font-size: 11px; color: var(--mute); pointer-events: none; }
+.stage-picker select { appearance: none; height: 30px; max-width: 100%; padding: 0 24px 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); font-size: 13px; font-weight: 600; cursor: pointer; }
+.stage-picker select:hover { background: var(--sunk); }
 .output-view { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.stage-description { display: flex; justify-content: space-between; gap: 16px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg); font-size: 12px; color: var(--mute); }
+.stage-description { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--bg); font-size: 12px; color: var(--mute); }
+#stage-description { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stage-actions { display: flex; flex-shrink: 0; gap: 12px; }
 .stage-actions button:hover:not(:disabled) { color: var(--ink); }
 .problems { max-height: 45%; overflow: auto; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--error-bg); }
@@ -159,7 +184,7 @@ select { padding: 3px 6px; }
 
 /* Simulation */
 .simulation-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.simulation-controls { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
+.simulation-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line); }
 .simulation-cycle { margin-left: auto; font: 12px var(--font-mono); color: var(--mute); white-space: nowrap; }
 .simulation-options { padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--bg); font-size: 12px; color: var(--mute); }
 .simulation-note { margin: 0 0 10px; }
@@ -315,66 +340,106 @@ dialog button:not(.primary):not(.search-close) { padding: 5px 12px; border: 1px 
 .article-footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 10px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 12px; color: var(--mute); }
 .article-footer a { color: var(--mute); }
 
-/* Responsive: the lesson column narrows, then stacks above the editors, then
-   source and output become tabs. */
+/* Panes adapt to their own width, whatever the viewport: stage tabs become a
+   picker, and the simulator's inputs and outputs stack. */
+/* Stage tabs become a picker when they do not fit (measured in playground.ts).
+   The tabs stay laid out, invisibly, so their natural width can be measured. */
+.output-header[data-compact] { position: relative; }
+.output-header[data-compact] .stage-tabs { position: absolute; left: 0; visibility: hidden; pointer-events: none; }
+.output-header[data-compact] .stage-picker { display: flex; }
+@container simulation (max-width: 520px) {
+    .simulation-io { grid-template-columns: 1fr; }
+    .simulation-io > div:first-child { border-right: 0; border-bottom: 1px solid var(--line); }
+}
+@container simulation (max-width: 400px) {
+    .simulation-controls, .simulation-io > div, .simulation-trace, .simulation-state { padding-left: 12px; padding-right: 12px; }
+    .simulation-cycle { flex-basis: 100%; order: 9; margin-left: 0; }
+}
+@container (max-width: 400px) {
+    .panel-actions kbd, .stage-actions button:last-child { display: none; }
+}
+
+/* Viewport layouts:
+   ≥ 1280  sidebar 340 · source | output side by side
+   1200    sidebar 300
+   < 1200  source above output (the lesson keeps its column)
+   < 820   the sidebar is a sheet opened from the context bar
+   < 640   source and output are tabs in the context bar */
+@media (max-width: 1279px) {
+    .main-layout { --sidebar-width: 300px; }
+    .guide-top { padding: 16px 20px 0; }
+    .guide-body { padding: 20px 20px 22px; }
+    .lesson-navigation button { padding: 12px 20px; }
+    .guide h1 { font-size: 27px; }
+    .lesson-prefix { display: none; }
+}
 @media (max-width: 1240px) {
     .docs-view { grid-template-columns: 240px minmax(0, 1fr); }
     .docs-toc { display: none; }
     .docs-main { padding: 40px 40px 56px; }
 }
-@media (max-width: 1100px) {
-    .main-layout { grid-template-columns: 300px minmax(0, 1fr); }
-    .guide-top { padding: 16px 18px 0; }
-    .guide-body { padding: 20px 18px 20px; }
-    .lesson-navigation button { padding: 12px 18px; }
+@media (max-width: 1199px) and (min-width: 640px) {
+    .editors { --split-axis: y; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, var(--split-a, 1fr)) auto 5px minmax(0, var(--split-b, 1fr)); grid-template-areas: "source" "status" "handle" "output"; }
+    #resize-handle { cursor: row-resize; }
+    #resize-handle::after { left: 0; right: 0; top: 2px; bottom: auto; width: auto; height: 1px; }
+    #resize-handle:hover::after, #resize-handle:focus-visible::after, #resize-handle.dragging::after { left: 0; top: 1px; width: auto; height: 3px; }
+}
+@media (max-width: 1199px) {
     .status-bar #save-status { display: none; }
 }
-@media (max-width: 820px) {
-    .main-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-    .sidebar { max-height: 45dvh; border-right: 0; border-bottom: 1px solid var(--line); }
-    .guide-top { padding: 10px 16px 0; }
-    .collapse-button { display: block; }
-    .sidebar[data-collapsed] .guide-body, .sidebar[data-collapsed] .lesson-navigation, .sidebar[data-collapsed] .library-body { display: none; }
-    .sidebar[data-collapsed] .guide-top { padding-bottom: 8px; }
-    .guide-body { max-width: 680px; margin: 0 auto; width: 100%; }
-    .guide h1 { font-size: 24px; }
-    .library { padding: 10px 16px; gap: 12px; }
+@media (max-width: 819px) {
+    .main-layout, .main-layout[data-sidebar="hidden"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "bar" "work"; }
+    .context-bar { display: flex; }
+    .sidebar-toggle { display: none; }
+    .panel-header { padding-left: 12px; }
+    .sidebar, .main-layout[data-sidebar="hidden"] .sidebar { display: flex; position: absolute; z-index: 6; top: 44px; left: 0; right: 0; bottom: 0; border-right: 0; box-shadow: var(--shadow-overlay); visibility: hidden; opacity: 0; transform: translateY(-8px); transition: opacity .16s, transform .16s, visibility 0s .16s; }
+    .main-layout[data-sheet="open"] .sidebar { visibility: visible; opacity: 1; transform: none; transition: opacity .16s, transform .16s; }
+    .guide-top { padding: 14px 20px 0; }
+    .guide-body, .library-body { width: 100%; max-width: 680px; margin: 0 auto; }
+    .guide h1 { font-size: 26px; }
+    .library { padding: 14px 16px; }
     .docs-view { display: block; overflow: auto; }
     .docs-nav { overflow: visible; border-right: 0; border-bottom: 1px solid var(--line); }
-    .chapter-menu > summary { display: block; padding: 12px 16px; cursor: pointer; font-size: 12px; color: var(--mute); }
-    .chapter-menu > summary::after { content: '⌄'; float: right; }
-    .docs-nav-inner { padding: 6px 12px 16px; }
+    .chapter-menu > summary { display: block; padding: 12px 16px; cursor: pointer; font-size: 14px; list-style: none; }
+    .chapter-menu > summary::-webkit-details-marker { display: none; }
+    .chapter-menu > summary .section-label { display: inline; margin: 0 6px 0 0; }
+    .chapter-menu > summary::after { content: '▾'; float: right; }
+    .chapter-menu[open] > summary::after { content: '▴'; }
+    .docs-nav-inner { padding: 0 12px 14px; }
     #docs-chapters { display: grid; grid-template-columns: 1fr 1fr; }
     .docs-nav-footer { display: none; }
     .docs-main { overflow: visible; padding: 28px 24px 48px; }
     .docs-content h1 { font-size: 34px; }
     .docs-content h2 { font-size: 22px; }
 }
-@media (max-width: 580px) {
-    .mobile-tabs { display: flex; gap: 4px; padding: 6px 12px; border-bottom: 1px solid var(--line); }
-    .mobile-tabs button { flex: 1; padding: 5px; border-radius: 6px; font-size: 12px; text-align: center; }
-    .mobile-tabs button[aria-pressed="true"] { background: var(--acc-soft); color: var(--acc); }
-    .editors { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 639px) {
+    .mobile-tabs { display: flex; flex-shrink: 0; }
+    .mobile-tabs button { padding: 3px 12px; }
+    .editors { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "pane" "status"; }
     #resize-handle { display: none; }
-    .source-pane, .output-pane { grid-column: 1; }
-    .output-pane { grid-row: 1; }
-    .status-bar { grid-column: 1; }
+    .source-pane, .output-pane { grid-area: pane; }
     .editors[data-view="source"] .output-pane, .editors[data-view="output"] .source-pane { display: none; }
-    .status-bar { gap: 8px; }
+    .status-bar { gap: 8px; padding: 0 12px; }
     #cursor-position { display: none; }
-    .sidebar { max-height: 38dvh; }
+    .guide-top { padding: 12px 16px 0; }
+    .guide-body { padding: 18px 16px 20px; }
+    .guide h1 { font-size: 24px; }
+    .lesson-intro { font-size: 15px; }
+    .lesson-navigation button { padding: 12px 16px; }
     #docs-chapters { display: flex; }
     .docs-main { padding: 24px 18px 40px; }
     .docs-content h1 { font-size: 30px; }
     .docs-content p, .docs-content li { font-size: 15px; }
+    .docs-content pre, .code-lines { font-size: 12.5px; }
+    .code-line .ln { flex-basis: 32px; padding-right: 12px; }
     .example-file { display: none; }
     .example-header { justify-content: flex-end; }
-    .simulation-io { grid-template-columns: 1fr; }
-    .simulation-io > div:first-child { border-right: 0; border-bottom: 1px solid var(--line); }
+    .page-navigation { flex-direction: column; gap: 14px; }
+    .page-navigation a:last-child { text-align: left; }
 }
-@media (min-width: 581px) { .mobile-tabs { display: none; } }
 @media (pointer: coarse) {
-    .primary, .outlined, .quiet, .menu button, .stage-tab { min-height: 40px; }
+    .primary, .outlined, .quiet, .menu button { min-height: 40px; }
+    .progress button { height: 28px; padding: 12px 0; }
     .example-actions button { min-height: 36px; }
 }
 @media print {

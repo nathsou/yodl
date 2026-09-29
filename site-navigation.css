@@ -28,21 +28,43 @@
 .theme-switch button[aria-pressed="true"] { background: var(--sunk); color: var(--ink); font-weight: 600; }
 .site-github { padding: 6px 4px; color: var(--mute); font-size: 13px; text-decoration: none; }
 .site-github:hover { color: var(--ink); }
+.search-label { white-space: nowrap; }
+.popover-theme { display: none; margin-top: 14px; }
+.popover-theme .theme-switch { justify-content: space-between; }
+.popover-theme .theme-switch button { flex: 1; text-align: center; }
+/* The header stays one row at every width: labels shorten, then the theme
+   control moves into the appearance popover, then the tools become icons. */
 @media (max-width: 1240px) {
     .site-tagline { display: none; }
-    .search-trigger { width: 176px; }
+    .search-trigger { width: auto; min-width: 128px; }
+    .search-more { display: none; }
 }
-@media (max-width: 1040px) {
-    .search-label, .tool-label, .site-github { display: none; }
-    .search-trigger { width: auto; }
+@media (max-width: 1100px) {
+    #theme-switch, .site-github { display: none; }
+    .popover-theme { display: block; }
+    #accent-menu { width: 220px; }
+    .tool-label { display: none; }
+    .tool-button { padding: 6px 9px; }
+}
+@media (max-width: 860px) {
+    .site-header { gap: 10px; padding: 0 16px; }
+    .search-label { display: none; }
+    .search-trigger { min-width: 0; }
     .search-trigger::before { content: '⌕'; font-size: 15px; line-height: 1; }
+    .search-trigger kbd { display: none; }
 }
 @media (max-width: 720px) {
-    :root { --header-height: 96px; }
-    .site-header { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 48px 40px; gap: 0 12px; padding: 0 16px; }
-    .site-brand { grid-column: 1; grid-row: 1; }
-    .site-tools { grid-column: 2; grid-row: 1; }
-    .mode-switch { grid-column: 1 / -1; grid-row: 2; justify-self: center; margin-bottom: 6px; }
-    .theme-switch button { padding: 2px 6px; }
-    .search-trigger kbd { display: none; }
+    .site-header { grid-template-columns: auto minmax(0, 1fr) auto; }
+    .mode-switch { justify-self: center; }
+    .mode-switch button { padding: 5px 11px; }
+}
+@media (max-width: 420px) {
+    .site-header { gap: 8px; padding: 0 12px; }
+    .site-wordmark { font-size: 19px; }
+    .mode-switch button { padding: 4px 8px; font-size: 12.5px; }
+    .search-trigger, .tool-button { padding: 6px 8px; }
+}
+@media (max-width: 340px) {
+    .site-brand { display: none; }
+    .site-header { grid-template-columns: minmax(0, 1fr) auto; }
 }
