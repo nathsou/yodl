@@ -3,6 +3,7 @@ import { resolve, relative, extname } from 'node:path';
 import { createHash } from 'node:crypto';
 import { stages } from '../main/compiler-stages.ts';
 import type { Stage } from '../main/compiler-stages.ts';
+import { highlightLines } from '../main/highlight.ts';
 
 export type Example = {
     id: string; title: string; source: string; display: string; hash: string;
@@ -104,27 +105,17 @@ export function extractExamples(markdown: string, slug: string, root = process.c
     return { markdown: output.join('\n'), examples };
 }
 
-export function highlight(source: string) {
-    // Static highlighting does not load Monaco or any browser JavaScript.
-    return source.split(/(\/\/[^\n]*|"(?:[^"\\]|\\.)*"|\b\w+!|\b\d+(?:'[bhod]?[\da-fA-F_]+)?\b|\b[a-zA-Z_]\w*\b)/g).map(token => {
-        let kind = '';
-        if (token.startsWith('//')) kind = 'comment';
-        else if (token.startsWith('"')) kind = 'string';
-        else if (/^(module|declare|test|let|const|type|package|import|for|in|if|else|match|true|false)$/.test(token)) kind = 'keyword';
-        else if (/^(u\d+|s\d+|uint|sint|bool|clock|Nat|Type)$/.test(token)) kind = 'type';
-        else if (/^\w+!$/.test(token)) kind = 'function';
-        else if (/^\d/.test(token)) kind = 'number';
-        return kind ? `<span class="token-${kind}">${escapeHTML(token)}</span>` : escapeHTML(token);
-    }).join('');
-}
+// Browser-safe highlighting lives beside the editor code; re-exported so the
+// build and its tests keep a single import point.
+export { highlight } from '../main/highlight.ts';
 
 export function exampleHTML(example: Example) {
     const e = escapeHTML;
     return `<section class="code-example" id="${example.id}" aria-label="Example: ${e(example.title)}">
-    <div class="example-header"><a class="example-title" href="#${example.id}"><span class="file-dot"></span>Yodl <span class="example-number">/ ${e(example.title)}</span></a><div class="example-actions">${example.live ? '<button data-action="edit" class="js-only">Edit & compile</button>' : '<span class="muted">Read-only</span>'}<button data-action="copy" class="js-only">Copy</button>${example.live ? '<button data-action="playground" class="js-only">Playground</button>' : ''}</div></div>
-    <pre class="example-static"><code>${highlight(example.display)}</code></pre>
-    ${example.expect === 'error' ? '<p class="example-note">This example intentionally produces a compiler error. Edit it to explore the diagnostic.</p>' : ''}
-    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>`;
+    <div class="example-header"><span class="example-file">${e(example.id)}.yodl</span><span class="example-actions">${example.live ? '<button type="button" data-action="compile" class="js-only">Compile ▸</button><button type="button" data-action="playground" class="js-only">Open in Playground ↗</button>' : '<span>Read-only</span>'}</span></div>
+    <div class="code-lines" tabindex="0" role="region" aria-label="Source: ${e(example.title)}">${highlightLines(example.display)}</div>
+    ${example.expect === 'error' ? '<p class="example-note">This example intentionally produces a compiler error. Compile it to see the diagnostic, or open it in the Playground to explore.</p>' : ''}
+    </section>`;
 }
 
 export function loadChapters(root = process.cwd()): Chapter[] {

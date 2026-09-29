@@ -1,76 +1,153 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-accent="teal">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Learn Yodl step by step, experiment with hardware designs, and explore their compiler output in your browser.">
-    <title>Yodl Playground</title>
+    <meta name="description" content="Learn Yodl step by step, read the language guide, and experiment with hardware designs and their compiler output in your browser.">
+    <meta name="color-scheme" content="light dark">
+    <title>Yodl</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500&amp;display=swap">
+    <!-- Apply the saved theme and accent before first paint. -->
+    <script>try{const t=localStorage.getItem('yodl-playground-v2:theme'),a=localStorage.getItem('yodl-playground-v2:accent'),r=document.documentElement;r.dataset.theme=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light';if(a&&/^[a-z]+$/.test(a))r.dataset.accent=a}catch{}</script>
     <link rel="stylesheet" href="./playground.css">
-
 </head>
 <body>
     <!-- site-header -->
     <div id="notice" class="notice" role="status" hidden></div>
-    <div class="workspace-toolbar">
-        <div class="file-picker">
-            <label id="source-label" for="source-selector">Lesson</label>
-            <select id="source-selector" disabled><option>Loading tour…</option></select>
+    <div class="stage">
+        <div id="editor-view" class="main-layout" data-section="tour">
+            <aside id="sidebar" class="sidebar">
+                <section id="guide" class="guide" aria-label="Lesson guide">
+                    <div class="guide-top">
+                        <div class="sidebar-top-row">
+                            <button type="button" id="lesson-list-button" class="lesson-list-button" aria-haspopup="dialog" aria-expanded="false"><span id="lesson-position">Tour · Lesson 01 of 12</span><span>All lessons ▾</span></button>
+                            <button type="button" id="guide-collapse" class="collapse-button" aria-expanded="true" aria-controls="guide-body">Hide ▴</button>
+                        </div>
+                        <div id="lesson-progress" class="progress" role="group" aria-label="Lessons"></div>
+                    </div>
+                    <div id="guide-body" class="guide-body">
+                        <p class="eyebrow" id="lesson-topic">Signals &amp; modules</p>
+                        <h1 id="lesson-title">Your first circuit</h1>
+                        <p class="lesson-intro" id="lesson-intro">A Yodl program describes hardware. Start with two inputs, one gate, and one output.</p>
+                        <ol id="lesson-concepts" class="concepts"></ol>
+                        <div class="lesson-cards">
+                            <div class="card look-for"><div class="card-heading"><h2>Look for</h2><button type="button" id="suggested-stage" class="link-button">Open FIRRTL →</button></div><p id="lesson-observe"></p></div>
+                            <div class="card challenge"><h2>Try it</h2><p id="lesson-challenge"></p></div>
+                        </div>
+                        <p class="lesson-reference" id="lesson-reference" hidden>Reference: <a id="related-docs" href="./playground.html?mode=docs">Presentation</a></p>
+                    </div>
+                    <div class="lesson-navigation">
+                        <button type="button" id="previous-lesson" disabled><small>← Previous</small><span id="previous-title"></span></button>
+                        <button type="button" id="next-lesson" disabled><small>Next →</small><span id="next-title"></span></button>
+                    </div>
+                </section>
+                <section id="library" class="library" aria-label="Examples and drafts" hidden>
+                    <div class="library-top sidebar-top-row"><button type="button" id="new-file" class="new-file"><span>New file</span><kbd id="new-shortcut">⌘N</kbd></button><button type="button" id="library-collapse" class="collapse-button" aria-expanded="true" aria-controls="library-body">Hide ▴</button></div>
+                    <div id="library-body" class="library-body">
+                        <div><p class="section-label">Examples</p><div id="example-list" class="entry-list"></div></div>
+                        <div><p class="section-label">Your drafts</p><div id="draft-list" class="entry-list"></div><p id="drafts-empty" class="drafts-empty">Edits to examples and shared circuits appear here.</p></div>
+                    </div>
+                </section>
+            </aside>
+            <div class="editor-workspace">
+                <nav class="mobile-tabs" aria-label="Editor view"><button id="source-tab" aria-pressed="true">Source</button><button id="output-tab" aria-pressed="false">Output</button></nav>
+                <div id="editors" class="editors" data-view="source" data-imports="false">
+                    <section id="source-pane" class="editor-pane source-pane" aria-label="Source">
+                        <div class="panel-header">
+                            <div class="file-title"><span id="input-filename" class="filename">01-gates.yodl</span><span id="draft-badge" class="edited-dot" title="Edited" role="img" aria-label="Edited" hidden></span><span id="source-kind" class="subtle-label" hidden></span></div>
+                            <div class="panel-actions">
+                                <div class="menu-anchor">
+                                    <button type="button" id="menu-button" class="icon-button" aria-haspopup="menu" aria-expanded="false" aria-label="More actions" disabled>···</button>
+                                    <div id="file-menu" class="popover menu" role="menu" hidden>
+                                        <button type="button" role="menuitem" id="share-button"><span>Share link</span><kbd id="share-shortcut">⌘S</kbd></button>
+                                        <button type="button" role="menuitem" id="download-source">Download source</button>
+                                        <button type="button" role="menuitem" id="download-output">Download output</button>
+                                        <button type="button" role="menuitem" id="related-docs-menu" hidden>Related chapter ↗</button>
+                                        <hr>
+                                        <button type="button" role="menuitem" id="reset-button" class="muted">Reset to original…</button>
+                                    </div>
+                                </div>
+                                <button type="button" class="primary" id="compile-button" disabled>Compile <kbd id="compile-shortcut">⌘↵</kbd></button>
+                            </div>
+                        </div>
+                        <nav id="source-files" class="source-files" aria-label="Source files" hidden></nav>
+                        <div id="input-panel" class="editor"><p class="editor-loading">Loading the code editor…</p></div>
+                    </section>
+                    <div id="resize-handle" role="separator" tabindex="0" aria-label="Resize source and output panels" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50"></div>
+                    <section id="output-pane" class="editor-pane output-pane" data-view="output" aria-label="Compiler output">
+                        <div class="panel-header output-header">
+                            <div id="stage-tabs" class="stage-tabs" role="group" aria-label="Compiler output stage"></div>
+                            <div class="segmented" id="output-view-switch" role="group" aria-label="Output view"><button type="button" id="view-output" aria-pressed="true">Output</button><button type="button" id="view-simulate" aria-pressed="false" disabled>Simulate</button></div>
+                        </div>
+                        <div class="output-view">
+                            <div class="stage-description"><span id="stage-description"></span><span class="stage-actions"><button type="button" id="copy-output" disabled>Copy</button><button type="button" id="output-download" disabled>Download</button></span></div>
+                            <div id="output-panel" class="editor"></div>
+                            <section id="problems" class="problems" aria-label="Compilation diagnostics" hidden><div class="problems-header"><strong>Compilation error</strong><button type="button" id="jump-error" hidden>Go to source ↗</button></div><pre id="error-message"></pre></section>
+                        </div>
+                        <section id="simulation-panel" class="simulation-panel" aria-label="Simulation">
+                            <div class="simulation-controls">
+                                <button type="button" id="simulation-run" class="primary" disabled>Run</button>
+                                <button type="button" id="simulation-step-cycle" class="outlined" disabled>Step</button>
+                                <button type="button" id="simulation-step-frame" class="outlined" hidden disabled>Step frame</button>
+                                <button type="button" id="simulation-reset" class="quiet" disabled>Reset</button>
+                                <span id="simulation-cycle" class="simulation-cycle">cycle 0</span>
+                                <button type="button" id="simulation-settings" class="link-button" aria-expanded="false" aria-controls="simulation-options">Settings</button>
+                            </div>
+                            <div id="simulation-options" class="simulation-options" hidden>
+                                <p class="simulation-note">The module and its output types supply the defaults. Simulated clock speed and display refresh are independent; pixel streams define frame boundaries with their coordinates. Top and clock changes take effect after a restart.</p>
+                                <div class="simulation-fields">
+                                    <label>Top <input id="simulation-top" placeholder="design default" size="12" title="Simulation top module"></label>
+                                    <label>Clock <input id="simulation-clock" placeholder="design default" size="12" title="Clock signal"></label>
+                                    <label>Step frame cycles <input id="simulation-cycles-per-frame" type="number" placeholder="design default" min="1" max="100000" size="12" title="Cycles advanced by Step frame (array displays only)"></label>
+                                    <label>Target clock Hz <input id="simulation-clock-hz" type="number" placeholder="design default" min="1" max="1000000" size="12" title="Target simulated clock speed; actual speed is shown above"></label>
+                                    <label>Refresh FPS <input id="simulation-refresh-fps" type="number" placeholder="design default" min="1" max="240" size="12" title="Canvas refresh limit; does not affect simulated clock speed"></label>
+                                    <button type="button" id="simulation-stop" class="outlined" disabled>Restart simulation</button>
+                                </div>
+                            </div>
+                            <div class="simulation-body">
+                                <p id="simulation-state" class="simulation-state">Ready</p>
+                                <label id="simulation-zoom-control" class="simulation-zoom" hidden>Zoom <select id="simulation-zoom"><option value="fit">Fit</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label>
+                                <canvas id="simulation-framebuffer" hidden aria-label="Simulation framebuffer"></canvas>
+                                <div class="simulation-io">
+                                    <div><p class="section-label">Inputs</p><div id="simulation-inputs-controls" class="signal-list" aria-label="Simulation inputs"></div></div>
+                                    <div><p class="section-label">Outputs</p><div id="simulation-outputs" class="signal-list" aria-label="Simulation outputs"></div></div>
+                                </div>
+                                <input id="simulation-inputs" type="hidden">
+                                <div class="simulation-trace"><div class="section-heading"><p class="section-label">Trace</p><span id="trace-range" class="trace-range"></span></div><div id="simulation-trace" class="trace"></div></div>
+                                <pre id="simulation-output" class="simulation-output" hidden></pre>
+                            </div>
+                        </section>
+                    </section>
+                    <footer class="status-bar"><span id="compile-status" role="status" data-state="loading">Starting editor…</span><span id="save-status">Drafts stay in this browser</span><span id="cursor-position">Ln 1, Col 1</span></footer>
+                </div>
+            </div>
         </div>
-        <div class="compile-controls">
-            <a id="related-docs" href="./book/" hidden>Related chapter</a>
-            <button id="share-button" disabled>Share</button>
-            <button class="primary" id="compile-button" disabled>Compile <kbd id="compile-shortcut">Ctrl ↵</kbd></button>
-            <button id="run-tests" hidden disabled>Run tests</button>
-            <button id="simulate-button" disabled>Run simulation</button>
+        <div id="docs-view" class="docs-view" hidden>
+            <aside class="docs-nav">
+                <details id="chapter-menu" class="chapter-menu" open>
+                    <summary>Chapters</summary>
+                    <div class="docs-nav-inner">
+                        <p class="section-label">The language</p>
+                        <nav id="docs-chapters" aria-label="Chapters"></nav>
+                        <div class="docs-nav-footer"><a href="https://github.com/nathsou/yodl">GitHub ↗</a><span id="docs-version"></span></div>
+                    </div>
+                </details>
+            </aside>
+            <main id="docs-main" class="docs-main" tabindex="-1">
+                <div class="docs-column"><p id="docs-loading" class="docs-loading" role="status">Loading the language guide…</p><div id="docs-content"></div></div>
+            </main>
+            <aside class="docs-toc"><p class="section-label">On this page</p><nav id="docs-toc" aria-label="On this page"></nav></aside>
+        </div>
+        <div id="lesson-list-scrim" class="scrim" hidden>
+            <div id="lesson-list" class="lesson-list" role="dialog" aria-label="All lessons"></div>
         </div>
     </div>
-    <main id="main-layout" class="main-layout">
-        <aside id="guide" class="guide" aria-label="Lesson guide">
-            <details id="guide-details" open>
-                <summary>Lesson guide <span id="lesson-position">01 / 12</span></summary>
-                <div class="guide-content">
-                    <p class="eyebrow" id="lesson-topic">Signals &amp; modules</p>
-                    <h1 id="lesson-title">Your first circuit</h1>
-                    <p id="lesson-intro">A Yodl program describes hardware. Start with two inputs, one gate, and one output.</p>
-                    <ul id="lesson-concepts"></ul>
-                    <div class="lesson-section"><h2>Look for</h2><p id="lesson-observe"></p><button id="suggested-stage" class="text-button">Show FIRRTL</button></div>
-                    <div class="challenge"><h2>Try it yourself</h2><p id="lesson-challenge"></p></div>
-                    <div class="lesson-navigation"><button id="previous-lesson" disabled>← Previous</button><button id="next-lesson" disabled>Next lesson →</button></div>
-                    <p class="guide-footnote">Experiment freely. Each lesson keeps its own draft in this browser.</p>
-                </div>
-            </details>
-        </aside>
-        <div class="editor-workspace">
-            <nav class="mobile-tabs" aria-label="Editor view"><button id="source-tab" aria-pressed="true">Source</button><button id="output-tab" aria-pressed="false">Output</button></nav>
-            <div id="editors" class="editors" data-view="source" data-imports="false">
-                <section id="source-pane" class="editor-pane source-pane" aria-label="Source">
-                    <div class="panel-header"><div class="file-title"><span class="file-dot"></span><span id="input-filename">01-gates.yodl</span><span id="source-kind" class="subtle-label" hidden></span><span id="draft-badge" class="subtle-label" hidden>Edited</span></div><div class="panel-actions"><button id="reset-button" title="Restore this source to its original version" disabled>Reset</button><button id="download-source" title="Download source" disabled>↓ Save</button></div></div>
-                    <nav id="source-files" class="source-files" aria-label="Source files" hidden></nav>
-                    <div id="input-panel" class="editor"><p class="editor-loading">Loading the code editor…</p></div>
-                </section>
-                <div id="resize-handle" role="separator" tabindex="0" aria-label="Resize source and output panels" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50"></div>
-                <section id="output-pane" class="editor-pane output-pane" aria-label="Compiler output">
-                    <div class="panel-header"><div class="output-picker"><label for="pass-selector">Output</label><select id="pass-selector" disabled></select></div><div class="panel-actions"><button id="copy-output" disabled>Copy</button><button id="download-output" disabled>↓ Save</button></div></div>
-                    <div class="stage-description"><span id="stage-description"></span><code id="stage-command"></code></div>
-                    <div id="output-panel" class="editor"></div>
-                    <section id="problems" class="problems" aria-label="Compilation diagnostics" hidden><div class="problems-header"><strong>Compilation error</strong><button id="jump-error" hidden>Go to source ↗</button></div><pre id="error-message"></pre></section>
-                    <section id="simulation-panel" class="simulation-panel" aria-label="Simulation">
-                        <div class="simulation-header"><div class="simulation-title"><strong>Simulation</strong><span id="simulation-state">Ready</span></div><div class="simulation-controls"><button id="simulation-reset">Reset</button><button id="simulation-step-cycle">Step cycle</button><button id="simulation-step-frame" hidden>Step frame</button><button id="simulation-stop" disabled>Stop</button><button id="simulation-run" class="primary">Run</button></div></div>
-                        <details id="simulation-options"><summary>Advanced settings</summary><p class="simulation-note">The module and its output types supply the defaults. Simulated clock speed and display refresh are independent; pixel streams define frame boundaries with their coordinates. Top and clock changes take effect after Stop.</p><div class="simulation-controls"><label>Top <input id="simulation-top" placeholder="design default" size="12" title="Simulation top module"></label><label>Clock <input id="simulation-clock" placeholder="design default" size="12" title="Clock signal"></label><label>Step frame cycles <input id="simulation-cycles-per-frame" type="number" placeholder="design default" min="1" max="100000" size="12" title="Cycles advanced by Step frame (array displays only)"></label><label>Target clock Hz <input id="simulation-clock-hz" type="number" placeholder="design default" min="1" max="1000000" size="12" title="Target simulated clock speed; actual speed is shown above"></label><label>Refresh FPS <input id="simulation-refresh-fps" type="number" placeholder="design default" min="1" max="240" size="12" title="Canvas refresh limit; does not affect simulated clock speed"></label></div></details>
-                        <label id="simulation-zoom-control" class="simulation-zoom" hidden>Zoom <select id="simulation-zoom"><option value="fit">Fit</option><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label>
-                        <canvas id="simulation-framebuffer" hidden aria-label="Simulation framebuffer"></canvas>
-                        <div id="simulation-inputs-controls" class="simulation-inputs" hidden aria-label="Simulation inputs"></div>
-                        <input id="simulation-inputs" type="hidden">
-                        <pre id="simulation-output">Compile a circuit, then run it here.</pre>
-                    </section>
-                </section>
-            </div>
-            <footer class="status-bar"><span id="compile-status" role="status" data-state="loading">Starting editor…</span><span id="save-status">Drafts stay in this browser</span><span id="cursor-position">Ln 1, Col 1</span></footer>
-        </div>
-    </main>
+    <dialog id="search-dialog" class="search-dialog"><div class="search-header"><label for="search-input" class="sr-only">Search docs and lessons</label><input id="search-input" type="search" placeholder="Search lessons, concepts, syntax, and examples…" autocomplete="off"><button type="button" id="search-close" aria-label="Close search">Esc</button></div><p id="search-status" role="status">Type to search the guide and the tour.</p><div id="search-results"></div></dialog>
     <dialog id="share-dialog"><form method="dialog"><div class="dialog-header"><h2>Share this circuit</h2><button aria-label="Close share dialog">×</button></div><p>The link contains this source and selected output stage. It opens a separate shared draft.</p><label for="share-url">Share link</label><input id="share-url" readonly><div class="dialog-actions"><button id="copy-share" type="button" class="primary">Copy link</button></div></form></dialog>
     <dialog id="reset-dialog"><form method="dialog"><h2>Reset this source?</h2><p>Your edits to this lesson or example will be replaced by the original source.</p><div class="dialog-actions"><button value="cancel">Keep edits</button><button value="reset" class="primary">Reset source</button></div></form></dialog>
-    <noscript><p class="notice">Enable JavaScript to edit and compile Yodl in the playground.</p></noscript>
+    <noscript><p class="notice">Enable JavaScript to read the guide and to edit and compile Yodl.</p></noscript>
     <script type="module" src="./bundle/playground.js"></script>
 </body>
 </html>

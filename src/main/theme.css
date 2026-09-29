@@ -1,30 +1,64 @@
+/* Design tokens for the shared Tour / Playground / Docs shell.
+   Colours are plain hex so Monaco (which cannot read oklch) can be themed from
+   the same custom properties at runtime; see themeToken() in theme.ts. */
 :root {
     color-scheme: light;
-    --background: #f7f9f6;
-    --surface: #ffffff;
-    --surface-soft: #f0f4ef;
-    --text: #25362b;
-    --muted: #647168;
-    --border: #dce3dc;
-    --accent: #286446;
-    --accent-soft: #e4efe5;
-    --button-text: #ffffff;
-    --error: #a63730;
-    --error-bg: #fff4f1;
-    --focus: #42866a;
+    --font-sans: 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Consolas, monospace;
+    --bg: #faf9f6;
+    --panel: #fefdfc;
+    --sunk: #f3f1ed;
+    --ink: #211c17;
+    --mute: #69625d;
+    --line: #e2dfdb;
+    --error: #b4322f;
+    --error-bg: #fdeeea;
+    --acc: #008381;
+    --acc-soft: #dbf3f1;
+    --acc-ink: #fcfcfc;
+    --k-kw: #6b46a0;
+    --k-ty: #00717f;
+    --k-fn: #945a00;
+    --k-nm: #2b7440;
+    --k-id: #23588a;
+    --shadow-menu: 0 8px 24px rgb(0 0 0 / .14);
+    --shadow-overlay: 0 16px 40px rgb(0 0 0 / .2);
+    --shadow-segment: 0 1px 2px rgb(0 0 0 / .12);
+    --header-height: 56px;
 }
-[data-theme="dark"] {
+:root[data-theme="dark"] {
     color-scheme: dark;
-    --background: #171d19;
-    --surface: #1d241f;
-    --surface-soft: #242e27;
-    --text: #e1e9e2;
-    --muted: #a3b1a6;
-    --border: #354139;
-    --accent: #9ad7af;
-    --accent-soft: #283f30;
-    --button-text: #16261c;
-    --error: #ffb3a6;
-    --error-bg: #352622;
-    --focus: #9ad7af;
+    --bg: #14110f;
+    --panel: #191714;
+    --sunk: #100e0c;
+    --ink: #eae7e3;
+    --mute: #9c9792;
+    --line: #2e2a27;
+    --error: #f4a39c;
+    --error-bg: #3a2421;
+    --acc: #58c5c1;
+    --acc-soft: #0b3534;
+    --acc-ink: #031a19;
+    --k-kw: #c1a9ee;
+    --k-ty: #7cced2;
+    --k-fn: #eac07a;
+    --k-nm: #8ed09c;
+    --k-id: #97c2f0;
 }
+
+/* Accent palettes. They match on any element (not only the root) so the
+   accent swatches can preview their own colour. */
+[data-accent="teal"] { --acc: #008381; --acc-soft: #dbf3f1; --acc-ink: #fcfcfc; }
+[data-theme="dark"] [data-accent="teal"], [data-theme="dark"][data-accent="teal"] { --acc: #58c5c1; --acc-soft: #0b3534; --acc-ink: #031a19; }
+[data-accent="cobalt"] { --acc: #3e6dc8; --acc-soft: #e4edfe; --acc-ink: #ffffff; }
+[data-theme="dark"] [data-accent="cobalt"], [data-theme="dark"][data-accent="cobalt"] { --acc: #81aaf7; --acc-soft: #202e47; --acc-ink: #0e1624; }
+[data-accent="moss"] { --acc: #457f38; --acc-soft: #e3f2df; --acc-ink: #ffffff; }
+[data-theme="dark"] [data-accent="moss"], [data-theme="dark"][data-accent="moss"] { --acc: #87c47a; --acc-soft: #21331d; --acc-ink: #0f190c; }
+[data-accent="plum"] { --acc: #984588; --acc-soft: #f8e7f4; --acc-ink: #ffffff; }
+[data-theme="dark"] [data-accent="plum"], [data-theme="dark"][data-accent="plum"] { --acc: #dd90cc; --acc-soft: #3d2438; --acc-ink: #1e111b; }
+[data-accent="ochre"] { --acc: #a17003; --acc-soft: #f8ecd3; --acc-ink: #ffffff; }
+[data-theme="dark"] [data-accent="ochre"], [data-theme="dark"][data-accent="ochre"] { --acc: #e4b65c; --acc-soft: #3d2e0f; --acc-ink: #1d1506; }
+[data-accent="signal"] { --acc: #c53637; --acc-soft: #fde7e4; --acc-ink: #ffffff; }
+[data-theme="dark"] [data-accent="signal"], [data-theme="dark"][data-accent="signal"] { --acc: #f47b74; --acc-soft: #47211e; --acc-ink: #fcfcfc; }
+[data-accent="ember"] { --acc: #c85c2e; --acc-soft: #fee8db; --acc-ink: #ffffff; }
+[data-theme="dark"] [data-accent="ember"], [data-theme="dark"][data-accent="ember"] { --acc: #ed905e; --acc-soft: #422617; --acc-ink: #1e130e; }

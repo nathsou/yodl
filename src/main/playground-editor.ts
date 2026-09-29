@@ -1,3 +1,5 @@
+import { themeToken } from './theme.ts';
+
 export let monaco: any;
 
 let loading: Promise<void> | undefined;
@@ -55,12 +57,15 @@ async function initialise() {
                 // (must come before the generic identifier rule)
                 [/\b[us]\d+\b/, 'type'],
 
+                // Capitalised identifiers (modules, packages, constants) get their own colour.
+                [/[A-Z]\w*/, { cases: { '@typeKeywords': 'type', '@default': 'ident.cap' } }],
+
                 // Identifiers and keywords
                 [/[a-zA-Z_]\w*/, {
                     cases: {
                         '@keywords': 'keyword',
                         '@typeKeywords': 'type',
-                        '@wordOperators': 'operator',
+                        '@wordOperators': 'keyword.operator',
                         '@default': 'identifier'
                     }
                 }],
@@ -80,13 +85,8 @@ async function initialise() {
                 [/\b\d+'[bhod]?\w+\b/, 'number'], // Base-specific literals
                 [/\b\d+(_\d+)*\b/, 'number'], // Numbers with optional underscore separators
 
-                // Operators
-                [/@symbols/, {
-                    cases: {
-                        '@operators': 'operator',
-                        '@default': 'delimiter'
-                    }
-                }],
+                // Symbolic operators read as punctuation; word operators are keywords.
+                [/@symbols/, 'delimiter'],
 
                 // Delimiters and operators
                 [/[(){}\[\],;]/, 'delimiter'],
@@ -101,26 +101,6 @@ async function initialise() {
                 [/"/, { token: 'string.quote', bracket: '@close', next: '@pop' }]
             ]
         }
-    });
-
-    monaco.editor.defineTheme('yodl-light', {
-        base: 'vs',
-        inherit: true,
-        rules: [
-            { token: 'function', foreground: '795E26', fontStyle: 'bold' },
-            { token: 'operator', foreground: '0000FF' }
-        ],
-        colors: { 'editor.background': '#ffffff', 'editor.foreground': '#25362b', 'editorLineNumber.foreground': '#829087', 'editor.selectionBackground': '#d9ebdf', 'editor.lineHighlightBackground': '#f7f9f6' }
-    });
-
-    monaco.editor.defineTheme('yodl-dark', {
-        base: 'vs-dark',
-        inherit: true,
-        rules: [
-            { token: 'function', foreground: 'DCDCAA', fontStyle: 'bold' },
-            { token: 'operator', foreground: '569CD6' }
-        ],
-        colors: { 'editor.background': '#1d241f', 'editor.foreground': '#e1e9e2', 'editorLineNumber.foreground': '#73867a', 'editor.selectionBackground': '#344e3c', 'editor.lineHighlightBackground': '#242e27' }
     });
 
     monaco.languages.setLanguageConfiguration('yodl', {
@@ -138,19 +118,71 @@ async function initialise() {
                 [/\b(?:UInt|SInt|Clock|Reset|AsyncReset)\b/, 'type'],
                 [/\b(?:mux|add|sub|mul|and|or|xor|not|bits|cat|pad|eq|lt|gt)\b/, 'function'],
                 [/-?\b\d+(?:'[01xzm-]+)?\b/, 'number'],
-                [/[<>=:]+/, 'operator'],
+                [/[<>=:]+/, 'delimiter'],
             ] },
         });
     }
-    monaco.editor.setTheme(document.documentElement.dataset.theme === 'dark' ? 'yodl-dark' : 'yodl-light');
+    applyEditorTheme();
+}
+
+
+// Fallbacks (the light theme) keep the editor usable where computed styles are unavailable.
+const fallbackTokens: Record<string, string> = {
+    panel: '#fefdfc', ink: '#211c17', mute: '#69625d', line: '#e2dfdb', sunk: '#f3f1ed', bg: '#faf9f6',
+    acc: '#008381', 'acc-soft': '#dbf3f1', 'k-kw': '#6b46a0', 'k-ty': '#00717f', 'k-fn': '#945a00', 'k-nm': '#2b7440', 'k-id': '#23588a',
+};
+const token = (name: string) => (typeof getComputedStyle === 'function' ? themeToken(name) : '') || fallbackTokens[name];
+const bare = (hex: string) => hex.replace('#', '');
+
+/** Rebuilds the Monaco theme from the page's CSS tokens, so the editor follows
+ * the light/dark theme and the chosen accent. Call it after either changes. */
+export function applyEditorTheme() {
+    if (!monaco) return;
+    const dark = document.documentElement.dataset.theme === 'dark';
+    monaco.editor.defineTheme('yodl', {
+        base: dark ? 'vs-dark' : 'vs',
+        inherit: true,
+        rules: [
+            { token: '', foreground: bare(token('ink')) },
+            { token: 'keyword', foreground: bare(token('k-kw')) },
+            { token: 'type', foreground: bare(token('k-ty')) },
+            { token: 'function', foreground: bare(token('k-fn')) },
+            { token: 'number', foreground: bare(token('k-nm')) },
+            { token: 'string', foreground: bare(token('k-nm')) },
+            { token: 'ident.cap', foreground: bare(token('k-id')) },
+            { token: 'comment', foreground: bare(token('mute')) },
+            { token: 'delimiter', foreground: bare(token('mute')) },
+        ],
+        colors: {
+            'editor.background': token('panel'), 'editor.foreground': token('ink'),
+            'editorLineNumber.foreground': token('mute') + '99', 'editorLineNumber.activeForeground': token('ink'),
+            'editor.selectionBackground': token('acc-soft'), 'editor.inactiveSelectionBackground': token('sunk'),
+            'editor.lineHighlightBackground': token('sunk') + '00', 'editor.lineHighlightBorder': token('sunk') + '00',
+            'editorCursor.foreground': token('acc'), 'editorIndentGuide.background1': token('line'),
+            'editorWidget.background': token('panel'), 'editorWidget.border': token('line'),
+            'scrollbarSlider.background': token('line') + 'aa', 'scrollbarSlider.hoverBackground': token('mute') + '66',
+        },
+    });
+    monaco.editor.setTheme('yodl');
+}
+
+// Monaco measures glyphs once, so wait (briefly) for the web font before creating editors.
+async function editorFontReady() {
+    const fonts = (typeof document !== 'undefined' ? (document as any).fonts : undefined) as FontFaceSet | undefined;
+    if (!fonts) return;
+    try { await Promise.race([fonts.load('13.5px "IBM Plex Mono"'), new Promise(resolve => setTimeout(resolve, 1500))]); } catch { /* Fall back to the system monospace font. */ }
+    fonts.ready.then(() => monaco?.editor.remeasureFonts?.());
 }
 
 export async function createEditor(container: HTMLElement, options: Record<string, unknown> = {}) {
     await loadMonaco();
+    await editorFontReady();
     const common =  {
         automaticLayout: true, minimap: { enabled: false }, scrollBeyondLastLine: false,
-        fontSize: 14, lineHeight: 23, fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace',
-        padding: { top: 20, bottom: 20 }, renderLineHighlight: 'gutter',
+        fontSize: 13.5, lineHeight: 23, fontFamily: '"IBM Plex Mono", ui-monospace, SFMono-Regular, Consolas, monospace',
+        padding: { top: 18, bottom: 18 }, renderLineHighlight: 'none',
+        glyphMargin: false, folding: false, lineNumbersMinChars: 3, lineDecorationsWidth: 18, overviewRulerLanes: 0,
+        hideCursorInOverviewRuler: true, overviewRulerBorder: false,
         scrollbar: { useShadows: false, verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
         tabSize: 4, insertSpaces: true, fixedOverflowWidgets: true,
     };

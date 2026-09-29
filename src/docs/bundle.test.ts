@@ -12,7 +12,6 @@ test('browser bundles pin their compiler and compile nested documentation paths'
     try {
         const assets = await buildBrowserAssets(resolve(import.meta.dir, '../..'), directory);
         expect(assets.worker).toMatch(/^playground-worker-[^.]+\.js$/);
-        expect(assets.docs).toMatch(/^docs-[^.]+\.js$/);
         expect(assets.playground).toMatch(/^playground-[^.]+\.js$/);
         const bundles = await Promise.all((await readdir(directory)).map(name => readFile(join(directory, name), 'utf8')));
         expect(bundles.join('\n')).toContain(`./${assets.worker}`);
