@@ -1,0 +1,16 @@
+// VFS callbacks implement the raising FileSystem interface.
+warnings = "-35-24"
+
+import {
+  "nathsou/yodl/lib/parse",
+  "nathsou/yodl/lib/driver",
+  "nathsou/yodl/lib/simplify",
+  "nathsou/yodl/lib/utils",
+  "moonbitlang/core/json",
+}
+
+options(
+  link: {
+    "js": { "exports": [ "new_server", "handle_message", "flush_diagnostics" ], "format": "esm" },
+  },
+)

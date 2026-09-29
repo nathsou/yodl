@@ -71,6 +71,12 @@ pub impl Diagnosed for ParserError with diagnostic(self) -> Diagnostic {
     NatTypeAliasParametersUnsupported(..) => "Y0112"
   }
   let result = Diagnostic::new(code, self.message(), span=Some(self.span()))
+  if self is UnexpectedToken(expected~, span~, ..) && span.start.index == span.file_content.length() {
+    match expected {
+      Rparen | Rbracket | Rbrace => result.fixes.push({ title: "Insert '\{expected}'", span, replacement: expected.to_string() })
+      _ => ()
+    }
+  }
   result
 }
 

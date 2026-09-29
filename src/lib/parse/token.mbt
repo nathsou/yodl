@@ -1,5 +1,5 @@
 
-enum TokenType {
+pub(all) enum TokenType {
   Eof
   // symbols
   Lparen; Rparen; Lbrace; Rbrace; Comma; Semicolon; Colon
@@ -250,7 +250,7 @@ pub fn Span::context(self: Span, window_size~: Int = 3, use_ansi_colors~: Bool =
   window.to_string()
 }
 
-struct Token {
+pub(all) struct Token {
   kind: TokenType
   span: Span
 } derive(Debug)

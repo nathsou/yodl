@@ -1,0 +1,36 @@
+// Generated using `moon info`, DON'T EDIT IT
+package "nathsou/yodl/lib/lsp"
+
+import {
+  "moonbitlang/core/set",
+  "nathsou/yodl/lib/driver",
+}
+
+// Values
+pub fn flush_diagnostics(Server) -> String
+
+pub fn handle_message(Server, String) -> String
+
+pub fn new_server() -> Server
+
+// Errors
+
+// Types and methods
+type Document
+
+pub struct Server {
+  files : Map[String, String]
+  documents : Map[String, Document]
+  analyses : Map[String, @driver.Analysis]
+  published : @set.Set[String]
+  mut workspace : Workspace?
+  mut initialized : Bool
+  mut shutdown : Bool
+  mut exited : Bool
+}
+
+type Workspace
+
+// Type aliases
+
+// Traits

@@ -557,9 +557,83 @@ pub(all) struct TestDecl {
   span : Span
 }
 
-type Token derive(@debug.Debug)
+pub(all) struct Token {
+  kind : TokenType
+  span : Span
+} derive(@debug.Debug)
 
-type TokenType derive(Eq, @debug.Debug)
+pub(all) enum TokenType {
+  Eof
+  Lparen
+  Rparen
+  Lbrace
+  Rbrace
+  Comma
+  Semicolon
+  Colon
+  Lchevron
+  Rchevron
+  Lbracket
+  Rbracket
+  Dot
+  Bang
+  Plus
+  Minus
+  Star
+  Slash
+  Equal
+  EqualEqual
+  BangEqual
+  RightThinArrow
+  RightThickArrow
+  LchevronEqual
+  RchevronEqual
+  DotDotEqual
+  DotDot
+  Percent
+  QuestionMark
+  At
+  Underscore
+  ColonColon
+  MinusColon
+  PlusColon
+  Module
+  Let
+  UInt
+  SInt
+  Bool
+  In
+  For
+  Test
+  Declare
+  Const
+  And
+  Or
+  Not
+  Xor
+  Nand
+  Nor
+  Xnor
+  Shl
+  Shr
+  Match
+  Package
+  Import
+  If
+  Else
+  Type
+  Clock
+  Andr
+  Orr
+  Xorr
+  Identifier(String)
+  BuiltinFunction(String)
+  Natural(value~ : @bigint.BigInt, width~ : Int?, base~ : Int)
+  StringLiteral(String)
+  CharacterLiteral(Char)
+  UIntType(Int)
+  SIntType(Int)
+} derive(Eq, @debug.Debug)
 pub impl Show for TokenType
 
 pub(all) enum Type {

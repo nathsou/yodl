@@ -9,6 +9,8 @@ import {
 }
 
 // Values
+pub fn builtin_source() -> String
+
 pub fn diagnostic(Error) -> @parse.Diagnostic?
 
 pub fn simplify_decls(Array[@parse.Decl]) -> Array[@parse.CoreDecl] raise

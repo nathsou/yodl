@@ -1,6 +1,7 @@
 
 pub fn diagnostic(error: Error) -> @parse.Diagnostic? {
   match error {
+    TypeCheckerError::UnboundVariable(path~, span~) => Some(@parse.Diagnosed::diagnostic(TypeCheckerError::UnboundVariable(path~, span~)))
     TypeCheckerError::TypeCheckerError(message~, span~) => Some(@parse.Diagnosed::diagnostic(TypeCheckerError::TypeCheckerError(message~, span~)))
     TypeCheckerError::IncompatibleTypes(ty1~, ty2~, span~) => Some(@parse.Diagnosed::diagnostic(TypeCheckerError::IncompatibleTypes(ty1~, ty2~, span~)))
     TypeCheckerError::InvalidAssignmentTarget(span~) => Some(@parse.Diagnosed::diagnostic(TypeCheckerError::InvalidAssignmentTarget(span~)))

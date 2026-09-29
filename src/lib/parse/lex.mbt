@@ -112,7 +112,7 @@ fn Lexer::matches(self: Lexer, char: Char) -> Bool {
 
 fn Lexer::consumes(self: Lexer, char: Char) -> Bool {
   if self.matches(char) {
-    self.index += 1
+    self.advance()
     true
   } else {
     false
@@ -212,7 +212,8 @@ fn Lexer::parse_integer(self: Lexer) -> ParsedInteger {
 }
 
 fn Lexer::advance(self: Lexer) -> Unit {
-  if self.peek() == '\n' {
+  let unit = self.input.code_unit_at(self.index)
+  if unit == '\r' || (unit == '\n' && (self.index == 0 || self.input.code_unit_at(self.index - 1) != '\r')) {
     self.line += 1
     self.column = 1
 
@@ -222,7 +223,7 @@ fn Lexer::advance(self: Lexer) -> Unit {
         span: t.span,
       })
     }
-  } else {
+  } else if unit != '\n' {
     self.column += 1
   }
 
@@ -240,7 +241,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
     if self.peek() == '/' && self.index + 1 < self.input.length() && self.lookahead(1) == '/' {
       self.advance()
       self.advance()
-      while self.index < self.input.length() && self.peek() != '\n' {
+      while self.index < self.input.length() && self.peek() != '\n' && self.peek() != '\r' {
         self.advance()
       }
     } else {

@@ -148,6 +148,10 @@ let builtin_decls: Array[@parse.Decl] = {
   }
 }
 
+pub fn builtin_source() -> String {
+  match builtin_decls[0] { @parse.Decl::Const(decl) => decl.span.file_content.to_owned(); _ => "" }
+}
+
 pub fn Resolver::resolve(self: Self, path~: String, is_top_package~: Bool) -> @parse.PackageDecl raise ResolutionError {
   match self.resolved_packages.get(path) {
     Some(pkg) => return pkg

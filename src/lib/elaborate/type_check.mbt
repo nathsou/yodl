@@ -45,6 +45,7 @@ priv suberror TypeCheckerError {
     InvalidSlicingRange(reason~: String, span~: Span)
     ExpectedConstantExpr(span~: Span)
     InvalidAttributeArgs(name~: String, args~: Array[AttributeValue], expected~: Array[AttributeValueType], span~: Span)
+    UnboundVariable(path~: Path, span~: Span)
 }
 
 impl @parse.Spanned for TypeCheckerError with span(self) -> Span {
@@ -58,6 +59,7 @@ impl @parse.Spanned for TypeCheckerError with span(self) -> Span {
         InvalidSlicingRange(span~, ..) => span
         ExpectedConstantExpr(span~) => span
         InvalidAttributeArgs(span~, ..) => span
+        UnboundVariable(span~, ..) => span
     }
 }
 
@@ -82,6 +84,7 @@ fn TypeCheckerError::message(self: Self) -> String {
         UnknownModulePort(module_path~, port_name~, ..) => {
             logger.write_string("Unknown port '\{port_name}' in module '\{module_path}'")
         }
+        UnboundVariable(path~, ..) => logger.write_string("Unbound variable '\{path}'")
         InvalidSlicingRange(reason~, ..) => {
             logger.write_string("Invalid slicing range: \{reason}")
         }
@@ -115,6 +118,7 @@ impl @parse.Diagnosed for TypeCheckerError with diagnostic(self) -> @parse.Diagn
     InvalidSlicingRange(..) => "Y0507"
     ExpectedConstantExpr(..) => "Y0508"
     InvalidAttributeArgs(..) => "Y0509"
+    UnboundVariable(..) => "Y0510"
   }
   let result = @parse.Diagnostic::new(code, self.message(), span=Some(@parse.Spanned::span(self)))
   result
@@ -841,7 +845,7 @@ fn TypeChecker::check_expr_in_context(
                 Some({ val: Some(ty) }) => ty
                 Some(_) => raise type_error("Binding '\{path}' has no resolved type", span)
                 None => {
-                    raise type_error("Unbound variable '\{path}'", span)
+                    raise UnboundVariable(path~, span~)
                 }
             }
         }

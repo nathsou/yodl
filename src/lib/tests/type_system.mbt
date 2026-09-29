@@ -1132,7 +1132,7 @@ test "size-function diagnostics use the failing call span" {
     #|  out: uint[1 +
     #|    cdiv!(8, 0)]) {}
   let diagnostic = compile_error(source)
-  assert_true(diagnostic.contains("fixture.yodl:3:5-3:15"))
+  assert_true(diagnostic.contains("fixture.yodl:3:5-3:16"))
 }
 
 ///|
@@ -1172,8 +1172,8 @@ test "invalid size-function diagnostics preserve the inner call span" {
     #|  let child = Child[N: 1 + cdiv!(8, 0)]()
     #|}
   let diagnostic = compile_error(source, cmd_str="write_mono")
-  assert_true(diagnostic.contains("fixture.yodl:3:32-3:38"))
-  assert_false(diagnostic.contains("fixture.yodl:3:24-3:38"))
+  assert_true(diagnostic.contains("fixture.yodl:3:33-3:39"))
+  assert_false(diagnostic.contains("fixture.yodl:3:24-3:39"))
 }
 
 ///|
