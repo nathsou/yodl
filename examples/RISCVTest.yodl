@@ -1,0 +1,254 @@
+import RISCVCore
+import UART
+import Reset
+
+module CPUTestHarness(
+    clk: clock,
+    enable: bool,
+    rst: bool,
+    mem_read_data: u32,
+    mem_read_data_valid: bool,
+    mem_request_ready: bool,
+) -> (
+    mem_addr: u32,
+    mem_read_enable: bool,
+    mem_write_data: u32,
+    mem_write_mask: u4,
+    halted: bool,
+    trap: bool,
+) {
+    let cpu = RISCVCore::CPU(
+        clk,
+        enable,
+        rst,
+        mem_read_data,
+        mem_read_data_valid,
+        mem_request_ready,
+    )
+    mem_addr = cpu.mem_addr
+    mem_read_enable = cpu.mem_read_enable
+    mem_write_data = uint!(cpu.mem_write_data)
+    mem_write_mask = uint!(cpu.mem_write_mask)
+    halted = cpu.halted
+    trap = cpu.trap
+}
+
+test "RISC-V register zero is immutable" for RISCVCore::RegisterFile {
+    drive!(enable, true)
+    drive!(write_enable, false)
+    drive!(rs1_addr, 0)
+    drive!(rs2_addr, 0)
+    drive!(rd_addr, 0)
+    drive!(rd_data, 0)
+    settle!()
+    expect!(rs1, 0)
+    expect!(rs2, 0)
+
+    drive!(write_enable, true)
+    drive!(rd_data, 42)
+    step!(1)
+    settle!()
+    expect!(rs1, 0)
+    expect!(rs2, 0)
+
+    drive!(rd_addr, 1)
+    step!(1)
+    drive!(write_enable, false)
+    drive!(rs1_addr, 1)
+    settle!()
+    expect!(rs1, 42)
+}
+
+test "startup reset is initialized by the external reset" for Reset::PowerOnReset[3] {
+    drive!(rst_n, false)
+    settle!()
+    expect!(rst, true)
+    step!(1)
+
+    drive!(rst_n, true)
+    step!(2)
+    expect!(rst, true)
+    step!(1)
+    expect!(rst, false)
+
+    drive!(rst_n, false)
+    settle!()
+    expect!(rst, true)
+    step!(1)
+    drive!(rst_n, true)
+    settle!()
+    expect!(rst, true)
+}
+
+test "RISC-V requests stall exactly once and reset suppresses effects" for CPUTestHarness {
+    drive!(enable, true)
+    drive!(rst, true)
+    drive!(mem_read_data, 0)
+    drive!(mem_read_data_valid, false)
+    drive!(mem_request_ready, false)
+    step!(1)
+    expect!(mem_read_enable, false)
+    expect!(mem_write_mask, 0)
+
+    drive!(rst, false)
+    settle!()
+    expect!(mem_addr, 0)
+    expect!(mem_read_enable, true)
+
+    // A request and its payload remain stable until accepted.
+    step!(2)
+    expect!(mem_addr, 0)
+    expect!(mem_read_enable, true)
+    drive!(mem_request_ready, true)
+    step!(1)
+    expect!(mem_read_enable, false)
+
+    // addi x1, x0, 42 exercises x0 before any register-file initialization.
+    drive!(mem_request_ready, false)
+    drive!(mem_read_data, 32'h02a00093)
+    drive!(mem_read_data_valid, true)
+    step!(1)
+    drive!(mem_read_data_valid, false)
+    step!(1)
+    step!(1)
+
+    // Fetch sw x1, 0(x0), then hold its write request stalled.
+    expect!(mem_addr, 4)
+    expect!(mem_read_enable, true)
+    drive!(mem_request_ready, true)
+    step!(1)
+    drive!(mem_request_ready, false)
+    drive!(mem_read_data, 32'h00102023)
+    drive!(mem_read_data_valid, true)
+    step!(1)
+    drive!(mem_read_data_valid, false)
+    step!(1)
+    expect!(mem_addr, 0)
+    expect!(mem_write_mask, 15)
+    expect!(mem_write_data, 42)
+    step!(2)
+    expect!(mem_addr, 0)
+    expect!(mem_write_data, 42)
+
+    // Reset wins over the clock enable and suppresses the stalled store.
+    drive!(enable, false)
+    drive!(rst, true)
+    settle!()
+    expect!(mem_read_enable, false)
+    expect!(mem_write_mask, 0)
+    step!(1)
+    drive!(rst, false)
+    settle!()
+    expect!(mem_addr, 0)
+    expect!(mem_write_mask, 0)
+    drive!(enable, true)
+    settle!()
+    expect!(mem_read_enable, true)
+
+    // An invalid STORE encoding enters trap without issuing a write request.
+    drive!(mem_request_ready, true)
+    step!(1)
+    drive!(mem_request_ready, false)
+    drive!(mem_read_data, 32'h00003023)
+    drive!(mem_read_data_valid, true)
+    step!(1)
+    drive!(mem_read_data_valid, false)
+    step!(1)
+    expect!(mem_write_mask, 0)
+    step!(1)
+    expect!(trap, true)
+    expect!(halted, false)
+    expect!(mem_read_enable, false)
+    expect!(mem_write_mask, 0)
+}
+
+test "UART uses the configured integer cycles per bit" for UART::Transmitter[8, 2] {
+    drive!(rst, true)
+    drive!(data_in, 8'ha5)
+    drive!(data_valid, false)
+    step!(1)
+    expect!(tx, true)
+    expect!(ready, true)
+
+    drive!(rst, false)
+    drive!(data_valid, true)
+    step!(1)
+    drive!(data_valid, false)
+    expect!(tx, false) // start bit
+    expect!(ready, false)
+    step!(3)
+    expect!(tx, false)
+
+    step!(1)
+    expect!(tx, true) // bit 0
+    step!(4)
+    expect!(tx, false) // bit 1
+    step!(4)
+    expect!(tx, true) // bit 2
+    step!(4)
+    expect!(tx, false) // bit 3
+    step!(4)
+    expect!(tx, false) // bit 4
+    step!(4)
+    expect!(tx, true) // bit 5
+    step!(4)
+    expect!(tx, false) // bit 6
+    step!(4)
+    expect!(tx, true) // bit 7
+    step!(4)
+    expect!(tx, true) // stop bit
+    expect!(ready, false)
+    step!(4)
+    expect!(tx, true)
+    expect!(ready, true)
+
+    drive!(data_valid, true)
+    step!(1)
+    drive!(data_valid, false)
+    expect!(ready, false)
+    drive!(rst, true)
+    step!(1)
+    expect!(tx, true)
+    expect!(ready, true)
+}
+
+test "RISC-V rejects misaligned data and instruction targets" for CPUTestHarness {
+    drive!(enable, true)
+    drive!(rst, true)
+    drive!(mem_read_data, 0)
+    drive!(mem_read_data_valid, false)
+    drive!(mem_request_ready, false)
+    step!(1)
+    drive!(rst, false)
+
+    // sw x0, 1(x0) cannot issue a write before trapping.
+    drive!(mem_request_ready, true)
+    step!(1)
+    drive!(mem_request_ready, false)
+    drive!(mem_read_data, 32'h000020a3)
+    drive!(mem_read_data_valid, true)
+    step!(1)
+    drive!(mem_read_data_valid, false)
+    step!(1)
+    expect!(mem_write_mask, 0)
+    step!(1)
+    expect!(trap, true)
+
+    // Reset the core, then execute jal x0, 2. RV32I requires a four-byte
+    // aligned target when the compressed instruction extension is absent.
+    drive!(rst, true)
+    step!(1)
+    drive!(rst, false)
+    drive!(mem_request_ready, true)
+    step!(1)
+    drive!(mem_request_ready, false)
+    drive!(mem_read_data, 32'h0020006f)
+    drive!(mem_read_data_valid, true)
+    step!(1)
+    drive!(mem_read_data_valid, false)
+    step!(1)
+    step!(1)
+    expect!(trap, true)
+    expect!(halted, false)
+    expect!(mem_read_enable, false)
+}

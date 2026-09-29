@@ -79,3 +79,19 @@ test "invalid size-function domains in Nat parameters report diagnostics" {
     assert_false(message.contains("RuntimeError"))
   }
 }
+
+test "named parameters determine specialization identity in declaration order" {
+  let source =
+    #|module Pair[A: Nat, B: Nat]() -> (q: u8) {
+    #|  q = A * 10 + B
+    #|}
+    #|module Top() -> (x: u8, y: u8) {
+    #|  x = Pair[A: 1, B: 2]().q
+    #|  y = Pair[B: 1, A: 2]().q
+    #|}
+  let mono = compile_stage(source, "write_mono")
+  assert_true(mono.contains("q = 12"))
+  assert_true(mono.contains("q = 21"))
+  assert_true(mono.contains("x = Pair$0().q"))
+  assert_true(mono.contains("y = Pair$1().q"))
+}

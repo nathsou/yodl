@@ -1,6 +1,5 @@
 import RISCVCore
 import UART
-import Reset
 
 module RAM(
     clk: clock,
@@ -42,23 +41,22 @@ module Top(
     usb_tx: u1,
     led: u8,
     io_led: u24,
+    halted: bool,
+    trap: bool,
 ) {
-    // wait 125 ms for the FPGA to configure
-    let power_reset = Reset::PowerOnReset[CLOCK_FREQ / 8](clk)
-    let rst = power_reset.rst or (not rst_n)
+    // All state uses the physical clock. The divider produces a clock enable,
+    // so asserting rst_n resets the CPU even between enabled CPU cycles.
+    let rst = not rst_n
 
-    let slow_clk = {
-        let counter = Reg[u2](clk, rst)
-        counter.d = counter.q + 1'b1
-        clock!(counter.q[1])
-    }
+    let counter = Reg[u2](clk, rst)
+    counter.d = counter.q + 1'b1
+    let cpu_enable = counter.q == 3
 
-    let ram = RAM(clk: slow_clk)
+    let ram = RAM(clk)
     let cpu = RISCVCore::CPU(
-        clk: slow_clk,
+        clk,
+        enable: cpu_enable,
         rst,
-        mem_read_busy: false,
-        mem_write_busy: false
     )
 
     let word_addr = cat!(2'b0, cpu.mem_addr[31:2]) // divide by 4
@@ -66,15 +64,6 @@ module Top(
 
     let is_io = cpu.mem_addr[22]
     let is_ram = not is_io
-    
-    ram.read_enable = is_ram and cpu.mem_read_enable
-    ram.write_data = cpu.mem_write_data
-    ram.mask = is_ram ? cpu.mem_write_mask : fill!(4, false)
-    let write_enable = orr uint!(cpu.mem_write_mask)
-
-    // devices
-    let leds = Reg[u32](clk: slow_clk, rst)
-    let uart_valid = is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA]
 
     let uart_transmitter = UART::Transmitter[
         ClockFreq: CLOCK_FREQ,
@@ -84,14 +73,30 @@ module Top(
         rst,
         tx: usb_tx,
         data_in: cpu.mem_write_data[0],
-        data_valid: uart_valid,
     )
 
-    if is_io and write_enable and word_addr[MemoryMappedIO::LEDs] {
+    let write_request = orr uint!(cpu.mem_write_mask)
+
+    // A CPU request is accepted only on an enabled CPU cycle. UART writes
+    // additionally wait until the transmitter can accept the byte.
+    let uart_write = is_io and write_request and word_addr[MemoryMappedIO::UART_DATA]
+    let request_target_ready = (not uart_write) or uart_transmitter.ready
+    let request_ready = cpu_enable and request_target_ready
+    cpu.mem_request_ready = request_ready
+
+    ram.read_enable = is_ram and cpu.mem_read_enable and request_ready
+    ram.write_data = cpu.mem_write_data
+    ram.mask = is_ram and request_ready ? cpu.mem_write_mask : fill!(4, false)
+
+    // devices
+    let leds = Reg[u32](clk, rst)
+    uart_transmitter.data_valid = uart_write and request_ready
+
+    if is_io and write_request and request_ready and word_addr[MemoryMappedIO::LEDs] {
         leds.d = uint!(cpu.mem_write_data)
     }
 
-    if is_io and write_enable and word_addr[MemoryMappedIO::UART_DATA] and uart_transmitter.ready {
+    if uart_write and request_ready {
         printf!("%c", cpu.mem_write_data[0])
     }
 
@@ -99,8 +104,15 @@ module Top(
         cat!(22'b0, not uart_transmitter.ready, 9'b0) :
         32'd0
 
+    // Both synchronous RAM and MMIO reads complete on the next enabled CPU
+    // cycle. The valid bit is held between enables, alongside the read data.
+    let read_response_valid = Reg[bool](clk, rst, en: cpu_enable)
+    read_response_valid.d = cpu.mem_read_enable and request_ready
+    cpu.mem_read_data_valid = read_response_valid.q
     cpu.mem_read_data = is_ram ? ram.q : io_read_data
 
     led = leds.q[7:0]
     io_led = cpu.status
+    halted = cpu.halted
+    trap = cpu.trap
 }

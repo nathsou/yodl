@@ -1,4 +1,6 @@
 .section .data
+.equ IO_LEDS, 4
+
 test_word:   .word 0
 test_half:   .hword 0
 test_byte:   .byte 0
@@ -290,6 +292,8 @@ error:
     jal     ra, putchar
     li      a0, 10
     jal     ra, putchar
+    li      t0, 2
+    sw      t0, IO_LEDS(gp)
     ebreak
 
 pass:
@@ -302,5 +306,6 @@ pass:
     jal     ra, putchar
     li      a0, 10
     jal     ra, putchar
+    li      t0, 1
+    sw      t0, IO_LEDS(gp)
     ebreak
-

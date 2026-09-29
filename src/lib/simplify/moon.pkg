@@ -4,4 +4,5 @@ import {
   "nathsou/yodl/lib/parse",
   "nathsou/yodl/lib/utils",
   "moonbitlang/core/ref",
+  "moonbitlang/core/int",
 }

@@ -1,11 +1,11 @@
 using @utils { type Scope }
 
-type ParamsHash = UInt
+type ParamsKey = String
 
 pub struct Monomorphizer {
   modules: Map[@parse.Path, @parse.ModuleDecl]
   parameterized: Map[@parse.Path, @parse.ModuleDecl]
-  monomorphized: Map[@parse.Path, Map[ParamsHash, @parse.ModuleDecl]]
+  monomorphized: Map[@parse.Path, Map[ParamsKey, @parse.ModuleDecl]]
   declared_modules: Map[@parse.Path, @parse.ModuleSignature]
   instanciated_modules: Set[@parse.Path]
   test_only_modules: Set[@parse.Path]
@@ -38,6 +38,7 @@ pub suberror MonomorphizerError {
   InvalidParameterInstantiation(path~: @parse.Path, param~: String, span~: @parse.Span, param_span~: @parse.Span)
   InvalidTypeAliasParameters(path~: @parse.Path, exptected~: Int, actual~: Int, span~: @parse.Span)
   UnresolvedNamedType(path~: @parse.Path, span~: @parse.Span)
+  DimensionOutOfRange(value~: BigInt, span~: @parse.Span)
 }
 
 pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
@@ -69,6 +70,9 @@ pub impl Show for MonomorphizerError with output(self, logger) -> Unit {
     ReceivedTypeAliasInsteadOfExpr(..) => {
       logger.write_string("Received type alias instead of expression")
     }
+    DimensionOutOfRange(value~, ..) => {
+      logger.write_string("Hardware dimension \{value} exceeds the supported integer range")
+    }
   }
 
   logger.write_string(@parse.Spanned::show_context(self, use_ansi_colors=false))
@@ -85,6 +89,7 @@ pub impl @parse.Spanned for MonomorphizerError with span(self) -> @parse.Span {
     InvalidTypeAliasParameters(span~, ..) => span
     UnresolvedNamedType(span~, ..) => span
     ReceivedTypeAliasInsteadOfExpr(span~) => span
+    DimensionOutOfRange(span~, ..) => span
   }
 }
 
@@ -99,15 +104,22 @@ pub enum MonoEnvEntry {
 
 type MonoEnv = Scope[@parse.Path, MonoEnvEntry]
 
+fn dimension_int(value: BigInt, span: @parse.Span) -> Int raise MonomorphizerError {
+  if value < BigInt::from_int(@int.MIN_VALUE) || value > BigInt::from_int(@int.MAX_VALUE) {
+    raise DimensionOutOfRange(value~, span~)
+  }
+  value.to_int()
+}
+
 fn Monomorphizer::monomorphize_index_expr(_ : Self, idx : @parse.IndexExpr, env~ : MonoEnv, packages~ : Array[String]) -> @parse.IndexExpr raise {
   idx.map_vars(fn(name) raise {
     let path = @parse.Path::new([], name)
     match resolve_member(env, path~, packages~) {
-      Some((Param(NatParam(value=Natural(value~, ..), ..)), _)) =>
-        @parse.IndexExpr::Lit(value.to_int())
+      Some((Param(NatParam(value=Natural(value~, ..), span~)), _)) =>
+        @parse.IndexExpr::Lit(dimension_int(value, span))
       Some((Const(decl), _)) =>
         match @parse.ConstValue::from(decl.expr.partial_eval()) {
-          Some(Natural(value~, ..)) => @parse.IndexExpr::Lit(value.to_int())
+          Some(Natural(value~, span~, ..)) => @parse.IndexExpr::Lit(dimension_int(value, span))
           _ => @parse.IndexExpr::Var(name)
         }
       Some((GenVar(n), _)) => @parse.IndexExpr::Lit(n)
@@ -245,14 +257,23 @@ fn Monomorphizer::monomorphize_type(self: Self, ty: @parse.Type, env~: MonoEnv, 
   { ty: mono_ty, is_type_alias: false }
 }
 
-fn hash_params(params: Iter[@parse.StaticArg]) -> UInt {
-  let hasher = Hasher()
-
-  for param in params {
-    hasher.combine(param)
+fn static_arg_key(param: @parse.StaticArg) -> String {
+  match param {
+    NatParam(value=Natural(value~, width~, ..), ..) =>
+      "nat:\{value}:\{match width { Some(width) => width.to_string(); None => "_" }}"
+    NatParam(value=String(value~, ..), ..) => "string:\{value.length()}:\{value}"
+    TypeParam(ty~, ..) => "type:\{ty}"
   }
+}
 
-  hasher.finalize().reinterpret_as_uint()
+fn params_key(
+  declared: Array[@parse.ModuleParameter],
+  params: Map[String, @parse.StaticArg],
+) -> ParamsKey {
+  declared.iter().map(param => {
+    let value = params.get(param.name).unwrap()
+    "\{param.name.length()}:\{param.name}=\{static_arg_key(value)}"
+  }).join(";")
 }
 
 fn Monomorphizer::register_monomorphized_module(
@@ -304,7 +325,9 @@ fn Monomorphizer::register_monomorphized_module(
     map
   }
 
-  let hash = hash_params(params_map.values())
+  // Specialization identity follows the declaration order. Map iteration order
+  // and hashes alone are not semantic identities, especially for named args.
+  let key = params_key(mod_decl.params, params_map)
   let monomorphized = match self.monomorphized.get(path) {
     Some(modules) => modules
     None => {
@@ -314,13 +337,13 @@ fn Monomorphizer::register_monomorphized_module(
     }
   }
 
-  if monomorphized.get(hash) is Some(mono_mod) {
+  if monomorphized.get(key) is Some(mono_mod) {
     return mono_mod
   }
 
   let mono_path = @parse.Path::new(path.packages, "\{path.elem}$\{monomorphized.length()}")
   let mono_mod = self.monomorphize_module(mod=mod_decl, params=params_map, path=mono_path, packages~)
-  monomorphized[hash] = mono_mod
+  monomorphized[key] = mono_mod
   self.modules[mono_path] = mono_mod
 
   mono_mod

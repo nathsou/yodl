@@ -49,6 +49,7 @@ pub suberror LexerError {
   UnexepectedChar(char~ : Char, span~ : Span)
   UnterminatedStringLiteral(span~ : Span)
   UnterminatedCharacterLiteral(span~ : Span)
+  IntegerWidthOutOfRange(value~ : @bigint.BigInt, span~ : Span)
 }
 pub impl Show for LexerError
 pub impl Spanned for LexerError
@@ -74,6 +75,7 @@ pub suberror ParserError {
   InvalidPortOrTupleAccess(span~ : Span)
   DuplicateStructField(name~ : String, span~ : Span)
   NatTypeAliasParametersUnsupported(name~ : String, span~ : Span)
+  DimensionLiteralOutOfRange(value~ : @bigint.BigInt, span~ : Span)
 } derive(@debug.Debug)
 pub impl Show for ParserError
 

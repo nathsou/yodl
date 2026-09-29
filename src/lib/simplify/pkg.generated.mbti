@@ -2,6 +2,7 @@
 package "nathsou/yodl/lib/simplify"
 
 import {
+  "moonbitlang/core/bigint",
   "moonbitlang/core/debug",
   "moonbitlang/core/set",
   "nathsou/yodl/lib/parse",
@@ -22,6 +23,7 @@ pub suberror MonomorphizerError {
   InvalidParameterInstantiation(path~ : @parse.Path, param~ : String, span~ : @parse.Span, param_span~ : @parse.Span)
   InvalidTypeAliasParameters(path~ : @parse.Path, exptected~ : Int, actual~ : Int, span~ : @parse.Span)
   UnresolvedNamedType(path~ : @parse.Path, span~ : @parse.Span)
+  DimensionOutOfRange(value~ : @bigint.BigInt, span~ : @parse.Span)
 }
 pub impl Show for MonomorphizerError
 pub impl @parse.Spanned for MonomorphizerError
@@ -56,7 +58,7 @@ pub enum MonoEnvEntry {
 pub struct Monomorphizer {
   modules : Map[@parse.Path, @parse.ModuleDecl]
   parameterized : Map[@parse.Path, @parse.ModuleDecl]
-  monomorphized : Map[@parse.Path, Map[UInt, @parse.ModuleDecl]]
+  monomorphized : Map[@parse.Path, Map[String, @parse.ModuleDecl]]
   declared_modules : Map[@parse.Path, @parse.ModuleSignature]
   instanciated_modules : @set.Set[@parse.Path]
   test_only_modules : @set.Set[@parse.Path]

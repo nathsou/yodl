@@ -48,24 +48,16 @@ pub fn IndexExpr::eval(self: IndexExpr) -> Int? {
   }
 }
 
-// Core traversal: recurse over all nodes, calling `f` only for Var.
-// Constant-folds binary/unary ops when both operands reduce to Lit after recursion.
+// Core traversal: recurse over all nodes, calling `f` only for Var. Arithmetic
+// stays explicit so the type checker's checked size normalization detects
+// overflow instead of folding with machine-Int wraparound here.
 pub fn[E : Error] IndexExpr::map_vars(self : IndexExpr, f : (String) -> IndexExpr raise E) -> IndexExpr raise E {
   match self {
     Lit(_) => self
     Var(name) => f(name)
-    Add(a, b) => match (a.map_vars(f), b.map_vars(f)) {
-      (Lit(x), Lit(y)) => Lit(x + y)
-      (a2, b2) => Add(a2, b2)
-    }
-    Sub(a, b) => match (a.map_vars(f), b.map_vars(f)) {
-      (Lit(x), Lit(y)) => Lit(x - y)
-      (a2, b2) => Sub(a2, b2)
-    }
-    Mul(a, b) => match (a.map_vars(f), b.map_vars(f)) {
-      (Lit(x), Lit(y)) => Lit(x * y)
-      (a2, b2) => Mul(a2, b2)
-    }
+    Add(a, b) => Add(a.map_vars(f), b.map_vars(f))
+    Sub(a, b) => Sub(a.map_vars(f), b.map_vars(f))
+    Mul(a, b) => Mul(a.map_vars(f), b.map_vars(f))
     Clog2(a, span) => match a.map_vars(f) {
       Lit(n) if n >= 0 => Lit(@utils.clog2_int(n))
       a2 => Clog2(a2, span)
@@ -85,18 +77,9 @@ pub fn IndexExpr::substitute(self: IndexExpr, params_env: Map[String, StaticArg]
       Some(NatParam(value=Natural(value~, ..), ..)) => Lit(value.to_int())
       _ => self
     }
-    Add(a, b) => match (a.substitute(params_env), b.substitute(params_env)) {
-      (Lit(x), Lit(y)) => Lit(x + y)
-      (a2, b2) => Add(a2, b2)
-    }
-    Sub(a, b) => match (a.substitute(params_env), b.substitute(params_env)) {
-      (Lit(x), Lit(y)) => Lit(x - y)
-      (a2, b2) => Sub(a2, b2)
-    }
-    Mul(a, b) => match (a.substitute(params_env), b.substitute(params_env)) {
-      (Lit(x), Lit(y)) => Lit(x * y)
-      (a2, b2) => Mul(a2, b2)
-    }
+    Add(a, b) => Add(a.substitute(params_env), b.substitute(params_env))
+    Sub(a, b) => Sub(a.substitute(params_env), b.substitute(params_env))
+    Mul(a, b) => Mul(a.substitute(params_env), b.substitute(params_env))
     Clog2(a, span) => match a.substitute(params_env) {
       Lit(n) if n >= 0 => Lit(@utils.clog2_int(n))
       a2 => Clog2(a2, span)

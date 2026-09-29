@@ -19,6 +19,7 @@ pub suberror ParserError {
   InvalidPortOrTupleAccess(span~: Span)
   DuplicateStructField(name~: String, span~: Span)
   NatTypeAliasParametersUnsupported(name~: String, span~: Span)
+  DimensionLiteralOutOfRange(value~: BigInt, span~: Span)
 } derive(Debug)
 
 pub impl Show for ParserError with output(self, logger) {
@@ -47,6 +48,8 @@ pub impl Show for ParserError with output(self, logger) {
       logger.write_string("Duplicate struct field '\{name}' at \{span}\n\{span.context()}")
     NatTypeAliasParametersUnsupported(name~, span~) =>
       logger.write_string("Type alias '\{name}' declares a Nat parameter, which is not supported yet at \{span}\n\{span.context()}")
+    DimensionLiteralOutOfRange(value~, span~) =>
+      logger.write_string("Hardware dimension \{value} exceeds the supported maximum \{@int.MAX_VALUE} at \{span}\n\{span.context()}")
   }
 }
 
@@ -868,6 +871,9 @@ fn Parser::parse_index_expr_primary(self: Parser) -> IndexExpr raise {
   match self.peek() {
     Natural(value~, ..) => {
       self.advance()
+      if value > BigInt::from_int(@int.MAX_VALUE) {
+        raise DimensionLiteralOutOfRange(value~, span=self.span(start_idx))
+      }
       Lit(value.to_int())
     }
     Identifier(name) => {

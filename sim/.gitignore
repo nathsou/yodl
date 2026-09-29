@@ -1,5 +1,6 @@
 output/
 obj_dir/
+obj_dir_rtlil/
 *.v
 *.sv
 *.rtlil
