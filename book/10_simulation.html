@@ -1,73 +1,18 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Simulation · Yodl</title><meta name="description" content="Simulation in Yodl. Learn the language with editable examples and inspect the hardware compiler output."><meta property="og:title" content="Simulation · Yodl"><meta property="og:description" content="Simulation in Yodl. Learn the language with editable examples and inspect the hardware compiler output."><meta property="og:type" content="article"><meta name="color-scheme" content="light dark"><link rel="stylesheet" href="../docs.css"><script>document.documentElement.classList.add('js');try{const t=localStorage.getItem('yodl-playground-v2:theme');document.documentElement.dataset.theme=t==='dark'||(t!=='light'&&matchMedia('(prefers-color-scheme: dark)').matches)?'dark':'light'}catch{}</script></head>
-<body><a class="skip-link" href="#content">Skip to content</a>
-<header class="site-header">
-<a class="site-brand" href="../book/" aria-label="Yodl home">yodl<span class="site-brand-divider">/</span><span class="site-section" id="site-section">documentation</span></a>
-<nav class="site-navigation" aria-label="Yodl">
-<a href="../book/" aria-current="page">Docs</a>
-<a href="../playground.html?lesson=gates">Tour</a><a href="../playground.html?mode=examples">Playground</a>
-</nav>
-<label class="site-theme"><span class="sr-only">Color theme</span><select id="theme-select" title="Color theme"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select></label>
-</header>
-<div class="docs-layout"><aside class="sidebar"><details class="chapter-menu" open><summary>Chapters</summary><div class="sidebar-inner"><button id="search-open" class="search-trigger js-only">Search documentation <kbd>/</kbd></button><p class="eyebrow">THE LANGUAGE</p><nav aria-label="Chapters"><a href="./01_presentation.html" ><span>01</span>Presentation</a><a href="./02_getting_started.html" ><span>02</span>Getting Started</a><a href="./03_data_types.html" ><span>03</span>Data Types</a><a href="./04_constructs.html" ><span>04</span>Language Constructs</a><a href="./05_operators.html" ><span>05</span>Operators</a><a href="./06_control_flow.html" ><span>06</span>Control Flow</a><a href="./07_built_in_functions.html" ><span>07</span>Built-in Functions</a><a href="./08_primitive_modules.html" ><span>08</span>Primitive Modules</a><a href="./09_external_modules.html" ><span>09</span>External Modules</a><a href="./10_simulation.html" aria-current="page"><span>10</span>Simulation</a></nav><div class="sidebar-footer"><a href="https://github.com/nathsou/yodl">GitHub ↗</a><span>Yodl 0.3.1 · bc16c6a</span></div></div></details></aside>
-<main id="content" tabindex="-1"><div class="chapter-meta"><span class="eyebrow">LANGUAGE GUIDE</span><span>10 / 10</span></div><article><h1 id="simulation"><a class="heading-anchor" href="#simulation">Simulation</a></h1>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Simulation · Yodl</title><meta name="description" content="Simulation in Yodl. Learn the language with editable examples and inspect the hardware compiler output."><link rel="canonical" href="../playground.html?mode=docs&chapter=10_simulation"><script>location.replace("../playground.html?mode=docs&chapter=10_simulation"+location.hash)</script><style>body{font:16px/1.7 system-ui,sans-serif;max-width:760px;margin:0 auto;padding:24px}pre{overflow:auto}</style></head>
+<body><p><a href="../playground.html?mode=docs&chapter=10_simulation">Open Simulation in the Yodl guide</a></p><noscript><article><h1 id="simulation"><a class="heading-anchor" href="#simulation">Simulation</a></h1>
 <h2 id="procedural-testbenches"><a class="heading-anchor" href="#procedural-testbenches">Procedural testbenches</a></h2>
 <p>Testbenches live beside hardware modules and run with the native simulator.
 The <code>test</code> command runs every test in a source file; pass a test name to run
 only that test. A test may bind a module with <code>for</code>, which brings its ports into
 scope, or instantiate a DUT locally when it needs an unbound test.
-In the playground, choose <strong>Tests</strong> from the Output menu and press <strong>Compile</strong>
-to run the same testbenches in the browser.</p>
+In the playground, open the <strong>Tests</strong> tab of the output pane (it appears when the
+source contains tests) to run the same testbenches in the browser.</p>
 <section class="code-example" id="ex-procedural-testbenches" aria-label="Example: procedural testbenches">
-    <div class="example-header"><a class="example-title" href="#ex-procedural-testbenches"><span class="file-dot"></span>Yodl <span class="example-number">/ procedural testbenches</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
-    <pre class="example-static"><code><span class="token-keyword">module</span> XorGate(a: <span class="token-type">bool</span>, b: <span class="token-type">bool</span>) -&gt; (out: <span class="token-type">bool</span>) {
-    out = a xor b
-}
-
-<span class="token-keyword">const</span> XorTruthTable = [
-    <span class="token-number">3&#39;b000</span>, <span class="token-comment">// a, b, out</span>
-    <span class="token-number">3&#39;b011</span>,
-    <span class="token-number">3&#39;b101</span>,
-    <span class="token-number">3&#39;b110</span>,
-]
-
-<span class="token-keyword">module</span> Counter[Width: <span class="token-type">Nat</span>](
-    clk: <span class="token-type">clock</span>,
-    rst: <span class="token-type">bool</span>,
-    enable: <span class="token-type">bool</span>,
-) -&gt; (value: <span class="token-type">uint</span>[Width]) {
-    <span class="token-keyword">let</span> state = Reg[<span class="token-type">uint</span>[Width]](clk, rst, en: enable)
-    state.d = state.q + <span class="token-number">1</span>
-    value = state.q
-}
-
-<span class="token-keyword">test</span> <span class="token-string">&quot;complete XOR truth table&quot;</span> <span class="token-keyword">for</span> XorGate {
-    <span class="token-keyword">for</span> i <span class="token-keyword">in</span> <span class="token-number">0</span>..&lt;<span class="token-number">4</span> {
-        <span class="token-function">drive!</span>(a, XorTruthTable[i][<span class="token-number">2</span>])
-        <span class="token-function">drive!</span>(b, XorTruthTable[i][<span class="token-number">1</span>])
-        <span class="token-function">expect!</span>(out, XorTruthTable[i][<span class="token-number">0</span>])
-    }
-}
-
-<span class="token-keyword">test</span> <span class="token-string">&quot;counter reset, increment, and hold&quot;</span> <span class="token-keyword">for</span> Counter[<span class="token-number">8</span>] {
-    <span class="token-function">drive!</span>(rst, <span class="token-keyword">true</span>)
-    <span class="token-function">drive!</span>(enable, <span class="token-keyword">false</span>)
-    <span class="token-function">step!</span>(<span class="token-number">1</span>)
-    <span class="token-function">expect!</span>(value, <span class="token-number">0</span>)
-
-    <span class="token-function">drive!</span>(rst, <span class="token-keyword">false</span>)
-    <span class="token-function">drive!</span>(enable, <span class="token-keyword">true</span>)
-    <span class="token-keyword">for</span> expected <span class="token-keyword">in</span> <span class="token-number">1</span>..&lt;<span class="token-number">6</span> {
-        <span class="token-function">step!</span>(<span class="token-number">1</span>)
-        <span class="token-function">expect!</span>(value, expected)
-    }
-
-    <span class="token-function">drive!</span>(enable, <span class="token-keyword">false</span>)
-    <span class="token-function">step!</span>(<span class="token-number">2</span>)
-    <span class="token-function">expect!</span>(value, <span class="token-number">5</span>)
-}</code></pre>
+    <div class="example-header"><span class="example-file">ex-procedural-testbenches.yodl</span><span class="example-actions"><button type="button" data-action="compile" class="js-only">Compile ▸</button><button type="button" data-action="playground" class="js-only">Open in Playground ↗</button></span></div>
+    <div class="code-lines" tabindex="0" role="region" aria-label="Source: procedural testbenches"><div class="code-line"><span class="ln">1</span><span class="lt"><span class="token-keyword">module</span> <span class="token-ident">XorGate</span>(a<span class="token-punct">:</span> <span class="token-type">bool</span>, b<span class="token-punct">:</span> <span class="token-type">bool</span>) <span class="token-punct">-&gt;</span> (out<span class="token-punct">:</span> <span class="token-type">bool</span>) {</span></div><div class="code-line"><span class="ln">2</span><span class="lt">    out <span class="token-punct">=</span> a <span class="token-keyword">xor</span> b</span></div><div class="code-line"><span class="ln">3</span><span class="lt">}</span></div><div class="code-line"><span class="ln">4</span><span class="lt"> </span></div><div class="code-line"><span class="ln">5</span><span class="lt"><span class="token-keyword">const</span> <span class="token-ident">XorTruthTable</span> <span class="token-punct">=</span> [</span></div><div class="code-line"><span class="ln">6</span><span class="lt">    <span class="token-number">3&#39;b000</span>, <span class="token-comment">// a, b, out</span></span></div><div class="code-line"><span class="ln">7</span><span class="lt">    <span class="token-number">3&#39;b011</span>,</span></div><div class="code-line"><span class="ln">8</span><span class="lt">    <span class="token-number">3&#39;b101</span>,</span></div><div class="code-line"><span class="ln">9</span><span class="lt">    <span class="token-number">3&#39;b110</span>,</span></div><div class="code-line"><span class="ln">10</span><span class="lt">]</span></div><div class="code-line"><span class="ln">11</span><span class="lt"> </span></div><div class="code-line"><span class="ln">12</span><span class="lt"><span class="token-keyword">module</span> <span class="token-ident">Counter</span>[<span class="token-ident">Width</span><span class="token-punct">:</span> <span class="token-type">Nat</span>](</span></div><div class="code-line"><span class="ln">13</span><span class="lt">    clk<span class="token-punct">:</span> <span class="token-type">clock</span>,</span></div><div class="code-line"><span class="ln">14</span><span class="lt">    rst<span class="token-punct">:</span> <span class="token-type">bool</span>,</span></div><div class="code-line"><span class="ln">15</span><span class="lt">    enable<span class="token-punct">:</span> <span class="token-type">bool</span>,</span></div><div class="code-line"><span class="ln">16</span><span class="lt">) <span class="token-punct">-&gt;</span> (value<span class="token-punct">:</span> <span class="token-type">uint</span>[<span class="token-ident">Width</span>]) {</span></div><div class="code-line"><span class="ln">17</span><span class="lt">    <span class="token-keyword">let</span> state <span class="token-punct">=</span> <span class="token-ident">Reg</span>[<span class="token-type">uint</span>[<span class="token-ident">Width</span>]](clk, rst, en<span class="token-punct">:</span> enable)</span></div><div class="code-line"><span class="ln">18</span><span class="lt">    state<span class="token-punct">.</span>d <span class="token-punct">=</span> state<span class="token-punct">.</span>q <span class="token-punct">+</span> <span class="token-number">1</span></span></div><div class="code-line"><span class="ln">19</span><span class="lt">    value <span class="token-punct">=</span> state<span class="token-punct">.</span>q</span></div><div class="code-line"><span class="ln">20</span><span class="lt">}</span></div><div class="code-line"><span class="ln">21</span><span class="lt"> </span></div><div class="code-line"><span class="ln">22</span><span class="lt"><span class="token-keyword">test</span> <span class="token-string">&quot;complete XOR truth table&quot;</span> <span class="token-keyword">for</span> <span class="token-ident">XorGate</span> {</span></div><div class="code-line"><span class="ln">23</span><span class="lt">    <span class="token-keyword">for</span> i <span class="token-keyword">in</span> <span class="token-number">0</span><span class="token-punct">..&lt;</span><span class="token-number">4</span> {</span></div><div class="code-line"><span class="ln">24</span><span class="lt">        <span class="token-function">drive!</span>(a, <span class="token-ident">XorTruthTable</span>[i][<span class="token-number">2</span>])</span></div><div class="code-line"><span class="ln">25</span><span class="lt">        <span class="token-function">drive!</span>(b, <span class="token-ident">XorTruthTable</span>[i][<span class="token-number">1</span>])</span></div><div class="code-line"><span class="ln">26</span><span class="lt">        <span class="token-function">expect!</span>(out, <span class="token-ident">XorTruthTable</span>[i][<span class="token-number">0</span>])</span></div><div class="code-line"><span class="ln">27</span><span class="lt">    }</span></div><div class="code-line"><span class="ln">28</span><span class="lt">}</span></div><div class="code-line"><span class="ln">29</span><span class="lt"> </span></div><div class="code-line"><span class="ln">30</span><span class="lt"><span class="token-keyword">test</span> <span class="token-string">&quot;counter reset, increment, and hold&quot;</span> <span class="token-keyword">for</span> <span class="token-ident">Counter</span>[<span class="token-number">8</span>] {</span></div><div class="code-line"><span class="ln">31</span><span class="lt">    <span class="token-function">drive!</span>(rst, <span class="token-keyword">true</span>)</span></div><div class="code-line"><span class="ln">32</span><span class="lt">    <span class="token-function">drive!</span>(enable, <span class="token-keyword">false</span>)</span></div><div class="code-line"><span class="ln">33</span><span class="lt">    <span class="token-function">step!</span>(<span class="token-number">1</span>)</span></div><div class="code-line"><span class="ln">34</span><span class="lt">    <span class="token-function">expect!</span>(value, <span class="token-number">0</span>)</span></div><div class="code-line"><span class="ln">35</span><span class="lt"> </span></div><div class="code-line"><span class="ln">36</span><span class="lt">    <span class="token-function">drive!</span>(rst, <span class="token-keyword">false</span>)</span></div><div class="code-line"><span class="ln">37</span><span class="lt">    <span class="token-function">drive!</span>(enable, <span class="token-keyword">true</span>)</span></div><div class="code-line"><span class="ln">38</span><span class="lt">    <span class="token-keyword">for</span> expected <span class="token-keyword">in</span> <span class="token-number">1</span><span class="token-punct">..&lt;</span><span class="token-number">6</span> {</span></div><div class="code-line"><span class="ln">39</span><span class="lt">        <span class="token-function">step!</span>(<span class="token-number">1</span>)</span></div><div class="code-line"><span class="ln">40</span><span class="lt">        <span class="token-function">expect!</span>(value, expected)</span></div><div class="code-line"><span class="ln">41</span><span class="lt">    }</span></div><div class="code-line"><span class="ln">42</span><span class="lt"> </span></div><div class="code-line"><span class="ln">43</span><span class="lt">    <span class="token-function">drive!</span>(enable, <span class="token-keyword">false</span>)</span></div><div class="code-line"><span class="ln">44</span><span class="lt">    <span class="token-function">step!</span>(<span class="token-number">2</span>)</span></div><div class="code-line"><span class="ln">45</span><span class="lt">    <span class="token-function">expect!</span>(value, <span class="token-number">5</span>)</span></div><div class="code-line"><span class="ln">46</span><span class="lt">}</span></div></div>
     
-    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+    </section>
 <p>Each row of the XOR table is a three-bit <code>a, b, out</code> value. The test indexes
 the constant table to drive the inputs and check its expected output.</p>
 <table>
@@ -170,17 +115,10 @@ binds displays to typed outputs; signal names do not need a special prefix.
 A sole two-dimensional unsigned output is detected automatically. Use
 <code>display: { buffer: &quot;name&quot; }</code> to choose between multiple arrays.</p>
 <section class="code-example" id="ex-simulation-annotation" aria-label="Example: simulation annotation">
-    <div class="example-header"><a class="example-title" href="#ex-simulation-annotation"><span class="file-dot"></span>Yodl <span class="example-number">/ simulation annotation</span></a><div class="example-actions"><button data-action="edit" class="js-only">Edit & compile</button><button data-action="copy" class="js-only">Copy</button><button data-action="playground" class="js-only">Playground</button></div></div>
-    <pre class="example-static"><code>@simulation({ display: { buffer: <span class="token-string">&quot;pixel&quot;</span> }, reset: <span class="token-string">&quot;rst&quot;</span> })
-<span class="token-keyword">module</span> VisualSim(clk: <span class="token-type">clock</span>, rst: <span class="token-type">bool</span>) -&gt; (pixel: [<span class="token-number">30</span>][<span class="token-number">40</span>]<span class="token-type">bool</span>) {
-    <span class="token-keyword">for</span> row <span class="token-keyword">in</span> <span class="token-number">0</span>..&lt;<span class="token-number">30</span> {
-        <span class="token-keyword">for</span> col <span class="token-keyword">in</span> <span class="token-number">0</span>..&lt;<span class="token-number">40</span> {
-            pixel[row][col] = rst
-        }
-    }
-}</code></pre>
+    <div class="example-header"><span class="example-file">ex-simulation-annotation.yodl</span><span class="example-actions"><button type="button" data-action="compile" class="js-only">Compile ▸</button><button type="button" data-action="playground" class="js-only">Open in Playground ↗</button></span></div>
+    <div class="code-lines" tabindex="0" role="region" aria-label="Source: simulation annotation"><div class="code-line"><span class="ln">1</span><span class="lt">@simulation({ display<span class="token-punct">:</span> { buffer<span class="token-punct">:</span> <span class="token-string">&quot;pixel&quot;</span> }, reset<span class="token-punct">:</span> <span class="token-string">&quot;rst&quot;</span> })</span></div><div class="code-line"><span class="ln">2</span><span class="lt"><span class="token-keyword">module</span> <span class="token-ident">VisualSim</span>(clk<span class="token-punct">:</span> <span class="token-type">clock</span>, rst<span class="token-punct">:</span> <span class="token-type">bool</span>) <span class="token-punct">-&gt;</span> (pixel<span class="token-punct">:</span> [<span class="token-number">30</span>][<span class="token-number">40</span>]<span class="token-type">bool</span>) {</span></div><div class="code-line"><span class="ln">3</span><span class="lt">    <span class="token-keyword">for</span> row <span class="token-keyword">in</span> <span class="token-number">0</span><span class="token-punct">..&lt;</span><span class="token-number">30</span> {</span></div><div class="code-line"><span class="ln">4</span><span class="lt">        <span class="token-keyword">for</span> col <span class="token-keyword">in</span> <span class="token-number">0</span><span class="token-punct">..&lt;</span><span class="token-number">40</span> {</span></div><div class="code-line"><span class="ln">5</span><span class="lt">            pixel[row][col] <span class="token-punct">=</span> rst</span></div><div class="code-line"><span class="ln">6</span><span class="lt">        }</span></div><div class="code-line"><span class="ln">7</span><span class="lt">    }</span></div><div class="code-line"><span class="ln">8</span><span class="lt">}</span></div></div>
     
-    <div class="example-interactive" hidden></div><p class="example-status" role="status" hidden></p></section>
+    </section>
 <p>The attribute selects the module it is attached to. A sole clock is inferred;
 multiple clocks require an explicit <code>&quot;clock&quot;: &quot;name&quot;</code>. <code>reset: &quot;rst&quot;</code> asserts
 that one-bit input for one cycle, then deasserts it. Use
@@ -222,16 +160,19 @@ and counter widths need not match them. Pixels not yet captured are shown in
 magenta. The compiler resolves <code>x</code>, <code>y</code>, <code>valid</code>, and color channels through
 the typed lowering table, so a source output such as <code>video_x</code> cannot collide
 with the actual stream field binding.</p>
-<p>The panel uses one persistent worker session for Run, Pause, Resume, input
-edits, and manual steps. Changing an input settles the circuit and refreshes
-the canvas. Reset creates a fresh machine from the already compiled design.
-Stop releases the session; the next Run compiles a new one. Source edits also
-stop the session. Scalar signals and messages appear below the display.</p>
+<p>The <strong>Simulate</strong> view of the output pane uses one persistent worker session for
+Run, Pause, Resume, input edits, and manual steps. Changing an input settles
+the circuit and refreshes the canvas. Reset creates a fresh machine from the
+already compiled design. <strong>Restart simulation</strong> in Settings releases the session;
+the next Run compiles a new one. Source edits also stop the session. Inputs and
+outputs are listed above a waveform trace of the most recent samples, and
+messages appear below it.</p>
 <p>Source tabs load imported files and their dependencies automatically when you
 open or edit a design, independently of automatic compilation. Imports open read-only, with their full path in
 the editor header. The Main file remains the target for compilation, simulation,
-drafts, and sharing while you browse. Save downloads the file you are viewing.</p>
-<p>Step cycle advances one clock. For arrays, Step frame advances
+drafts, and sharing while you browse. <strong>Download source</strong> in the <code>···</code> menu
+downloads the file you are viewing.</p>
+<p>Step advances one clock. For arrays, Step frame advances
 <code>cycles_per_frame</code> (default one). Declare it only when a complete frame needs
 multiple cycles; it must be a positive integer. For streams, Step frame runs
 until the next frame boundary and reports the actual cycles advanced. Batch
@@ -244,9 +185,9 @@ scalar designs default to 30 cycles per second; pixel streams run as fast as
 possible. The UI's <strong>Refresh FPS</strong> setting independently limits canvas updates
 (default 30). It never sets the clock speed or the number of cycles advanced
 by Step frame. The UI reports achieved cycles per second and simulated time
-when a target frequency is configured. Resolved defaults appear in Advanced
-settings. Timing changes apply on Resume or the next manual step; top/clock
-changes require Stop.</p>
+when a target frequency is configured. Resolved defaults appear in Settings.
+Timing changes apply on Resume or the next manual step; top/clock changes
+require a restart.</p>
 <p>Capture length and canvas refresh are run options, not circuit annotations.
 The batch API accepts <code>captureFrames</code> (default one) and optional
 <code>cyclesPerFrame</code>; realtime playback accepts <code>refreshFps</code>. A clockless design
@@ -276,11 +217,4 @@ worklist; a deterministic full sweep is available as a reference oracle.
 Known-address memory writes are grouped by word, while unknown addresses use
 a separate conservative path instead of scanning memory for every ordinary
 write.</p>
-</article>
-
-<nav class="page-navigation" aria-label="Previous and next chapters"><a href="./09_external_modules.html"><small>← Previous</small>External Modules</a><span></span></nav><footer class="article-footer"><a href="https://github.com/nathsou/yodl/edit/main/book/src/10_simulation.md">Edit this page ↗</a><span>Examples compile locally in your browser.</span></footer></main>
-<aside class="page-toc"><p class="eyebrow">ON THIS PAGE</p><nav aria-label="On this page"><a href="#procedural-testbenches" class="toc-level-2">Procedural testbenches</a></nav><a class="back-top" href="#content">Back to top ↑</a></aside></div>
-<dialog id="search-dialog"><div class="search-header"><label for="search-input" class="sr-only">Search documentation</label><input id="search-input" type="search" placeholder="Search concepts, syntax, and examples…" autocomplete="off"><button id="search-close" aria-label="Close search">Esc</button></div><p id="search-status" role="status">Type to search all chapters.</p><div id="search-results"></div></dialog>
-<dialog id="confirm-dialog"><h2 id="confirm-title">Reset this example?</h2><p id="confirm-message">Your local edits will be replaced by the original source.</p><form method="dialog"><button value="cancel">Keep edits</button><button value="reset" class="primary">Reset source</button></form></dialog>
-<dialog id="share-dialog"><h2>Share this example</h2><p>The link includes your edits and selected compiler stage. It uses the deployed compiler version.</p><input id="share-url" aria-label="Share URL" readonly><form method="dialog"><button>Close</button><button type="button" id="share-copy" class="primary">Copy link</button></form></dialog>
-<script id="chapter-data" type="application/json">{"slug":"10_simulation","version":"0.3.1","revision":"bc16c6a","examples":[{"id":"ex-procedural-testbenches","title":"procedural testbenches","source":"module XorGate(a: bool, b: bool) -> (out: bool) {\n    out = a xor b\n}\n\nconst XorTruthTable = [\n    3'b000, // a, b, out\n    3'b011,\n    3'b101,\n    3'b110,\n]\n\nmodule Counter[Width: Nat](\n    clk: clock,\n    rst: bool,\n    enable: bool,\n) -> (value: uint[Width]) {\n    let state = Reg[uint[Width]](clk, rst, en: enable)\n    state.d = state.q + 1\n    value = state.q\n}\n\ntest \"complete XOR truth table\" for XorGate {\n    for i in 0..\u003c4 {\n        drive!(a, XorTruthTable[i][2])\n        drive!(b, XorTruthTable[i][1])\n        expect!(out, XorTruthTable[i][0])\n    }\n}\n\ntest \"counter reset, increment, and hold\" for Counter[8] {\n    drive!(rst, true)\n    drive!(enable, false)\n    step!(1)\n    expect!(value, 0)\n\n    drive!(rst, false)\n    drive!(enable, true)\n    for expected in 1..\u003c6 {\n        step!(1)\n        expect!(value, expected)\n    }\n\n    drive!(enable, false)\n    step!(2)\n    expect!(value, 5)\n}\n","display":"module XorGate(a: bool, b: bool) -> (out: bool) {\n    out = a xor b\n}\n\nconst XorTruthTable = [\n    3'b000, // a, b, out\n    3'b011,\n    3'b101,\n    3'b110,\n]\n\nmodule Counter[Width: Nat](\n    clk: clock,\n    rst: bool,\n    enable: bool,\n) -> (value: uint[Width]) {\n    let state = Reg[uint[Width]](clk, rst, en: enable)\n    state.d = state.q + 1\n    value = state.q\n}\n\ntest \"complete XOR truth table\" for XorGate {\n    for i in 0..\u003c4 {\n        drive!(a, XorTruthTable[i][2])\n        drive!(b, XorTruthTable[i][1])\n        expect!(out, XorTruthTable[i][0])\n    }\n}\n\ntest \"counter reset, increment, and hold\" for Counter[8] {\n    drive!(rst, true)\n    drive!(enable, false)\n    step!(1)\n    expect!(value, 0)\n\n    drive!(rst, false)\n    drive!(enable, true)\n    for expected in 1..\u003c6 {\n        step!(1)\n        expect!(value, expected)\n    }\n\n    drive!(enable, false)\n    step!(2)\n    expect!(value, 5)\n}","path":"examples/Testbench.yodl","files":{},"stage":"test","unsupported":[],"hash":"d717d7d7f0aff34c","live":true,"expect":"success","line":12},{"id":"ex-simulation-annotation","title":"simulation annotation","source":"@simulation({ display: { buffer: \"pixel\" }, reset: \"rst\" })\nmodule VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {\n    for row in 0..\u003c30 {\n        for col in 0..\u003c40 {\n            pixel[row][col] = rst\n        }\n    }\n}\n","display":"@simulation({ display: { buffer: \"pixel\" }, reset: \"rst\" })\nmodule VisualSim(clk: clock, rst: bool) -> (pixel: [30][40]bool) {\n    for row in 0..\u003c30 {\n        for col in 0..\u003c40 {\n            pixel[row][col] = rst\n        }\n    }\n}","path":"book/src/10_simulation/ex-simulation-annotation.yodl","files":{},"stage":"write_firrtl","unsupported":[],"hash":"05a6cdfb9c954e82","live":true,"expect":"success","line":136}]}</script><script type="module" src="../bundle/docs-betj43bd.js"></script></body></html>
+</article></noscript></body></html>
