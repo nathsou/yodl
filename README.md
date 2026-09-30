@@ -99,8 +99,12 @@ worker, and the fonts are bundled into `dist/`, so nothing is loaded from a CDN
 and the deployed site works offline once served.
 
 The book is built from Markdown using Bun's built-in parser and rendered inside
-the page, sharing its themes, Monaco editor, and browser compiler. Examples can be
-compiled in place and opened in the Playground for editing.
+the page, sharing its themes and browser compiler. Its lightweight code blocks
+include inferred type and builtin signature hovers, semantic highlighting, and
+source diagnostics captured from the MoonBit language service at build time.
+Hover or focus a symbol to inspect its type; errors are underlined and listed
+below the code without needing to compile. Examples can also be compiled in
+place and opened in the Playground for editing.
 See [documentation authoring](book/README.md) for example metadata and validation.
 
 Build the complete static site into `dist/` with `bun run build:site`.

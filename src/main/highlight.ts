@@ -33,16 +33,22 @@ function tokenClass(token: string, language: HighlightLanguage): string {
     return '';
 }
 
-export function highlight(source: string, language: HighlightLanguage = 'yodl'): string {
-    if (language === 'plaintext') return escapeHTML(source);
+export function highlightSegments(source: string, language: HighlightLanguage = 'yodl'): { text: string; kind: string; start: number; end: number }[] {
+    if (language === 'plaintext') return [{ text: source, kind: '', start: 0, end: source.length }];
     const comment = language === 'rtlil' ? '#[^\\n]*' : language === 'firrtl' ? ';[^\\n]*' : '\\/\\/[^\\n]*';
     // Only the IR languages have negative literals; in Yodl `a-1` is a subtraction.
     const number = language === 'yodl' ? '\\b\\d+' : '-?\\b\\d+';
     const pattern = new RegExp(`(${comment}|"(?:[^"\\\\\\n]|\\\\.)*"|\\b\\w+!|${number}(?:'[bhod]?[\\da-fA-F_]+)?\\b|\\b[a-zA-Z_]\\w*\\b|[=<>+\\-*/%:?.&|^~!]+)`, 'g');
-    return source.split(pattern).map(token => {
-        const kind = tokenClass(token, language);
-        return kind ? `<span class="token-${kind}">${escapeHTML(token)}</span>` : escapeHTML(token);
-    }).join('');
+    let offset = 0;
+    return source.split(pattern).filter(Boolean).map(text => {
+        const start = offset;
+        offset += text.length;
+        return { text, kind: tokenClass(text, language), start, end: offset };
+    });
+}
+
+export function highlight(source: string, language: HighlightLanguage = 'yodl'): string {
+    return highlightSegments(source, language).map(({ text, kind }) => kind ? `<span class="token-${kind}">${escapeHTML(text)}</span>` : escapeHTML(text)).join('');
 }
 
 /** One row per source line, with a line-number gutter. */

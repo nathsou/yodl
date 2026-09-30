@@ -124,7 +124,10 @@ fn Server::index(self: Self) -> Workspace {
   if self.workspace is Some(workspace) { return workspace }
   let workspace: Workspace = { files: {}, scopes: [], symbols: [], definitions: {}, references: [], binding_types: {}, expression_types: {} }
   for uri, _ in self.documents {
-    for decl in self.analyze(uri).typed_decls { workspace.collect_types(decl) }
+    let _ = self.analyze(uri)
+  }
+  for _, analysis in self.analyses {
+    for decl in analysis.typed_decls { workspace.collect_types(decl) }
   }
   let sources = self.sources()
   sources[builtin_uri] = @simplify.builtin_source()

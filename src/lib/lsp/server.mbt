@@ -85,6 +85,7 @@ fn Server::analyze(self: Self, uri: String) -> @driver.Analysis {
       let analysis = @driver.analyze(uri, ext)
       self.analyses[uri] = analysis
       self.reads[uri] = reads
+      self.workspace = None
       analysis
     }
   }
@@ -138,6 +139,7 @@ fn Server::dispatch(self: Self, method: String, params: Json, replies: Array[Jso
       let _ = self.analyze(uri)
       self.reads.get(uri).unwrap_or({}).to_json()
     }
+    "yodl/snapshot" => self.snapshot(required_string(params, "uri"))
     "yodl/source" => {
       let uri = required_string(params, "uri")
       if uri == builtin_uri { @simplify.builtin_source().to_json() } else { self.source(uri).map(s => s.to_json()).unwrap_or(Json::null()) }

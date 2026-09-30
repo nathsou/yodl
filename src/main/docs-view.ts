@@ -33,6 +33,35 @@ export function createDocs(host: DocsHost) {
     let observer: IntersectionObserver | undefined;
     const main = element('docs-main');
     const content = element('docs-content');
+    const tooltip = el('div', 'code-tooltip');
+    tooltip.id = 'docs-code-tooltip';
+    tooltip.setAttribute('role', 'tooltip');
+    tooltip.hidden = true;
+    document.body.append(tooltip);
+    let tooltipTarget: HTMLElement | undefined;
+    const hideTooltip = () => {
+        tooltip.hidden = true;
+        tooltipTarget?.removeAttribute('aria-describedby');
+        tooltipTarget = undefined;
+    };
+    const showTooltip = (target: HTMLElement) => {
+        hideTooltip();
+        tooltipTarget = target;
+        tooltip.textContent = target.dataset.codeInfo!;
+        tooltip.hidden = false;
+        target.setAttribute('aria-describedby', tooltip.id);
+        const rect = target.getBoundingClientRect();
+        const width = tooltip.offsetWidth, height = tooltip.offsetHeight;
+        tooltip.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
+        tooltip.style.top = `${Math.max(8, rect.top > height + 12 ? rect.top - height - 8 : Math.min(rect.bottom + 8, innerHeight - height - 8))}px`;
+    };
+    const infoTarget = (event: Event) => (event.target as Element).closest<HTMLElement>('[data-code-info]');
+    content.addEventListener('pointerover', event => { const target = infoTarget(event); if (target && target !== tooltipTarget) showTooltip(target); });
+    content.addEventListener('pointerout', event => { if (tooltipTarget && !tooltipTarget.contains(event.relatedTarget as Node)) hideTooltip(); });
+    content.addEventListener('focusin', event => { const target = infoTarget(event); if (target) showTooltip(target); });
+    content.addEventListener('focusout', hideTooltip);
+    content.addEventListener('keydown', event => { if (event.key === 'Escape') hideTooltip(); });
+    main.addEventListener('scroll', hideTooltip, { passive: true });
 
     function load(): Promise<DocsData> {
         return loading ??= fetch('./book/chapters.json').then(response => {
@@ -81,6 +110,7 @@ export function createDocs(host: DocsHost) {
     }
 
     function renderArticle(data: DocsData, chapter: ChapterData) {
+        hideTooltip();
         const index = data.chapters.indexOf(chapter);
         const meta = el('p', 'docs-meta', `Chapter ${pad(index + 1)} of ${pad(data.chapters.length)}`);
         const article = el('article');
@@ -238,7 +268,7 @@ export function createDocs(host: DocsHost) {
             return chapter;
         },
         get current() { return current; },
-        dispose() { compiler.dispose(); },
+        dispose() { hideTooltip(); tooltip.remove(); compiler.dispose(); },
     };
 }
 export type Docs = ReturnType<typeof createDocs>;

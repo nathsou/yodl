@@ -33,6 +33,22 @@ describe('MoonBit LSP', () => {
         const generic = service('module Hex[Bits: Nat]() -> () {\n const Len = cdiv!(Bits, 4)\n for i in 0..<Len {}\n}');
         expect(generic.query('hover', generic.at('Len')).contents.value).toContain('const Len: Nat');
     });
+    test('static snapshots match interactive hovers, tokens and diagnostics', () => {
+        const c = service('module Top(a: u8) -> () {\n let value = a\n let size = clog2!(8)\n let bad: u8 = 256\n}');
+        const snapshot = c.request('yodl/snapshot', { uri });
+        expect(snapshot.semanticTokens).toEqual(c.request('textDocument/semanticTokens/full', { textDocument: { uri } }));
+        expect(snapshot.hovers.length).toBeGreaterThan(0);
+        for (const hover of snapshot.hovers) expect(hover).toEqual(c.query('hover', hover.range.start));
+        expect(new Set(snapshot.hovers.map((h: any) => JSON.stringify(h.range))).size).toBe(snapshot.hovers.length);
+        const errors = c.diagnostics();
+        expect(snapshot.diagnostics.map((d: any) => [d.code, d.message, d.uri, d.range, d.relatedInformation])).toEqual(errors.map((d: any) => [d.code, d.message, d.uri, d.range, d.relatedInformation]));
+        expect(c.raw('yodl/snapshot', { uri: 'file:///missing.yodl' })[0].error.code).toBe(-32602);
+        const disk = service('const Len = cdiv!(12, 4)\nmodule Top() -> () {}');
+        disk.raw('textDocument/didClose', { textDocument: { uri } }, false);
+        disk.query('hover', disk.at('Len')); // Populate a syntax-only index first.
+        const captured = disk.request('yodl/snapshot', { uri });
+        expect(captured.hovers.some((h: any) => h.contents.value.includes('const Len: u2'))).toBe(true);
+    });
     test('lifecycle, parse errors, unsupported requests and shutdown', () => {
         const s = new_server();
         expect(JSON.parse(handle_message(s, '{'))[0].error.code).toBe(-32700);

@@ -2,13 +2,14 @@ import { buildBrowserAssets } from './bundle.ts';
 import { siteHeader } from '../main/site-navigation.ts';
 import { mkdir, cp, readFile, writeFile, rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { loadChapters, buildSearchIndex, escapeHTML as e } from './content.ts';
+import { loadChapters, buildSearchIndex, exampleHTML, escapeHTML as e } from './content.ts';
+import { captureFeedback } from './language-feedback.ts';
 import type { Chapter } from './content.ts';
 
 const root = resolve(import.meta.dir, '../..');
 const destination = resolve(root, process.argv[2] ?? 'dist');
 if (destination !== resolve(root, 'dist')) throw new Error('The site build writes only to dist/');
-const chapters = loadChapters(root);
+const chapters = loadChapters(root, example => exampleHTML(example, captureFeedback(example)));
 const version = JSON.parse(await readFile(resolve(root, 'moon.mod.json'), 'utf8')).version;
 const revision = process.env.YODL_REVISION?.slice(0, 7) || Bun.spawnSync(['git', 'rev-parse', '--short', 'HEAD'], { cwd: root }).stdout.toString().trim() || 'local';
 await rm(destination, { recursive: true, force: true });
