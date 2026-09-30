@@ -29,7 +29,7 @@
         <div id="editor-view" class="main-layout" data-section="tour">
             <div class="context-bar">
                 <button type="button" id="context-toggle" class="context-toggle" aria-expanded="false" aria-controls="sidebar"><span id="context-label" class="context-label">Lesson 01 of 12</span><span class="context-chevron" aria-hidden="true">▾</span></button>
-                <nav class="mobile-tabs segmented" aria-label="Editor view"><button type="button" id="source-tab" aria-pressed="true">Source</button><button type="button" id="output-tab" aria-pressed="false">Output</button></nav>
+                <nav class="mobile-tabs segmented" aria-label="Editor view"><button type="button" id="source-tab" aria-pressed="true">Source</button><button type="button" id="output-tab" aria-pressed="false">Output</button><button type="button" id="simulation-tab" aria-pressed="false">Sim</button></nav>
             </div>
             <aside id="sidebar" class="sidebar">
                 <section id="guide" class="guide" aria-label="Lesson guide">
@@ -63,7 +63,20 @@
                     </div>
                 </section>
             </aside>
+            <div id="sidebar-resizer" class="sidebar-resizer" role="separator" tabindex="0" aria-label="Resize sidebar" aria-orientation="vertical" aria-valuemin="200" aria-valuemax="600" aria-valuenow="340"></div>
             <div class="editor-workspace">
+                <div class="layout-toolbar">
+                    <span class="layout-hint">Drag pane handles to move · drag dividers to resize</span>
+                    <details id="layout-menu" class="layout-menu">
+                        <summary>Layout</summary>
+                        <div class="layout-options">
+                            <fieldset><legend>Show panes</legend><label><input type="checkbox" id="show-source" checked> Source</label><label><input type="checkbox" id="show-output" checked> Output</label><label><input type="checkbox" id="show-simulation"> Simulation</label><label><input type="checkbox" id="show-sidebar" checked> Sidebar</label></fieldset>
+                            <label>Arrange panes <select id="layout-axis"><option value="auto">Automatic</option><option value="horizontal">Side by side</option><option value="vertical">Stacked</option></select></label>
+                            <label>Sidebar <select id="sidebar-position"><option value="left">Left</option><option value="right">Right</option></select></label>
+                            <button type="button" id="reset-layout">Reset layout</button>
+                        </div>
+                    </details>
+                </div>
                 <div id="editors" class="editors" data-view="source" data-imports="false">
                     <section id="source-pane" class="editor-pane source-pane" aria-label="Source">
                         <div class="panel-header">
@@ -86,8 +99,7 @@
                         <nav id="source-files" class="source-files" aria-label="Source files" hidden></nav>
                         <div id="input-panel" class="editor"><p class="editor-loading">Loading the code editor…</p></div>
                     </section>
-                    <div id="resize-handle" role="separator" tabindex="0" aria-label="Resize source and output panels" aria-orientation="vertical" aria-valuemin="25" aria-valuemax="75" aria-valuenow="50"></div>
-                    <section id="output-pane" class="editor-pane output-pane" data-view="output" aria-label="Compiler output">
+                    <section id="output-pane" class="editor-pane output-pane" aria-label="Compiler output">
                         <div class="panel-header output-header">
                             <div id="stage-tabs" class="stage-tabs" role="group" aria-label="Compiler output stage"></div><span class="stage-picker"><select id="stage-select" aria-label="Compiler output stage"></select></span>
                             <div class="segmented" id="output-view-switch" role="group" aria-label="Output view"><button type="button" id="view-output" aria-pressed="true">Output</button><button type="button" id="view-simulate" aria-pressed="false" disabled>Simulate</button></div>
@@ -97,6 +109,9 @@
                             <div id="output-panel" class="editor"></div>
                             <section id="problems" class="problems" aria-label="Source diagnostics" hidden><div class="problems-header"><strong>Problems</strong><button type="button" id="jump-error" hidden>Go to source ↗</button></div><pre id="error-message"></pre></section>
                         </div>
+                    </section>
+                    <section id="simulation-pane" class="editor-pane" aria-label="Simulation" hidden>
+                        <div class="panel-header"><strong>Simulation</strong></div>
                         <section id="simulation-panel" class="simulation-panel" aria-label="Simulation">
                             <div class="simulation-controls">
                                 <button type="button" id="simulation-run" class="primary" disabled>Run</button>
@@ -159,6 +174,6 @@
     <dialog id="share-dialog"><form method="dialog"><div class="dialog-header"><h2>Share this circuit</h2><button aria-label="Close share dialog">×</button></div><p>The link contains this source and selected output stage. It opens a separate shared draft.</p><label for="share-url">Share link</label><input id="share-url" readonly><div class="dialog-actions"><button id="copy-share" type="button" class="primary">Copy link</button></div></form></dialog>
     <dialog id="reset-dialog"><form method="dialog"><h2>Reset this source?</h2><p>Your edits to this lesson or example will be replaced by the original source.</p><div class="dialog-actions"><button value="cancel">Keep edits</button><button value="reset" class="primary">Reset source</button></div></form></dialog>
     <noscript><p class="notice">Enable JavaScript to read the guide and to edit and compile Yodl.</p></noscript>
-    <script type="module" src="./bundle/playground-ffb0w26c.js"></script>
+    <script type="module" src="./bundle/playground-c33c3gzc.js"></script>
 </body>
 </html>

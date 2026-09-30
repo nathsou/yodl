@@ -43,9 +43,8 @@ select { padding: 3px 6px; }
 .notice button { margin-left: 12px; padding: 1px 8px; border: 1px solid var(--line); border-radius: 5px; background: var(--panel); }
 .stage { position: relative; flex: 1; min-height: 0; display: flex; }
 
-/* Editor layout: sidebar | source | output. The sidebar can be hidden; on
-   narrow screens it becomes a sheet opened from the context bar. */
-.main-layout { position: relative; flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: var(--sidebar-width, 340px) minmax(0, 1fr); grid-template-areas: "side work"; }
+/* The sidebar can move to either side; narrow screens show it as a sheet. */
+.main-layout { position: relative; flex: 1; min-width: 0; min-height: 0; display: grid; grid-template-columns: var(--sidebar-width, 340px) 6px minmax(0, 1fr); grid-template-areas: "side side-handle work"; }
 .main-layout[data-sidebar="hidden"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "work"; }
 .main-layout[data-sidebar="hidden"] .sidebar { display: none; }
 .sidebar { grid-area: side; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--line); background: var(--bg); }
@@ -122,22 +121,15 @@ select { padding: 3px 6px; }
 .draft .entry-note { flex-shrink: 0; }
 .drafts-empty { margin: 0 12px; font-size: 12px; color: var(--mute); }
 
-/* Source and output panes. The grid lets the status strip sit under the source
-   column while the output column spans the full height. */
+/* Pane sizes and order are controlled by the saved workspace layout. */
 .editor-workspace { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-/* --split-axis tells the resizer which way the panes are split. */
-.editors { --split-axis: x; flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, var(--split-a, 1fr)) 5px minmax(0, var(--split-b, 1fr)); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "source handle output" "status handle output"; background: var(--panel); }
+.editors { flex: 1; min-height: 0; display: grid; background: var(--panel); }
 .editor-pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--panel); }
-.source-pane { grid-area: source; }
-.output-pane { grid-area: output; }
 /* Size containers for the rows around the editors (never around Monaco itself,
    whose absolutely positioned layers would then widen the page). */
 .panel-header, .stage-description { container-type: inline-size; }
 .simulation-panel { container: simulation / inline-size; }
-#resize-handle { grid-area: handle; position: relative; cursor: col-resize; touch-action: none; }
-#resize-handle::after { content: ''; position: absolute; left: 2px; top: 0; bottom: 0; width: 1px; background: var(--line); }
-#resize-handle:hover::after, #resize-handle:focus-visible::after, #resize-handle.dragging::after { left: 1px; width: 3px; background: var(--acc); }
-.status-bar { grid-area: status; display: flex; align-items: center; gap: 16px; height: 30px; padding: 0 16px; border-top: 1px solid var(--line); background: var(--panel); color: var(--mute); font: 11px var(--font-mono); }
+.status-bar { flex-shrink: 0; display: flex; align-items: center; gap: 16px; height: 30px; padding: 0 16px; border-top: 1px solid var(--line); background: var(--panel); color: var(--mute); font: 11px var(--font-mono); }
 #compile-status { margin-right: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #compile-status[data-state="success"], #compile-status[data-state="loading"] { color: var(--acc); }
 #compile-status[data-state="error"] { color: var(--error); }
@@ -181,8 +173,6 @@ select { padding: 3px 6px; }
 .problems pre { margin: 8px 0 0; font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .problems .diagnostic { display: block; width: 100%; padding: 4px 0; text-align: left; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
 .problems .diagnostic:not(:disabled):hover { text-decoration: underline; }
-.output-pane[data-view="simulation"] .output-view { display: none; }
-.output-pane:not([data-view="simulation"]) .simulation-panel { display: none; }
 
 /* Simulation */
 .simulation-panel { display: flex; flex: 1; flex-direction: column; min-height: 0; }
@@ -389,12 +379,6 @@ dialog button:not(.primary):not(.search-close) { padding: 5px 12px; border: 1px 
     .docs-toc { display: none; }
     .docs-main { padding: 40px 40px 56px; }
 }
-@media (max-width: 1199px) and (min-width: 640px) {
-    .editors { --split-axis: y; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, var(--split-a, 1fr)) auto 5px minmax(0, var(--split-b, 1fr)); grid-template-areas: "source" "status" "handle" "output"; }
-    #resize-handle { cursor: row-resize; }
-    #resize-handle::after { left: 0; right: 0; top: 2px; bottom: auto; width: auto; height: 1px; }
-    #resize-handle:hover::after, #resize-handle:focus-visible::after, #resize-handle.dragging::after { left: 0; top: 1px; width: auto; height: 3px; }
-}
 @media (max-width: 1199px) {
     .status-bar #save-status { display: none; }
 }
@@ -426,10 +410,6 @@ dialog button:not(.primary):not(.search-close) { padding: 5px 12px; border: 1px 
 @media (max-width: 639px) {
     .mobile-tabs { display: flex; flex-shrink: 0; }
     .mobile-tabs button { padding: 3px 12px; }
-    .editors { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "pane" "status"; }
-    #resize-handle { display: none; }
-    .source-pane, .output-pane { grid-area: pane; }
-    .editors[data-view="source"] .output-pane, .editors[data-view="output"] .source-pane { display: none; }
     .status-bar { gap: 8px; padding: 0 12px; }
     #cursor-position { display: none; }
     .guide-top { padding: 12px 16px 0; }
@@ -459,4 +439,46 @@ dialog button:not(.primary):not(.search-close) { padding: 5px 12px; border: 1px 
     .site-header, .docs-nav, .docs-toc, .example-actions, .example-output, .page-navigation, .article-footer, .stage > :not(#docs-view) { display: none !important; }
     .docs-view { display: block; } .docs-main { overflow: visible; padding: 0; }
     .code-example, .docs-content h2, .docs-content h3 { break-inside: avoid; }
+}
+
+/* Configurable workspace panes. Layout controls stay available when panes hide. */
+.main-layout[data-sidebar-position="right"] { grid-template-columns: minmax(0, 1fr) 6px var(--sidebar-width, 340px); grid-template-areas: "work side-handle side"; }
+.main-layout[data-sidebar="hidden"] { grid-template-columns: minmax(0, 1fr); grid-template-areas: "work"; }
+.main-layout[data-sidebar="hidden"] .sidebar-resizer { display: none; }
+.main-layout[data-sidebar-position="right"] .sidebar { border-right: 0; border-left: 1px solid var(--line); }
+.sidebar-resizer { grid-area: side-handle; }
+.layout-toolbar { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-height: 32px; padding: 0 10px; border-bottom: 1px solid var(--line); background: var(--bg); font: 11px var(--font-mono); }
+.layout-hint { margin-right: auto; color: var(--mute); }
+.layout-menu { position: relative; }
+.layout-menu summary { padding: 6px 10px; cursor: pointer; border-radius: 5px; }
+.layout-menu summary:hover { background: var(--sunk); }
+.layout-options { position: absolute; z-index: 20; right: 0; top: 100%; min-width: 230px; display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); box-shadow: var(--shadow-overlay); color: var(--ink); font: 13px var(--font-sans); }
+.layout-options fieldset { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 0; padding: 10px 0 0; border: 0; }
+.layout-options legend { color: var(--mute); font-size: 12px; }
+.layout-options label { display: flex; align-items: center; gap: 8px; }
+.layout-options select { margin-left: auto; padding: 4px; }
+.layout-options > button { padding: 6px; border: 1px solid var(--line); border-radius: 5px; }
+.pane-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 0 10px 0 16px; border-bottom: 1px solid var(--line); font: 12px var(--font-mono); color: var(--mute); }
+.pane-controls { display: flex; align-items: center; flex-shrink: 0; gap: 1px; }
+.pane-controls button { width: 24px; height: 28px; padding: 0; color: var(--mute); border-radius: 4px; font-size: 15px; }
+.pane-controls button:hover:not(:disabled), .pane-controls button:focus-visible { background: var(--sunk); color: var(--ink); }
+.pane-grip { cursor: grab; }
+.pane-drop { box-shadow: inset 0 0 0 2px var(--acc); }
+.pane-resizer, .sidebar-resizer { position: relative; cursor: col-resize; touch-action: none; background: var(--sunk); }
+.pane-resizer:hover, .pane-resizer:focus-visible, .pane-resizer.dragging, .sidebar-resizer:hover, .sidebar-resizer:focus-visible { background: var(--acc-soft); outline: 1px solid var(--acc); outline-offset: -1px; }
+.editors[data-axis="vertical"] .pane-resizer { cursor: row-resize; }
+.panes-empty { align-self: center; justify-self: center; padding: 24px; color: var(--mute); font-size: 14px; }
+.main-layout .pane-fullscreen { position: fixed; z-index: 100; inset: 0; width: auto; height: auto; display: flex !important; visibility: visible; opacity: 1; transform: none; border: 0; }
+@media (max-width: 819px) {
+    .main-layout, .main-layout[data-sidebar="hidden"], .main-layout[data-sidebar-position="right"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "bar" "work"; }
+    .sidebar-resizer { display: none; }
+    .layout-hint { display: none; }
+    .main-layout[data-sidebar-position="right"] .sidebar { border-left: 0; }
+}
+@media (max-width: 639px) {
+    .editors { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: minmax(0, 1fr) !important; }
+    .editors > .pane-resizer { display: none; }
+    .editors > .editor-pane { grid-area: 1 / 1; }
+    .pane-controls .pane-grip { display: none; }
+    .mobile-tabs button { padding: 3px 8px; }
 }
