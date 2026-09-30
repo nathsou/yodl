@@ -11,7 +11,7 @@ pub(all) enum ParsedParam {
 }
 
 pub fn UnresolvedParam::parse(self: UnresolvedParam, sort: ParamSort) -> ParsedParam raise {
-  let parser = Parser::new(self.tokens, file=self.file, file_content=self.text)
+  let parser = Parser::new(self.tokens, file=self.file, file_content=self.span.file_content, end=Some(self.span.end.index))
   let param = match sort {
     NatSort => ParsedParam::ExprParam(expr=parser.parse_expr(), span=self.span)
     TypeSort => ParsedParam::TypeParam(ty=parser.parse_type(), span=self.span)

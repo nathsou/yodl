@@ -15,7 +15,8 @@ pub suberror LexerError {
   UnterminatedCharacterLiteral(span~: Span)
 }
 
-pub impl Show for LexerError with output(self, logger) -> Unit {
+fn LexerError::message(self: Self) -> String {
+  let logger = StringBuilder()
   match self {
     UnexepectedChar(char~, ..) => {
       logger.write_string("Unexpected character '\{char}'")
@@ -24,7 +25,22 @@ pub impl Show for LexerError with output(self, logger) -> Unit {
     UnterminatedCharacterLiteral(..) => logger.write_string("Unterminated character literal")
   }
 
-  logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
+
+  logger.to_string()
+}
+
+pub impl Diagnosed for LexerError with diagnostic(self) -> Diagnostic {
+  let code = match self {
+    UnexepectedChar(..) => "Y0001"
+    UnterminatedStringLiteral(..) => "Y0002"
+    UnterminatedCharacterLiteral(..) => "Y0003"
+  }
+  let result = Diagnostic::new(code, self.message(), span=Some(self.span()))
+  result
+}
+
+pub impl Show for LexerError with output(self, logger) {
+  logger.write_string(self.diagnostic().render())
 }
 
 pub impl Spanned for LexerError with span(self: LexerError) -> Span {
@@ -96,7 +112,7 @@ fn Lexer::matches(self: Lexer, char: Char) -> Bool {
 
 fn Lexer::consumes(self: Lexer, char: Char) -> Bool {
   if self.matches(char) {
-    self.index += 1
+    self.advance()
     true
   } else {
     false
@@ -196,7 +212,8 @@ fn Lexer::parse_integer(self: Lexer) -> ParsedInteger {
 }
 
 fn Lexer::advance(self: Lexer) -> Unit {
-  if self.peek() == '\n' {
+  let unit = self.input.code_unit_at(self.index)
+  if unit == '\r' || (unit == '\n' && (self.index == 0 || self.input.code_unit_at(self.index - 1) != '\r')) {
     self.line += 1
     self.column = 1
 
@@ -206,7 +223,7 @@ fn Lexer::advance(self: Lexer) -> Unit {
         span: t.span,
       })
     }
-  } else {
+  } else if unit != '\n' {
     self.column += 1
   }
 
@@ -224,7 +241,7 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
     if self.peek() == '/' && self.index + 1 < self.input.length() && self.lookahead(1) == '/' {
       self.advance()
       self.advance()
-      while self.index < self.input.length() && self.peek() != '\n' {
+      while self.index < self.input.length() && self.peek() != '\n' && self.peek() != '\r' {
         self.advance()
       }
     } else {
@@ -523,5 +540,29 @@ fn Lexer::next(self: Lexer) -> Bool raise LexerError {
 
 pub fn Lexer::lex(self: Lexer) -> Array[Token] raise {
   while self.next() {}
+  self.finish()
+}
+
+fn Lexer::finish(self: Self) -> Array[Token] {
+  // EOF terminates the last statement just like a newline. Keep EOF itself distinct.
+  if self.tokens.last() is Some(token) && should_insert_semicolon(token) {
+    self.tokens.push({ kind: Semicolon, span: Span::at(self.file, self.file_content[:], self.file_content.length(), self.file_content.length()) })
+  }
   self.tokens
+}
+
+pub fn Lexer::lex_recovering(self: Self, diagnostics: Array[Diagnostic]) -> Array[Token] {
+  while self.index < self.input.length() {
+    let start = self.index
+    try self.next() catch {
+      error => {
+        diagnostics.push(diagnostic(error).unwrap_or(Diagnostic::new("Y0000", error.to_string())))
+        if self.index == start && self.index < self.input.length() { self.advance() }
+      }
+    } noraise {
+      false => break
+      true => ()
+    }
+  }
+  self.finish()
 }

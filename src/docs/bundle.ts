@@ -9,6 +9,9 @@ export async function buildBrowserAssets(root: string, outdir: string) {
     const worker = await Bun.build({ entrypoints: [`${root}/src/main/playground-worker.ts`], outdir, naming: '[name]-[hash].[ext]', minify: true, target: 'browser' });
     if (!worker.success) throw new AggregateError(worker.logs, 'Compiler worker build failed');
     const workerName = basename(worker.outputs.find(output => output.kind === 'entry-point')!.path);
+    const lspWorker = await Bun.build({ entrypoints: [`${root}/src/main/lsp-worker.ts`], outdir, naming: '[name]-[hash].[ext]', minify: true, target: 'browser' });
+    if (!lspWorker.success) throw new AggregateError(lspWorker.logs, 'Language worker build failed');
+    const lspWorkerName = basename(lspWorker.outputs.find(output => output.kind === 'entry-point')!.path);
     // Monaco is bundled with the site: its core, the features the editor uses,
     // its stylesheet and icon font, and its background worker.
     const monacoWorker = await Bun.build({ entrypoints: [`${root}/node_modules/monaco-editor/esm/vs/editor/editor.worker.js`], outdir, naming: 'monaco-worker-[hash].[ext]', minify: true, target: 'browser' });
@@ -24,8 +27,8 @@ export async function buildBrowserAssets(root: string, outdir: string) {
     const clients = await Bun.build({
         entrypoints: [`${root}/src/main/playground.ts`],
         outdir, naming: '[name]-[hash].[ext]', splitting: true, minify: true, target: 'browser',
-        define: { __YODL_COMPILER_WORKER__: JSON.stringify(`./${workerName}`), __MONACO_BUNDLE__: JSON.stringify(`./${editorName}`), __MONACO_CSS__: JSON.stringify(`./${editorCss}`) },
+        define: { __YODL_COMPILER_WORKER__: JSON.stringify(`./${workerName}`), __YODL_LSP_WORKER__: JSON.stringify(`./${lspWorkerName}`), __MONACO_BUNDLE__: JSON.stringify(`./${editorName}`), __MONACO_CSS__: JSON.stringify(`./${editorCss}`) },
     });
     if (!clients.success) throw new AggregateError(clients.logs, 'Browser build failed');
-    return { worker: workerName, editor: editorName, editorCss, editorWorker: monacoWorkerName, playground: entryName(clients, 'playground') };
+    return { worker: workerName, lspWorker: lspWorkerName, editor: editorName, editorCss, editorWorker: monacoWorkerName, playground: entryName(clients, 'playground') };
 }

@@ -9,6 +9,10 @@ import {
 }
 
 // Values
+pub fn builtin_source() -> String
+
+pub fn diagnostic(Error) -> @parse.Diagnostic?
+
 pub fn simplify_decls(Array[@parse.Decl]) -> Array[@parse.CoreDecl] raise
 
 // Errors
@@ -22,18 +26,22 @@ pub suberror MonomorphizerError {
   InvalidParameterInstantiation(path~ : @parse.Path, param~ : String, span~ : @parse.Span, param_span~ : @parse.Span)
   InvalidTypeAliasParameters(path~ : @parse.Path, exptected~ : Int, actual~ : Int, span~ : @parse.Span)
   UnresolvedNamedType(path~ : @parse.Path, span~ : @parse.Span)
+  RecursiveModuleInstantiation(path~ : @parse.Path, span~ : @parse.Span)
 }
 pub impl Show for MonomorphizerError
+pub impl @parse.Diagnosed for MonomorphizerError
 pub impl @parse.Spanned for MonomorphizerError
 
 pub suberror ResolutionError {
-  PackageNotFound(name~ : String)
+  PackageNotFound(name~ : String, span~ : @parse.Span)
   IOError(Error)
   LexerError(Error)
   ParseError(Error)
   CouldNotExtractPackageName(String)
   PackageNameConflict(name~ : String, path1~ : String, path2~ : String)
-  MultiLevelImportNotSupportedYet(packages~ : Array[String])
+  MultiLevelImportNotSupportedYet(packages~ : Array[String], span~ : @parse.Span)
+  ImportError(error~ : Error, span~ : @parse.Span)
+  ImportCycle(path~ : String)
 } derive(@debug.Debug)
 pub impl Show for ResolutionError
 
@@ -41,6 +49,7 @@ pub suberror SimplifierError {
   AssertionAlwaysFails(span~ : @parse.Span)
 }
 pub impl Show for SimplifierError
+pub impl @parse.Diagnosed for SimplifierError
 pub impl @parse.Spanned for SimplifierError
 
 // Types and methods
@@ -57,6 +66,7 @@ pub struct Monomorphizer {
   modules : Map[@parse.Path, @parse.ModuleDecl]
   parameterized : Map[@parse.Path, @parse.ModuleDecl]
   monomorphized : Map[@parse.Path, Map[UInt, @parse.ModuleDecl]]
+  instantiating : @set.Set[@parse.Path]
   declared_modules : Map[@parse.Path, @parse.ModuleSignature]
   instanciated_modules : @set.Set[@parse.Path]
   test_only_modules : @set.Set[@parse.Path]
@@ -72,8 +82,11 @@ pub struct Resolver {
   available_packages : Map[String, String]
   imports : @set.Set[String]
   fs : @utils.FileSystem
+  recovering : Bool
+  diagnostics : Array[@parse.Diagnostic]
+  resolving : @set.Set[String]
 }
-pub fn Resolver::new(String, fs~ : @utils.FileSystem) -> Self raise ResolutionError
+pub fn Resolver::new(String, fs~ : @utils.FileSystem, recovering? : Bool, diagnostics? : Array[@parse.Diagnostic]) -> Self raise ResolutionError
 pub fn Resolver::resolve(Self, path~ : String, is_top_package~ : Bool) -> @parse.PackageDecl raise ResolutionError
 pub fn Resolver::resolve_decl(Self, @parse.Decl) -> @parse.Decl? raise ResolutionError
 

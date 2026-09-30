@@ -5,10 +5,12 @@ import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { buildBrowserAssets } from './bundle.ts';
 import type { CompileResult } from '../main/playground-compiler.ts';
+import { LanguageClient } from '../main/lsp-client.ts';
 
 test('browser bundles pin their compiler and compile nested documentation paths', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'yodl-browser-test-'));
     let worker: Worker | undefined;
+    let language: LanguageClient | undefined;
     try {
         const assets = await buildBrowserAssets(resolve(import.meta.dir, '../..'), directory);
         expect(assets.worker).toMatch(/^playground-worker-[^.]+\.js$/);
@@ -38,8 +40,18 @@ test('browser bundles pin their compiler and compile nested documentation paths'
         expect(result.error).toBeUndefined();
         expect(result.output).toContain('public module Top:');
         expect(result.output).toContain('regreset');
+        expect(assets.lspWorker).toMatch(/^lsp-worker-[^.]+\.js$/);
+        expect(bundles.join('\n')).toContain(`./${assets.lspWorker}`);
+        language = new LanguageClient(new Worker(pathToFileURL(join(directory, assets.lspWorker)), { type: 'module' }));
+        expect((await language.request('initialize', {})).capabilities.hoverProvider).toBe(true);
+        const uri = 'yodl:///workspace/Top.yodl';
+        const diagnostics = new Promise<any>(resolve => language!.onDiagnostics = (uri, diagnostics) => resolve({ uri, diagnostics }));
+        language.notify('textDocument/didOpen', { textDocument: { uri, version: 1, text: 'module Top() -> () {\n let value: u8 = 256\n}' } });
+        expect((await diagnostics).diagnostics[0].range.start).toEqual({ line: 1, character: 17 });
+        expect((await language.request('textDocument/hover', { textDocument: { uri }, position: { line: 1, character: 6 } })).contents.value).toContain('value');
     } finally {
         worker?.terminate();
+        language?.dispose();
         await rm(directory, { recursive: true, force: true });
     }
 }, 15_000);

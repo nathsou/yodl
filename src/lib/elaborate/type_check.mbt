@@ -1,6 +1,6 @@
 using @utils { type Scope, min, max, pow2, zip2, is_ascii, significant_bits }
 using @parse {
-    type Type, type ModuleSignature, trait Spanned,
+    type Type, type ModuleSignature,
     type Expr, type Decl, type Stmt, type Attribute, type AttributeValue,
     type ConstDecl, type StaticArg, type PortUsage, type InstanceId,
 }
@@ -45,9 +45,10 @@ priv suberror TypeCheckerError {
     InvalidSlicingRange(reason~: String, span~: Span)
     ExpectedConstantExpr(span~: Span)
     InvalidAttributeArgs(name~: String, args~: Array[AttributeValue], expected~: Array[AttributeValueType], span~: Span)
+    UnboundVariable(path~: Path, span~: Span)
 }
 
-impl Spanned for TypeCheckerError with span(self) -> Span {
+impl @parse.Spanned for TypeCheckerError with span(self) -> Span {
     match self {
         TypeCheckerError(span~, ..) => span
         IncompatibleTypes(span~, ..) => span
@@ -58,10 +59,12 @@ impl Spanned for TypeCheckerError with span(self) -> Span {
         InvalidSlicingRange(span~, ..) => span
         ExpectedConstantExpr(span~) => span
         InvalidAttributeArgs(span~, ..) => span
+        UnboundVariable(span~, ..) => span
     }
 }
 
-impl Show for TypeCheckerError with output(self, logger) {
+fn TypeCheckerError::message(self: Self) -> String {
+  let logger = StringBuilder()
     match self {
         TypeCheckerError(message~, ..) => {
             logger.write_string(message)
@@ -81,6 +84,7 @@ impl Show for TypeCheckerError with output(self, logger) {
         UnknownModulePort(module_path~, port_name~, ..) => {
             logger.write_string("Unknown port '\{port_name}' in module '\{module_path}'")
         }
+        UnboundVariable(path~, ..) => logger.write_string("Unbound variable '\{path}'")
         InvalidSlicingRange(reason~, ..) => {
             logger.write_string("Invalid slicing range: \{reason}")
         }
@@ -99,7 +103,29 @@ impl Show for TypeCheckerError with output(self, logger) {
         }
     }
 
-    logger.write_string(Spanned::show_context(self, use_ansi_colors=false))
+
+  logger.to_string()
+}
+
+impl @parse.Diagnosed for TypeCheckerError with diagnostic(self) -> @parse.Diagnostic {
+  let code = match self {
+    TypeCheckerError(..) => "Y0501"
+    IncompatibleTypes(..) => "Y0502"
+    InvalidAssignmentTarget(..) => "Y0503"
+    IndexedExpressionMustBeVector(..) => "Y0504"
+    UnknownModule(..) => "Y0505"
+    UnknownModulePort(..) => "Y0506"
+    InvalidSlicingRange(..) => "Y0507"
+    ExpectedConstantExpr(..) => "Y0508"
+    InvalidAttributeArgs(..) => "Y0509"
+    UnboundVariable(..) => "Y0510"
+  }
+  let result = @parse.Diagnostic::new(code, self.message(), span=Some(@parse.Spanned::span(self)))
+  result
+}
+
+impl Show for TypeCheckerError with output(self, logger) {
+  logger.write_string(@parse.Diagnosed::diagnostic(self).render())
 }
 
 fn type_error(message: String, span: Span) -> TypeCheckerError {
@@ -819,7 +845,7 @@ fn TypeChecker::check_expr_in_context(
                 Some({ val: Some(ty) }) => ty
                 Some(_) => raise type_error("Binding '\{path}' has no resolved type", span)
                 None => {
-                    raise type_error("Unbound variable '\{path}'", span)
+                    raise UnboundVariable(path~, span~)
                 }
             }
         }
@@ -1700,7 +1726,9 @@ fn TypeChecker::resolve_port(self: Self, port: @parse.Port, type_params~: Set[St
     }
 }
 
-pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
+/// Editor recovery collects independent statement errors. Callers must reject
+/// diagnostics before passing the returned, potentially partial tree to lowering.
+pub fn TypeChecker::check_decl(self: Self, decl: Decl, diagnostics~: Array[@parse.Diagnostic]? = None) -> Decl raise {
     match decl {
         Module({ path, params, attributes, ports, body, span }) => {
             let type_params = Set::from_iter(params.iter().filter_map(param => if param.sort == TypeSort { Some(param.name) } else { None }))
@@ -1715,7 +1743,13 @@ pub fn TypeChecker::check_decl(self: Self, decl: Decl) -> Decl raise {
             }
 
             for stmt in body {
-                self.check_stmt(stmt, env)
+                if diagnostics is Some(diagnostics) {
+                    try self.check_stmt(stmt, env) catch {
+                        error => diagnostics.push(diagnostic(error).unwrap_or(@parse.Diagnostic::new("Y0000", error.to_string())))
+                    }
+                } else {
+                    self.check_stmt(stmt, env)
+                }
             }
 
             self.modules[path] = mod.signature()

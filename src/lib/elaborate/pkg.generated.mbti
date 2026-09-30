@@ -7,6 +7,7 @@ import {
 }
 
 // Values
+pub fn diagnostic(Error) -> @parse.Diagnostic?
 
 // Errors
 pub suberror ElaborationError {
@@ -15,6 +16,8 @@ pub suberror ElaborationError {
   Unreachable(message~ : String, span~ : @parse.Span)
   Unsupported(message~ : String, span~ : @parse.Span)
 }
+pub impl Show for ElaborationError
+pub impl @parse.Diagnosed for ElaborationError
 
 // Types and methods
 pub struct Elaborator {
@@ -33,7 +36,7 @@ pub fn Elaborator::lower(Self, Iter[@parse.CoreDecl]) -> Unit raise
 pub fn Elaborator::new(String, port_usage~ : @parse.PortUsage) -> Self
 
 type TypeChecker
-pub fn TypeChecker::check_decl(Self, @parse.Decl) -> @parse.Decl raise
+pub fn TypeChecker::check_decl(Self, @parse.Decl, diagnostics? : Array[@parse.Diagnostic]?) -> @parse.Decl raise
 pub fn TypeChecker::finalize(Self) -> Unit raise
 pub fn TypeChecker::new() -> Self
 pub fn TypeChecker::port_usage(Self) -> @parse.PortUsage

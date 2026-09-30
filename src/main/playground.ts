@@ -9,6 +9,8 @@ import { createSimulationView } from './simulation-view.ts';
 import { createDocs, docsUrl } from './docs-view.ts';
 import type { ChapterData } from './docs-view.ts';
 import { createSearch } from './search.ts';
+import type { CompilerDiagnostic } from './yodl.ts';
+import { LanguageService } from './lsp-monaco.ts';
 
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const button = (id: string) => element<HTMLButtonElement>(id);
@@ -70,6 +72,7 @@ let editors: Awaited<ReturnType<typeof loadEditors>> | undefined;
 let editorReady: Promise<void> | undefined;
 let loadingSource = false;
 let entryModel: any;
+let languageService: LanguageService | undefined;
 let activeSourcePath = '';
 let errorPath = '';
 const importedModels = new Map<string, any>();
@@ -119,7 +122,12 @@ function updateImportedSources(sources: Record<string, string>) {
     }
     for (const [path, source] of imports) {
         const existing = importedModels.get(path);
-        if (!existing) importedModels.set(path, monaco.editor.createModel(source, 'yodl'));
+        if (!existing) {
+            const model = monaco.editor.createModel(source, 'yodl');
+            importedModels.set(path, model);
+            languageService?.attach(model, path);
+            model.onDidChangeContent(() => { if (!loadingSource) markChanged(); });
+        }
         else if (existing.getValue() !== source) existing.setValue(source);
     }
     renderSourceTabs();
@@ -137,18 +145,18 @@ let revision = 0;
 let lastOutput = '';
 let outputRevision = -1;
 const compiler = new CompilerClient();
-const importResolver = new CompilerClient();
 let importRevision = 0;
 let importTimer: ReturnType<typeof setTimeout> | undefined;
-const allFiles = () => ({ ...files, ...shared?.files });
+const allFiles = () => ({ ...files, ...shared?.files, ...Object.fromEntries([...importedModels].filter(([path]) => !path.startsWith('yodl-builtin:')).map(([path, model]) => [path, model.getValue()])) });
 async function loadImports() {
     const current = ++importRevision;
-    const result = await importResolver.compile('imports', { source: entrySource(), path: entryPath(), stage: 'write_source', files: allFiles() });
-    if (current === importRevision && result?.sources) updateImportedSources(result.sources);
+    try {
+        const sources = await languageService?.workspace(allFiles(), entryModel, entryPath());
+        if (current === importRevision && sources) updateImportedSources(sources);
+    } catch (error) { notice(`Language service: ${(error as Error).message}`); }
 }
 function scheduleImports() {
     ++importRevision;
-    importResolver.cancel('imports');
     clearTimeout(importTimer);
     importTimer = setTimeout(loadImports, 150);
 }
@@ -533,20 +541,44 @@ function setMobileView(view: string) {
     button('output-tab').setAttribute('aria-pressed', String(view === 'output'));
     editors?.input.layout(); editors?.output.layout();
 }
-function showError(message: string) {
+function showError(message: string, diagnostics: CompilerDiagnostic[] = []) {
     setOutputView('output');
     element('problems').hidden = false;
     element('error-message').textContent = message;
-    errorPath = [entryPath(), ...importedModels.keys()].find(path => diagnosticLocation(message, path)) ?? entryPath();
-    errorRange = diagnosticLocation(message, errorPath);
+    const first = diagnostics.find(diagnostic => diagnostic.range && (diagnostic.uri === entryPath() || importedModels.has(diagnostic.uri!)));
+    errorPath = first?.uri ?? entryPath();
+    errorRange = first ? diagnosticLocation(first, errorPath) : null;
     button('jump-error').hidden = errorRange === null;
-    if (errorRange) {
-        const model = errorPath === entryPath() ? entryModel : importedModels.get(errorPath);
-        const range = model.validateRange(errorRange);
-        errorRange = range;
-        monaco.editor.setModelMarkers(model, 'yodl', [{ ...range, message, severity: monaco.MarkerSeverity.Error }]);
+    for (const path of [entryPath(), ...importedModels.keys()]) {
+        const model = path === entryPath() ? entryModel : importedModels.get(path);
+        const markers = diagnostics.flatMap(diagnostic => {
+            const range = diagnosticLocation(diagnostic, path);
+            return range ? [{ ...model.validateRange(range), message: diagnostic.message, code: diagnostic.code, severity: diagnostic.severity === 2 ? monaco.MarkerSeverity.Warning : monaco.MarkerSeverity.Error }] : [];
+        });
+        monaco.editor.setModelMarkers(model, 'yodl', markers);
     }
     setStatus(lastOutput ? 'Compilation failed · showing previous output' : 'Compilation failed · check diagnostics', 'error');
+}
+
+function showLiveDiagnostics(diagnostics: CompilerDiagnostic[]) {
+    const first = diagnostics.find(d => d.range && (d.uri === entryPath() || importedModels.has(d.uri!)));
+    element('problems').hidden = diagnostics.length === 0;
+    element('error-message').replaceChildren(...diagnostics.map(d => {
+        const row = document.createElement('button');
+        row.type = 'button'; row.className = 'diagnostic';
+        row.textContent = `${d.uri ? `${baseName(d.uri)}:${(d.range?.start.line ?? 0) + 1}:${(d.range?.start.character ?? 0) + 1}: ` : ''}${d.message}${d.code ? ` [${d.code}]` : ''}${d.notes?.length ? `\n${d.notes.join('\n')}` : ''}`;
+        const range = diagnosticLocation(d, d.uri ?? entryPath());
+        row.disabled = !range || (d.uri !== entryPath() && !importedModels.has(d.uri!));
+        row.onclick = () => {
+            if (!range) return;
+            setMobileView('source'); openSource(d.uri ?? entryPath());
+            editors!.input.setSelection(range); editors!.input.revealRangeInCenter(range); editors!.input.focus();
+        };
+        return row;
+    }));
+    errorPath = first?.uri ?? entryPath();
+    errorRange = first ? diagnosticLocation(first, errorPath) : null;
+    button('jump-error').hidden = errorRange === null;
 }
 async function runCompile() {
     if (!editors) return;
@@ -559,7 +591,8 @@ async function runCompile() {
     setStatus('Compiling…', 'loading');
     const result = await compiler.compile('playground', { source: entrySource(), path: entryPath(), stage: selection.stage, files: allFiles() });
     if (!result || id !== latestRequest) return;
-    if (result.error !== undefined) { showError(result.error); return; }
+    if (result.sources) updateImportedSources(result.sources);
+    if (result.error !== undefined) { showError(result.error, result.diagnostics); return; }
     lastOutput = result.output ?? '';
     outputRevision = compiledRevision;
     editors.output.setValue(lastOutput);
@@ -599,7 +632,8 @@ function openShare() {
     if (!editors) return;
     const url = new URL(location.href);
     url.search = '';
-    url.hash = `code=${encodeShare({ ...selection, source: entrySource(), files: shared?.files, entryPath: shared?.entryPath, origin: shared?.origin })}`;
+    const overrides = Object.fromEntries(Object.entries(allFiles()).filter(([path, source]) => files[path] !== source));
+    url.hash = `code=${encodeShare({ ...selection, source: entrySource(), files: overrides, entryPath: shared?.entryPath, origin: shared?.origin })}`;
     if (url.href.length > 32_000) { notice('This circuit is too large for a reliable share link. Use Download source instead.'); return; }
     element<HTMLInputElement>('share-url').value = url.href;
     element<HTMLDialogElement>('share-dialog').showModal();
@@ -728,6 +762,18 @@ function ensureEditor() {
 async function startEditor() {
     editors = await loadEditors();
     entryModel = editors.input.getModel();
+    languageService = new LanguageService(monaco, (path, range) => {
+        if (path !== entryPath() && !importedModels.has(path)) {
+            const model = languageService?.model(path);
+            if (model) importedModels.set(path, model);
+        }
+        openSource(path);
+        if (range) {
+            if ('startLineNumber' in range) editors!.input.setSelection(range);
+            else editors!.input.setPosition(range);
+            editors!.input.revealPositionInCenter({ lineNumber: range.startLineNumber ?? range.lineNumber, column: range.startColumn ?? range.column });
+        }
+    }, showLiveDiagnostics, message => notice(`Language service: ${message}`));
     activeSourcePath = entryPath();
     loadingSource = true;
     editors.input.setValue(readStorage(draftKey()) ?? shared?.source ?? originals(selection.path));
@@ -865,7 +911,7 @@ document.addEventListener('keydown', event => {
     else if (event.key.toLowerCase() === 'n' && !event.altKey && section === 'playground') { event.preventDefault(); newFile(); }
 });
 window.addEventListener('popstate', () => void go(fromLocation(), 'none'));
-window.addEventListener('pagehide', () => docs.dispose());
+window.addEventListener('pagehide', () => { docs.dispose(); languageService?.dispose(); });
 buildLessonNavigation();
 renderSidebar();
 setSheet(false);

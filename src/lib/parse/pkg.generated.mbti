@@ -14,6 +14,8 @@ pub const BITS_PER_CHAR : Int = 8
 
 pub fn clone_ty(@ref.Ref[Type?]) -> @ref.Ref[Type?]
 
+pub fn diagnostic(Error) -> Diagnostic?
+
 pub fn[T : @utils.BinaryLike] parse_mem_file(String, base~ : Int, start~ : Int, end~ : Int?) -> Array[T] raise MemFileError
 
 pub fn rewrite_expr(Expr, Rewriter) -> Expr raise
@@ -43,6 +45,7 @@ pub suberror AstError {
   InvalidSizeFunctionDomain(message~ : String, span~ : Span)
 }
 pub impl Show for AstError
+pub impl Diagnosed for AstError
 pub impl Spanned for AstError
 
 pub suberror LexerError {
@@ -51,6 +54,7 @@ pub suberror LexerError {
   UnterminatedCharacterLiteral(span~ : Span)
 }
 pub impl Show for LexerError
+pub impl Diagnosed for LexerError
 pub impl Spanned for LexerError
 
 pub suberror MemFileError {
@@ -76,6 +80,8 @@ pub suberror ParserError {
   NatTypeAliasParametersUnsupported(name~ : String, span~ : Span)
 } derive(@debug.Debug)
 pub impl Show for ParserError
+pub impl Diagnosed for ParserError
+pub impl Spanned for ParserError
 
 // Types and methods
 type Arity
@@ -257,6 +263,30 @@ pub(all) enum Decl {
   TypeAlias(TypeAliasDecl)
 }
 
+pub(all) struct Diagnostic {
+  code : String
+  message : String
+  span : Span?
+  severity : Int
+  related : Array[DiagnosticLabel]
+  notes : Array[String]
+  fixes : Array[DiagnosticFix]
+}
+pub fn Diagnostic::new(String, String, span? : Span?) -> Self
+pub fn Diagnostic::render(Self) -> String
+pub fn Diagnostic::to_json(Self) -> Json
+
+pub(all) struct DiagnosticFix {
+  title : String
+  span : Span
+  replacement : String
+}
+
+pub(all) struct DiagnosticLabel {
+  span : Span
+  message : String
+}
+
 pub(all) enum Expr {
   Natural(value~ : @bigint.BigInt, width~ : Int?, base~ : Int, span~ : Span, ty~ : @ref.Ref[Type?])
   Identifier(path~ : Path, span~ : Span, ty~ : @ref.Ref[Type?])
@@ -342,6 +372,7 @@ pub struct Lexer {
   tokens : Array[Token]
 }
 pub fn Lexer::lex(Self) -> Array[Token] raise
+pub fn Lexer::lex_recovering(Self, Array[Diagnostic]) -> Array[Token]
 pub fn Lexer::new(String, file~ : String, file_content~ : String) -> Self
 
 pub(all) struct ModuleDecl {
@@ -406,9 +437,13 @@ pub struct Parser {
   matching_brackets : Map[Int, Int]
   file : String
   file_content : StringView
+  source_end : SourceLoc
+  mut recovering : Bool
+  mut diagnostics : Array[Diagnostic]
 }
-pub fn Parser::new(Array[Token], file~ : String, file_content~ : StringView) -> Self
+pub fn Parser::new(Array[Token], file~ : String, file_content~ : StringView, end? : Int?) -> Self
 pub fn Parser::parse(Self) -> Array[Decl] raise
+pub fn Parser::parse_recovering(Self, Array[Diagnostic]) -> Array[Decl]
 pub fn Parser::span(Self, Int) -> Span
 
 pub(all) enum PartSelect {
@@ -473,6 +508,7 @@ pub(all) struct SourceLoc {
   line : Int
   column : Int
 } derive(Eq, Hash, @debug.Debug)
+pub fn SourceLoc::at(StringView, Int) -> Self
 
 pub(all) struct Span {
   file : String
@@ -480,7 +516,9 @@ pub(all) struct Span {
   start : SourceLoc
   end : SourceLoc
 } derive(@debug.Debug)
+pub fn Span::at(String, StringView, Int, Int) -> Self
 pub fn Span::context(Self, window_size? : Int, use_ansi_colors? : Bool) -> String
+pub fn Span::range_json(Self) -> Json
 pub fn Span::text(Self) -> StringView
 pub impl Eq for Span
 pub impl Show for Span
@@ -520,9 +558,83 @@ pub(all) struct TestDecl {
   span : Span
 }
 
-type Token derive(@debug.Debug)
+pub(all) struct Token {
+  kind : TokenType
+  span : Span
+} derive(@debug.Debug)
 
-type TokenType derive(Eq, @debug.Debug)
+pub(all) enum TokenType {
+  Eof
+  Lparen
+  Rparen
+  Lbrace
+  Rbrace
+  Comma
+  Semicolon
+  Colon
+  Lchevron
+  Rchevron
+  Lbracket
+  Rbracket
+  Dot
+  Bang
+  Plus
+  Minus
+  Star
+  Slash
+  Equal
+  EqualEqual
+  BangEqual
+  RightThinArrow
+  RightThickArrow
+  LchevronEqual
+  RchevronEqual
+  DotDotEqual
+  DotDot
+  Percent
+  QuestionMark
+  At
+  Underscore
+  ColonColon
+  MinusColon
+  PlusColon
+  Module
+  Let
+  UInt
+  SInt
+  Bool
+  In
+  For
+  Test
+  Declare
+  Const
+  And
+  Or
+  Not
+  Xor
+  Nand
+  Nor
+  Xnor
+  Shl
+  Shr
+  Match
+  Package
+  Import
+  If
+  Else
+  Type
+  Clock
+  Andr
+  Orr
+  Xorr
+  Identifier(String)
+  BuiltinFunction(String)
+  Natural(value~ : @bigint.BigInt, width~ : Int?, base~ : Int)
+  StringLiteral(String)
+  CharacterLiteral(Char)
+  UIntType(Int)
+  SIntType(Int)
+} derive(Eq, @debug.Debug)
 pub impl Show for TokenType
 
 pub(all) enum Type {
@@ -583,6 +695,10 @@ pub impl Show for UnresolvedParam
 // Traits
 pub trait Ctor {
   fn ctor(Self) -> String
+}
+
+pub(open) trait Diagnosed {
+  fn diagnostic(Self) -> Diagnostic
 }
 
 pub(open) trait Spanned {

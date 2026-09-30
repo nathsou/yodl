@@ -4,6 +4,9 @@ pub struct Parser {
   matching_brackets: Map[Int, Int]
   file: String
   file_content: StringView
+  source_end: SourceLoc
+  mut recovering: Bool
+  mut diagnostics: Array[Diagnostic]
 }
 
 pub suberror ParserError {
@@ -21,44 +24,100 @@ pub suberror ParserError {
   NatTypeAliasParametersUnsupported(name~: String, span~: Span)
 } derive(Debug)
 
-pub impl Show for ParserError with output(self, logger) {
+fn ParserError::message(self: Self) -> String {
+  let logger = StringBuilder()
   match self {
-    UnexpectedToken(expected~, received~, span~) =>
-      logger.write_string("UnexpectedToken: expected '\{expected}', got '\{received}' at \{span}\n\{span.context()}")
-    ExpectedType(received~, span~) =>
-      logger.write_string("Expected a type, got '\{received}' at \{span}\n\{span.context()}")
-    MissingIntegerWidth(span~) =>
-      logger.write_string("Integer types require a width, for example 'u8', 's8', 'uint[8]', or 'sint[8]' at \{span}\n\{span.context()}")
-    ExpectedExpr(received~, span~) =>
-      logger.write_string("Expected an expression, got '\{received}' at \{span}\n\{span.context()}")
-    ExpectedIdentifier(received~, span~) =>
-      logger.write_string("Expected an identifier, got '\{received}' at \{span}\n\{span.context()}")
-    ExpectedStmt(received~, span~) =>
-      logger.write_string("Expected a statement, got '\{received}' at \{span}\n\{span.context()}")
-    ExpectedDecl(received~, span~) =>
-      logger.write_string("Expected a declaration, got '\{received}' at \{span}\n\{span.context()}")
-    ExpectedRangeOperator(received~, span~) =>
-      logger.write_string("Expected a range operator ('..' or '..='), got '\{received}' at \{span}\n\{span.context()}")
-    MultipleDefaultCases(span~) =>
-      logger.write_string("Multiple default cases in match at \{span}\n\{span.context()}")
-    InvalidPortOrTupleAccess(span~) =>
-      logger.write_string("Invalid port or tuple access at \{span}\n\{span.context()}")
-    DuplicateStructField(name~, span~) =>
-      logger.write_string("Duplicate struct field '\{name}' at \{span}\n\{span.context()}")
-    NatTypeAliasParametersUnsupported(name~, span~) =>
-      logger.write_string("Type alias '\{name}' declares a Nat parameter, which is not supported yet at \{span}\n\{span.context()}")
+    UnexpectedToken(expected~, received~, span=_) =>
+      logger.write_string("Expected '\{expected}', got '\{received}'")
+    ExpectedType(received~, span=_) =>
+      logger.write_string("Expected a type, got '\{received}'")
+    MissingIntegerWidth(span=_) =>
+      logger.write_string("Integer types require a width, for example 'u8', 's8', 'uint[8]', or 'sint[8]'")
+    ExpectedExpr(received~, span=_) =>
+      logger.write_string("Expected an expression, got '\{received}'")
+    ExpectedIdentifier(received~, span=_) =>
+      logger.write_string("Expected an identifier, got '\{received}'")
+    ExpectedStmt(received~, span=_) =>
+      logger.write_string("Expected a statement, got '\{received}'")
+    ExpectedDecl(received~, span=_) =>
+      logger.write_string("Expected a declaration, got '\{received}'")
+    ExpectedRangeOperator(received~, span=_) =>
+      logger.write_string("Expected a range operator ('..' or '..='), got '\{received}'")
+    MultipleDefaultCases(span=_) =>
+      logger.write_string("Multiple default cases in match")
+    InvalidPortOrTupleAccess(span=_) =>
+      logger.write_string("Invalid port or tuple access")
+    DuplicateStructField(name~, span=_) =>
+      logger.write_string("Duplicate struct field '\{name}'")
+    NatTypeAliasParametersUnsupported(name~, span=_) =>
+      logger.write_string("Type alias '\{name}' declares a Nat parameter, which is not supported yet")
+  }
+
+  logger.to_string()
+}
+
+pub impl Diagnosed for ParserError with diagnostic(self) -> Diagnostic {
+  let code = match self {
+    UnexpectedToken(..) => "Y0101"
+    ExpectedIdentifier(..) => "Y0102"
+    ExpectedExpr(..) => "Y0103"
+    ExpectedStmt(..) => "Y0104"
+    ExpectedType(..) => "Y0105"
+    MissingIntegerWidth(..) => "Y0106"
+    ExpectedDecl(..) => "Y0107"
+    ExpectedRangeOperator(..) => "Y0108"
+    MultipleDefaultCases(..) => "Y0109"
+    InvalidPortOrTupleAccess(..) => "Y0110"
+    DuplicateStructField(..) => "Y0111"
+    NatTypeAliasParametersUnsupported(..) => "Y0112"
+  }
+  let result = Diagnostic::new(code, self.message(), span=Some(self.span()))
+  if self is UnexpectedToken(expected~, span~, ..) && span.start.index == span.file_content.length() {
+    match expected {
+      Rparen | Rbracket | Rbrace => result.fixes.push({ title: "Insert '\{expected}'", span, replacement: expected.to_string() })
+      _ => ()
+    }
+  }
+  result
+}
+
+pub impl Show for ParserError with output(self, logger) {
+  logger.write_string(self.diagnostic().render())
+}
+
+pub impl Spanned for ParserError with span(self) -> Span {
+  match self {
+    UnexpectedToken(span~, ..) => span
+    ExpectedIdentifier(span~, ..) => span
+    ExpectedExpr(span~, ..) => span
+    ExpectedStmt(span~, ..) => span
+    ExpectedType(span~, ..) => span
+    MissingIntegerWidth(span~) => span
+    ExpectedDecl(span~, ..) => span
+    ExpectedRangeOperator(span~, ..) => span
+    MultipleDefaultCases(span~) => span
+    InvalidPortOrTupleAccess(span~) => span
+    DuplicateStructField(span~, ..) => span
+    NatTypeAliasParametersUnsupported(span~, ..) => span
   }
 }
 
-pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: StringView) -> Parser {
-  { tokens, index: 0, matching_brackets: Map([]), file, file_content }
+pub fn Parser::new(tokens: Array[Token], file~: String, file_content~: StringView, end~: Int? = None) -> Parser {
+  { tokens, index: 0, matching_brackets: Map([]), file, file_content, source_end: SourceLoc::at(file_content, end.unwrap_or(file_content.length())), recovering: false, diagnostics: [] }
 }
 
 fn Parser::peek(self: Parser) -> TokenType {
   if self.tokens.get(self.index) is Some(token) {
     token.kind
   } else {
-    TokenType::Semicolon
+    TokenType::Eof
+  }
+}
+
+fn Parser::current_span(self: Self) -> Span {
+  match self.tokens.get(self.index) {
+    Some(token) => token.span
+    None => Span::{ file: self.file, file_content: self.file_content, start: self.source_end, end: self.source_end }
   }
 }
 
@@ -121,13 +180,13 @@ fn Parser::advance(self: Parser) -> Unit {
   self.index += 1
 }
 
-fn Parser::expect(self: Parser, expected: TokenType, span_start_idx: Int) -> Unit raise ParserError {
+fn Parser::expect(self: Parser, expected: TokenType, _span_start_idx: Int) -> Unit raise ParserError {
   let token = self.peek()
 
   if token == expected {
     self.advance()
   } else {
-    raise UnexpectedToken(expected~, received=token, span=self.span(span_start_idx))
+    raise UnexpectedToken(expected~, received=token, span=self.current_span())
   }
 }
 
@@ -164,10 +223,7 @@ fn Parser::parse_identifier(self: Parser) -> String raise {
 }
 
 pub fn Parser::span(self: Parser, start_idx: Int) -> Span {
-  let fallback = match self.tokens.last() {
-    Some(token) => token.span.end
-    None => { index: self.file_content.length(), line: 1, column: 1 }
-  }
+  let fallback = self.source_end
 
   let start = match self.tokens.get(start_idx) {
     Some(token) => token.span.start
@@ -183,7 +239,59 @@ pub fn Parser::span(self: Parser, start_idx: Int) -> Span {
     start
   }
 
+  let end = if end.index < start.index { start } else { end }
   { file: self.file, file_content: self.file_content, start, end }
+}
+
+/// Recover at top-level declarations. Invalid trees are omitted, never lowered.
+pub fn Parser::parse_recovering(self: Self, diagnostics: Array[Diagnostic]) -> Array[Decl] {
+  self.recovering = true
+  self.diagnostics = diagnostics
+  let decls = []
+  while self.index < self.tokens.length() {
+    let start = self.index
+    try self.parse_decl() catch {
+      error => {
+        diagnostics.push(diagnostic(error).unwrap_or(Diagnostic::new("Y0100", error.to_string(), span=Some(self.current_span()))))
+        if self.index <= start { self.advance() }
+        // Declaration keywords cannot occur inside a module's statements.
+        while self.index < self.tokens.length() {
+          match self.peek() {
+            Module | Declare | Test | Import | Package | Type | At => break
+            _ => self.advance()
+          }
+        }
+      }
+    } noraise {
+      decl => decls.push(decl)
+    }
+  }
+  decls
+}
+
+fn Parser::statement_list(self: Self) -> Array[Stmt] raise {
+  let body = []
+  while !self.matches(Rbrace) {
+    let start = self.index
+    if self.recovering && self.index >= self.tokens.length() { break }
+    try self.parse_stmt() catch {
+      error => {
+        if !self.recovering { raise error }
+        self.diagnostics.push(diagnostic(error).unwrap_or(Diagnostic::new("Y0100", error.to_string(), span=Some(self.current_span()))))
+        if self.index <= start && !self.matches(Rbrace) { self.advance() }
+        while self.index < self.tokens.length() && !self.matches(Rbrace) && !self.matches(Semicolon) && !self.matches(Let) && !self.matches(Const) {
+          self.advance()
+        }
+        self.ignore(Semicolon)
+      }
+    } noraise {
+      stmt => body.push(stmt)
+    }
+  }
+  if self.recovering && !self.matches(Rbrace) {
+    self.diagnostics.push(UnexpectedToken(expected=Rbrace, received=self.peek(), span=self.current_span()).diagnostic())
+  } else { self.expect(Rbrace, self.index) }
+  body
 }
 
 fn Parser::expect_end(self: Parser) -> Unit raise ParserError {
@@ -256,7 +364,7 @@ fn Parser::parse_indexing_expr(self: Parser) -> Expr raise {
         // instantiated with parameters; anything else is a parse error.
         match lhs {
           Identifier(path~, ..) => {
-            lhs = self.parse_instance_expr(path~)
+            lhs = self.parse_instance_expr(path~, start_idx~)
           }
           _ => raise ExpectedExpr(received=self.peek(), span=self.span(start_idx))
         }
@@ -375,7 +483,7 @@ fn Parser::parse_primary_expr(self: Parser) -> Expr raise {
       // which can disambiguate between indexing `arr[i]` and parameter
       // application `Reg[T](...)` by peeking the token after the matching `]`.
       if self.matches(Lparen) {
-        self.parse_instance_expr(path~)
+        self.parse_instance_expr(path~, start_idx~)
       } else {
         Identifier(path~, span=self.span(start_idx), ty={ val: None })
       }
@@ -427,7 +535,7 @@ fn Parser::parse_spread_expr(self: Parser) -> Expr raise {
 }
 
 fn Parser::parse_function_call_expr(self: Parser, name: String) -> Expr raise {
-  let start_idx = self.index
+  let start_idx = self.index - 1
   let args: Array[Expr] = []
   self.expect(Lparen, start_idx)
 
@@ -543,14 +651,7 @@ fn Parser::parse_paren_or_record_expr(self: Parser) -> Expr raise {
 fn Parser::parse_block_expr(self: Parser) -> Expr raise {
   let start_idx = self.index
   self.expect(Lbrace, start_idx)
-  let body = []
-
-  while !self.matches(Rbrace) {
-    let stmt = self.parse_stmt()
-    body.push(stmt)
-  }
-
-  self.expect(Rbrace, start_idx)
+  let body = self.statement_list()
   stmt_list_to_block(body, span=self.span(start_idx))
 }
 
@@ -625,8 +726,7 @@ fn Parser::parse_instance_parameter(self: Parser) -> Param {
   })
 }
 
-fn Parser::parse_instance_expr(self: Parser, path~: Path) -> Expr raise {
-  let start_idx = self.index
+fn Parser::parse_instance_expr(self: Parser, path~: Path, start_idx~: Int) -> Expr raise {
   let params: Array[(String?, Param)] = self.parse_module_parameters(() => {
     match (self.lookahead(0), self.lookahead(1)) {
       (Some(Identifier(name)), Some(Colon)) => {
@@ -710,15 +810,7 @@ fn Parser::parse_assignment_stmt(self: Parser) -> Stmt raise {
 
 fn Parser::parse_block(self: Parser) -> Array[Stmt] raise {
   self.expect(Lbrace, self.index)
-  let stmts = []
-
-  while self.peek() != Rbrace {
-    stmts.push(self.parse_stmt())
-  }
-
-  self.expect(Rbrace, self.index)
-
-  stmts
+  self.statement_list()
 }
 
 fn Parser::parse_stmt(self: Parser) -> Stmt raise {
@@ -1276,14 +1368,9 @@ fn Parser::parse_module_definition(self: Parser, sig~: ModuleSignature) -> Modul
   let start_idx = self.index
   let { path, params, attributes, ports, .. } = sig
   self.expect(Lbrace, start_idx)
-  let body = []
-
-  while !self.consumes(Rbrace) {
-    let stmt = self.parse_stmt()
-    body.push(stmt)
-  }
-
-  { path, params, attributes, ports, body, span: self.span(start_idx) }
+  let body = self.statement_list()
+  let span = { ..self.span(start_idx), start: sig.span.start }
+  { path, params, attributes, ports, body, span }
 }
 
 fn Parser::parse_module_def_or_decl(self: Parser) -> Decl raise {
@@ -1292,11 +1379,11 @@ fn Parser::parse_module_def_or_decl(self: Parser) -> Decl raise {
   let sig = self.parse_module_signature(attributes~)
 
   if is_declaration {
-    self.expect(Semicolon, self.index)
+    if !self.recovering || self.index < self.tokens.length() { self.expect(Semicolon, self.index) }
     ModuleDeclaration(sig)
   } else {
     let def = self.parse_module_definition(sig~)
-    self.expect(Semicolon, self.index)
+    if !self.recovering || self.index < self.tokens.length() { self.expect(Semicolon, self.index) }
     Module(def)
   }
 }
@@ -1320,11 +1407,7 @@ fn Parser::parse_test_decl(self: Parser) -> TestDecl raise {
     }
   } else { None }
   self.expect(Lbrace, start_idx)
-  let body = []
-  while !self.matches(Rbrace) {
-    body.push(self.parse_stmt())
-  }
-  self.expect(Rbrace, start_idx)
+  let body = self.statement_list()
   self.ignore(Semicolon)
   { name, target, body, span: self.span(start_idx) }
 }

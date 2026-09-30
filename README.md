@@ -33,6 +33,36 @@ $ yodl examples/Hello.yodl "write_firrtl Hello.fir"
 $ firtool --format=fir --verilog Hello.fir -o Hello.sv
 ```
 
+## Editor support
+
+The [VS Code extension](extensions/yodl-vscode-syntax/README.md) bundles the
+MoonBit language server. It provides live diagnostics, completion, type hovers,
+navigation through imports and builtins, references, rename, signature help,
+symbols, semantic highlighting, folding, and quick fixes. Build an installable
+VSIX with `bun run package` in `extensions/yodl-vscode-syntax`.
+
+The playground offers the same features in a dedicated browser worker. Errors
+appear while typing; compilation and simulation remain explicit actions. Use
+F12 for definitions, Shift+F12 for references, F2 to rename, Ctrl/Cmd+Space for
+completion, and Ctrl/Cmd+. for quick fixes. Imported sources open in tabs;
+workspace edits made by rename are included in compilation and shared links.
+
+For other LSP clients, `bun run build:lsp` produces `dist/lsp/yodl-lsp.cjs`.
+Run it with Node over standard input/output using LSP `Content-Length` framing.
+The npm package includes a `yodl-lsp` command when built from this source.
+Editing requires no MoonBit installation or synthesis tools on the client.
+
+The server, indexing, analysis and protocol handlers live in `src/lib/lsp`
+and `src/lib/driver`. TypeScript supplies filesystem/stdio access and client
+adapters. Both hosts use UTF-16 positions and overlay unsaved documents on
+workspace files. Changes invalidate analysis; hosts debounce diagnostics.
+The compiler's existing generic checks run when parameters become concrete.
+Structural record fields have completion and navigation; field rename is
+disabled because structural types do not give them a unique declaration.
+
+Run `bun run test:lsp` for protocol, transport, worker and Monaco adapter checks
+(the browser worker is also tested by `bun run test:docs`).
+
 ## Development
 Install [Moonbit](https://www.moonbitlang.com/):
 
