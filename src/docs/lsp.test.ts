@@ -22,6 +22,17 @@ function service(source: string, files: Record<string, string> = {}) {
     return { server, request, raw, at, query: (method: string, position: any, extra = {}) => request(`textDocument/${method}`, { textDocument: { uri }, position, ...extra }), diagnostics: () => JSON.parse(flush_diagnostics(server)).flatMap((r: any) => r.params.diagnostics) };
 }
 describe('MoonBit LSP', () => {
+    test('constant hovers retain concrete checker types and symbolic natural sorts', () => {
+        const c = service('const Bits = 12\nconst Len = cdiv!(Bits, 4)\nconst Signed = -2\nmodule Hex[Bits: Nat]() -> () {\n const Len = cdiv!(Bits, 4)\n const Next = Len + 1\n for i in 0..<Next {}\n}\nmodule Top() -> () {\n let a = Hex[Bits: 8]()\n let b = Hex[Bits: 64]()\n}');
+        expect(c.diagnostics()).toEqual([]);
+        expect(c.query('hover', c.at('Len')).contents.value).toContain('const Len: u2');
+        expect(c.query('hover', c.at('Signed')).contents.value).toContain('const Signed: s3');
+        expect(c.query('hover', c.at('Len', 1)).contents.value).toContain('const Len: Nat');
+        expect(c.query('hover', c.at('Len', 2)).contents.value).toContain('const Len: Nat');
+        expect(c.query('hover', c.at('Next')).contents.value).toContain('const Next: Nat');
+        const generic = service('module Hex[Bits: Nat]() -> () {\n const Len = cdiv!(Bits, 4)\n for i in 0..<Len {}\n}');
+        expect(generic.query('hover', generic.at('Len')).contents.value).toContain('const Len: Nat');
+    });
     test('lifecycle, parse errors, unsupported requests and shutdown', () => {
         const s = new_server();
         expect(JSON.parse(handle_message(s, '{'))[0].error.code).toBe(-32700);

@@ -102,6 +102,7 @@ fn Workspace::collect_types(self: Self, decl: Decl) -> Unit {
   fn bindings(stmt: Stmt) -> Unit {
     match stmt {
       Let(ty~, span~, ..) => if ty.val is Some(ty) { self.binding_types[span_key(span)] = ty }
+      Const(decl~, ..) => if decl.expr.ty().val is Some(ty) { self.binding_types[span_key(decl.span)] = ty }
       For(body~, ..) | Scope(body~, ..) => for stmt in body { bindings(stmt) }
       _ => ()
     }
@@ -110,7 +111,10 @@ fn Workspace::collect_types(self: Self, decl: Decl) -> Unit {
   match decl {
     Module(mod) => for stmt in mod.body { bindings(stmt) }
     Test(td) => for stmt in td.body { bindings(stmt) }
-    Const(decl) => collect(decl.expr)
+    Const(decl) => {
+      if decl.expr.ty().val is Some(ty) { self.binding_types[span_key(decl.span)] = ty }
+      visit_expr(decl.expr, collect)
+    }
     Package(pkg) => for decl in pkg.body { self.collect_types(decl) }
     _ => ()
   }
@@ -212,8 +216,13 @@ fn Workspace::index_decl(self: Self, decl: Decl, scope: Int, container: Int?, na
       }
     }
     Const(decl) => {
-      let ty = prefer(decl.ty, self.guess_type(decl.expr))
-      let _ = self.add_symbol(decl.path.elem, decl.span, scope, container, namespace, 14, 4, "const \{decl.path}: \{ty.map(t => t.to_string()).unwrap_or("unknown")}", ty~, read_only=true)
+      // Generic source has no single concrete width, even when several
+      // instantiations contributed checker metadata for the same source span.
+      let symbolic = decl.ty is None && self.natural_constant(decl.expr, scope)
+      let generic = container.bind(id => self.symbols[id].signature).map(sig => !sig.parameters.is_empty()).unwrap_or(false)
+      let ty = if symbolic && generic { None } else { prefer(decl.ty, prefer(self.binding_types.get(span_key(decl.span)), self.guess_type(decl.expr))) }
+      let detail = if symbolic && (generic || ty is None) { "Nat" } else { ty.map(t => t.to_string()).unwrap_or("unknown") }
+      let _ = self.add_symbol(decl.path.elem, decl.span, scope, container, namespace, 14, 4, "const \{decl.path}: \{detail}", ty~, read_only=true)
       self.index_expr(decl.expr, scope, container)
     }
     TypeAlias(alias) => {
@@ -277,6 +286,20 @@ fn Workspace::guess_type(self: Self, expr: Expr) -> Type? {
       Some(@parse.Type::Struct(types))
     }
     _ => None
+  }
+}
+
+/// Natural-valued static expressions retain their sort before specialization.
+fn Workspace::natural_constant(self: Self, expr: Expr, scope: Int) -> Bool {
+  match expr {
+    Natural(value~, width=None, ..) => value >= 0
+    FunCall(name="clog2" | "cdiv" | "pow" | "csqrt", ..) => true
+    Identifier(path~, span~, ..) => self.lookup_path(scope, path, span.start.index).map(id => {
+      let symbol = self.symbols[id]
+      symbol.detail.has_suffix(": Nat")
+    }).unwrap_or(false)
+    Binary(op=Add | Sub | Mul | Div | Mod, lhs~, rhs~, ..) => self.natural_constant(lhs, scope) && self.natural_constant(rhs, scope)
+    _ => false
   }
 }
 
