@@ -11,6 +11,7 @@ import type { ChapterData } from './docs-view.ts';
 import { createSearch } from './search.ts';
 import type { CompilerDiagnostic } from './yodl.ts';
 import { LanguageService } from './lsp-monaco.ts';
+import { createPaneLayout } from './playground-layout.ts';
 
 const element = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const button = (id: string) => element<HTMLButtonElement>(id);
@@ -439,10 +440,8 @@ function fitStageTabs() {
     const compact = header.clientWidth > 0 && needed > header.clientWidth;
     if (compact) header.dataset.compact = ''; else delete header.dataset.compact;
 }
-function setOutputView(view: 'output' | 'simulation') {
-    element('output-pane').dataset.view = view;
-    button('view-output').setAttribute('aria-pressed', String(view === 'output'));
-    button('view-simulate').setAttribute('aria-pressed', String(view === 'simulation'));
+function setOutputView(view: 'output' | 'simulation', reveal = false) {
+    if (reveal) paneLayout.activate(view);
     editors?.output.layout();
 }
 function renderStage() {
@@ -462,6 +461,7 @@ function renderSelection() {
     renderStage();
 }
 function syncChrome() {
+    paneLayout.exitFullscreen();
     for (const item of Array.from(document.querySelectorAll<HTMLButtonElement>('.mode-switch button'))) item.setAttribute('aria-pressed', String(item.dataset.mode === section));
     const editor = section !== 'docs';
     element('editor-view').hidden = !editor;
@@ -535,7 +535,8 @@ function changeStage(stage: Stage) {
     markChanged();
     void runCompile();
 }
-function setMobileView(view: string) {
+function setMobileView(view: 'source' | 'output' | 'simulation') {
+    paneLayout.activate(view);
     element('editors').dataset.view = view;
     button('source-tab').setAttribute('aria-pressed', String(view === 'source'));
     button('output-tab').setAttribute('aria-pressed', String(view === 'output'));
@@ -795,7 +796,6 @@ async function startEditor() {
         markChanged();
     });
     editors.input.onDidChangeCursorPosition((event: any) => { element('cursor-position').textContent = `Ln ${event.position.lineNumber}, Col ${event.position.column}`; });
-    installResizer();
     setStatus('Ready to compile');
     void loadImports();
     void runCompile();
@@ -806,42 +806,12 @@ function newFile() {
     if (editors && selection.path === blankPath && !shared && entrySource() !== originalSource()) requestReset();
     else void go({ section: 'playground', path: blankPath });
 }
-function installResizer() {
-    // Splits left/right, or top/bottom when the panes are stacked (CSS sets --split-axis).
-    const handle = element('resize-handle');
-    const container = element('editors');
-    const vertical = () => getComputedStyle(container).getPropertyValue('--split-axis').trim() === 'y';
-    let ratio = Number(readStorage('split') ?? 50);
-    function apply(value: number) {
-        ratio = Math.max(20, Math.min(80, Number.isFinite(value) ? value : 50));
-        container.style.setProperty('--split-a', `${ratio}fr`);
-        container.style.setProperty('--split-b', `${100 - ratio}fr`);
-        handle.setAttribute('aria-valuenow', String(Math.round(ratio)));
-        handle.setAttribute('aria-orientation', vertical() ? 'horizontal' : 'vertical');
-    }
-    apply(ratio);
-    handle.onpointerdown = event => {
-        handle.setPointerCapture(event.pointerId);
-        handle.classList.add('dragging');
-        event.preventDefault();
-    };
-    handle.onpointermove = event => {
-        if (!handle.hasPointerCapture(event.pointerId)) return;
-        const bounds = container.getBoundingClientRect();
-        apply(vertical() ? (event.clientY - bounds.top) / bounds.height * 100 : (event.clientX - bounds.left) / bounds.width * 100);
-    };
-    const finish = () => { handle.classList.remove('dragging'); writeStorage('split', String(ratio)); };
-    handle.onlostpointercapture = finish;
-    handle.onpointerup = event => { if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId); };
-    handle.onkeydown = event => {
-        const back = vertical() ? 'ArrowUp' : 'ArrowLeft', forward = vertical() ? 'ArrowDown' : 'ArrowRight';
-        if (![back, forward, 'Home', 'End'].includes(event.key)) return;
-        event.preventDefault();
-        apply(event.key === 'Home' ? 20 : event.key === 'End' ? 80 : ratio + (event.key === back ? -5 : 5));
-        finish();
-    };
-    matchMedia('(max-width: 1199px)').addEventListener('change', () => apply(ratio));
-}
+const paneLayout = createPaneLayout({
+    read: readStorage, save: writeStorage,
+    sidebarHidden: () => sidebarHidden,
+    showSidebar: show => { setSidebarHidden(!show); if (narrow.matches) setSheet(show); },
+    changed: () => { editors?.input.layout(); editors?.output.layout(); fitStageTabs(); },
+});
 
 // ---------------------------------------------------------------------------
 // Wiring that does not depend on the editor
@@ -861,18 +831,18 @@ button('suggested-stage').onclick = () => {
     if (narrow.matches) { setSheet(false); setMobileView('output'); }
 };
 button('new-file').onclick = () => { setSheet(false); newFile(); };
-button('sidebar-toggle').onclick = () => setSidebarHidden(!sidebarHidden);
+button('sidebar-toggle').onclick = () => { setSidebarHidden(!sidebarHidden); paneLayout.sync(); };
 button('context-toggle').onclick = () => setSheet(element('editor-view').dataset.sheet !== 'open');
 element<HTMLSelectElement>('stage-select').onchange = () => changeStage(element<HTMLSelectElement>('stage-select').value as Stage);
 button('compile-button').onclick = () => {
+    paneLayout.reveal('output');
     void runCompile();
-    // A deliberate compile on a phone shows its result.
-    if (phone.matches) setMobileView('output');
 };
-button('view-output').onclick = () => setOutputView('output');
-button('view-simulate').onclick = () => setOutputView('simulation');
+button('view-output').onclick = () => setOutputView('output', true);
+button('view-simulate').onclick = () => setOutputView('simulation', true);
 button('source-tab').onclick = () => setMobileView('source');
 button('output-tab').onclick = () => setMobileView('output');
+button('simulation-tab').onclick = () => setMobileView('simulation');
 button('menu-button').onclick = () => setMenu(element('file-menu').hidden === true);
 element('file-menu').onclick = () => setMenu(false);
 document.addEventListener('pointerdown', event => {
