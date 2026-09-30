@@ -57,7 +57,7 @@ export function createPaneLayout(host: { read(key: string): string | null; save(
         panes[id].inert = false;
         let child: HTMLElement = panes[id];
         while (child.parentElement) {
-            for (const sibling of child.parentElement.children) if (sibling !== child && sibling instanceof HTMLElement) {
+            for (const sibling of child.parentElement.children) if (sibling !== child && sibling instanceof HTMLElement && !(sibling instanceof HTMLDialogElement)) {
                 restoreInert.push([sibling, sibling.inert]); sibling.inert = true;
             }
             child = child.parentElement;
@@ -68,8 +68,10 @@ export function createPaneLayout(host: { read(key: string): string | null; save(
         host.changed();
     }
     function toggle(id: PaneId, show: boolean) {
+        const hidingFocus = !show && panes[id].contains(document.activeElement);
         if (focused === id && !show) exitFullscreen();
         change({ ...state, visible: show ? [...new Set([...state.visible, id])] : state.visible.filter(p => p !== id) });
+        if (hidingFocus) menu.querySelector('summary')!.focus();
     }
     function activate(id: PaneId) {
         if (focused && focused !== id) exitFullscreen();
@@ -89,9 +91,13 @@ export function createPaneLayout(host: { read(key: string): string | null; save(
             full.setAttribute('aria-label', full.title);
             full.setAttribute('aria-pressed', String(focused === id));
             const moved = group.querySelector<HTMLButtonElement>('[data-action="move"]')!;
-            moved.textContent = id === 'sidebar' ? (state.sidebarPosition === 'left' ? '→' : '←') : '←';
+            moved.textContent = id === 'sidebar' ? (state.sidebarPosition === 'left' ? '→' : '←') : (vertical() ? '↑' : '←');
             moved.disabled = id !== 'sidebar' && visible().indexOf(id) <= 0;
-            if (id !== 'sidebar') group.querySelector<HTMLButtonElement>('[data-action="later"]')!.disabled = visible().indexOf(id) === visible().length - 1;
+            if (id !== 'sidebar') {
+                const later = group.querySelector<HTMLButtonElement>('[data-action="later"]')!;
+                later.disabled = visible().indexOf(id) === visible().length - 1;
+                later.textContent = vertical() ? '↓' : '→';
+            }
         }
     }
     function paneControls(id: PaneId | 'sidebar', header: HTMLElement) {
@@ -114,7 +120,7 @@ export function createPaneLayout(host: { read(key: string): string | null; save(
             header.ondrop = event => { event.preventDefault(); panes[id].classList.remove('pane-drop'); if (drag && drag !== id) change(movePane(state, drag, id)); drag = undefined; };
         }
         const full = makeButton(`Full screen ${labels[id]}`, '⛶', () => fullscreen(id)); full.dataset.action = 'fullscreen';
-        group.append(full, makeButton(`Hide ${labels[id]}`, '×', () => { if (id === 'sidebar') { exitFullscreen(); host.showSidebar(false); render(); } else toggle(id, false); }));
+        group.append(full, makeButton(`Hide ${labels[id]}`, '×', () => { if (id === 'sidebar') { exitFullscreen(); host.showSidebar(false); render(); menu.querySelector('summary')!.focus(); } else toggle(id, false); }));
         header.append(group); controls.set(id, group);
     }
     for (const id of ['source', 'output'] as const) {
@@ -188,9 +194,19 @@ export function createPaneLayout(host: { read(key: string): string | null; save(
     }
     axis.onchange = () => change({ ...state, axis: axis.value as PaneLayout['axis'] });
     side.onchange = () => change({ ...state, sidebarPosition: side.value as PaneLayout['sidebarPosition'] });
-    node('reset-layout').onclick = () => { exitFullscreen(); host.showSidebar(true); change(defaultLayout()); menu.open = false; };
+    node('reset-layout').onclick = () => { exitFullscreen(); host.showSidebar(true); change(defaultLayout()); menu.open = false; menu.querySelector('summary')!.focus(); };
     document.addEventListener('pointerdown', event => { if (!menu.contains(event.target as Node)) menu.open = false; });
-    document.addEventListener('keydown', event => { if (event.key === 'Escape') { if (focused) { event.preventDefault(); event.stopImmediatePropagation(); exitFullscreen(); } menu.open = false; } }, true);
+    const editorPopupOpen = () => [...document.querySelectorAll<HTMLElement>('.quick-input-widget, .suggest-widget.visible, .find-widget.visible, .monaco-hover')].some(popup => {
+        const rect = popup.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0 && getComputedStyle(popup).visibility !== 'hidden';
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Escape') return;
+        if (focused && !document.querySelector('dialog[open]') && !editorPopupOpen()) {
+            event.preventDefault(); event.stopImmediatePropagation(); exitFullscreen();
+        }
+        menu.open = false;
+    }, true);
     for (const media of [phone, stacked, narrow]) media.addEventListener('change', () => { exitFullscreen(); render(); });
     const sidebarHandle = node('sidebar-resizer');
     const resizeSidebar = (width: number) => { state = { ...state, sidebarWidth: Math.max(200, Math.min(600, width)) }; frame.style.setProperty('--sidebar-width', `${state.sidebarWidth}px`); sidebarHandle.setAttribute('aria-valuenow', String(state.sidebarWidth)); host.changed(); };
