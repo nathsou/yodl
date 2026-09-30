@@ -12,7 +12,7 @@ const makeButton = (label: string, text: string, action: () => void) => {
 export function createPaneLayout(host: { read(key: string): string | null; save(key: string, value: string): void; sidebarHidden(): boolean; showSidebar(show: boolean): void; changed(): void }) {
     let state = readLayout(host.read('panes'));
     let active: PaneId = 'source';
-    let focused: PaneId | 'sidebar' | undefined;
+    let focused: PaneId | undefined;
     let drag: PaneId | undefined;
     let restoreInert: [HTMLElement, boolean][] = [];
     let restoreFocus: HTMLElement | null = null;
@@ -45,11 +45,11 @@ export function createPaneLayout(host: { read(key: string): string | null; save(
         render();
         if (restoreFocus?.isConnected && restoreFocus.getClientRects().length) restoreFocus.focus();
     }
-    function fullscreen(id: PaneId | 'sidebar') {
+    function fullscreen(id: PaneId) {
         if (focused === id) { exitFullscreen(); return; }
         exitFullscreen();
         menu.open = false;
-        if (id === 'sidebar') host.showSidebar(true); else activate(id);
+        activate(id);
         restoreFocus = document.activeElement as HTMLElement;
         focused = id;
         panes[id].classList.add('pane-fullscreen');
@@ -85,15 +85,15 @@ export function createPaneLayout(host: { read(key: string): string | null; save(
     function updateControls() {
         for (const id of [...paneIds, 'sidebar'] as const) {
             const group = controls.get(id)!;
-            const full = group.querySelector<HTMLButtonElement>('[data-action="fullscreen"]')!;
-            full.textContent = focused === id ? '↙' : '⛶';
-            full.title = `${focused === id ? 'Restore' : 'Full screen'} ${labels[id]}`;
-            full.setAttribute('aria-label', full.title);
-            full.setAttribute('aria-pressed', String(focused === id));
             const moved = group.querySelector<HTMLButtonElement>('[data-action="move"]')!;
             moved.textContent = id === 'sidebar' ? (state.sidebarPosition === 'left' ? '→' : '←') : (vertical() ? '↑' : '←');
             moved.disabled = id !== 'sidebar' && visible().indexOf(id) <= 0;
             if (id !== 'sidebar') {
+                const full = group.querySelector<HTMLButtonElement>('[data-action="fullscreen"]')!;
+                full.textContent = focused === id ? '↙' : '⛶';
+                full.title = `${focused === id ? 'Restore' : 'Full screen'} ${labels[id]}`;
+                full.setAttribute('aria-label', full.title);
+                full.setAttribute('aria-pressed', String(focused === id));
                 const later = group.querySelector<HTMLButtonElement>('[data-action="later"]')!;
                 later.disabled = visible().indexOf(id) === visible().length - 1;
                 later.textContent = vertical() ? '↓' : '→';
@@ -118,9 +118,10 @@ export function createPaneLayout(host: { read(key: string): string | null; save(
             header.ondragover = event => { if (drag && drag !== id) { event.preventDefault(); event.dataTransfer!.dropEffect = 'move'; panes[id].classList.add('pane-drop'); } };
             header.ondragleave = () => panes[id].classList.remove('pane-drop');
             header.ondrop = event => { event.preventDefault(); panes[id].classList.remove('pane-drop'); if (drag && drag !== id) change(movePane(state, drag, id)); drag = undefined; };
+            const full = makeButton(`Full screen ${labels[id]}`, '⛶', () => fullscreen(id)); full.dataset.action = 'fullscreen';
+            group.append(full);
         }
-        const full = makeButton(`Full screen ${labels[id]}`, '⛶', () => fullscreen(id)); full.dataset.action = 'fullscreen';
-        group.append(full, makeButton(`Hide ${labels[id]}`, '×', () => { if (id === 'sidebar') { exitFullscreen(); host.showSidebar(false); render(); menu.querySelector('summary')!.focus(); } else toggle(id, false); }));
+        group.append(makeButton(`Hide ${labels[id]}`, '×', () => { if (id === 'sidebar') { host.showSidebar(false); render(); menu.querySelector('summary')!.focus(); } else toggle(id, false); }));
         header.append(group); controls.set(id, group);
     }
     for (const id of ['source', 'output'] as const) {
