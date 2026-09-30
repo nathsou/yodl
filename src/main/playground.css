@@ -312,7 +312,7 @@ dialog button:not(.primary):not(.search-close) { padding: 5px 12px; border: 1px 
 .code-line [data-code-info]:focus-visible, .code-line :target { outline: 1px solid var(--acc); outline-offset: 2px; border-radius: 2px; }
 .code-error { text-decoration: underline wavy var(--error); text-underline-offset: 3px; }
 .code-warning { text-decoration: underline wavy var(--mute); text-underline-offset: 3px; }
-.code-tooltip { position: fixed; z-index: 100; max-width: min(640px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 18px #0002; font: 13px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; pointer-events: none; }
+.code-tooltip { position: fixed; z-index: 100; max-width: min(640px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 18px #0002; font: 13px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .example-problems { margin: 0; padding: 10px 16px 10px 32px; border-top: 1px solid var(--line); font: 12px/1.6 var(--font-mono); }
 .example-problems li { padding: 4px 0; }
 .example-problems .problem-error, .example-problems a { color: var(--error); }

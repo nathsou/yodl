@@ -39,10 +39,17 @@ export function createDocs(host: DocsHost) {
     tooltip.hidden = true;
     document.body.append(tooltip);
     let tooltipTarget: HTMLElement | undefined;
+    let tooltipTimer: ReturnType<typeof setTimeout> | undefined;
     const hideTooltip = () => {
+        clearTimeout(tooltipTimer);
         tooltip.hidden = true;
         tooltipTarget?.removeAttribute('aria-describedby');
         tooltipTarget = undefined;
+    };
+    const deferHideTooltip = () => {
+        if (tooltipTarget === document.activeElement) return;
+        clearTimeout(tooltipTimer);
+        tooltipTimer = setTimeout(hideTooltip, 100);
     };
     const showTooltip = (target: HTMLElement) => {
         hideTooltip();
@@ -57,10 +64,13 @@ export function createDocs(host: DocsHost) {
     };
     const infoTarget = (event: Event) => (event.target as Element).closest<HTMLElement>('[data-code-info]');
     content.addEventListener('pointerover', event => { const target = infoTarget(event); if (target && target !== tooltipTarget) showTooltip(target); });
-    content.addEventListener('pointerout', event => { if (tooltipTarget && !tooltipTarget.contains(event.relatedTarget as Node)) hideTooltip(); });
+    content.addEventListener('pointerout', event => { if (tooltipTarget && !tooltipTarget.contains(event.relatedTarget as Node)) deferHideTooltip(); });
+    tooltip.addEventListener('pointerenter', () => clearTimeout(tooltipTimer));
+    tooltip.addEventListener('pointerleave', deferHideTooltip);
     content.addEventListener('focusin', event => { const target = infoTarget(event); if (target) showTooltip(target); });
     content.addEventListener('focusout', hideTooltip);
-    content.addEventListener('keydown', event => { if (event.key === 'Escape') hideTooltip(); });
+    const tooltipKeydown = (event: KeyboardEvent) => { if (event.key === 'Escape') hideTooltip(); };
+    document.addEventListener('keydown', tooltipKeydown);
     main.addEventListener('scroll', hideTooltip, { passive: true });
 
     function load(): Promise<DocsData> {
@@ -234,7 +244,10 @@ export function createDocs(host: DocsHost) {
 
     function scrollToAnchor(anchor?: string) {
         const target = anchor ? content.querySelector<HTMLElement>(`#${CSS.escape(anchor)}`) : null;
-        if (target) target.scrollIntoView(); else main.scrollTop = 0;
+        if (target) {
+            target.scrollIntoView();
+            if (target.hasAttribute('data-code-info')) target.focus({ preventScroll: true });
+        } else main.scrollTop = 0;
     }
 
     return {
@@ -268,7 +281,7 @@ export function createDocs(host: DocsHost) {
             return chapter;
         },
         get current() { return current; },
-        dispose() { hideTooltip(); tooltip.remove(); compiler.dispose(); },
+        dispose() { hideTooltip(); document.removeEventListener('keydown', tooltipKeydown); tooltip.remove(); compiler.dispose(); },
     };
 }
 export type Docs = ReturnType<typeof createDocs>;

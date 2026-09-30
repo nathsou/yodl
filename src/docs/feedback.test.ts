@@ -91,7 +91,11 @@ test('static complete programs receive feedback, while illustrative skipped frag
 });
 
 test('the guide captures constant Nat hovers and its intentional overflow diagnostic', () => {
-    const chapters = loadChapters(process.cwd(), ex => exampleHTML(ex, captureFeedback(ex)));
+    const chapters = loadChapters(process.cwd(), ex => {
+        const feedback = captureFeedback(ex);
+        if (ex.expect === 'success') expect(feedback!.diagnostics).toEqual([]);
+        return exampleHTML(ex, feedback);
+    });
     const control = chapters.find(c => c.slug === '06_control_flow')!;
     expect(control.html).toContain('data-code-info="const Len: Nat"');
     const types = chapters.find(c => c.slug === '03_data_types')!;
