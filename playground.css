@@ -179,6 +179,8 @@ select { padding: 3px 6px; }
 .problems-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--error); }
 .problems-header button { color: var(--error); font-size: 12px; }
 .problems pre { margin: 8px 0 0; font: 12px/1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.problems .diagnostic { display: block; width: 100%; padding: 4px 0; text-align: left; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }
+.problems .diagnostic:not(:disabled):hover { text-decoration: underline; }
 .output-pane[data-view="simulation"] .output-view { display: none; }
 .output-pane:not([data-view="simulation"]) .simulation-panel { display: none; }
 
