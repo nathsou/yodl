@@ -22,6 +22,17 @@ function service(source: string, files: Record<string, string> = {}) {
     return { server, request, raw, at, query: (method: string, position: any, extra = {}) => request(`textDocument/${method}`, { textDocument: { uri }, position, ...extra }), diagnostics: () => JSON.parse(flush_diagnostics(server)).flatMap((r: any) => r.params.diagnostics) };
 }
 describe('MoonBit LSP', () => {
+    test('generic types use square brackets in all editor labels and static snapshots', () => {
+        const c = service('module Bundle[N: Nat](a: (data: [2]uint[N], signed: sint[N])) -> () {}\nmodule Box[N: Nat](a: uint[N]) -> (b: [2]sint[N]) {}\nmodule Top() -> () {}');
+        expect(c.query('hover', c.at('Box')).contents.value).toContain('Box[N: Nat](a: uint[N]) -> (b: [2]sint[N])');
+        expect(c.query('hover', c.at('Bundle')).contents.value).toContain('(data: [2]uint[N], signed: sint[N])');
+        const completions = c.query('completion', c.at('module Top')).items;
+        expect(completions.find((item: any) => item.label === 'Box').detail).toContain('uint[N]');
+        const snapshot = c.request('yodl/snapshot', { uri });
+        expect(JSON.stringify(snapshot.hovers)).not.toMatch(/(?:uint|sint)</);
+        const call = service('module Box[N: Nat](a: uint[N]) -> (b: uint[N]) { b = a }\nmodule Top() -> () {\n let inst = Box[N: 8](a: 1)\n}');
+        expect(call.query('signatureHelp', call.at('a: 1')).signatures[0].label).toContain('a: uint[N]');
+    });
     test('constant hovers retain concrete checker types and symbolic natural sorts', () => {
         const c = service('const Bits = 12\nconst Len = cdiv!(Bits, 4)\nconst Signed = -2\nmodule Hex[Bits: Nat]() -> () {\n const Len = cdiv!(Bits, 4)\n const Next = Len + 1\n for i in 0..<Next {}\n}\nmodule Top() -> () {\n let a = Hex[Bits: 8]()\n let b = Hex[Bits: 64]()\n}');
         expect(c.diagnostics()).toEqual([]);

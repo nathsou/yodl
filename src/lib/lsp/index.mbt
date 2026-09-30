@@ -97,7 +97,7 @@ fn visit_stmt(stmt: Stmt, f: (Expr) -> Unit) -> Unit {
 
 fn Workspace::collect_types(self: Self, decl: Decl) -> Unit {
   let collect = fn(expr: Expr) {
-    if expr.ty().val is Some(ty) { self.expression_types[span_key(@parse.Spanned::span(expr))] = ty.to_string() }
+    if expr.ty().val is Some(ty) { self.expression_types[span_key(@parse.Spanned::span(expr))] = type_label(ty) }
   }
   fn bindings(stmt: Stmt) -> Unit {
     match stmt {
@@ -224,19 +224,19 @@ fn Workspace::index_decl(self: Self, decl: Decl, scope: Int, container: Int?, na
       let symbolic = decl.ty is None && self.natural_constant(decl.expr, scope)
       let generic = container.bind(id => self.symbols[id].signature).map(sig => !sig.parameters.is_empty()).unwrap_or(false)
       let ty = if symbolic && generic { None } else { prefer(decl.ty, prefer(self.binding_types.get(span_key(decl.span)), self.guess_type(decl.expr))) }
-      let detail = if symbolic && (generic || ty is None) { "Nat" } else { ty.map(t => t.to_string()).unwrap_or("unknown") }
+      let detail = if symbolic && (generic || ty is None) { "Nat" } else { ty.map(type_label).unwrap_or("unknown") }
       let _ = self.add_symbol(decl.path.elem, decl.span, scope, container, namespace, 14, 4, "const \{decl.path}: \{detail}", ty~, read_only=true)
       self.index_expr(decl.expr, scope, container)
     }
     TypeAlias(alias) => {
-      let id = self.add_symbol(alias.name, alias.span, scope, container, namespace, 23, 1, "type \{alias.name} = \{alias.ty}", ty=Some(alias.ty))
+      let id = self.add_symbol(alias.name, alias.span, scope, container, namespace, 23, 1, "type \{alias.name} = \{type_label(alias.ty)}", ty=Some(alias.ty))
       let child = self.add_scope(alias.span, Some(scope))
       self.symbols[id].child_scope = Some(child)
       for param in alias.parameters {
         let _ = self.add_symbol(param.name, param.span, child, Some(id), [], 26, 3, "\{param.name}: \{param.sort}", read_only=true)
       }
       if alias.ty is @parse.Type::Struct(fields) {
-        for name, ty in fields { let _ = self.add_symbol(name, alias.span, child, Some(id), [], 8, 5, "\{name}: \{ty}", ty=Some(ty), member=true, renameable=false) }
+        for name, ty in fields { let _ = self.add_symbol(name, alias.span, child, Some(id), [], 8, 5, "\{name}: \{type_label(ty)}", ty=Some(ty), member=true, renameable=false) }
       }
     }
     Test(td) => {
@@ -259,22 +259,22 @@ fn Workspace::struct_members(self: Self, id: Int) -> Unit {
   let scope = self.add_scope(@parse.Span::at("", "", 0, 0), None)
   self.symbols[id].child_scope = Some(scope)
   for name, ty in fields {
-    let child = self.add_symbol(name, symbol.span, scope, Some(id), [], 8, 5, "\{name}: \{ty}", ty=Some(ty), member=true, renameable=false)
+    let child = self.add_symbol(name, symbol.span, scope, Some(id), [], 8, 5, "\{name}: \{type_label(ty)}", ty=Some(ty), member=true, renameable=false)
     self.struct_members(child)
   }
 }
 
 fn Workspace::index_module(self: Self, sig: @parse.ModuleSignature, span: Span, body: Array[Stmt], scope: Int, container: Int?, namespace: Array[String]) -> Unit {
-  let inputs = sig.ports.filter(p => p.dir == @parse.PortDir::Input).map(p => (p.name, "\{p.name}\{if p.optional { "?" } else { "" }}: \{p.ty}"))
+  let inputs = sig.ports.filter(p => p.dir == @parse.PortDir::Input).map(p => (p.name, "\{p.name}\{if p.optional { "?" } else { "" }}: \{type_label(p.ty)}"))
   let parameters = sig.params.map(p => (p.name, "\{p.name}: \{p.sort}"))
-  let outputs = sig.ports.filter(p => p.dir != @parse.PortDir::Input).map(p => "\{p.name}: \{p.ty}")
+  let outputs = sig.ports.filter(p => p.dir != @parse.PortDir::Input).map(p => "\{p.name}: \{type_label(p.ty)}")
   let params_text = if parameters.is_empty() { "" } else { "[\{parameters.iter().map(p => p.1).join(", ")}]" }
   let label = "\{sig.path}\{params_text}(\{inputs.iter().map(p => p.1).join(", ")}) -> (\{outputs.iter().join(", ")})"
   let id = self.add_symbol(sig.path.elem, span, scope, container, namespace, 2, 2, "module \{label}", signature=Some({ label, inputs, parameters }))
   let child = self.add_scope(span, Some(scope))
   self.symbols[id].child_scope = Some(child)
   for param in sig.params { let _ = self.add_symbol(param.name, param.span, child, Some(id), [], 26, 3, "\{param.name}: \{param.sort}", read_only=true) }
-  for port in sig.ports { let _ = self.add_symbol(port.name, port.span, child, Some(id), [], 8, 5, "\{port.dir} \{port.name}: \{port.ty}", ty=Some(port.ty), member=true) }
+  for port in sig.ports { let _ = self.add_symbol(port.name, port.span, child, Some(id), [], 8, 5, "\{port.dir} \{port.name}: \{type_label(port.ty)}", ty=Some(port.ty), member=true) }
   for stmt in body { self.index_stmt(stmt, child, Some(id)) }
 }
 
@@ -311,7 +311,7 @@ fn Workspace::index_stmt(self: Self, stmt: Stmt, scope: Int, container: Int?) ->
     Let(name~, ty~, expr~, span~) => {
       let resolved = prefer(self.binding_types.get(span_key(span)), prefer(ty.val, expr.bind(e => self.guess_type(e))))
       let instance = expr.bind(e => match e { Instance(path~, ..) => Some(path); _ => None })
-      let detail = "let \{name}: \{resolved.map(t => t.to_string()).unwrap_or(instance.map(p => p.to_string()).unwrap_or("unknown"))}"
+      let detail = "let \{name}: \{resolved.map(type_label).unwrap_or(instance.map(p => p.to_string()).unwrap_or("unknown"))}"
       let _ = self.add_symbol(name, span, scope, container, [], 13, 4, detail, ty=prefer(ty.val, resolved), instance~)
       if expr is Some(expr) { self.index_expr(expr, scope, container) }
     }

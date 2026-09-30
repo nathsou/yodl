@@ -1,4 +1,4 @@
-import { highlightSegments } from '../main/highlight.ts';
+import { highlight, highlightSegments } from '../main/highlight.ts';
 import type { Range } from '../main/lsp-client.ts';
 import type { Example } from './content.ts';
 
@@ -47,7 +47,11 @@ export function feedbackHTML(example: Example, feedback: ExampleFeedback): strin
         const html = boundaries.slice(0, -1).map((start, i) => {
             const end = boundaries[i + 1];
             const covering = <T extends { start: number; end: number }>(ranges: T[]) => ranges.filter(range => range.start <= start && range.end >= end);
-            const info = [...covering(hovers).map(hover => hover.info), ...covering(errors).map(({ diagnostic }) => `${diagnostic.code}: ${diagnostic.message}${diagnostic.notes.length ? `\n${diagnostic.notes.join('\n')}` : ''}`)].join('\n\n');
+            const hoverInfo = covering(hovers).map(hover => hover.info);
+            const diagnosticInfo = covering(errors).map(({ diagnostic }) => `${diagnostic.code}: ${diagnostic.message}${diagnostic.notes.length ? `\n${diagnostic.notes.join('\n')}` : ''}`);
+            const info = [...hoverInfo, ...diagnosticInfo].join('\n\n');
+            // Highlight signatures at build time; diagnostic prose stays plain text.
+            const tooltip = [...hoverInfo.map(value => highlight(value)), ...diagnosticInfo.map(e)].join('\n\n');
             const error = covering(errors)[0];
             const kind = covering(tokens)[0]?.kind ?? covering(syntax)[0]?.kind;
             const classes = [kind && `token-${kind}`, error && (error.diagnostic.severity === 2 ? 'code-warning' : 'code-error')].filter(Boolean).join(' ');
@@ -58,7 +62,7 @@ export function feedbackHTML(example: Example, feedback: ExampleFeedback): strin
                 anchor = ` id="${id}"`;
             }
             const content = e(text.slice(start, end));
-            return classes || info ? `<span${anchor}${classes ? ` class="${classes}"` : ''}${info ? ` tabindex="0" data-code-info="${e(info)}" aria-label="${e(text.slice(start, end) + ': ' + info)}"` : ''}>${content}</span>` : content;
+            return classes || info ? `<span${anchor}${classes ? ` class="${classes}"` : ''}${info ? ` tabindex="0" data-code-info="${e(info)}" data-code-tooltip="${e(tooltip)}" aria-label="${e(text.slice(start, end) + ': ' + info)}"` : ''}>${content}</span>` : content;
         }).join('');
         return `<div class="code-line"><span class="ln">${row + 1}</span><span class="lt">${html || ' '}</span></div>`;
     }).join('');
