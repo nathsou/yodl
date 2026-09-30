@@ -41,18 +41,6 @@ line numbers. The reading view removes the common leading whitespace from visibl
 lines, retaining indentation inside nested blocks. Editing reveals the complete program, and compiler diagnostics
 refer to that complete program. The same extracted source is used in CI.
 
-The site build captures inferred types, builtin signatures, semantic tokens, and
-frontend diagnostics with the shared MoonBit language service. The reading view
-shows this feedback without loading Monaco or running analysis in the browser.
-Hover or keyboard-focus a symbol to see its type; diagnostics appear as
-underlines and a list below the block. Hidden lines, named regions, and dedented
-columns are mapped back to the full source. Errors in hidden code or imported
-files remain visible in the list with their original locations. Complete
-`static` examples receive the same feedback; `expect=skip` fragments do not.
-Generic size constants such as `const Len = cdiv!(Bits, 4)` show their `Nat`
-sort while `Bits` remains symbolic. Compiler checks that depend on generic
-parameters still run when the module is instantiated.
-
 Options are whitespace-separated `name=value` pairs (values cannot contain
 spaces):
 
