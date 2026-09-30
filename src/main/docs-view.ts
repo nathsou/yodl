@@ -54,7 +54,9 @@ export function createDocs(host: DocsHost) {
     const showTooltip = (target: HTMLElement) => {
         hideTooltip();
         tooltipTarget = target;
-        tooltip.textContent = target.dataset.codeInfo!;
+        // The static renderer supplies escaped, highlighted HTML with the chapter.
+        if (target.dataset.codeTooltip !== undefined) tooltip.innerHTML = target.dataset.codeTooltip;
+        else tooltip.textContent = target.dataset.codeInfo!;
         tooltip.hidden = false;
         target.setAttribute('aria-describedby', tooltip.id);
         const rect = target.getBoundingClientRect();

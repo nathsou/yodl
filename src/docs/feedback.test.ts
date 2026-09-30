@@ -12,10 +12,29 @@ test('documentation hovers retain inferred types, signatures and source text aft
     const html = exampleHTML(ex, feedback);
     expect(html).toContain('data-code-info="let value: u8"');
     expect(html).toContain('data-code-info="clog2!(value: Nat) -&gt; Nat"');
+    expect(html).toContain('data-code-tooltip="&lt;span class=&quot;token-keyword&quot;&gt;let&lt;/span&gt; value&lt;span class=&quot;token-punct&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;token-type&quot;&gt;u8&lt;/span&gt;"');
+    expect(html).toContain('data-code-tooltip="&lt;span class=&quot;token-function&quot;&gt;clog2!&lt;/span&gt;');
     expect(html).toContain('class="token-ident"');
     const text = html.split('<span class="lt">').slice(1).map(row => row.slice(0, row.indexOf('</div>')).replace(/<[^>]*>/g, '')).join('\n');
     expect(text).toBe(ex.display);
     expect(html).not.toContain('Monaco');
+});
+
+test('tooltip HTML highlights signatures while escaping diagnostic prose and notes', () => {
+    const ex = example('module Top() -> () {\n let value: u8 = 256\n}', 'expect=error');
+    const feedback = captureFeedback(ex)!;
+    const diagnostic = feedback.diagnostics[0];
+    diagnostic.message = 'Unexpected <img src=x onerror="alert(1)"> & value';
+    diagnostic.notes = ['Use "const" or <script>alert(1)</script>'];
+    feedback.hovers.push({ range: diagnostic.range!, contents: { value: '```yodl\nconst Value: uint[Width]\n```' } });
+    const html = exampleHTML(ex, feedback);
+    const tooltip = /data-code-tooltip="([^"]+)"[^>]*>256<\/span>/.exec(html)![1];
+    expect(tooltip).toContain('&lt;span class=&quot;token-keyword&quot;&gt;const&lt;/span&gt;');
+    expect(tooltip).toContain('&lt;span class=&quot;token-type&quot;&gt;uint&lt;/span&gt;[');
+    expect(tooltip).toContain('\n\n' + diagnostic.code + ': Unexpected &amp;lt;img src=x onerror=&amp;quot;alert(1)&amp;quot;&amp;gt; &amp;amp; value');
+    expect(tooltip).toContain('Use &amp;quot;const&amp;quot; or &amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;');
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('<script');
 });
 
 test('static errors underline exact displayed columns and expose diagnostics before compilation', () => {
