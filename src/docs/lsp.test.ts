@@ -22,6 +22,33 @@ function service(source: string, files: Record<string, string> = {}) {
     return { server, request, raw, at, query: (method: string, position: any, extra = {}) => request(`textDocument/${method}`, { textDocument: { uri }, position, ...extra }), diagnostics: () => JSON.parse(flush_diagnostics(server)).flatMap((r: any) => r.params.diagnostics) };
 }
 describe('MoonBit LSP', () => {
+    test('constant hovers retain concrete checker types and symbolic natural sorts', () => {
+        const c = service('const Bits = 12\nconst Len = cdiv!(Bits, 4)\nconst Signed = -2\nmodule Hex[Bits: Nat]() -> () {\n const Len = cdiv!(Bits, 4)\n const Next = Len + 1\n for i in 0..<Next {}\n}\nmodule Top() -> () {\n let a = Hex[Bits: 8]()\n let b = Hex[Bits: 64]()\n}');
+        expect(c.diagnostics()).toEqual([]);
+        expect(c.query('hover', c.at('Len')).contents.value).toContain('const Len: u2');
+        expect(c.query('hover', c.at('Signed')).contents.value).toContain('const Signed: s3');
+        expect(c.query('hover', c.at('Len', 1)).contents.value).toContain('const Len: Nat');
+        expect(c.query('hover', c.at('Len', 2)).contents.value).toContain('const Len: Nat');
+        expect(c.query('hover', c.at('Next')).contents.value).toContain('const Next: Nat');
+        const generic = service('module Hex[Bits: Nat]() -> () {\n const Len = cdiv!(Bits, 4)\n for i in 0..<Len {}\n}');
+        expect(generic.query('hover', generic.at('Len')).contents.value).toContain('const Len: Nat');
+    });
+    test('static snapshots match interactive hovers, tokens and diagnostics', () => {
+        const c = service('module Top(a: u8) -> () {\n let value = a\n let size = clog2!(8)\n let bad: u8 = 256\n}');
+        const snapshot = c.request('yodl/snapshot', { uri });
+        expect(snapshot.semanticTokens).toEqual(c.request('textDocument/semanticTokens/full', { textDocument: { uri } }));
+        expect(snapshot.hovers.length).toBeGreaterThan(0);
+        for (const hover of snapshot.hovers) expect(hover).toEqual(c.query('hover', hover.range.start));
+        expect(new Set(snapshot.hovers.map((h: any) => JSON.stringify(h.range))).size).toBe(snapshot.hovers.length);
+        const errors = c.diagnostics();
+        expect(snapshot.diagnostics.map((d: any) => [d.code, d.message, d.uri, d.range, d.relatedInformation])).toEqual(errors.map((d: any) => [d.code, d.message, d.uri, d.range, d.relatedInformation]));
+        expect(c.raw('yodl/snapshot', { uri: 'file:///missing.yodl' })[0].error.code).toBe(-32602);
+        const disk = service('const Len = cdiv!(12, 4)\nmodule Top() -> () {}');
+        disk.raw('textDocument/didClose', { textDocument: { uri } }, false);
+        disk.query('hover', disk.at('Len')); // Populate a syntax-only index first.
+        const captured = disk.request('yodl/snapshot', { uri });
+        expect(captured.hovers.some((h: any) => h.contents.value.includes('const Len: u2'))).toBe(true);
+    });
     test('lifecycle, parse errors, unsupported requests and shutdown', () => {
         const s = new_server();
         expect(JSON.parse(handle_message(s, '{'))[0].error.code).toBe(-32700);

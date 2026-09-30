@@ -309,6 +309,15 @@ dialog button:not(.primary):not(.search-close) { padding: 5px 12px; border: 1px 
 .code-lines { padding: 14px 0; overflow-x: auto; font: 13px/22px var(--font-mono); }
 .code-line { display: flex; white-space: pre; }
 .code-line .ln { flex: 0 0 40px; padding-right: 16px; text-align: right; color: var(--mute); opacity: .5; user-select: none; }
+.code-line [data-code-info]:focus-visible, .code-line :target { outline: 1px solid var(--acc); outline-offset: 2px; border-radius: 2px; }
+.code-error { text-decoration: underline wavy var(--error); text-underline-offset: 3px; }
+.code-warning { text-decoration: underline wavy var(--mute); text-underline-offset: 3px; }
+.code-tooltip { position: fixed; z-index: 100; max-width: min(640px, calc(100vw - 16px)); max-height: calc(100vh - 16px); overflow: auto; padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--ink); box-shadow: 0 4px 18px #0002; font: 13px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.example-problems { margin: 0; padding: 10px 16px 10px 32px; border-top: 1px solid var(--line); font: 12px/1.6 var(--font-mono); }
+.example-problems li { padding: 4px 0; }
+.example-problems .problem-error, .example-problems a { color: var(--error); }
+.example-problems .problem-warning { color: var(--mute); }
+.example-problems small, .example-problems li > span { display: block; color: var(--mute); white-space: pre-wrap; overflow-wrap: anywhere; }
 .example-note { margin: 0; padding: 10px 16px; border-top: 1px solid var(--line); font-size: 13px !important; color: var(--mute); }
 .example-output { border-top: 1px solid var(--line); background: var(--bg); }
 .example-output-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 16px; font: 12px var(--font-mono); color: var(--mute); }

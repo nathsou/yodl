@@ -4,11 +4,13 @@ import { createHash } from 'node:crypto';
 import { stages } from '../main/compiler-stages.ts';
 import type { Stage } from '../main/compiler-stages.ts';
 import { highlightLines } from '../main/highlight.ts';
+import { feedbackHTML, type ExampleFeedback } from './feedback.ts';
 
 export type Example = {
     id: string; title: string; source: string; display: string; hash: string;
     path: string; files: Record<string, string>; stage: Stage; live: boolean;
     unsupported: Stage[]; expect: 'success' | 'error' | 'skip'; diagnostic?: string; line: number;
+    displayMap: { line: number; character: number }[];
 };
 export type Heading = { id: string; title: string; level: number };
 export type Chapter = { slug: string; title: string; markdown: string; html: string; examples: Example[]; headings: Heading[] };
@@ -26,6 +28,31 @@ export function dedentDisplay(source: string): string {
         while (!indent.startsWith(common)) common = common.slice(0, -1);
     }
     return lines.map(line => line.trim() ? line.slice(common.length) : '').join('\n');
+}
+
+/** Map each displayed row back to UTF-16 positions in the complete program. */
+function displaySource(raw: string, region?: string) {
+    let start = 0, end = raw.length;
+    if (region) {
+        const begin = `// region ${region}`, finish = `// endregion ${region}`;
+        start = raw.indexOf(begin) + begin.length;
+        end = raw.indexOf(finish);
+        if (!raw.includes(begin) || end < start) throw new Error(`missing region ${region}`);
+    }
+    const sourceLines = raw.split('\n');
+    let offset = start;
+    const rows = raw.slice(start, end).split('\n').map(text => {
+        const prefix = raw.slice(0, offset);
+        const line = prefix.split('\n').length - 1;
+        const character = offset - prefix.lastIndexOf('\n') - 1;
+        offset += text.length + 1;
+        return { text, line, character };
+    }).filter(row => !sourceLines[row.line].startsWith('#'));
+    while (rows.length && !rows[0].text.trim()) rows.shift();
+    while (rows.length && !rows.at(-1)!.text.trim()) rows.pop();
+    const display = dedentDisplay(rows.map(row => row.text).join('\n'));
+    const displayed = display.split('\n');
+    return { display, displayMap: rows.map((row, i) => ({ line: row.line, character: row.character + row.text.length - displayed[i].length })) };
 }
 
 function sourceFile(root: string, path: string) {
@@ -90,14 +117,9 @@ export function extractExamples(markdown: string, slug: string, root = process.c
         // Remove just the mdBook marker and one optional separating space.
         // Preserve indentation and line count for precise compiler diagnostics.
         const source = raw.replace(/^# ?/gm, '');
-        let display = raw.split('\n').filter(line => !line.startsWith('#')).join('\n');
-        if (config.region) {
-            const begin = `// region ${config.region}`;
-            const end = `// endregion ${config.region}`;
-            if (!raw.includes(begin) || !raw.includes(end) || raw.indexOf(end) < raw.indexOf(begin)) throw new Error(`${slug}: missing region ${config.region}`);
-            display = raw.slice(raw.indexOf(begin) + begin.length, raw.indexOf(end));
-        }
-        examples.push({ id, title: id.replace(/^ex-/, '').replaceAll('-', ' '), source, display: dedentDisplay(display), path, files, stage: stage as Stage,
+        let reading: ReturnType<typeof displaySource>;
+        try { reading = displaySource(raw, config.region); } catch (error) { throw new Error(`${slug}: ${(error as Error).message}`); }
+        examples.push({ id, title: id.replace(/^ex-/, '').replaceAll('-', ' '), source, ...reading, path, files, stage: stage as Stage,
             unsupported, hash: createHash('sha256').update(JSON.stringify({ source, files })).digest('hex').slice(0, 16),
             live: !config.static && expect !== 'skip', expect: expect as Example['expect'], diagnostic: config.diagnostic, line: begin + 1 });
         output.push('', `<div data-yodl-example="${examples.length - 1}"></div>`, '');
@@ -109,16 +131,16 @@ export function extractExamples(markdown: string, slug: string, root = process.c
 // build and its tests keep a single import point.
 export { highlight } from '../main/highlight.ts';
 
-export function exampleHTML(example: Example) {
+export function exampleHTML(example: Example, feedback?: ExampleFeedback) {
     const e = escapeHTML;
     return `<section class="code-example" id="${example.id}" aria-label="Example: ${e(example.title)}">
     <div class="example-header"><span class="example-file">${e(example.id)}.yodl</span><span class="example-actions">${example.live ? '<button type="button" data-action="compile" class="js-only">Compile ▸</button><button type="button" data-action="playground" class="js-only">Open in Playground ↗</button>' : '<span>Read-only</span>'}</span></div>
-    <div class="code-lines" tabindex="0" role="region" aria-label="Source: ${e(example.title)}">${highlightLines(example.display)}</div>
-    ${example.expect === 'error' ? '<p class="example-note">This example intentionally produces a compiler error. Compile it to see the diagnostic, or open it in the Playground to explore.</p>' : ''}
+    ${feedback ? feedbackHTML(example, feedback) : `<div class="code-lines" tabindex="0" role="region" aria-label="Source: ${e(example.title)}">${highlightLines(example.display)}</div>`}
+    ${example.expect === 'error' ? '<p class="example-note">This example intentionally produces a compiler error. Open it in the Playground to explore.</p>' : ''}
     </section>`;
 }
 
-export function loadChapters(root = process.cwd()): Chapter[] {
+export function loadChapters(root = process.cwd(), renderExample: (example: Example) => string = exampleHTML): Chapter[] {
     const summary = readFileSync(resolve(root, 'book/src/SUMMARY.md'), 'utf8');
     const entries = [...summary.matchAll(/^- \[([^\]]+)\]\(\.\/([\w-]+)\.md\)/gm)];
     if (!entries.length) throw new Error('SUMMARY.md contains no chapters');
@@ -126,7 +148,7 @@ export function loadChapters(root = process.cwd()): Chapter[] {
         const markdown = readFileSync(resolve(root, `book/src/${slug}.md`), 'utf8');
         const extracted = extractExamples(markdown, slug, root);
         let html = Bun.markdown.html(extracted.markdown, { headings: { ids: true }, noHtmlSpans: true });
-        html = html.replace(/<div data-yodl-example="(\d+)"><\/div>/g, (_, index) => exampleHTML(extracted.examples[Number(index)]));
+        html = html.replace(/<div data-yodl-example="(\d+)"><\/div>/g, (_, index) => renderExample(extracted.examples[Number(index)]));
         html = html.replace(/href="([^"#]+)\.md(#[^"]*)?"/g, 'href="$1.html$2"');
         // Preserve published mdBook anchors whose punctuation differs from Bun.
         const legacy: Record<string, string> = {

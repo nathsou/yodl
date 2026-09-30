@@ -1,3 +1,45 @@
+/// Shared by interactive clients and documentation snapshots.
+fn Workspace::hover(self: Self, uri: String, index: Int) -> Json {
+  let workspace = self
+  let file = self.files[uri]
+  if self.reference_at(uri, index) is Some(reference) {
+    let symbol = self.symbols[reference.symbol]
+    return Json::object({ "contents": Json::object({ "kind": "markdown".to_json(), "value": "```yodl\n\{symbol.detail}\n```".to_json() }), "range": reference.span.range_json() })
+  }
+  for token in file.tokens {
+    if token.span.start.index <= index && index <= token.span.end.index {
+      if token.kind is @parse.TokenType::BuiltinFunction(name) {
+        if builtin_functions().iter().find_first(b => b.0 == name) is Some(builtin) {
+          return Json::object({ "contents": Json::object({ "kind": "markdown".to_json(), "value": "```yodl\n\{builtin.1}\n```".to_json() }), "range": token.span.range_json() })
+        }
+      }
+      if workspace.expression_types.get(span_key(token.span)) is Some(ty) {
+        return Json::object({ "contents": Json::object({ "kind": "markdown".to_json(), "value": "```yodl\n\{ty}\n```".to_json() }), "range": token.span.range_json() })
+      }
+    }
+  }
+  Json::null()
+}
+
+/// Static clients capture the same hovers, diagnostics and semantic tokens once.
+fn Server::snapshot(self: Self, uri: String) -> Json raise ProtocolError {
+  guard self.source(uri) is Some(_) else { raise ProtocolError(code=-32602, message="Unknown document '\{uri}'") }
+  let _ = self.analyze(uri)
+  let workspace = self.index()
+  let hovers = []
+  let seen = Set([])
+  for token in workspace.files[uri].tokens {
+    let hover = workspace.hover(uri, token.span.start.index)
+    let key = field(hover, "range").stringify()
+    if hover != Json::null() && !seen.contains(key) { hovers.push(hover); seen.add(key) }
+  }
+  Json::object({
+    "hovers": Json::array(hovers),
+    "diagnostics": Json::array(self.enriched_diagnostics(uri).map(d => d.to_json())),
+    "semanticTokens": workspace.semantic_tokens(uri),
+  })
+}
+
 fn token_types() -> Array[String] {
   ["namespace", "type", "class", "parameter", "variable", "property", "function", "keyword", "number", "string", "operator"]
 }
@@ -273,28 +315,14 @@ fn Server::query(self: Self, method: String, params: Json) -> Json raise {
     _ => ()
   }
   let index = offset(file.source, field(params, "position"))
+  if method == "textDocument/hover" { return workspace.hover(uri, index) }
   if method == "textDocument/completion" { return workspace.completion(uri, index) }
   if method == "textDocument/signatureHelp" { return workspace.signature_help(uri, index) }
   guard workspace.reference_at(uri, index) is Some(reference) else {
-    if method == "textDocument/hover" {
-      for token in file.tokens {
-        if token.span.start.index <= index && index <= token.span.end.index {
-          if token.kind is @parse.TokenType::BuiltinFunction(name) {
-            if builtin_functions().iter().find_first(b => b.0 == name) is Some(builtin) {
-              return Json::object({ "contents": Json::object({ "kind": "markdown".to_json(), "value": "```yodl\n\{builtin.1}\n```".to_json() }), "range": token.span.range_json() })
-            }
-          }
-          if workspace.expression_types.get(span_key(token.span)) is Some(ty) {
-            return Json::object({ "contents": Json::object({ "kind": "markdown".to_json(), "value": "```yodl\n\{ty}\n```".to_json() }), "range": token.span.range_json() })
-          }
-        }
-      }
-    }
     return if method == "textDocument/references" || method == "textDocument/documentHighlight" { Json::array([]) } else { Json::null() }
   }
   let symbol = workspace.symbols[reference.symbol]
   match method {
-    "textDocument/hover" => Json::object({ "contents": Json::object({ "kind": "markdown".to_json(), "value": "```yodl\n\{symbol.detail}\n```".to_json() }), "range": reference.span.range_json() })
     "textDocument/definition" | "textDocument/declaration" => Json::array([location(symbol.selection)])
     "textDocument/typeDefinition" => {
       let target = symbol.instance.bind(path => workspace.lookup_path(symbol.scope, path, symbol.selection.start.index))
